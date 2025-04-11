@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_telemetry"
+<<<<<<< HEAD
 version = "0.21.0"
+=======
+version = "0.22.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

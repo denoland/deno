@@ -86,17 +86,23 @@ impl FileFlags {
   }
 }
 
+<<<<<<< HEAD
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum DefaultRegistry {
   Npm,
   Jsr,
 }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+<<<<<<< HEAD
   pub default_registry: Option<DefaultRegistry>,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1742,6 +1748,7 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+<<<<<<< HEAD
       .args(default_registry_args())
   })
 }
@@ -1761,6 +1768,11 @@ fn default_registry_args() -> [Arg; 2] {
   ]
 }
 
+=======
+  })
+}
+
+>>>>>>> 25defa74d (2.2.9 (#28854))
 fn remove_subcommand() -> Command {
   command(
     "remove",
@@ -2662,7 +2674,10 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+<<<<<<< HEAD
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     })
 }
 
@@ -4556,6 +4571,7 @@ fn add_parse_inner(
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
   let dev = matches.get_flag("dev");
+<<<<<<< HEAD
   let default_registry = if matches.get_flag("npm") {
     Some(DefaultRegistry::Npm)
   } else if matches.get_flag("jsr") {
@@ -4568,6 +4584,9 @@ fn add_parse_inner(
     dev,
     default_registry,
   }
+=======
+  AddFlags { packages, dev }
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -11375,7 +11394,10 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which"],
           dev: false,
+<<<<<<< HEAD
           default_registry: None,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
         }) // default is false
       );
 
@@ -11385,7 +11407,10 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+<<<<<<< HEAD
           default_registry: None,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
         })
       );
 
@@ -11395,6 +11420,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["npm:chalk"],
           dev: true,
+<<<<<<< HEAD
           default_registry: None,
         }),
       );
@@ -11418,6 +11444,10 @@ mod tests {
           default_registry: Some(DefaultRegistry::Jsr),
         })
       )
+=======
+        }),
+      );
+>>>>>>> 25defa74d (2.2.9 (#28854))
     }
   }
 

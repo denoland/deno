@@ -12,17 +12,25 @@ import {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
+<<<<<<< HEAD
   op_net_accept_vsock,
   op_net_connect_tcp,
   op_net_connect_unix,
   op_net_connect_vsock,
+=======
+  op_net_connect_tcp,
+  op_net_connect_unix,
+>>>>>>> 25defa74d (2.2.9 (#28854))
   op_net_join_multi_v4_udp,
   op_net_join_multi_v6_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
   op_net_listen_tcp,
   op_net_listen_unix,
+<<<<<<< HEAD
   op_net_listen_vsock,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   op_net_recv_udp,
   op_net_recv_unixpacket,
   op_net_send_udp,
@@ -252,6 +260,7 @@ class UnixConn extends Conn {
   }
 }
 
+<<<<<<< HEAD
 class VsockConn extends Conn {
   #rid = 0;
 
@@ -266,6 +275,8 @@ class VsockConn extends Conn {
   }
 }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 class Listener {
   #rid = 0;
   #addr = null;
@@ -295,9 +306,12 @@ class Listener {
       case "unix":
         promise = op_net_accept_unix(this.#rid);
         break;
+<<<<<<< HEAD
       case "vsock":
         promise = op_net_accept_vsock(this.#rid);
         break;
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
     }
@@ -305,6 +319,7 @@ class Listener {
     if (this.#unref) core.unrefOpPromise(promise);
     const { 0: rid, 1: localAddr, 2: remoteAddr, 3: fd } = await promise;
     this.#promise = null;
+<<<<<<< HEAD
     switch (this.addr.transport) {
       case "tcp":
         localAddr.transport = "tcp";
@@ -324,6 +339,20 @@ class Listener {
         );
       default:
         throw new Error("unreachable");
+=======
+    if (this.addr.transport == "tcp") {
+      localAddr.transport = "tcp";
+      remoteAddr.transport = "tcp";
+      return new TcpConn(rid, remoteAddr, localAddr, fd);
+    } else if (this.addr.transport == "unix") {
+      return new UnixConn(
+        rid,
+        { transport: "unix", path: remoteAddr },
+        { transport: "unix", path: localAddr },
+      );
+    } else {
+      throw new Error("unreachable");
+>>>>>>> 25defa74d (2.2.9 (#28854))
     }
   }
 
@@ -555,6 +584,7 @@ function listen(args) {
       };
       return new Listener(rid, addr);
     }
+<<<<<<< HEAD
     case "vsock": {
       const { 0: rid, 1: cid, 2: port } = op_net_listen_vsock(
         args.cid,
@@ -567,6 +597,8 @@ function listen(args) {
       };
       return new Listener(rid, addr);
     }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     default:
       throw new TypeError(`Unsupported transport: '${transport}'`);
   }
@@ -644,6 +676,7 @@ async function connect(args) {
         { transport: "unix", path: localAddr },
       );
     }
+<<<<<<< HEAD
     case "vsock": {
       const { 0: rid, 1: localAddr, 2: remoteAddr } =
         await op_net_connect_vsock(args.cid, args.port);
@@ -653,6 +686,8 @@ async function connect(args) {
         { transport: "vsock", cid: localAddr[0], port: localAddr[1] },
       );
     }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     default:
       throw new TypeError(`Unsupported transport: '${transport}'`);
   }
@@ -670,5 +705,8 @@ export {
   UnixConn,
   UpgradedConn,
   validatePort,
+<<<<<<< HEAD
   VsockConn,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 };

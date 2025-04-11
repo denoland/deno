@@ -152,9 +152,12 @@ pub enum NetError {
   #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
+<<<<<<< HEAD
   #[class(generic)]
   #[error("VSOCK is not supported on this platform")]
   VsockUnsupported,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -611,6 +614,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
+<<<<<<< HEAD
 #[cfg(unix)]
 #[op2(async, stack_trace)]
 #[serde]
@@ -750,6 +754,8 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 #[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
@@ -1290,6 +1296,7 @@ mod tests {
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
+<<<<<<< HEAD
 
     fn check_vsock(
       &mut self,
@@ -1299,6 +1306,8 @@ mod tests {
     ) -> Result<(), PermissionCheckError> {
       Ok(())
     }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

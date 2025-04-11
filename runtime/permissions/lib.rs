@@ -817,7 +817,10 @@ pub struct WriteDescriptor(pub PathBuf);
 pub enum Host {
   Fqdn(FQDN),
   Ip(IpAddr),
+<<<<<<< HEAD
   Vsock(u32),
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -882,7 +885,11 @@ impl Host {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+<<<<<<< HEAD
 pub struct NetDescriptor(pub Host, pub Option<u32>);
+=======
+pub struct NetDescriptor(pub Host, pub Option<u16>);
+>>>>>>> 25defa74d (2.2.9 (#28854))
 
 impl QueryDescriptor for NetDescriptor {
   type AllowDesc = NetDescriptor;
@@ -954,8 +961,11 @@ pub enum NetDescriptorParseError {
   Ipv6MissingSquareBrackets(String),
   #[error("{0}")]
   Host(#[from] HostParseError),
+<<<<<<< HEAD
   #[error("invalid vsock: '{0}'")]
   InvalidVsock(String),
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -970,6 +980,7 @@ pub enum NetDescriptorFromUrlParseError {
 
 impl NetDescriptor {
   pub fn parse(hostname: &str) -> Result<Self, NetDescriptorParseError> {
+<<<<<<< HEAD
     #[cfg(unix)]
     if let Some(vsock) = hostname.strip_prefix("vsock:") {
       let mut split = vsock.split(':');
@@ -988,6 +999,8 @@ impl NetDescriptor {
       return Ok(NetDescriptor(Host::Vsock(cid), Some(port)));
     }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
       return Err(NetDescriptorParseError::Url(hostname.to_string()));
     }
@@ -1016,10 +1029,14 @@ impl NetDescriptor {
             hostname.to_string(),
           ));
         };
+<<<<<<< HEAD
         return Ok(NetDescriptor(
           Host::Ip(IpAddr::V6(ip)),
           port.map(Into::into),
         ));
+=======
+        return Ok(NetDescriptor(Host::Ip(IpAddr::V6(ip)), port));
+>>>>>>> 25defa74d (2.2.9 (#28854))
       } else {
         return Err(NetDescriptorParseError::InvalidHost(hostname.to_string()));
       }
@@ -1056,7 +1073,11 @@ impl NetDescriptor {
       Some(port)
     };
 
+<<<<<<< HEAD
     Ok(NetDescriptor(host, port.map(Into::into)))
+=======
+    Ok(NetDescriptor(host, port))
+>>>>>>> 25defa74d (2.2.9 (#28854))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -1065,6 +1086,7 @@ impl NetDescriptor {
     })?;
     let host = Host::parse(host)?;
     let port = url.port_or_known_default();
+<<<<<<< HEAD
     Ok(NetDescriptor(host, port.map(Into::into)))
   }
 
@@ -1073,6 +1095,9 @@ impl NetDescriptor {
     port: u32,
   ) -> Result<Self, NetDescriptorParseError> {
     Ok(NetDescriptor(Host::Vsock(cid), Some(port)))
+=======
+    Ok(NetDescriptor(host, port))
+>>>>>>> 25defa74d (2.2.9 (#28854))
   }
 }
 
@@ -1082,7 +1107,10 @@ impl fmt::Display for NetDescriptor {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
+<<<<<<< HEAD
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -2965,12 +2993,17 @@ impl PermissionsContainer {
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
     let hostname = Host::parse(host.0.as_ref())?;
+<<<<<<< HEAD
     let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+=======
+    let descriptor = NetDescriptor(hostname, host.1);
+>>>>>>> 25defa74d (2.2.9 (#28854))
     inner.check(&descriptor, Some(api_name))?;
     Ok(())
   }
 
   #[inline(always)]
+<<<<<<< HEAD
   pub fn check_net_vsock(
     &mut self,
     cid: u32,
@@ -2987,6 +3020,8 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   pub fn check_ffi(
     &mut self,
     path: &str,

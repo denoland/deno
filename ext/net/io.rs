@@ -189,6 +189,7 @@ impl Resource for UnixStreamResource {
     self.cancel_read_ops();
   }
 }
+<<<<<<< HEAD
 
 #[cfg(unix)]
 pub type VsockStreamResource =
@@ -230,3 +231,5 @@ impl Resource for VsockStreamResource {
     self.cancel_read_ops();
   }
 }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))

@@ -1449,7 +1449,11 @@ dependencies = [
 
 [[package]]
 name = "deno"
+<<<<<<< HEAD
 version = "2.2.8"
+=======
+version = "2.2.9"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "anstream",
  "async-trait",
@@ -1634,7 +1638,11 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
+<<<<<<< HEAD
 version = "0.193.0"
+=======
+version = "0.194.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "bencher",
  "deno_core",
@@ -1643,7 +1651,11 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
+<<<<<<< HEAD
 version = "0.193.0"
+=======
+version = "0.194.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1655,7 +1667,11 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
+<<<<<<< HEAD
 version = "0.131.0"
+=======
+version = "0.132.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1711,7 +1727,11 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
+<<<<<<< HEAD
 version = "0.68.0"
+=======
+version = "0.69.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "bytemuck",
  "deno_core",
@@ -1751,7 +1771,11 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
+<<<<<<< HEAD
 version = "0.199.0"
+=======
+version = "0.200.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
 ]
@@ -1802,7 +1826,11 @@ checksum = "fe4dccb6147bb3f3ba0c7a48e993bfeb999d2c2e47a81badee80e2b370c8d695"
 
 [[package]]
 name = "deno_cron"
+<<<<<<< HEAD
 version = "0.79.0"
+=======
+version = "0.80.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "chrono",
@@ -1815,7 +1843,11 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
+<<<<<<< HEAD
 version = "0.213.0"
+=======
+version = "0.214.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1908,7 +1940,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
+<<<<<<< HEAD
 version = "0.223.0"
+=======
+version = "0.224.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1946,7 +1982,11 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
+<<<<<<< HEAD
 version = "0.186.0"
+=======
+version = "0.187.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "cranelift",
  "cranelift-native",
@@ -1969,7 +2009,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
+<<<<<<< HEAD
 version = "0.109.0"
+=======
+version = "0.110.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "base32",
@@ -2027,7 +2071,11 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
+<<<<<<< HEAD
 version = "0.197.0"
+=======
+version = "0.198.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-compression",
  "async-trait",
@@ -2068,7 +2116,11 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
+<<<<<<< HEAD
 version = "0.109.0"
+=======
+version = "0.110.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -2090,7 +2142,11 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
+<<<<<<< HEAD
 version = "0.107.0"
+=======
+version = "0.108.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2121,7 +2177,11 @@ dependencies = [
 
 [[package]]
 name = "deno_lib"
+<<<<<<< HEAD
 version = "0.15.0"
+=======
+version = "0.16.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "capacity_builder",
  "deno_error",
@@ -2195,7 +2255,11 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
+<<<<<<< HEAD
 version = "0.130.0"
+=======
+version = "0.131.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2224,7 +2288,11 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
+<<<<<<< HEAD
 version = "0.191.0"
+=======
+version = "0.192.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2240,14 +2308,21 @@ dependencies = [
  "socket2",
  "thiserror 2.0.12",
  "tokio",
+<<<<<<< HEAD
  "tokio-vsock",
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
  "url",
  "web-transport-proto",
 ]
 
 [[package]]
 name = "deno_node"
+<<<<<<< HEAD
 version = "0.137.0"
+=======
+version = "0.138.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -2356,7 +2431,11 @@ dependencies = [
 
 [[package]]
 name = "deno_npm_cache"
+<<<<<<< HEAD
 version = "0.18.0"
+=======
+version = "0.19.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2403,7 +2482,11 @@ dependencies = [
 
 [[package]]
 name = "deno_os"
+<<<<<<< HEAD
 version = "0.16.0"
+=======
+version = "0.17.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2464,7 +2547,11 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
+<<<<<<< HEAD
 version = "0.58.0"
+=======
+version = "0.59.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "capacity_builder",
  "deno_core",
@@ -2484,7 +2571,11 @@ dependencies = [
 
 [[package]]
 name = "deno_process"
+<<<<<<< HEAD
 version = "0.14.0"
+=======
+version = "0.15.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2511,7 +2602,11 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
+<<<<<<< HEAD
 version = "0.30.0"
+=======
+version = "0.31.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -2545,7 +2640,11 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
+<<<<<<< HEAD
 version = "0.207.0"
+=======
+version = "0.208.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "color-print",
  "deno_ast",
@@ -2626,7 +2725,11 @@ dependencies = [
 
 [[package]]
 name = "deno_snapshots"
+<<<<<<< HEAD
 version = "0.14.0"
+=======
+version = "0.15.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_runtime",
 ]
@@ -2653,7 +2756,11 @@ dependencies = [
 
 [[package]]
 name = "deno_telemetry"
+<<<<<<< HEAD
 version = "0.21.0"
+=======
+version = "0.22.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -2698,7 +2805,11 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
+<<<<<<< HEAD
 version = "0.186.0"
+=======
+version = "0.187.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2749,7 +2860,11 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
+<<<<<<< HEAD
 version = "0.199.0"
+=======
+version = "0.200.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -2761,7 +2876,11 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
+<<<<<<< HEAD
 version = "0.230.0"
+=======
+version = "0.231.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -2784,7 +2903,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
+<<<<<<< HEAD
 version = "0.166.0"
+=======
+version = "0.167.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2801,7 +2924,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
+<<<<<<< HEAD
 version = "0.199.0"
+=======
+version = "0.200.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2809,7 +2936,11 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
+<<<<<<< HEAD
 version = "0.204.0"
+=======
+version = "0.205.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "bytes",
  "deno_core",
@@ -2832,7 +2963,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
+<<<<<<< HEAD
 version = "0.194.0"
+=======
+version = "0.195.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2919,7 +3054,11 @@ dependencies = [
 
 [[package]]
 name = "denort"
+<<<<<<< HEAD
 version = "2.2.8"
+=======
+version = "2.2.9"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "async-trait",
  "bincode",
@@ -5526,7 +5665,11 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
+<<<<<<< HEAD
 version = "0.129.0"
+=======
+version = "0.130.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "quote",
  "serde",
@@ -5589,12 +5732,19 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+<<<<<<< HEAD
  "memoffset",
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 ]
 
 [[package]]
 name = "node_resolver"
+<<<<<<< HEAD
 version = "0.37.0"
+=======
+version = "0.38.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8699,6 +8849,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "tokio-vsock"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8712,6 +8863,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 name = "toml"
 version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9215,6 +9368,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
+<<<<<<< HEAD
 name = "vsock"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9225,6 +9379,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 name = "vte"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

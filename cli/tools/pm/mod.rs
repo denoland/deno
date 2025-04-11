@@ -434,11 +434,16 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
+<<<<<<< HEAD
     let req = AddRmPackageReq::parse(
       entry_text,
       add_flags.default_registry.map(|r| r.into()),
     )
     .with_context(|| format!("Failed to parse package: {}", entry_text))?;
+=======
+    let req = AddRmPackageReq::parse(entry_text)
+      .with_context(|| format!("Failed to parse package: {}", entry_text))?;
+>>>>>>> 25defa74d (2.2.9 (#28854))
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -714,6 +719,7 @@ pub struct AddRmPackageReq {
   value: AddRmPackageReqValue,
 }
 
+<<<<<<< HEAD
 #[derive(Debug, Clone, Copy)]
 pub enum Prefix {
   Jsr,
@@ -733,6 +739,15 @@ impl AddRmPackageReq {
     entry_text: &str,
     default_prefix: Option<Prefix>,
   ) -> Result<Result<Self, PackageReq>, AnyError> {
+=======
+impl AddRmPackageReq {
+  pub fn parse(entry_text: &str) -> Result<Result<Self, PackageReq>, AnyError> {
+    enum Prefix {
+      Jsr,
+      Npm,
+    }
+
+>>>>>>> 25defa74d (2.2.9 (#28854))
     fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
       if let Some(text) = text.strip_prefix("jsr:") {
         (Some(Prefix::Jsr), text)
@@ -761,13 +776,19 @@ impl AddRmPackageReq {
     }
 
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
+<<<<<<< HEAD
     let maybe_prefix = maybe_prefix.or(default_prefix);
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
       None => match parse_alias(entry_text) {
         Some((alias, text)) => {
           let (maybe_prefix, entry_text) = parse_prefix(text);
+<<<<<<< HEAD
           let maybe_prefix = maybe_prefix.or(default_prefix);
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
           if maybe_prefix.is_none() {
             return Ok(Err(PackageReq::from_str(entry_text)?));
           }
@@ -827,7 +848,11 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
+<<<<<<< HEAD
     let req = AddRmPackageReq::parse(package, None)
+=======
+    let req = AddRmPackageReq::parse(package)
+>>>>>>> 25defa74d (2.2.9 (#28854))
       .with_context(|| format!("Failed to parse package: {}", package))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
@@ -894,6 +919,7 @@ async fn npm_install_after_modification(
 mod test {
   use super::*;
 
+<<<<<<< HEAD
   fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
@@ -952,6 +978,57 @@ mod test {
 
     assert_eq!(
       AddRmPackageReq::parse("@scope/pkg@tag", None)
+=======
+  #[test]
+  fn test_parse_add_package_req() {
+    assert_eq!(
+      AddRmPackageReq::parse("jsr:foo").unwrap().unwrap(),
+      AddRmPackageReq {
+        alias: "foo".into(),
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddRmPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
+      AddRmPackageReq {
+        alias: "alias".into(),
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddRmPackageReq::parse("@alias/pkg@npm:foo")
+        .unwrap()
+        .unwrap(),
+      AddRmPackageReq {
+        alias: "@alias/pkg".into(),
+        value: AddRmPackageReqValue::Npm(
+          PackageReq::from_str("foo@latest").unwrap()
+        )
+      }
+    );
+    assert_eq!(
+      AddRmPackageReq::parse("@alias/pkg@jsr:foo")
+        .unwrap()
+        .unwrap(),
+      AddRmPackageReq {
+        alias: "@alias/pkg".into(),
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddRmPackageReq::parse("alias@jsr:foo@^1.5.0")
+        .unwrap()
+        .unwrap(),
+      AddRmPackageReq {
+        alias: "alias".into(),
+        value: AddRmPackageReqValue::Jsr(
+          PackageReq::from_str("foo@^1.5.0").unwrap()
+        )
+      }
+    );
+    assert_eq!(
+      AddRmPackageReq::parse("@scope/pkg@tag")
+>>>>>>> 25defa74d (2.2.9 (#28854))
         .unwrap()
         .unwrap_err()
         .to_string(),

@@ -280,6 +280,7 @@ network_stream!(
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
+<<<<<<< HEAD
   ],
   [
     Vsock,
@@ -288,6 +289,8 @@ network_stream!(
     tokio_vsock::VsockListener,
     tokio_vsock::VsockAddr,
     crate::io::VsockStreamResource
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   ]
 );
 
@@ -315,8 +318,11 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
+<<<<<<< HEAD
   #[cfg(unix)]
   Vsock(tokio_vsock::VsockAddr),
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -332,6 +338,7 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
+<<<<<<< HEAD
 #[cfg(unix)]
 impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
   fn from(value: tokio_vsock::VsockAddr) -> Self {
@@ -339,6 +346,8 @@ impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
   }
 }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -351,10 +360,13 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
+<<<<<<< HEAD
   #[cfg(unix)]
   #[class("Busy")]
   #[error("Vsock socket is currently in use")]
   VsockBusy,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -362,10 +374,13 @@ pub enum TakeNetworkStreamError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+<<<<<<< HEAD
   #[cfg(unix)]
   #[class(generic)]
   #[error("Cannot reunite halves from different streams")]
   ReuniteVsock,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   #[class(inherit)]
   #[error(transparent)]
   Resource(deno_core::error::ResourceError),
@@ -413,6 +428,7 @@ pub fn take_network_stream_resource(
     return Ok(NetworkStream::Unix(unix_stream));
   }
 
+<<<<<<< HEAD
   #[cfg(unix)]
   if let Ok(resource_rc) =
     resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
@@ -428,6 +444,8 @@ pub fn take_network_stream_resource(
     return Ok(NetworkStream::Vsock(vsock_stream));
   }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   Err(TakeNetworkStreamError::Resource(
     ResourceError::BadResourceId,
   ))

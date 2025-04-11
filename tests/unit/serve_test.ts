@@ -4045,6 +4045,7 @@ Deno.test(
   },
 );
 
+<<<<<<< HEAD
 Deno.test(
   {
     ignore: Deno.build.os !== "linux",
@@ -4097,6 +4098,8 @@ Deno.test(
   },
 );
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 // serve Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },

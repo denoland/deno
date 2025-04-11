@@ -18,6 +18,7 @@ declare namespace Deno {
     path: string;
   }
 
+<<<<<<< HEAD
   /**
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
@@ -30,6 +31,10 @@ declare namespace Deno {
 
   /** @category Network */
   export type Addr = NetAddr | UnixAddr | VsockAddr;
+=======
+  /** @category Network */
+  export type Addr = NetAddr | UnixAddr;
+>>>>>>> 25defa74d (2.2.9 (#28854))
 
   /** A generic network listener for stream-oriented protocols.
    *
@@ -77,6 +82,7 @@ declare namespace Deno {
    */
   export type UnixListener = Listener<UnixConn, UnixAddr>;
 
+<<<<<<< HEAD
   /** Specialized listener that accepts VSOCK connections.
    *
    * @experimental **UNSTABLE**: New API, yet to be vetted.
@@ -85,6 +91,8 @@ declare namespace Deno {
    */
   export type VsockListener = Listener<VsockConn, VsockAddr>;
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   /** @category Network */
   export interface Conn<A extends Addr = Addr> extends Disposable {
     /** Read the incoming data from the connection into an array buffer (`p`).
@@ -241,6 +249,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" },
   ): UnixListener;
 
+<<<<<<< HEAD
   /** Options which can be set when opening a VSOCK listener via
    * {@linkcode Deno.listen}.
    *
@@ -273,6 +282,8 @@ declare namespace Deno {
     options: VsockListenOptions & { transport: "vsock" },
   ): VsockListener;
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   /**
    * Provides certified key material from strings. The key material is provided in
    * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
@@ -400,6 +411,7 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
+<<<<<<< HEAD
   /**
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
@@ -435,6 +447,8 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: VsockConnectOptions): Promise<VsockConn>;
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   /** @category Network */
   export interface ConnectTlsOptions {
     /** The port to connect to. */

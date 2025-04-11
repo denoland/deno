@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "tests": {
     "js": {
       "args": "run --quiet --check js/main.js",
@@ -13,4 +14,8 @@
       "output": "api/main.out"
     }
   }
+=======
+  "args": "run --quiet --check explicit_resource_management/main.ts",
+  "output": "explicit_resource_management/main.out"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }

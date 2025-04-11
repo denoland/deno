@@ -150,6 +150,7 @@ impl deno_net::NetPermissions for Permissions {
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+<<<<<<< HEAD
 
   fn check_vsock(
     &mut self,
@@ -159,6 +160,8 @@ impl deno_net::NetPermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 }
 
 impl deno_fs::FsPermissions for Permissions {

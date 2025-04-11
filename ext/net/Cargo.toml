@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_net"
+<<<<<<< HEAD
 version = "0.191.0"
+=======
+version = "0.192.0"
+>>>>>>> 25defa74d (2.2.9 (#28854))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -30,6 +34,9 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
+<<<<<<< HEAD
 
 [target.'cfg(unix)'.dependencies]
 tokio-vsock.workspace = true
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))

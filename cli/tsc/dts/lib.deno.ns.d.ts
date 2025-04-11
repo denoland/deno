@@ -5161,6 +5161,7 @@ declare namespace Deno {
   }
 
   /**
+<<<<<<< HEAD
    * Options that can be passed to `Deno.serve` to create a server listening on
    * a VSOCK socket.
    *
@@ -5180,6 +5181,8 @@ declare namespace Deno {
   }
 
   /**
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
    * @category HTTP Server
    */
   export interface ServeInit<Addr extends Deno.Addr = Deno.Addr> {
@@ -5282,6 +5285,7 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
+<<<<<<< HEAD
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * You can specify an object with the cid and port options for the VSOCK interface.
@@ -5336,6 +5340,8 @@ declare namespace Deno {
   ): HttpServer<Deno.VsockAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
    * You can specify an object with a port and hostname option, which is the
    * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *
@@ -5423,6 +5429,7 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag.
    *
+<<<<<<< HEAD
    * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
    *
    * @experimental **UNSTABLE**: New API, yet to be vetted.
@@ -5454,6 +5461,8 @@ declare namespace Deno {
   ): HttpServer<Deno.VsockAddr>;
   /** Serves HTTP requests with the given option bag.
    *
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
    * You can specify an object with a port and hostname option, which is the
    * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *

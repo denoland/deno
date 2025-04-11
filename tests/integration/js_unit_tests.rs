@@ -128,7 +128,10 @@ fn js_unit_test(test: String) {
     // flag to particular files, but there's many of them that rely on unstable
     // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
     .arg("--unstable-net")
+<<<<<<< HEAD
     .arg("--unstable-vsock")
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 

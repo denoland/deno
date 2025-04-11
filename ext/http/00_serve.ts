@@ -46,7 +46,10 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+<<<<<<< HEAD
   Number,
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -349,6 +352,7 @@ class InnerRequest {
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
+<<<<<<< HEAD
     if (transport === "vsock") {
       return {
         transport,
@@ -356,6 +360,8 @@ class InnerRequest {
         port: this.#methodAndUri[4],
       };
     }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
     return {
       transport: "tcp",
       hostname: this.#methodAndUri[3],
@@ -777,7 +783,10 @@ function serve(arg1, arg2) {
 
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+<<<<<<< HEAD
   const wantsVsock = ObjectHasOwn(options, "cid");
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -801,6 +810,7 @@ function serve(arg1, arg2) {
     });
   }
 
+<<<<<<< HEAD
   if (wantsVsock) {
     const listener = listen({
       transport: "vsock",
@@ -818,6 +828,8 @@ function serve(arg1, arg2) {
     });
   }
 
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,

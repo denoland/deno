@@ -385,7 +385,11 @@ where
   .into();
 
   let port: v8::Local<v8::Value> = match request_info.peer_port {
+<<<<<<< HEAD
     Some(port) => v8::Number::new(scope, port.into()).into(),
+=======
+    Some(port) => v8::Integer::new(scope, port.into()).into(),
+>>>>>>> 25defa74d (2.2.9 (#28854))
     None => v8::undefined(scope).into(),
   };
 
@@ -1025,10 +1029,13 @@ where
     NetworkStream::Unix(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
+<<<<<<< HEAD
     #[cfg(unix)]
     NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   }
 }
 

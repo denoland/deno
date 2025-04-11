@@ -32,7 +32,10 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
   if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()
+<<<<<<< HEAD
     || NetDescriptor::parse(host_and_port).is_ok()
+=======
+>>>>>>> 25defa74d (2.2.9 (#28854))
   {
     Ok(host_and_port.to_string())
   } else {

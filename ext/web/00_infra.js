@@ -225,8 +225,12 @@ function collectHttpQuotedString(input, position, extractValue) {
       value += input[position];
       // 5.5.3.
       position++;
+<<<<<<< HEAD
     } else {
       // 5.6.
+=======
+    } else { // 5.6.
+>>>>>>> 25defa74d (2.2.9 (#28854))
       // 5.6.1
       if (quoteOrBackslash !== "\u0022") throw new TypeError('must be "');
       // 5.6.2
@@ -289,7 +293,15 @@ function convertBase64urlToBase64(base64url) {
     throw new TypeError("Failed to decode base64url: invalid character");
   }
   return StringPrototypeReplaceAll(
+<<<<<<< HEAD
     StringPrototypeReplaceAll(addPaddingToBase64url(base64url), "-", "+"),
+=======
+    StringPrototypeReplaceAll(
+      addPaddingToBase64url(base64url),
+      "-",
+      "+",
+    ),
+>>>>>>> 25defa74d (2.2.9 (#28854))
     "_",
     "/",
   );
@@ -394,9 +406,27 @@ const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
  * @returns {string}
  */
 function pathFromURLWin32(url) {
+<<<<<<< HEAD
   let p = StringPrototypeReplace(url.pathname, PATHNAME_WIN_RE, "$1/");
   p = StringPrototypeReplace(p, SLASH_WIN_RE, "\\");
   p = StringPrototypeReplace(p, PERCENT_RE, "%25");
+=======
+  let p = StringPrototypeReplace(
+    url.pathname,
+    PATHNAME_WIN_RE,
+    "$1/",
+  );
+  p = StringPrototypeReplace(
+    p,
+    SLASH_WIN_RE,
+    "\\",
+  );
+  p = StringPrototypeReplace(
+    p,
+    PERCENT_RE,
+    "%25",
+  );
+>>>>>>> 25defa74d (2.2.9 (#28854))
   let path = decodeURIComponent(p);
   if (url.hostname != "") {
     // Note: The `URL` implementation guarantees that the drive letter and
@@ -418,7 +448,15 @@ function pathFromURLPosix(url) {
   }
 
   return decodeURIComponent(
+<<<<<<< HEAD
     StringPrototypeReplace(url.pathname, PERCENT_RE, "%25"),
+=======
+    StringPrototypeReplace(
+      url.pathname,
+      PERCENT_RE,
+      "%25",
+    ),
+>>>>>>> 25defa74d (2.2.9 (#28854))
   );
 }
 
@@ -440,11 +478,21 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
+<<<<<<< HEAD
 export const SymbolDispose = Symbol.dispose;
 // deno-lint-ignore prefer-primordials
 export const SymbolAsyncDispose = Symbol.asyncDispose;
 // deno-lint-ignore prefer-primordials
 export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
+=======
+export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolAsyncDispose = Symbol.asyncDispose ??
+  Symbol("Symbol.asyncDispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolMetadata = Symbol.metadata ??
+  Symbol("Symbol.metadata");
+>>>>>>> 25defa74d (2.2.9 (#28854))
 
 export {
   ASCII_ALPHA,
