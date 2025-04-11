@@ -4045,6 +4045,58 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockSocket() {
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const ac = new AbortController();
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8000,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr.transport, "vsock");
+        assertEquals(remoteAddr.cid, 1);
+        assertEquals(remoteAddr.port, conn.localAddr.port);
+        return new Response("hello world!");
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8000);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8000,
+    });
+    await conn.write(
+      new TextEncoder().encode("GET / HTTP/1.1\r\nhost: example.com\r\n\r\n"),
+    );
+    const data = new Uint8Array(512);
+    const n = await conn.read(data);
+    const body = new TextDecoder().decode(data.subarray(0, n!));
+
+    assertEquals(
+      "hello world!",
+      body.split("\r\n").at(-1),
+    );
+
+    await conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 // serve Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },
