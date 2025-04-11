@@ -813,11 +813,21 @@ export function filterMapDiagnostic(diagnostic) {
     return false;
   }
   const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
-  if (
-    // TLA and variable redeclaration diagnostics.
-    isClassicScript && (diagnostic.code === 1375 || diagnostic.code === 2451)
-  ) {
-    return false;
+  if (isClassicScript) {
+    // Top-level-await.
+    if (diagnostic.code == 1375) {
+      return false;
+    }
+    // Variable redeclaration, unless the other file is also a notebook cell.
+    if (diagnostic.code == 2451) {
+      const otherFileName = diagnostic.relatedInformation?.[0].file?.fileName;
+      const otherScriptSnapshot = otherFileName
+        ? SCRIPT_SNAPSHOT_CACHE.get(otherFileName)
+        : undefined;
+      if (!otherScriptSnapshot?.isClassicScript) {
+        return false;
+      }
+    }
   }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
