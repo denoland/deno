@@ -9,7 +9,6 @@ https://github.com/denoland/deno_install
 ### 2.2.9 / 2025.04.11
 
 - fix(build): upgrade libffi to 4.0.0 (#28816)
-- fix(ci): missing release symcache (#28774)
 - fix(compile): do not panic including node_modules directory (#28782)
 - fix(compile): multi icon ordering on windows (#28771)
 - fix(ext/canvas): handle integer overflow in `createImageBitmap` (#28764)
