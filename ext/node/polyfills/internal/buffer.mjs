@@ -230,11 +230,7 @@ const BufferFrom = (Buffer.from = function from(
   return _from(value, encodingOrOffset, length);
 });
 
-Buffer.copyBytesFrom = function copyBytesFrom(
-  view,
-  offset,
-  length,
-) {
+Buffer.copyBytesFrom = function copyBytesFrom(view, offset, length) {
   if (!isTypedArray(view)) {
     throw new ERR_INVALID_ARG_TYPE("view", ["TypedArray"], view);
   }
@@ -266,8 +262,8 @@ Buffer.copyBytesFrom = function copyBytesFrom(
     new Uint8Array(
       TypedArrayPrototypeGetBuffer(view),
       TypedArrayPrototypeGetByteOffset(view),
-      TypedArrayPrototypeGetByteLength(view),
-    ),
+      TypedArrayPrototypeGetByteLength(view)
+    )
   );
 };
 
@@ -2736,4 +2732,5 @@ export default {
   kStringMaxLength,
   SlowBuffer,
   transcode,
+  File,
 };
