@@ -456,7 +456,7 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_os::deno_os::init_ops_and_esm(exit_code.clone()),
+      deno_os::deno_os::init_ops_and_esm(Some(exit_code.clone())),
       deno_process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
       ),
