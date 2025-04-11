@@ -280,7 +280,9 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -313,7 +315,9 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -340,7 +344,9 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -372,7 +378,9 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -401,7 +409,9 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -435,7 +445,9 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -469,7 +481,9 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
