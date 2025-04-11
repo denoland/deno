@@ -1409,6 +1409,7 @@
   },
   "darwinIgnore": {
     "parallel": [
+      "test-http-agent-maxtotalsockets.js",
       "test-net-allow-half-open.js",
       "test-net-socket-close-after-end.js",
       "test-fs-watchfile.js"
