@@ -6,6 +6,43 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.9 / 2025.04.11
+
+- fix(build): upgrade libffi to 4.0.0 (#28816)
+- fix(compile): do not panic including node_modules directory (#28782)
+- fix(compile): multi icon ordering on windows (#28771)
+- fix(ext/canvas): handle integer overflow in `createImageBitmap` (#28764)
+- fix(ext/node): add createReadStream & createWriteStream methods to the
+  FileHandle class (#28700)
+- fix(ext/node): add support for --no- prefix (allowNegative option) in
+  parseArgs() (#28811)
+- fix(ext/node): alias `shake-128` and `shake-256` hash algorithms (#28451)
+- fix(ext/node): implement `Buffer.copyBytesFrom` (#28829)
+- fix(ext/node): implement `process.loadEnvFile` (#28824)
+- fix(ext/node): implement finished() for web streams (#28600)
+- fix(ext/node): return `Buffer` from crypto cipher APIs (#28826)
+- fix(ext/node): support input option in spawnSync (#28792)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_posix.ts` (#28665)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_win32.ts` (#28668)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/separator.ts`
+  (#28669)
+- fix(ext/node): verbose zlib error messages (#28831)
+- fix(install): handle when bin entry info isn't present in package.json but is
+  in registry (#28822)
+- fix(install): regression where Deno not used when postinstall script ran
+  script without file extension (#28786)
+- fix(lockfile): handling of peer deps when migrating to lockfile v5 (#28844)
+- fix(lockfile): omit tarball url from lockfile if it's the default (#28842)
+- fix(lsp): exclude unmapped npm cache paths from auto-imports (#28841)
+- fix(node): add reset method to event loop delay histogram (#28788)
+- fix(task): support backticks and basic tilde expansion (#28832)
+- fix(unstable): add missing decorators nodes in lint ast (#28834)
+- fix(unstable): add parent types to lint ast nodes (#28802)
+- fix(unstable): lint `.parent` property not traversing over groups (#28803)
+- fix: dont strip n-api symbols in `denort` on mac (#28800)
+- fix: use full SHA for canary panic URLs (#28819)
+- perf(npm): load npm resolution snapshot directly from lockfile (#28647)
+
 ### 2.2.8 / 2025.04.05
 
 - fix(compile): ensure atime/birthtime/mtime/ctime is set in vfs (#28731)
