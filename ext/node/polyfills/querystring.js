@@ -79,10 +79,10 @@ function addKeyVal(
   decode,
 ) {
   if (key.length > 0 && keyEncoded) {
-    key = decode(key);
+    key = decodeStr(key, decode);
   }
   if (value.length > 0 && valEncoded) {
-    value = decode(value);
+    value = decodeStr(value, decode);
   }
 
   if (obj[key] === undefined) {
@@ -115,7 +115,7 @@ export function parse(
   str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 } = {},
+  { decodeURIComponent, maxKeys = 1000 } = {},
 ) {
   const obj = Object.create(null);
 
@@ -139,7 +139,7 @@ export function parse(
     pairs = maxKeys > 0 ? maxKeys : -1;
   }
 
-  let decode = unescape;
+  let decode = QS.unescape;
   if (decodeURIComponent) {
     decode = decodeURIComponent;
   }
@@ -466,6 +466,14 @@ function qsUnescape(s) {
   }
 }
 
+function decodeStr(s, decoder) {
+  try {
+    return decoder(s);
+  } catch {
+    return QS.unescape(s);
+  }
+}
+
 /**
  * Performs decoding of URL percent-encoded characters on the given `str`.
  * Used by `querystring.parse()` and is generally not expected to be used directly.
@@ -475,7 +483,7 @@ function qsUnescape(s) {
  */
 export const unescape = qsUnescape;
 
-export default {
+const QS = {
   parse,
   stringify,
   decode,
@@ -484,3 +492,5 @@ export default {
   escape,
   unescapeBuffer,
 };
+
+export default QS;
