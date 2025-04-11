@@ -5162,7 +5162,9 @@ declare namespace Deno {
 
   /**
    * Options that can be passed to `Deno.serve` to create a server listening on
-   * a vsock socket.
+   * a VSOCK socket.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * @category HTTP Server
    */
@@ -5280,7 +5282,11 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
-   * You can specify the socket path with `path` option.
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
    *
    * ```ts
    * Deno.serve(
@@ -5307,9 +5313,9 @@ declare namespace Deno {
    * ac.abort();
    * ```
    *
-   * By default `Deno.serve` prints the message
-   * `Listening on path/to/socket` on listening. If you like to
-   * change this behavior, you can specify a custom `onListen` callback.
+   * By default `Deno.serve` prints the message `Listening on cid:port`.
+   * If you want to change this behavior, you can specify a custom `onListen`
+   * callback.
    *
    * ```ts
    * Deno.serve({
@@ -5417,8 +5423,11 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag.
    *
-   * You can specify an object with the path option, which is the
-   * vsock socket to listen on.
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
    *
    * ```ts
    * const ac = new AbortController();
