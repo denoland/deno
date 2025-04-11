@@ -2,10 +2,7 @@
 // deno-lint-ignore-file no-console
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
-import {
-  fetchMonthSummary,
-  type MonthSummary,
-} from "./add_day_summary_to_month_summary.ts";
+import type { MonthSummary } from "./add_day_summary_to_month_summary.ts";
 
 const token = Deno.env.get("SLACK_TOKEN");
 const channel = Deno.env.get("SLACK_CHANNEL");
@@ -40,13 +37,8 @@ function createMessage(monthSummary: MonthSummary) {
   const linuxRatio = formatRatio(linux);
   const windowsRatio = formatRatio(windows);
   const darwinRatio = formatRatio(darwin);
-  const mrkdwn = `
-*Results* _${date}_
-Linux *${linuxRatio}*
-Windows *${windowsRatio}*
-Darwin *${darwinRatio}*
-<https://node-test-viewer.deno.dev/results/${date}|View full report>
-`;
+  const mrkdwn =
+    `Linux *${linuxRatio}* / Windows *${windowsRatio}* / Darwin *${darwinRatio}* <https://node-test-viewer.deno.dev/results/${date}|(Full report)>`;
 
   return [
     {
@@ -60,13 +52,9 @@ Darwin *${darwinRatio}*
 }
 
 async function main() {
-  const monthSummary = await fetchMonthSummary(
-    new Date().toISOString().slice(0, 7),
-  );
-  if (!monthSummary) {
-    console.error("No month summary found");
-    Deno.exit(1);
-  }
+  const monthSummary = await Deno.readTextFile("tests/node_compat/summary.json")
+    .then(JSON.parse) as MonthSummary;
+
   try {
     const result = await client.chat.postMessage({
       token,

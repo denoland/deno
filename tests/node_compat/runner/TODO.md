@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1149 tests out of 3993 have been ported from Node 23.9.0 (28.78% ported, 71.75% remaining).
+1150 tests out of 3993 have been ported from Node 23.9.0 (28.80% ported, 71.73% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2472,7 +2472,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-webstreams-abort-controller.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-webstreams-abort-controller.js)
 - [parallel/test-webstreams-clone-unref.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-webstreams-clone-unref.js)
 - [parallel/test-webstreams-compose.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-webstreams-compose.js)
-- [parallel/test-webstreams-finished.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-webstreams-finished.js)
 - [parallel/test-webstreams-pipeline.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-webstreams-pipeline.js)
 - [parallel/test-whatwg-encoding-custom-fatal-streaming.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-whatwg-encoding-custom-fatal-streaming.js)
 - [parallel/test-whatwg-encoding-custom-internals.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-whatwg-encoding-custom-internals.js)
@@ -2665,7 +2664,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-zlib-crc32.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-crc32.js)
 - [parallel/test-zlib-deflate-constructors.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-deflate-constructors.js)
 - [parallel/test-zlib-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-destroy.js)
-- [parallel/test-zlib-dictionary-fail.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-dictionary-fail.js)
 - [parallel/test-zlib-dictionary.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-dictionary.js)
 - [parallel/test-zlib-failed-init.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-failed-init.js)
 - [parallel/test-zlib-flush-drain-longblock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-flush-drain-longblock.js)

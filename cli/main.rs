@@ -370,11 +370,19 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
 
+    let info = &deno_lib::version::DENO_VERSION_INFO;
+    let version =
+      if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+        format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+      } else {
+        info.deno.to_string()
+      };
+
     let trace = deno_panic::trace();
     eprintln!("View stack trace at:");
     eprintln!(
       "https://panic.deno.com/v{}/{}/{}",
-      deno_lib::version::DENO_VERSION_INFO.deno,
+      version,
       env!("TARGET"),
       trace
     );
@@ -495,6 +503,7 @@ fn resolve_flags_and_init(
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
+      "--js-explicit-resource-management".to_string(),
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
@@ -502,6 +511,7 @@ fn resolve_flags_and_init(
     _ => {
       vec![
         "--stack-size=1024".to_string(),
+        "--js-explicit-resource-management".to_string(),
         // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
         // and its settings.
         // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript

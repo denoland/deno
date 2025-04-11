@@ -729,7 +729,12 @@ function readValue(ctx, idx, search, parseNode) {
   } else if (search === AST_PROP_RANGE) {
     return readSpan(ctx, idx);
   } else if (search === AST_PROP_PARENT) {
-    const parent = readParent(buf, idx);
+    let parent = readParent(buf, idx);
+
+    const parentType = readType(buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      parent = readParent(buf, parent);
+    }
     return getNode(ctx, parent);
   }
 
