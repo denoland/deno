@@ -379,7 +379,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let mut vfs = VfsBuilder::new();
     for path in exclude_paths {
-      vfs.add_exclude_path(path.clone());
+      vfs.add_exclude_path(path);
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {

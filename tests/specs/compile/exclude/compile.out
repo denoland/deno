@@ -1,0 +1,11 @@
+[WILDCARD]
+
+Embedded Files
+
+[WILDLINE]
+├─┬ folder ([WILDLINE])
+│ ├── b.txt ([WILDLINE])
+│ └── sub_folder2/* ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+[WILDCARD]

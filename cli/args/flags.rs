@@ -135,6 +135,7 @@ pub struct CompileFlags {
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub eszip: bool,
 }
 
@@ -1982,6 +1983,18 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
   fails to load in the executable or to embed a file or directory in the executable.
   This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("exclude")
+          .long("exclude")
+          .help(
+            cstr!("Excludes a file/directory in the compiled executable.
+  <p(245)>Use this flag to exclude a specific file or directory within the included files.
+  For example, to exclude a certain folder in the bundled node_modules directory.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -4715,10 +4728,14 @@ fn compile_parse(
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
-  let include = match matches.remove_many::<String>("include") {
-    Some(f) => f.collect(),
-    None => vec![],
-  };
+  let include = matches
+    .remove_many::<String>("include")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let exclude = matches
+    .remove_many::<String>("exclude")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4731,6 +4748,7 @@ fn compile_parse(
     no_terminal,
     icon,
     include,
+    exclude,
     eszip,
   });
 
@@ -10426,7 +10444,8 @@ mod tests {
           target: None,
           no_terminal: false,
           icon: None,
-          include: vec![],
+          include: Default::default(),
+          exclude: Default::default(),
           eszip: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -10439,7 +10458,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10451,7 +10470,8 @@ mod tests {
           target: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
-          include: vec![],
+          include: vec!["include.txt".to_string()],
+          exclude: vec!["exclude.txt".to_string()],
           eszip: false
         }),
         import_map_path: Some("import_map.json".to_string()),
