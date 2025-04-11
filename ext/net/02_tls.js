@@ -179,15 +179,18 @@ async function startTls(
   {
     hostname = "127.0.0.1",
     caCerts = [],
+    cert = undefined,
+    key = undefined,
     alpnProtocols = undefined,
   } = { __proto__: null },
 ) {
+  const keyPair = loadTlsKeyPair("Deno.startTls", { cert, key });
   const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
     rid: conn[internalRidSymbol],
     hostname,
     caCerts,
     alpnProtocols,
-  });
+  }, keyPair);
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
