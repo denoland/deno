@@ -115,13 +115,19 @@ interface SpanStatus {
   message?: string;
 }
 
+/**
+ * OpenTelemetry attribute values may be primitive types or homogeneous arrays of primitive types.
+ * Bigints are supported and transmitted as signed 64-bit integers.
+ */
 type AttributeValue =
   | string
   | number
   | boolean
+  | bigint
   | Array<null | undefined | string>
   | Array<null | undefined | number>
-  | Array<null | undefined | boolean>;
+  | Array<null | undefined | boolean>
+  | Array<null | undefined | bigint>;
 
 interface Attributes {
   [attributeKey: string]: AttributeValue | undefined;
