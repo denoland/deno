@@ -1,0 +1,4 @@
+cover [WILDCARD]ignore_range_directive.ts ... 50.000% (3/6)
+  18 | function unused() {
+  19 |   console.log("unused");
+  20 | }
