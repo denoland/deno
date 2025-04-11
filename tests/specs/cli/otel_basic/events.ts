@@ -19,3 +19,7 @@ span3.addEvent("example event", {
   key: "value",
 }, new Date());
 span3.end();
+
+const span4 = tracer.startSpan("example span");
+span4.recordException(new Error("error message"));
+span4.end();
