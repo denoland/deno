@@ -625,10 +625,10 @@ where
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockStream;
 
-  super::check_unstable(
-    &state.borrow(),
-    r#"Deno.connect({ transport: "vsock" })"#,
-  );
+  state
+    .borrow()
+    .feature_checker
+    .check_or_exit("vsock", "Deno.connect");
 
   state.borrow_mut().borrow_mut::<NP>().check_vsock(
     cid,
@@ -680,7 +680,7 @@ where
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockListener;
 
-  super::check_unstable(state, r#"Deno.listen({ transport: "vsock" })"#);
+  state.feature_checker.check_or_exit("vsock", "Deno.listen");
 
   state
     .borrow_mut::<NP>()
