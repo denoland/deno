@@ -119,7 +119,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
     get_path: &'a dyn GetPath,
   ) -> Result<CheckedPath<'a>, FsError> {
-    eprintln!("check_open: {:?}", path);
     if self.allows_all() {
       return Ok(CheckedPath::Unresolved(path));
     }
