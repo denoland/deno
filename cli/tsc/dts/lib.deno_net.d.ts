@@ -18,7 +18,10 @@ declare namespace Deno {
     path: string;
   }
 
-  /** @category Network */
+  /**
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Network
+   */
   export interface VsockAddr {
     transport: "vsock";
     cid: number;
@@ -74,7 +77,9 @@ declare namespace Deno {
    */
   export type UnixListener = Listener<UnixConn, UnixAddr>;
 
-  /** Specialized listener that accepts Vsock connections.
+  /** Specialized listener that accepts VSOCK connections.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * @category Network
    */
@@ -236,8 +241,10 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" },
   ): UnixListener;
 
-  /** Options which can be set when opening a vsock listener via
+  /** Options which can be set when opening a VSOCK listener via
    * {@linkcode Deno.listen}.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * @category Network
    */
@@ -247,6 +254,10 @@ declare namespace Deno {
   }
 
   /** Listen announces on the local transport address.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
    *
    * ```ts
    * const listener = Deno.listen({ cid: -1, port: 80, transport: "vsock" })
@@ -389,7 +400,10 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
-  /** @category Network */
+  /**
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Network
+   */
   export interface VsockConnectOptions {
     transport: "vsock";
     cid: number;
@@ -401,6 +415,8 @@ declare namespace Deno {
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * ```ts
    * const conn1 = await Deno.connect({ port: 80 });

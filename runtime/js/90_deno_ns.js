@@ -164,8 +164,9 @@ const unstableIds = {
   process: 11,
   temporal: 12,
   unsafeProto: 13,
-  webgpu: 14,
-  workerOptions: 15,
+  vsock: 14,
+  webgpu: 15,
+  workerOptions: 16,
 };
 
 const denoNsUnstableById = { __proto__: null };
