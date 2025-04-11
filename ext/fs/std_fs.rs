@@ -1163,7 +1163,7 @@ impl GetPath for StdGetPath {
         {
           Ok(parent.canonicalize()?.join(filename))
         } else {
-          return Err(std::io::ErrorKind::NotFound.into());
+          Err(std::io::ErrorKind::NotFound.into())
         }
       }
     }

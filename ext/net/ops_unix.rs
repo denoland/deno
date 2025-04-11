@@ -102,11 +102,11 @@ where
       .borrow_mut::<NP>()
       .check_read(&address_path, "Deno.connect()")
       .map_err(NetError::Permission)?;
-    let address_path = state_
+    
+    state_
       .borrow_mut::<NP>()
       .check_write_path(Cow::Owned(address_path), "Deno.connect()")
-      .map_err(NetError::Permission)?;
-    address_path
+      .map_err(NetError::Permission)?
   };
   let unix_stream = UnixStream::connect(&address_path).await?;
   let local_addr = unix_stream.local_addr()?;
