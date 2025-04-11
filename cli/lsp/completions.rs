@@ -851,6 +851,7 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     for (specifier, source) in fs_sources {

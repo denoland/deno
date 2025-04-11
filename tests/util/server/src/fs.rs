@@ -95,6 +95,15 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
   })
 }
 
+pub fn url_to_notebook_cell_uri(url: &Url) -> Uri {
+  let uri = url_to_uri(url).unwrap();
+  Uri::from_str(&format!(
+    "vscode-notebook-cell:{}",
+    uri.as_str().strip_prefix("file:").unwrap()
+  ))
+  .unwrap()
+}
+
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]

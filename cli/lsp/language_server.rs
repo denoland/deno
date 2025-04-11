@@ -184,6 +184,13 @@ pub struct StateSnapshot {
   pub resolver: Arc<LspResolver>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum ProjectScopesChange {
+  None,
+  OpenNotebooks,
+  Config,
+}
+
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 
 /// Used to queue tasks from inside of the language server lock that must be
@@ -676,6 +683,7 @@ impl Inner {
             self.snapshot(),
             &module.specifier,
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -1224,18 +1232,20 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed([], true);
+    self.project_changed([], ProjectScopesChange::Config);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let language_id =
@@ -1255,21 +1265,20 @@ impl Inner {
       );
     }
     let document = self.document_modules.open_document(
-      params.text_document.uri.clone(),
+      params.text_document.uri,
       params.text_document.version,
-      params.text_document.language_id.parse().unwrap(),
+      language_id,
       params.text_document.text.into(),
+      None,
     );
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
       self.project_changed(
-        [(&params.text_document.uri, ChangeKind::Opened)],
-        false,
+        [(document.uri.as_ref(), ChangeKind::Opened)],
+        ProjectScopesChange::None,
       );
-      self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
+      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1279,12 +1288,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let document = match self.document_modules.change_document(
@@ -1312,7 +1323,11 @@ impl Inner {
       }
       self.project_changed(
         [(document.uri.as_ref(), ChangeKind::Modified)],
-        config_changed,
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
       );
       self.diagnostics_server.invalidate(&[&document.uri]);
       self.send_diagnostics_update();
@@ -1388,12 +1403,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     self.diagnostics_state.clear(&params.text_document.uri);
@@ -1412,7 +1429,7 @@ impl Inner {
       drop(document);
       self.project_changed(
         [(&params.text_document.uri, ChangeKind::Closed)],
-        false,
+        ProjectScopesChange::None,
       );
       self
         .diagnostics_server
@@ -1421,6 +1438,124 @@ impl Inner {
       self.send_testing_update();
     }
     self.performance.measure(mark);
+  }
+
+  async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_open");
+    let documents = self.document_modules.open_notebook_document(
+      params.notebook_document.uri,
+      params.cell_text_documents,
+    );
+    let diagnosable_uris = documents
+      .iter()
+      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .collect::<Vec<_>>();
+    if !diagnosable_uris.is_empty() {
+      self.check_semantic_tokens_capabilities();
+      self.refresh_dep_info().await;
+      self.project_changed(
+        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Opened)),
+        ProjectScopesChange::OpenNotebooks,
+      );
+      self.diagnostics_server.invalidate(&diagnosable_uris);
+      self.send_diagnostics_update();
+    }
+  }
+
+  async fn notebook_did_change(
+    &mut self,
+    params: DidChangeNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_change");
+    let Some(cells) = params.change.cells else {
+      return;
+    };
+    let documents_with_change_kinds =
+      self.document_modules.change_notebook_document(
+        &params.notebook_document.uri,
+        cells.structure,
+        cells.text_content,
+      );
+    let diagnosable_uris_with_change_kinds = documents_with_change_kinds
+      .iter()
+      .filter_map(|(d, k)| d.is_diagnosable().then_some((d.uri.as_ref(), *k)))
+      .collect::<Vec<_>>();
+    if !diagnosable_uris_with_change_kinds.is_empty() {
+      let old_scopes_with_node_specifier =
+        self.document_modules.scopes_with_node_specifier();
+      self.refresh_dep_info().await;
+      let mut config_changed = false;
+      if !self
+        .document_modules
+        .scopes_with_node_specifier()
+        .equivalent(&old_scopes_with_node_specifier)
+      {
+        config_changed = true;
+      }
+      self.project_changed(
+        diagnosable_uris_with_change_kinds.iter().cloned(),
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_uris_with_change_kinds
+          .iter()
+          .map(|(u, _)| *u)
+          .collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
+  }
+
+  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_save");
+    let Some(cell_uris) = self
+      .document_modules
+      .documents
+      .cells_by_notebook_uri()
+      .get(&params.notebook_document.uri)
+      .cloned()
+    else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        params.notebook_document.uri.as_str()
+      );
+      return;
+    };
+    for cell_uri in cell_uris {
+      self.did_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier {
+          uri: cell_uri.as_ref().clone(),
+        },
+        text: None,
+      });
+    }
+  }
+
+  async fn notebook_did_close(
+    &mut self,
+    params: DidCloseNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_close");
+    let documents = self
+      .document_modules
+      .close_notebook_document(&params.notebook_document.uri);
+    let diagnosable_uris = documents
+      .iter()
+      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .collect::<Vec<_>>();
+    if !diagnosable_uris.is_empty() {
+      self.refresh_dep_info().await;
+      self.project_changed(
+        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Closed)),
+        ProjectScopesChange::OpenNotebooks,
+      );
+      self.diagnostics_server.invalidate(&diagnosable_uris);
+      self.send_diagnostics_update();
+    }
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1505,7 +1640,7 @@ impl Inner {
       self.refresh_documents_config().await;
       self.project_changed(
         changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
-        false,
+        ProjectScopesChange::None,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.diagnostics_server.invalidate_all();
@@ -1780,6 +1915,7 @@ impl Inner {
           &module.specifier,
           position,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -1926,6 +2062,7 @@ impl Inner {
                   &module.specifier,
                 ),
                 module.scope.as_ref(),
+                module.notebook_uri.as_ref(),
                 token,
               )
               .await
@@ -2038,6 +2175,7 @@ impl Inner {
         params.context.trigger_kind,
         only,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2138,6 +2276,7 @@ impl Inner {
             &module.specifier,
           ),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2221,6 +2360,7 @@ impl Inner {
             &module.specifier,
           )),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2433,6 +2573,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         vec![module.specifier.as_ref().clone()],
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2504,6 +2645,8 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position.position)?,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -2570,6 +2713,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2632,6 +2776,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2755,6 +2900,7 @@ impl Inner {
             .options)
             .into(),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2848,6 +2994,7 @@ impl Inner {
             )),
             data.data.clone(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await;
@@ -2931,6 +3078,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position_params.position)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2997,6 +3145,7 @@ impl Inner {
         self.snapshot(),
         &module.specifier,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3066,6 +3215,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.item.selection_range.start)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3133,6 +3283,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.item.selection_range.start)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3195,6 +3346,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3283,6 +3435,8 @@ impl Inner {
             &module.specifier,
           ),
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3359,6 +3513,7 @@ impl Inner {
           &module.specifier,
           module.line_index.offset_tsc(position)?,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3412,6 +3567,7 @@ impl Inner {
             &module.specifier,
             0..module.line_index.text_content_length_utf16().into(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -3480,6 +3636,7 @@ impl Inner {
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3548,6 +3705,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         options,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3637,6 +3795,8 @@ impl Inner {
             ..Default::default()
           },
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3684,6 +3844,8 @@ impl Inner {
           Some(256),
           None,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3719,33 +3881,45 @@ impl Inner {
   fn project_changed<'a>(
     &mut self,
     changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
-    config_changed: bool,
+    scopes_change: ProjectScopesChange,
   ) {
     self.project_version += 1; // increment before getting the snapshot
     let modified_scripts = changed_docs
       .into_iter()
       .filter_map(|(u, k)| {
-        Some((self.document_modules.documents.inspect(u)?, k))
-      })
-      .flat_map(|(d, k)| {
-        self
-          .document_modules
-          .inspect_modules_by_scope(&d)
-          .values()
-          .map(|m| (m.specifier.clone(), k))
-          .collect::<Vec<_>>()
+        let document = self.document_modules.documents.inspect(u)?;
+        let specifier = self.document_modules.primary_specifier(&document)?;
+        Some((specifier, k))
       })
       .collect::<IndexMap<_, _>>();
     self.ts_server.project_changed(
       self.snapshot(),
       modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
-      config_changed.then(|| {
+      matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .config
           .tree
           .data_by_scope()
           .iter()
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
+      matches!(
+        scopes_change,
+        ProjectScopesChange::OpenNotebooks | ProjectScopesChange::Config
+      )
+      .then(|| {
+        self
+          .document_modules
+          .documents
+          .cells_by_notebook_uri()
+          .keys()
+          .map(|u| {
+            (
+              u.clone(),
+              self.document_modules.primary_scope(u).flatten().cloned(),
+            )
+          })
           .collect()
       }),
     );
@@ -3889,6 +4063,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
       self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_close(params).await;
+  }
+
+  async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_open(params).await
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_change(params).await
+  }
+
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_save(params)
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_close(params).await
   }
 
   async fn did_change_configuration(
@@ -4500,7 +4702,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed([], true);
+    self.project_changed([], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -4659,6 +4861,7 @@ impl Inner {
           &module.specifier,
         ),
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
