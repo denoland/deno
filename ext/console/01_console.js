@@ -2847,9 +2847,24 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
+function isRgbString(str) {
+  if (!str || typeof str !== "string") return false;
+  return StringPrototypeStartsWith(StringPrototypeTrim(str), "rgb");
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
+  if (isRgbString(css.color) && isRgbString(prevCss.color)) {
+    css = {
+      ...css,
+      color: parseCssColor(css.color),
+    };
+    prevCss = {
+      ...prevCss,
+      color: parseCssColor(prevCss.color),
+    };
+  }
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
     if (css.backgroundColor == null) {
       ansi += "\x1b[49m";
