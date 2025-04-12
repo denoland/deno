@@ -11458,11 +11458,9 @@ fn lsp_jupyter_import_map_and_diagnostics() {
           // Top-level-await should be allowed.
           await new Promise((r) => r(null));
 
-          // Local variables conflicting with globals should be allowed.
-          {
-            const Math = "Hello";
-            console.log(Math);
-          }
+          // Local variables conflicting with globals.
+          const name = "Hello";
+          console.log(name);
         "#,
       }),
     ],
@@ -11482,6 +11480,30 @@ fn lsp_jupyter_import_map_and_diagnostics() {
             "code": 2322,
             "source": "deno-ts",
             "message": "Type 'number' is not assignable to type 'string'.",
+          },
+          // TODO(nayeemrmn): This only errors for classic scripts which we use
+          // for notebook cells. Figure out a workaround.
+          {
+            "range": {
+              "start": { "line": 9, "character": 16 },
+              "end": { "line": 9, "character": 20 },
+            },
+            "severity": 1,
+            "code": 2451,
+            "source": "deno-ts",
+            "message": "Cannot redeclare block-scoped variable 'name'.",
+            "relatedInformation": [
+              {
+                "location": {
+                  "uri": "asset:///lib.deno.window.d.ts",
+                  "range": {
+                    "start": { "line": 466, "character": 12 },
+                    "end": { "line": 466, "character": 16 },
+                  },
+                },
+                "message": "'name' was also declared here.",
+              },
+            ],
           },
         ],
         "version": 1,
