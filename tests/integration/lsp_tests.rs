@@ -11495,7 +11495,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
             "relatedInformation": [
               {
                 "location": {
-                  "uri": "asset:///lib.deno.window.d.ts",
+                  "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
                     "start": { "line": 466, "character": 12 },
                     "end": { "line": 466, "character": 16 },
