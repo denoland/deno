@@ -108,6 +108,20 @@ Deno.test({
   },
 });
 
+// Ensure that stdio streams for a spawned process using stdio "pipe" exist
+// even if the underlying process cannot be spawned. Certain npm packages
+// like esbuild rely on attaching event handlers to child.stdin/stdout/stderr
+// immediately after spawn, before the error event boat has sailed.
+Deno.test("[node/child_process spawn] stdio pipes are non-null when spawn fails", () => {
+  const cp = spawn("definitely_does_not_exist_123", [], { stdio: "pipe" });
+  // attach no-op error handler so the test runner doesn't treat the error as uncaught
+  cp.on("error", () => {});
+  // ensure these members are objects supporting .on
+  cp.stdin!.on("error", () => {});
+  cp.stdout!.on("data", () => {});
+  cp.stderr!.on("data", () => {});
+});
+
 Deno.test({
   name: "[node/child_process spawn] stdin and stdout with binary data",
   fn: async () => {
