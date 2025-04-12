@@ -250,6 +250,8 @@ function createImageBitmap(
     if (isBlob) {
       imageBitmapSource = 0;
       buf = new Uint8Array(await image.arrayBuffer());
+      // NOTE: The MIME type of image/svg+xml can't support
+      // https://github.com/whatwg/html/pull/10172
       const mimeTypeString = sniffImage(null, buf);
 
       if (mimeTypeString === "image/png") {
