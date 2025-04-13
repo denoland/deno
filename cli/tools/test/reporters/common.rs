@@ -93,11 +93,11 @@ pub(super) fn report_sigint(
     "\n{} The following tests were pending:\n",
     colors::intense_blue("SIGINT")
   )
-  .unwrap();
+  .ok();
   for entry in formatted_pending {
-    writeln!(writer, "{}", entry).unwrap();
+    writeln!(writer, "{}", entry).ok();
   }
-  writeln!(writer).unwrap();
+  writeln!(writer).ok();
 }
 
 pub(super) fn report_summary(
@@ -131,20 +131,20 @@ pub(super) fn report_summary(
     }
 
     // note: the trailing whitespace is intentional to get a red background
-    writeln!(writer, "\n{}\n", colors::white_bold_on_red(" ERRORS ")).unwrap();
+    writeln!(writer, "\n{}\n", colors::white_bold_on_red(" ERRORS ")).ok();
     for (origin, (failures, uncaught_error)) in failures_by_origin {
       for (description, failure) in failures {
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
-          writeln!(writer, "{}", &failure_title).unwrap();
+          writeln!(writer, "{}", &failure_title).ok();
           writeln!(
             writer,
             "{}: {}",
             colors::red_bold("error"),
             failure.format(options)
           )
-          .unwrap();
-          writeln!(writer).unwrap();
+          .ok();
+          writeln!(writer).ok();
           failure_titles.push(failure_title);
         }
       }
@@ -153,24 +153,24 @@ pub(super) fn report_summary(
           "{} (uncaught error)",
           to_relative_path_or_remote_url(cwd, &origin)
         );
-        writeln!(writer, "{}", &failure_title).unwrap();
+        writeln!(writer, "{}", &failure_title).ok();
         writeln!(
           writer,
           "{}: {}",
           colors::red_bold("error"),
           format_test_error(js_error, options)
         )
-        .unwrap();
-        writeln!(writer, "This error was not caught from a test and caused the test runner to fail on the referenced module.").unwrap();
-        writeln!(writer, "It most likely originated from a dangling promise, event/timeout handler or top-level code.").unwrap();
-        writeln!(writer).unwrap();
+        .ok();
+        writeln!(writer, "This error was not caught from a test and caused the test runner to fail on the referenced module.").ok();
+        writeln!(writer, "It most likely originated from a dangling promise, event/timeout handler or top-level code.").ok();
+        writeln!(writer).ok();
         failure_titles.push(failure_title);
       }
     }
     // note: the trailing whitespace is intentional to get a red background
-    writeln!(writer, "{}\n", colors::white_bold_on_red(" FAILURES ")).unwrap();
+    writeln!(writer, "{}\n", colors::white_bold_on_red(" FAILURES ")).ok();
     for failure_title in failure_titles {
-      writeln!(writer, "{failure_title}").unwrap();
+      writeln!(writer, "{failure_title}").ok();
     }
   }
 
@@ -200,7 +200,7 @@ pub(super) fn report_summary(
     summary.failed,
     get_steps_text(summary.failed_steps),
   )
-  .unwrap();
+  .ok();
 
   let ignored_steps = get_steps_text(summary.ignored_steps);
   if summary.ignored > 0 || !ignored_steps.is_empty() {
@@ -209,15 +209,15 @@ pub(super) fn report_summary(
       " | {} ignored{}",
       summary.ignored, ignored_steps
     )
-    .unwrap()
+    .ok();
   }
 
   if summary.measured > 0 {
-    write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    write!(summary_result, " | {} measured", summary.measured,).ok();
   }
 
   if summary.filtered_out > 0 {
-    write!(summary_result, " | {} filtered out", summary.filtered_out).unwrap()
+    write!(summary_result, " | {} filtered out", summary.filtered_out).ok();
   };
 
   writeln!(
@@ -227,5 +227,5 @@ pub(super) fn report_summary(
     summary_result,
     colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
   )
-  .unwrap();
+  .ok();
 }

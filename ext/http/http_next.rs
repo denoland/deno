@@ -385,7 +385,7 @@ where
   .into();
 
   let port: v8::Local<v8::Value> = match request_info.peer_port {
-    Some(port) => v8::Integer::new(scope, port.into()).into(),
+    Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
@@ -1023,6 +1023,10 @@ where
     }
     #[cfg(unix)]
     NetworkStream::Unix(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    #[cfg(unix)]
+    NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
   }

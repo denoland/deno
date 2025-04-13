@@ -86,10 +86,17 @@ impl FileFlags {
   }
 }
 
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub enum DefaultRegistry {
+  Npm,
+  Jsr,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub default_registry: Option<DefaultRegistry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1735,7 +1742,23 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .args(default_registry_args())
   })
+}
+
+fn default_registry_args() -> [Arg; 2] {
+  [
+    Arg::new("npm")
+      .long("npm")
+      .help("assume unprefixed package names are npm packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("jsr"),
+    Arg::new("jsr")
+      .long("jsr")
+      .help("assume unprefixed package names are jsr packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("npm"),
+  ]
 }
 
 fn remove_subcommand() -> Command {
@@ -2639,6 +2662,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
     })
 }
 
@@ -4457,6 +4481,16 @@ impl CommandExt for Command {
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-lockfile-v5")
+        .long("unstable-lockfile-v5")
+        .help("Enable unstable lockfile v5")
+        .env("DENO_UNSTABLE_LOCKFILE_V5")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(UNSTABLE_HEADING)
+        .hide(true)
+        .display_order(next_display_order()),
     );
 
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
@@ -4522,7 +4556,18 @@ fn add_parse_inner(
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
   let dev = matches.get_flag("dev");
-  AddFlags { packages, dev }
+  let default_registry = if matches.get_flag("npm") {
+    Some(DefaultRegistry::Npm)
+  } else if matches.get_flag("jsr") {
+    Some(DefaultRegistry::Jsr)
+  } else {
+    None
+  };
+  AddFlags {
+    packages,
+    dev,
+    default_registry,
+  }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -6065,6 +6110,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.lockfile_v5 = matches.get_flag("unstable-lockfile-v5");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -11329,6 +11375,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which"],
           dev: false,
+          default_registry: None,
         }) // default is false
       );
 
@@ -11338,6 +11385,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          default_registry: None,
         })
       );
 
@@ -11347,8 +11395,29 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["npm:chalk"],
           dev: true,
+          default_registry: None,
         }),
       );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--npm", "chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["chalk"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Npm),
+        }),
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--jsr", "@std/fs"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["@std/fs"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Jsr),
+        })
+      )
     }
   }
 

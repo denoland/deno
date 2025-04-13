@@ -184,7 +184,8 @@ pub struct WriteBinOptions<'a> {
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
-  pub include_files: &'a [ModuleSpecifier],
+  pub include_paths: &'a [ModuleSpecifier],
+  pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
 
@@ -365,7 +366,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       display_output_filename,
       graph,
       entrypoint,
-      include_files,
+      include_paths,
+      exclude_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -376,6 +378,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
+    for path in exclude_paths {
+      vfs.add_exclude_path(path.clone());
+    }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         let snapshot = managed
@@ -393,10 +398,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         None
       }
     };
-    for include_file in include_files {
+    for include_file in include_paths {
       let path = deno_path_util::url_to_file_path(include_file)?;
       vfs
-        .add_file_at_path(&path)
+        .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();
@@ -484,6 +489,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 maybe_transpiled,
                 maybe_source_map,
                 maybe_cjs_export_analysis,
+                mtime: file_path
+                  .metadata()
+                  .ok()
+                  .and_then(|m| m.modified().ok()),
               },
             )
             .with_context(|| {
@@ -701,6 +710,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
+        lockfile_v5: self.cli_options.unstable_lockfile_v5(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.135.0"
+version = "0.138.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,6 +41,7 @@ deno_process.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
+dotenvy.workspace = true
 dsa.workspace = true
 ecb.workspace = true
 ecdsa.workspace = true
@@ -89,6 +90,7 @@ sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld.workspace = true
+tower-service.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true

@@ -158,13 +158,15 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  nodeGlobals: 8,
-  otel: 9,
-  process: 10,
-  temporal: 11,
-  unsafeProto: 12,
-  webgpu: 13,
-  workerOptions: 14,
+  noLegacyAbort: 8,
+  nodeGlobals: 9,
+  otel: 10,
+  process: 11,
+  temporal: 12,
+  unsafeProto: 13,
+  vsock: 14,
+  webgpu: 15,
+  workerOptions: 16,
 };
 
 const denoNsUnstableById = { __proto__: null };

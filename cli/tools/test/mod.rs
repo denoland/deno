@@ -347,28 +347,28 @@ impl TestFailure {
       }
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
-        write!(f, "Leaks detected:").unwrap();
+        write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).unwrap();
+          write!(f, "\n  - {}", detail).ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).unwrap();
+          write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
+        write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
+        write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
@@ -647,7 +647,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {

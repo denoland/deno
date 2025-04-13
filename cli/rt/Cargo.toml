@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.2.6"
+version = "2.2.9"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
