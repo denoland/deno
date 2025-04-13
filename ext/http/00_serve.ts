@@ -17,6 +17,7 @@ import {
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -746,6 +747,20 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
+let _memorizedServeAddressOverride: [
+  string | null,
+  string | null,
+  number | null,
+] | null = null;
+
+function getServeAddressOverride(): [
+  string | null,
+  string | null,
+  number | null,
+] {
+  return _memorizedServeAddressOverride ??= op_http_serve_address_override();
+}
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -773,6 +788,23 @@ function serve(arg1, arg2) {
   }
   if (options === undefined) {
     options = { __proto__: null };
+  }
+
+  const [overrideUnixPath, overrideHost, overridePort] =
+    getServeAddressOverride();
+  if (overrideUnixPath) {
+    options.path = overrideUnixPath;
+    delete options.port;
+    delete options.host;
+  } else {
+    if (overrideHost) {
+      options.hostname = overrideHost;
+      delete options.path;
+    }
+    if (overridePort) {
+      options.port = overridePort;
+      delete options.path;
+    }
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);

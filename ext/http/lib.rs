@@ -144,6 +144,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -192,6 +193,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -1686,4 +1688,64 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
   // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
   drop(upgraded);
   unreachable!("unexpected stream type");
+}
+
+#[op2]
+#[serde]
+pub fn op_http_serve_address_override(
+) -> (Option<String>, Option<String>, Option<u16>) {
+  match std::env::var("DENO_SERVE_ADDRESS") {
+    Ok(val) => parse_serve_address(&val),
+    Err(_) => (None, None, None),
+  }
+}
+
+fn parse_serve_address(
+  input: &str,
+) -> (Option<String>, Option<String>, Option<u16>) {
+  use std::net::SocketAddr;
+  if input.contains('/') {
+    // Likely a Unix socket path
+    (Some(input.to_string()), None, None)
+  } else {
+    // Try parsing as a TCP address
+    match input.parse::<SocketAddr>() {
+      Ok(addr) => {
+        let hostname = match addr {
+          SocketAddr::V4(v4) => v4.ip().to_string(),
+          SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+        };
+        (None, Some(hostname), Some(addr.port()))
+      }
+      Err(_) => {
+        eprintln!("DENO_SERVE_ADDRESS: Invalid TCP address: {}", input);
+        (None, None, None)
+      }
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_serve_address() {
+    let input = "/var/run/socket.sock";
+    assert_eq!(
+      parse_serve_address(input),
+      (Some(input.to_string()), None, None)
+    );
+
+    assert_eq!(
+      parse_serve_address("127.0.0.1:8080"),
+      (None, Some("127.0.0.1".to_string()), Some(8080))
+    );
+    assert_eq!(
+      parse_serve_address("[::1]:9000"),
+      (None, Some("[::1]".to_string()), Some(9000))
+    );
+
+    assert_eq!(parse_serve_address("no_an_address"), (None, None, None));
+  }
 }
