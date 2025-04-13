@@ -2051,6 +2051,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "itertools 0.10.5",
+ "log",
  "memchr",
  "mime",
  "once_cell",

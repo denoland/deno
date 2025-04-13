@@ -747,20 +747,6 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
-let _memorizedServeAddressOverride: [
-  string | null,
-  string | null,
-  number | null,
-] | null = null;
-
-function getServeAddressOverride(): [
-  string | null,
-  string | null,
-  number | null,
-] {
-  return _memorizedServeAddressOverride ??= op_http_serve_address_override();
-}
-
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -790,8 +776,8 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const [overrideUnixPath, overrideHost, overridePort] =
-    getServeAddressOverride();
+  const { 0: overrideUnixPath, 1: overrideHost, 2: overridePort } =
+    op_http_serve_address_override();
   if (overrideUnixPath) {
     options.path = overrideUnixPath;
     delete options.port;

@@ -1718,7 +1718,7 @@ fn parse_serve_address(
         (None, Some(hostname), Some(addr.port()))
       }
       Err(_) => {
-        eprintln!("DENO_SERVE_ADDRESS: Invalid TCP address: {}", input);
+        log::error!("DENO_SERVE_ADDRESS: Invalid TCP address: {}", input);
         (None, None, None)
       }
     }

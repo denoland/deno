@@ -277,7 +277,7 @@ async fn deno_run_serve_with_tcp_from_env() {
     .arg("run")
     .arg("--allow-net")
     .arg("./serve/run_serve.ts")
-    .env("DENO_SERVE_ADDRESS", format!("127.0.0.1:0"))
+    .env("DENO_SERVE_ADDRESS", "127.0.0.1:0")
     .stderr_piped()
     .spawn()
     .unwrap();
@@ -292,7 +292,7 @@ async fn deno_run_serve_with_tcp_from_env() {
   let client = reqwest::Client::builder().build().unwrap();
 
   let res = client
-    .get(&format!("http://127.0.0.1:{port}"))
+    .get(format!("http://127.0.0.1:{port}"))
     .send()
     .await
     .unwrap();
