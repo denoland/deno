@@ -2049,7 +2049,7 @@ dependencies = [
  "hyper 0.14.28",
  "hyper 1.6.0",
  "hyper-util",
- "itertools 0.10.5",
+ "itertools 0.14.0",
  "memchr",
  "mime",
  "once_cell",
@@ -4913,15 +4913,6 @@ checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
 name = "itertools"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
@@ -5313,9 +5304,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7605bb4ad755a9ab5c96f2ce3bfd4eb8acd559b842c041fc8a5f84d63aed3a"
+checksum = "ff37c5cadfdf4d91c0f140d516755c055a184a4e37757ff4a071272635b9f546"
 dependencies = [
  "aho-corasick",
  "css_dataset",

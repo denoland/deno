@@ -173,7 +173,7 @@ import_map = { version = "0.21.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 ipnetwork = "0.20.0"
-itertools = "0.10"
+itertools = "0.14"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
@@ -292,7 +292,7 @@ eszip = "=0.84.0"
 fancy-regex = "=0.14.0"
 libsui = "0.7.0"
 malva = "=0.11.2"
-markup_fmt = "=0.18.0"
+markup_fmt = "=0.19.1"
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
