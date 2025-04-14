@@ -1,0 +1,82 @@
+[
+  {
+    "name": "broadcast-channel",
+    "text": "Enable unstable `BroadcastChannel` API",
+    "showInHelp": true
+  },
+  {
+    "name": "cron",
+    "text": "Enable unstable `Deno.cron` API",
+    "showInHelp": true
+  },
+  {
+    "name": "ffi",
+    "text": "Enable unstable FFI APIs",
+    "showInHelp": false
+  },
+  {
+    "name": "fs",
+    "text": "Enable unstable file system APIs",
+    "showInHelp": false
+  },
+  {
+    "name": "http",
+    "text": "Enable unstable HTTP APIs",
+    "showInHelp": false
+  },
+  {
+    "name": "kv",
+    "text": "Enable unstable KV APIs",
+    "showInHelp": true
+  },
+  {
+    "name": "net",
+    "text": "enable unstable net APIs",
+    "showInHelp": true
+  },
+  {
+    "name": "no-legacy-abort",
+    "text": "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    "showInHelp": true
+  },
+  {
+    "name": "node-globals",
+    "text": "Expose Node globals everywhere",
+    "showInHelp": true
+  },
+  {
+    "name": "otel",
+    "text": "Enable unstable OpenTelemetry features",
+    "showInHelp": false
+  },
+  {
+    "name": "process",
+    "text": "Enable unstable process APIs",
+    "showInHelp": false
+  },
+  {
+    "name": "temporal",
+    "text": "Enable unstable Temporal API",
+    "showInHelp": true
+  },
+  {
+    "name": "unsafe-proto",
+    "text": "Enable unsafe __proto__ support. This is a security risk.",
+    "showInHelp": true
+  },
+  {
+    "name": "vsock",
+    "text": "Enable unstable VSOCK APIs",
+    "showInHelp": false
+  },
+  {
+    "name": "webgpu",
+    "text": "Enable unstable WebGPU APIs",
+    "showInHelp": true
+  },
+  {
+    "name": "worker-options",
+    "text": "Enable unstable Web Worker APIs",
+    "showInHelp": true
+  }
+]

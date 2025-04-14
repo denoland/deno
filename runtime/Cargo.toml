@@ -54,6 +54,7 @@ deno_crypto.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
+deno_flags.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
@@ -109,6 +110,9 @@ nix.workspace = true
 [dev-dependencies]
 # Used in benchmark
 test_util.workspace = true
+
+[build-dependencies]
+deno_flags.workspace = true
 
 [package.metadata.docs.rs]
 features = ["docsrs"]

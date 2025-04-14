@@ -1,0 +1,21 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_flags"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provides the deno flags implementation."
+
+[lib]
+name = "deno_flags"
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+
+[build-dependencies]
+serde.workspace = true
+serde_json.workspace = true
