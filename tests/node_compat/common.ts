@@ -142,6 +142,7 @@ export const RUN_ARGS = [
 export const TEST_ARGS = [
   "test",
   ...RUN_ARGS,
+  "--no-check",
   "--unstable-detect-cjs",
 ];
 
