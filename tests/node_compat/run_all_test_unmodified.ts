@@ -9,6 +9,7 @@ import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
+import { RUN_ARGS, TEST_ARGS, usesNodeTestModule } from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
@@ -223,28 +224,6 @@ type ErrorUnexpected = {
   message: string;
 };
 
-/** Checks if the test file uses `node:test` module */
-async function usesNodeTestModule(testPath: string): Promise<boolean> {
-  try {
-    const text = await Deno.readTextFile(testPath);
-    return text.includes("'node:test'");
-  } catch {
-    return false;
-  }
-}
-
-const RUN_ARGS = [
-  "-A",
-  "--quiet",
-  "--unstable-bare-node-builtins",
-  "--unstable-node-globals",
-];
-const TEST_ARGS = [
-  "test",
-  ...RUN_ARGS,
-  "--unstable-detect-cjs",
-];
-
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
@@ -254,7 +233,8 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
-    const usesNodeTest = await usesNodeTestModule(testPath_);
+    const usesNodeTest = await Deno.readTextFile(testPath_)
+      .then(usesNodeTestModule).catch(() => false);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
         ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
