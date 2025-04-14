@@ -223,6 +223,28 @@ type ErrorUnexpected = {
   message: string;
 };
 
+/** Checks if the test file uses `node:test` module */
+async function usesNodeTestModule(testPath: string): Promise<boolean> {
+  try {
+    const text = await Deno.readTextFile(testPath);
+    return text.includes("'node:test'");
+  } catch {
+    return false;
+  }
+}
+
+const RUN_ARGS = [
+  "-A",
+  "--quiet",
+  "--unstable-bare-node-builtins",
+  "--unstable-node-globals",
+];
+const TEST_ARGS = [
+  "test",
+  ...RUN_ARGS,
+  "--unstable-detect-cjs",
+];
+
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
@@ -230,14 +252,13 @@ type ErrorUnexpected = {
  */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
   let cmd: Deno.ChildProcess | undefined;
+  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
+    const usesNodeTest = await usesNodeTestModule(testPath_);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
-        "-A",
-        "--quiet",
-        "--unstable-bare-node-builtins",
-        "--unstable-node-globals",
-        "tests/node_compat/runner/suite/test/" + testPath,
+        ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
+        testPath_,
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
