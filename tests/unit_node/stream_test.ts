@@ -27,7 +27,10 @@ Deno.test("stream/promises pipeline", async () => {
 });
 
 Deno.test("stream getDefaultHighWaterMark", () => {
-  assertEquals(getDefaultHighWaterMark(false), 16 * 1024);
+  assertEquals(
+    getDefaultHighWaterMark(false),
+    Deno.build.os === "windows" ? 16 * 1024 : 64 * 1024,
+  );
   assertEquals(getDefaultHighWaterMark(true), 16);
 });
 

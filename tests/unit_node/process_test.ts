@@ -532,7 +532,13 @@ Deno.test({
 Deno.test({
   name: "process.stdin readable with piping a stream",
   async fn() {
-    const expected = ["16384", "foo", "bar", "null", "end"];
+    const expected = [
+      Deno.build.os == "windows" ? "16384" : "65536",
+      "foo",
+      "bar",
+      "null",
+      "end",
+    ];
     const scriptPath = "./testdata/process_stdin.ts";
 
     const command = new Deno.Command(Deno.execPath(), {
@@ -560,7 +566,7 @@ Deno.test({
   name: "process.stdin readable with piping a socket",
   ignore: Deno.build.os === "windows",
   async fn() {
-    const expected = ["16384", "foo", "bar", "null", "end"];
+    const expected = ["65536", "foo", "bar", "null", "end"];
     const scriptPath = "./testdata/process_stdin.ts";
 
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 9000 });
@@ -617,7 +623,7 @@ Deno.test({
   // // TODO(PolarETech): Prepare a similar test that can be run on Windows
   // ignore: Deno.build.os === "windows",
   async fn() {
-    const expected = ["16384", "null", "end"];
+    const expected = ["65536", "null", "end"];
     const scriptPath = "./testdata/process_stdin.ts";
     const directoryPath = "./testdata/";
 
