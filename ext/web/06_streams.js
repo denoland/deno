@@ -335,6 +335,10 @@ function cloneAsUint8Array(O) {
   }
 }
 
+// Using SymbolFor to make globally available. This is used by `node:stream`
+// to interop with the web streams API.
+const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
+
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
 const _autoAllocateChunkSize = Symbol("[[autoAllocateChunkSize]]");
@@ -387,8 +391,6 @@ const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
 const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
 const _brand = webidl.brand;
-
-const _isClosedPromise = Symbol("[[isClosedPromise]]");
 
 function noop() {}
 async function noopAsync() {}
@@ -6903,6 +6905,45 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 );
 
 internals.resourceForReadableStream = resourceForReadableStream;
+
+export default {
+  // Non-Public
+  _state,
+  // Exposed in global runtime scope
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
+  createProxy,
+  Deferred,
+  errorReadableStream,
+  getReadableStreamResourceBacking,
+  getWritableStreamResourceBacking,
+  isDetachedBuffer,
+  isReadableStreamDisturbed,
+  ReadableByteStreamController,
+  ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamBYOBRequest,
+  readableStreamClose,
+  readableStreamCollectIntoUint8Array,
+  ReadableStreamDefaultController,
+  ReadableStreamDefaultReader,
+  readableStreamDisturb,
+  readableStreamForRid,
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  ReadableStreamPrototype,
+  readableStreamTee,
+  readableStreamThrowIfErrored,
+  resourceForReadableStream,
+  TransformStream,
+  TransformStreamDefaultController,
+  WritableStream,
+  writableStreamClose,
+  WritableStreamDefaultController,
+  WritableStreamDefaultWriter,
+  writableStreamForRid,
+};
 
 export {
   _isClosedPromise,

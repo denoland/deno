@@ -70,7 +70,7 @@ export let argv0 = "";
 
 export let arch = "";
 
-export let platform = "";
+export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
 
