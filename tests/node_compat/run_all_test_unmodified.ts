@@ -229,8 +229,9 @@ type ErrorUnexpected = {
  * @param testPath Relative path to the test file
  */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
+  let cmd: Deno.ChildProcess | undefined;
   try {
-    const cmd = new Deno.Command(Deno.execPath(), {
+    cmd = new Deno.Command(Deno.execPath(), {
       args: [
         "-A",
         "--quiet",
@@ -245,9 +246,8 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       },
       stdout: "piped",
       stderr: "piped",
-      signal: AbortSignal.timeout(TIMEOUT),
-    });
-    const result = await deadline(cmd.output(), TIMEOUT + 1000);
+    }).spawn();
+    const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
       return [true];
     } else {
@@ -258,6 +258,11 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
+      try {
+        cmd?.kill();
+      } catch {
+        // ignore
+      }
       return [false, { timeout: TIMEOUT }];
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
