@@ -109,6 +109,27 @@ describe("describe", () => {
   });
 });
 
+suite("suite", () => {
+  test("test 1", () => {});
+  test("test 2", () => {
+    throw new Error("thrown from test 2");
+  });
+
+  suite("sub suite 1", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {
+      throw new Error("thrown from nested test 2");
+    });
+  });
+
+  suite("sub suite 2", () => {
+    test("nested test 1", () => {
+      throw new Error("thrown from nested test 1");
+    });
+    test("nested test 2", () => {});
+  });
+});
+
 test("unhandled rejection - passes but warns", () => {
   Promise.reject(new Error("rejected from unhandled rejection fail"));
 });
