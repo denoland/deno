@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -30,6 +31,7 @@ pub trait NpmPackageExtraInfoProvider: std::fmt::Debug + Send + Sync {
   async fn get_package_extra_info(
     &self,
     package_id: &PackageNv,
+    package_path: &Path,
     expected: ExpectedExtraInfo,
   ) -> Result<deno_npm::NpmPackageExtraInfo, JsErrorBox>;
 }
@@ -40,11 +42,12 @@ impl<T: NpmPackageExtraInfoProvider + ?Sized> NpmPackageExtraInfoProvider
   async fn get_package_extra_info(
     &self,
     package_id: &PackageNv,
+    package_path: &Path,
     expected: ExpectedExtraInfo,
   ) -> Result<deno_npm::NpmPackageExtraInfo, JsErrorBox> {
     self
       .as_ref()
-      .get_package_extra_info(package_id, expected)
+      .get_package_extra_info(package_id, package_path, expected)
       .await
   }
 }
@@ -117,10 +120,9 @@ impl ExtraInfoProvider {
 
   async fn fetch_from_package_json(
     &self,
-    package_nv: &PackageNv,
+    package_path: &Path,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    let folder_path = self.npm_cache.package_folder_for_nv(package_nv);
-    let package_json_path = folder_path.join("package.json");
+    let package_json_path = package_path.join("package.json");
     let extra_info: NpmPackageExtraInfo =
       tokio::task::spawn_blocking(move || {
         let package_json = std::fs::read_to_string(&package_json_path)
@@ -141,6 +143,7 @@ impl super::common::NpmPackageExtraInfoProvider for ExtraInfoProvider {
   async fn get_package_extra_info(
     &self,
     package_nv: &PackageNv,
+    package_path: &Path,
     expected: ExpectedExtraInfo,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     if let Some(extra_info) = self.cache.read().get(package_nv) {
@@ -152,15 +155,27 @@ impl super::common::NpmPackageExtraInfoProvider for ExtraInfoProvider {
       // package's package.json
       self.fetch_from_registry(package_nv).await?
     } else {
-      let extra_info = self.fetch_from_package_json(package_nv).await?;
-      // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-      // still not sure how that happens
-      if (expected.bin && extra_info.bin.is_none())
-        || (expected.scripts && extra_info.scripts.is_empty())
-      {
-        self.fetch_from_registry(package_nv).await?
-      } else {
-        extra_info
+      match self.fetch_from_package_json(package_path).await {
+        Ok(extra_info) => {
+          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
+          // still not sure how that happens
+          if (expected.bin && extra_info.bin.is_none())
+            || (expected.scripts && extra_info.scripts.is_empty())
+          {
+            self.fetch_from_registry(package_nv).await?
+          } else {
+            extra_info
+          }
+        }
+        Err(err) => {
+          log::debug!(
+            "failed to get extra info for {} from package.json at {}: {}",
+            package_nv,
+            package_path.join("package.json").display(),
+            err
+          );
+          self.fetch_from_registry(package_nv).await?
+        }
       }
     };
     self

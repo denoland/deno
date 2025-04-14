@@ -422,6 +422,7 @@ async fn sync_resolution_with_fs(
               extra_info_provider
                 .get_package_extra_info(
                   &package.id.nv,
+                  &package_path,
                   super::common::ExpectedExtraInfo::from_package(package),
                 )
                 .boxed_local()
@@ -471,6 +472,7 @@ async fn sync_resolution_with_fs(
             let extra = extra_info_provider
               .get_package_extra_info(
                 &package.id.nv,
+                &package_path,
                 super::common::ExpectedExtraInfo::from_package(package),
               )
               .await
