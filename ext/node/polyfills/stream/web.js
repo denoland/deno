@@ -1,19 +1,29 @@
+// deno-lint-ignore-file
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
-  ByteLengthQueuingStrategy,
-  CountQueuingStrategy,
+  TransformStream,
+  TransformStreamDefaultController,
+} from "ext:deno_web/06_streams.js";
+
+import {
+  WritableStream,
+  WritableStreamDefaultController,
+  WritableStreamDefaultWriter,
+} from "ext:deno_web/06_streams.js";
+
+import {
   ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
   ReadableStreamDefaultController,
   ReadableStreamDefaultReader,
-  TransformStream,
-  TransformStreamDefaultController,
-  WritableStream,
-  WritableStreamDefaultController,
-  WritableStreamDefaultWriter,
+} from "ext:deno_web/06_streams.js";
+
+import {
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
 } from "ext:deno_web/06_streams.js";
 import {
   TextDecoderStream,
@@ -23,28 +33,30 @@ import {
   CompressionStream,
   DecompressionStream,
 } from "ext:deno_web/14_compression.js";
+"use strict";
 
-export {
-  ByteLengthQueuingStrategy,
-  CompressionStream,
-  CountQueuingStrategy,
-  DecompressionStream,
-  ReadableByteStreamController,
+const _defaultExport1 = {
   ReadableStream,
+  ReadableStreamDefaultReader,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  ReadableByteStreamController,
   ReadableStreamDefaultController,
-  ReadableStreamDefaultReader,
-  TextDecoderStream,
-  TextEncoderStream,
   TransformStream,
   TransformStreamDefaultController,
   WritableStream,
-  WritableStreamDefaultController,
   WritableStreamDefaultWriter,
+  WritableStreamDefaultController,
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
+  TextEncoderStream,
+  TextDecoderStream,
+  CompressionStream,
+  DecompressionStream,
 };
 
-export default {
+export default _defaultExport1;
+export {
   ByteLengthQueuingStrategy,
   CompressionStream,
   CountQueuingStrategy,

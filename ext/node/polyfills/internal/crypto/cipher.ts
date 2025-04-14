@@ -26,7 +26,7 @@ import {
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import { Transform } from "ext:deno_node/_stream.mjs";
+import { Transform } from "node:stream";
 import {
   getArrayBufferOrView,
   KeyObject,
