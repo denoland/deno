@@ -19,6 +19,7 @@ bytes.workspace = true
 data-url.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_fetch_base.workspace = true
 deno_fs.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
@@ -48,3 +49,6 @@ tower-service.workspace = true
 
 [dev-dependencies]
 fast-socks5.workspace = true
+
+[features]
+sandbox = ["deno_fetch_base/sandbox"]

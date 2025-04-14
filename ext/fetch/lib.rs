@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
 use std::future;
+use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -47,6 +48,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_fetch_base::FetchHandler;
+use deno_fetch_base::FetchResponse;
+pub use deno_fetch_base::FetchReturn;
 use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
@@ -80,10 +84,10 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
 use serde::Deserialize;
-use serde::Serialize;
 use tower::retry;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
+
 
 #[derive(Clone)]
 pub struct Options {
@@ -105,7 +109,7 @@ pub struct Options {
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
-  pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub file_fetch_handler: Rc<dyn FileFetchHandler>,
   pub resolver: dns::Resolver,
 }
 
@@ -134,33 +138,52 @@ impl Default for Options {
   }
 }
 
-deno_core::extension!(deno_fetch,
-  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
-  parameters = [FP: FetchPermissions],
-  ops = [
-    op_fetch<FP>,
-    op_fetch_send,
-    op_utf8_to_byte_string,
-    op_fetch_custom_client<FP>,
-    op_fetch_promise_is_settled,
-  ],
-  esm = [
-    "20_headers.js",
-    "21_formdata.js",
-    "22_body.js",
-    "22_http_client.js",
-    "23_request.js",
-    "23_response.js",
-    "26_fetch.js",
-    "27_eventsource.js"
-  ],
-  options = {
-    options: Options,
-  },
-  state = |state, options| {
-    state.put::<Options>(options.options);
-  },
-);
+
+#[allow(non_camel_case_types)]
+pub type deno_fetch = deno_fetch_base::deno_fetch;
+
+pub struct DenoFetchHandler<FP: FetchPermissions + 'static>(PhantomData<FP>);
+
+impl <FP: FetchPermissions + 'static> FetchHandler for DenoFetchHandler<FP> {
+    type CreateHttpClientArgs = CreateHttpClientArgs;
+
+    type FetchError = FetchError;
+
+    type Options = Options;
+
+    fn fetch(
+        state: &mut deno_core::OpState,
+        method: ByteString,
+        url: String,
+        headers: Vec<(ByteString, ByteString)>,
+        client_rid: Option<u32>,
+        has_body: bool,
+        data: Option<JsBuffer>,
+        resource: Option<ResourceId>,
+    ) -> Result<FetchReturn, Self::FetchError> {
+        op_fetch::<FP>(state, method, url, headers, client_rid, has_body, data, resource)
+    }
+
+    fn fetch_send(
+        state: Rc<RefCell<deno_core::OpState>>,
+        rid: ResourceId,
+    ) -> impl Future<Output = Result<FetchResponse, Self::FetchError>> {
+        op_fetch_send(state, rid)
+    }
+
+    fn custom_client(
+        state: &mut deno_core::OpState,
+        args: Self::CreateHttpClientArgs,
+        #[cfg(not(feature = "sandbox"))]
+        tls_keys: &deno_tls::TlsKeysHolder,
+    ) -> Result<ResourceId, Self::FetchError> {
+        #[cfg(feature = "sandbox")]
+        return op_fetch_custom_client::<FP>(state, args, None);
+
+        #[cfg(not(feature = "sandbox"))]
+        return op_fetch_custom_client::<FP>(state, args, Some(tls_keys));
+    }
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FetchError {
@@ -246,7 +269,7 @@ impl From<deno_fs::FsError> for FetchError {
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
 
-pub trait FetchHandler: dyn_clone::DynClone {
+pub trait FileFetchHandler: dyn_clone::DynClone {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
@@ -257,13 +280,13 @@ pub trait FetchHandler: dyn_clone::DynClone {
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
 
-dyn_clone::clone_trait_object!(FetchHandler);
+dyn_clone::clone_trait_object!(FileFetchHandler);
 
 /// A default implementation which will error for every request.
 #[derive(Clone)]
 pub struct DefaultFileFetchHandler;
 
-impl FetchHandler for DefaultFileFetchHandler {
+impl FileFetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
     &self,
     _state: &mut OpState,
@@ -276,12 +299,6 @@ impl FetchHandler for DefaultFileFetchHandler {
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
-}
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchReturn {
-  pub request_rid: ResourceId,
-  pub cancel_handle_rid: Option<ResourceId>,
 }
 
 pub fn get_or_create_client_from_state(
@@ -443,18 +460,15 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
-#[op2(stack_trace)]
-#[serde]
-#[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  #[serde] method: ByteString,
-  #[string] url: String,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
-  #[smi] client_rid: Option<u32>,
+  method: ByteString,
+  url: String,
+  headers: Vec<(ByteString, ByteString)>,
+  client_rid: Option<u32>,
   has_body: bool,
-  #[buffer] data: Option<JsBuffer>,
-  #[smi] resource: Option<ResourceId>,
+  data: Option<JsBuffer>,
+  resource: Option<ResourceId>,
 ) -> Result<FetchReturn, FetchError>
 where
   FP: FetchPermissions + 'static,
@@ -625,29 +639,9 @@ where
   })
 }
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchResponse {
-  pub status: u16,
-  pub status_text: String,
-  pub headers: Vec<(ByteString, ByteString)>,
-  pub url: String,
-  pub response_rid: ResourceId,
-  pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
-  /// This field is populated if some error occurred which needs to be
-  /// reconstructed in the JS side to set the error _cause_.
-  /// In the tuple, the first element is an error message and the second one is
-  /// an error cause.
-  pub error: Option<(String, String)>,
-}
-
-#[op2(async)]
-#[serde]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
+  rid: ResourceId,
 ) -> Result<FetchResponse, FetchError> {
   let request = state
     .borrow_mut()
@@ -893,12 +887,11 @@ fn default_true() -> bool {
   true
 }
 
-#[op2(stack_trace)]
-#[smi]
+
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  #[serde] args: CreateHttpClientArgs,
-  #[cppgc] tls_keys: &TlsKeysHolder,
+  args: CreateHttpClientArgs,
+  tls_keys: Option<&TlsKeysHolder>,
 ) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
@@ -916,6 +909,11 @@ where
     .map(|cert| cert.into_bytes())
     .collect::<Vec<_>>();
 
+  let keys = match tls_keys  {
+    Some(keys) => keys.take().try_into().unwrap(),
+    None => None
+  };
+
   let client = create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -932,7 +930,7 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
+      client_cert_chain_and_key: keys,
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {

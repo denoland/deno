@@ -18,7 +18,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::CancelHandle;
 use crate::CancelableResponseFuture;
-use crate::FetchHandler;
+use crate::FileFetchHandler;
 use crate::FetchPermissions;
 
 fn sync_permission_check<'a, P: FetchPermissions + 'static>(
@@ -35,7 +35,7 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
 #[derive(Clone)]
 pub struct FsFetchHandler;
 
-impl FetchHandler for FsFetchHandler {
+impl FileFetchHandler for FsFetchHandler {
   fn fetch_file(
     &self,
     state: &mut OpState,

@@ -1707,6 +1707,7 @@ dependencies = [
  "data-url",
  "deno_core",
  "deno_error",
+ "deno_fetch_base",
  "deno_fs",
  "deno_path_util",
  "deno_permissions",
@@ -1734,6 +1735,17 @@ dependencies = [
  "tower 0.5.2",
  "tower-http",
  "tower-service",
+]
+
+[[package]]
+name = "deno_fetch_base"
+version = "0.202.0"
+dependencies = [
+ "bytes",
+ "deno_core",
+ "deno_error",
+ "deno_tls",
+ "serde",
 ]
 
 [[package]]

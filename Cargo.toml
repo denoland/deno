@@ -15,6 +15,7 @@ members = [
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
+  "ext/fetch_base",
   "ext/ffi",
   "ext/fs",
   "ext/http",
@@ -79,6 +80,7 @@ deno_console = { version = "0.190.0", path = "./ext/console" }
 deno_cron = { version = "0.70.0", path = "./ext/cron" }
 deno_crypto = { version = "0.204.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.214.0", path = "./ext/fetch" }
+deno_fetch_base = { version = "0.202.0", path = "./ext/fetch_base" }
 deno_ffi = { version = "0.177.0", path = "./ext/ffi" }
 deno_fs = { version = "0.100.0", path = "./ext/fs" }
 deno_http = { version = "0.188.0", path = "./ext/http" }
@@ -300,6 +302,8 @@ opt-level = 3
 [profile.release.package.deno_crypto]
 opt-level = 3
 [profile.release.package.deno_fetch]
+opt-level = 3
+[profile.release.package.deno_fetch_base]
 opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3

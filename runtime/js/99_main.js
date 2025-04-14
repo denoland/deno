@@ -66,7 +66,7 @@ import {
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
+import { handleWasmStreaming } from "ext:deno_fetch/27_handle_wasm_streaming.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {
   denoNs,
@@ -368,7 +368,7 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setWasmStreamingCallback(handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
