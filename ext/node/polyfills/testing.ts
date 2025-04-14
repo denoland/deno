@@ -222,4 +222,6 @@ export const mock = {
   },
 };
 
+test.test = test;
+
 export default test;
