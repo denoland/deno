@@ -1,16 +1,20 @@
+// deno-lint-ignore-file
 // Copyright 2018-2025 the Deno authors. MIT license.
-// Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import { Blob } from "ext:deno_web/09_file.js";
 import { Buffer } from "node:buffer";
+"use strict";
+
+const {
+  JSONParse,
+} = primordials;
 
 /**
- * @typedef {import('../_global.d.ts').ReadableStream
+ * @typedef {import('../internal/webstreams/readablestream').ReadableStream
  * } ReadableStream
- * @typedef {import('../_stream.d.ts')} Readable
+ * @typedef {import('../internal/streams/readable')} Readable
  */
 
 /**
@@ -68,14 +72,16 @@ async function text(stream) {
  */
 async function json(stream) {
   const str = await text(stream);
-  return JSON.parse(str);
+  return JSONParse(str);
 }
 
-export default {
+const _defaultExport1 = {
   arrayBuffer,
   blob,
   buffer,
-  json,
   text,
+  json,
 };
+
+export default _defaultExport1;
 export { arrayBuffer, blob, buffer, json, text };
