@@ -309,6 +309,10 @@ export function afterEach() {
   notImplemented("test.afterEach");
 }
 
+test.it = it;
+test.describe = describe;
+test.suite = suite;
+
 export const mock = {
   fn: () => {
     notImplemented("test.mock.fn");
