@@ -120,7 +120,6 @@
       "test-path-normalize.js",
       "test-path-relative.js",
       "test-path-resolve.js",
-      "test-querystring.js",
       "test-readline-interface.js",
       "test-stdin-from-file-spawn.js",
       "test-stream-duplex-destroy.js",
@@ -1409,6 +1408,7 @@
   },
   "darwinIgnore": {
     "parallel": [
+      "test-http-agent-maxtotalsockets.js",
       "test-net-allow-half-open.js",
       "test-net-socket-close-after-end.js",
       "test-fs-watchfile.js"

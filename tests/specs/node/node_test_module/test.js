@@ -5,7 +5,7 @@
 // deno-lint-ignore-file
 
 import assert from "node:assert";
-import test from "node:test";
+import test, { describe, it, suite } from "node:test";
 import util from "node:util";
 import { setImmediate } from "node:timers";
 
@@ -13,7 +13,7 @@ test("sync pass todo", (t) => {
   t.todo();
 });
 
-test("sync pass todo with message", (t) => {
+test.test("sync pass todo with message", (t) => {
   t.todo("this is a passing todo");
 });
 
@@ -77,6 +77,57 @@ test("resolve pass", () => {
 
 test("reject fail", () => {
   return Promise.reject(new Error("rejected from reject fail"));
+});
+
+suite("suite", () => {
+  test("test 1", () => {});
+  test("test 2", () => {});
+
+  suite("sub suite 1", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {});
+  });
+
+  suite("sub suite 2", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {});
+  });
+});
+
+describe("describe", () => {
+  it("test 1", () => {});
+  it("test 2", () => {});
+
+  describe("sub describe 1", () => {
+    it("nested test 1", () => {});
+    it("nested test 2", () => {});
+  });
+
+  describe("sub describe 2", () => {
+    it("nested test 1", () => {});
+    it("nested test 2", () => {});
+  });
+});
+
+suite("suite", () => {
+  test("test 1", () => {});
+  test("test 2", () => {
+    throw new Error("thrown from test 2");
+  });
+
+  suite("sub suite 1", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {
+      throw new Error("thrown from nested test 2");
+    });
+  });
+
+  suite("sub suite 2", () => {
+    test("nested test 1", () => {
+      throw new Error("thrown from nested test 1");
+    });
+    test("nested test 2", () => {});
+  });
 });
 
 test("unhandled rejection - passes but warns", () => {
