@@ -75,6 +75,7 @@ util::unit_test_factory!(
     fs_test,
     fetch_test,
     http_test,
+    http_test_no_cert_flag,
     http2_test,
     inspector_test,
     _randomBytes_test = internal / _randomBytes_test,
