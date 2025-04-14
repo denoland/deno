@@ -23,6 +23,39 @@
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
+          },
+          {
+            "attributes": [
+              {
+                "key": "a",
+                "value": {
+                  "stringValue": "b"
+                }
+              },
+              {
+                "key": "c",
+                "value": {
+                  "stringValue": "d"
+                }
+              },
+              {
+                "key": "e",
+                "value": {
+                  "stringValue": "f"
+                }
+              },
+              {
+                "key": "g",
+                "value": {
+                  "stringValue": "h"
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
           }
         ],
         "aggregationTemporality": 2,

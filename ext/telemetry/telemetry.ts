@@ -857,8 +857,7 @@ function record(
       const remaining = attrs.length - i;
       if (remaining > 3) {
         op_otel_metric_attribute3(
-          instrument,
-          value,
+          attrs.length,
           attrs[i][0],
           attrs[i][1],
           attrs[i + 1][0],
@@ -915,8 +914,7 @@ function recordObservable(
       const remaining = attrs.length - i;
       if (remaining > 3) {
         op_otel_metric_attribute3(
-          instrument,
-          value,
+          attrs.length,
           attrs[i][0],
           attrs[i][1],
           attrs[i + 1][0],
