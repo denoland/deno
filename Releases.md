@@ -8,8 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 2.2.10 / 2025.04.14
 
-- feat: enable explicit resource management for JavaScript (#28119)
-- feat: support linux vsock (#28725)
+- fix: enable explicit resource management for JavaScript (#28119)
+- feat(unstable): support linux vsock (#28725)
 - fix(ext/node): add basic support of suite/describe in node:test (#28847)
 - fix(ext/node): export test as property of default export (#28881)
 - fix(ext/node): querystring fallback to default decoder (#28838)
@@ -17,7 +17,7 @@ https://github.com/denoland/deno_install
 - fix(fmt): upgrade malva to 0.11.2 (#28871)
 - fix(install): read extra package info from node_modules and fallback to
   registry (#28893)
-- fix: vsock nits (#28851)
+- fix(unstable): vsock nits (#28851)
 
 ### 2.2.9 / 2025.04.11
 
