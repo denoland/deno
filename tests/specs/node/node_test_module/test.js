@@ -13,7 +13,7 @@ test("sync pass todo", (t) => {
   t.todo();
 });
 
-test("sync pass todo with message", (t) => {
+test.test("sync pass todo with message", (t) => {
   t.todo("this is a passing todo");
 });
 
