@@ -1129,6 +1129,11 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
+  if (core.build.standalone) {
+    throw new Error(
+      "Using native addons in `deno compile`d programs is currently not supported.\n\nFollow https://github.com/denoland/deno/issues/23266 for progress.",
+    );
+  }
   if (filename.endsWith("cpufeatures.node")) {
     throw new Error("Using cpu-features module is currently not supported");
   }
