@@ -8,10 +8,29 @@ import { basename } from "@std/path/basename";
 import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
+import { version as nodeVersion } from "./runner/suite/node_version.ts";
+import { RUN_ARGS, TEST_ARGS, usesNodeTestModule } from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
+
+// The metadata of the test report
+export type TestReportMetadata = {
+  date: string;
+  denoVersion: string;
+  os: string;
+  arch: string;
+  nodeVersion: string;
+  runId: string | null;
+  total: number;
+  pass: number;
+};
+
+// The test report format, which is stored in JSON file
+type TestReport = TestReportMetadata & {
+  results: Record<string, SingleResult>;
+};
 
 // from https://github.com/denoland/std/pull/2787#discussion_r1001237016
 const NODE_IGNORED_TEST_DIRS = [
@@ -190,7 +209,7 @@ function truncateTestOutput(output: string): string {
   return output;
 }
 
-type SingleResult = [
+export type SingleResult = [
   pass: boolean,
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
 ];
@@ -211,14 +230,15 @@ type ErrorUnexpected = {
  * @param testPath Relative path to the test file
  */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
+  let cmd: Deno.ChildProcess | undefined;
+  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
-    const cmd = new Deno.Command(Deno.execPath(), {
+    const usesNodeTest = await Deno.readTextFile(testPath_)
+      .then(usesNodeTestModule).catch(() => false);
+    cmd = new Deno.Command(Deno.execPath(), {
       args: [
-        "-A",
-        "--quiet",
-        "--unstable-bare-node-builtins",
-        "--unstable-node-globals",
-        "tests/node_compat/runner/suite/test/" + testPath,
+        ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
+        testPath_,
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
@@ -227,9 +247,8 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       },
       stdout: "piped",
       stderr: "piped",
-      signal: AbortSignal.timeout(TIMEOUT),
-    });
-    const result = await deadline(cmd.output(), TIMEOUT + 1000);
+    }).spawn();
+    const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
       return [true];
     } else {
@@ -240,6 +259,11 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
+      try {
+        cmd?.kill();
+      } catch {
+        // ignore
+      }
       return [false, { timeout: TIMEOUT }];
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
@@ -311,15 +335,32 @@ async function main() {
   }
 
   // Summary
-  const all = tests.length;
-  const s = tests.filter((test) => results[test][0]).length;
-  console.log(`All tests: ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
+  const total = tests.length;
+  const pass = tests.filter((test) => results[test][0]).length;
+  console.log(
+    `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+  );
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
-  Deno.writeTextFile(
+  // Store the results in a JSON file
+  await Deno.writeTextFile(
     "tests/node_compat/report.json",
-    JSON.stringify(results),
+    JSON.stringify(
+      {
+        date: new Date().toISOString().slice(0, 10),
+        denoVersion: Deno.version.deno,
+        os: Deno.build.os,
+        arch: Deno.build.arch,
+        nodeVersion,
+        runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
+        total,
+        pass,
+        results,
+      } satisfies TestReport,
+    ),
   );
   Deno.exit(0);
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

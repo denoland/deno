@@ -335,6 +335,10 @@ function cloneAsUint8Array(O) {
   }
 }
 
+// Using SymbolFor to make globally available. This is used by `node:stream`
+// to interop with the web streams API.
+const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
+
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
 const _autoAllocateChunkSize = Symbol("[[autoAllocateChunkSize]]");
@@ -605,6 +609,7 @@ function initializeReadableStream(stream) {
   stream[_state] = "readable";
   stream[_reader] = stream[_storedError] = undefined;
   stream[_disturbed] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -684,6 +689,7 @@ function initializeWritableStream(stream) {
       undefined;
   stream[_writeRequests] = [];
   stream[_backpressure] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -1679,6 +1685,7 @@ function readableStreamCancel(stream, reason) {
 function readableStreamClose(stream) {
   assert(stream[_state] === "readable");
   stream[_state] = "closed";
+  stream[_isClosedPromise].resolve(undefined);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (!reader) {
@@ -2557,6 +2564,8 @@ function readableStreamError(stream, e) {
   assert(stream[_state] === "readable");
   stream[_state] = "errored";
   stream[_storedError] = e;
+  stream[_isClosedPromise].reject(e);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (reader === undefined) {
@@ -4761,6 +4770,7 @@ function writableStreamFinishInFlightClose(stream) {
   if (writer !== undefined) {
     writer[_closedPromise].resolve(undefined);
   }
+  stream[_isClosedPromise].resolve?.();
   assert(stream[_pendingAbortRequest] === undefined);
   assert(stream[_storedError] === undefined);
 }
@@ -4841,6 +4851,10 @@ function writableStreamRejectCloseAndClosedPromiseIfNeeded(stream) {
     stream[_closeRequest].reject(stream[_storedError]);
     stream[_closeRequest] = undefined;
   }
+
+  stream[_isClosedPromise].reject(stream[_storedError]);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
+
   const writer = stream[_writer];
   if (writer !== undefined) {
     writer[_closedPromise].reject(stream[_storedError]);
@@ -5132,6 +5146,8 @@ class ReadableStream {
   [_storedError];
   /** @type {{ rid: number, autoClose: boolean } | null} */
   [_resourceBacking] = null;
+  /** @type {Deferred<void>} */
+  [_isClosedPromise];
 
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
@@ -6890,7 +6906,47 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 
 internals.resourceForReadableStream = resourceForReadableStream;
 
+export default {
+  // Non-Public
+  _state,
+  // Exposed in global runtime scope
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
+  createProxy,
+  Deferred,
+  errorReadableStream,
+  getReadableStreamResourceBacking,
+  getWritableStreamResourceBacking,
+  isDetachedBuffer,
+  isReadableStreamDisturbed,
+  ReadableByteStreamController,
+  ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamBYOBRequest,
+  readableStreamClose,
+  readableStreamCollectIntoUint8Array,
+  ReadableStreamDefaultController,
+  ReadableStreamDefaultReader,
+  readableStreamDisturb,
+  readableStreamForRid,
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  ReadableStreamPrototype,
+  readableStreamTee,
+  readableStreamThrowIfErrored,
+  resourceForReadableStream,
+  TransformStream,
+  TransformStreamDefaultController,
+  WritableStream,
+  writableStreamClose,
+  WritableStreamDefaultController,
+  WritableStreamDefaultWriter,
+  writableStreamForRid,
+};
+
 export {
+  _isClosedPromise,
   // Non-Public
   _state,
   // Exposed in global runtime scope

@@ -4,7 +4,7 @@ STREAM [WILDCARD]: read 0
 STREAM [WILDCARD]: need readable false
 STREAM [WILDCARD]: length less than watermark true
 STREAM [WILDCARD]: reading, ended or constructing false
-STREAM [WILDCARD]: flow true
+STREAM [WILDCARD]: flow
 STREAM [WILDCARD]: read undefined
 STREAM [WILDCARD]: need readable true
 STREAM [WILDCARD]: length less than watermark true
@@ -18,7 +18,7 @@ STREAM [WILDCARD]: read 0
 STREAM [WILDCARD]: need readable true
 STREAM [WILDCARD]: length less than watermark true
 STREAM [WILDCARD]: do read
-STREAM [WILDCARD]: readableAddChunk <Buffer 68 65 6c 6c 6f 20 77 6f 72 6c 64 0a>
+STREAM [WILDCARD]: push <Buffer 68 65 6c 6c 6f 20 77 6f 72 6c 64 0a>
 hello world
 
 STREAM [WILDCARD]: maybeReadMore read 0
@@ -26,11 +26,11 @@ STREAM [WILDCARD]: read 0
 STREAM [WILDCARD]: need readable true
 STREAM [WILDCARD]: length less than watermark true
 STREAM [WILDCARD]: do read
-STREAM [WILDCARD]: readableAddChunk null
+STREAM [WILDCARD]: push null
 STREAM [WILDCARD]: onEofChunk
-STREAM [WILDCARD]: emitReadable_ false 0 true
-STREAM [WILDCARD]: flow true
+STREAM [WILDCARD]: emitReadable_
+STREAM [WILDCARD]: flow
 STREAM [WILDCARD]: read undefined
-STREAM [WILDCARD]: endReadable false
-STREAM [WILDCARD]: endReadableNT false 0
+STREAM [WILDCARD]: endReadable
+STREAM [WILDCARD]: endReadableNT
 Finished reading the file

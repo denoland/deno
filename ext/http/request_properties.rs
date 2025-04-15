@@ -23,15 +23,15 @@ use hyper::Uri;
 pub struct HttpListenProperties {
   pub scheme: &'static str,
   pub fallback_host: String,
-  pub local_port: Option<u16>,
+  pub local_port: Option<u32>,
   pub stream_type: NetworkStreamType,
 }
 
 #[derive(Clone)]
 pub struct HttpConnectionProperties {
   pub peer_address: Rc<str>,
-  pub peer_port: Option<u16>,
-  pub local_port: Option<u16>,
+  pub peer_port: Option<u32>,
+  pub local_port: Option<u32>,
   pub stream_type: NetworkStreamType,
 }
 
@@ -161,15 +161,19 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
         0,
       )))
     });
-    let peer_port: Option<u16> = match peer_address {
-      NetworkStreamAddress::Ip(ip) => Some(ip.port()),
+    let peer_port: Option<u32> = match peer_address {
+      NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => None,
+      #[cfg(unix)]
+      NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => Rc::from("unix"),
+      #[cfg(unix)]
+      NetworkStreamAddress::Vsock(addr) => Rc::from(addr.cid().to_string()),
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -204,10 +208,12 @@ fn listener_properties(
 ) -> Result<HttpListenProperties, std::io::Error> {
   let scheme = req_scheme_from_stream_type(stream_type);
   let fallback_host = req_host_from_addr(stream_type, &local_address);
-  let local_port: Option<u16> = match local_address {
-    NetworkStreamAddress::Ip(ip) => Some(ip.port()),
+  let local_port: Option<u32> = match local_address {
+    NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
     #[cfg(unix)]
     NetworkStreamAddress::Unix(_) => None,
+    #[cfg(unix)]
+    NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
   };
   Ok(HttpListenProperties {
     scheme,
@@ -252,6 +258,10 @@ fn req_host_from_addr(
       percent_encoding::NON_ALPHANUMERIC,
     )
     .to_string(),
+    #[cfg(unix)]
+    NetworkStreamAddress::Vsock(vsock) => {
+      format!("{}:{}", vsock.cid(), vsock.port())
+    }
   }
 }
 
@@ -261,6 +271,8 @@ fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
     NetworkStreamType::Tls => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
+    #[cfg(unix)]
+    NetworkStreamType::Vsock => "http+vsock://",
   }
 }
 
@@ -268,11 +280,13 @@ fn req_host<'a>(
   uri: &'a Uri,
   headers: &'a HeaderMap,
   addr_type: NetworkStreamType,
-  port: u16,
+  port: u32,
 ) -> Option<Cow<'a, str>> {
   // Unix sockets always use the socket address
   #[cfg(unix)]
-  if addr_type == NetworkStreamType::Unix {
+  if addr_type == NetworkStreamType::Unix
+    || addr_type == NetworkStreamType::Vsock
+  {
     return None;
   }
 
@@ -291,6 +305,8 @@ fn req_host<'a>(
       }
       #[cfg(unix)]
       NetworkStreamType::Unix => {}
+      #[cfg(unix)]
+      NetworkStreamType::Vsock => {}
     }
     return Some(Cow::Borrowed(auth.as_str()));
   }
