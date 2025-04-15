@@ -106,7 +106,7 @@ export const unstableIds = {
     }
   }
 
-  rust_list += "];";
+  rust_list += "];\n";
   js_list += "};\n";
 
   std::fs::write(crate_dir.join("rust_list.rs"), rust_list).unwrap();
