@@ -119,17 +119,11 @@ fn get_installer_bin_dir(
   cwd: &Path,
   root_flag: Option<&str>,
 ) -> Result<PathBuf, AnyError> {
-  let root = if let Some(root) = root_flag {
-    canonicalize_path_maybe_not_exists(&cwd.join(root))?
+  if let Some(root) = root_flag {
+    Ok(canonicalize_path_maybe_not_exists(&cwd.join(root))?)
   } else {
-    get_installer_root()?
-  };
-
-  Ok(if !root.ends_with("bin") {
-    root.join("bin")
-  } else {
-    root
-  })
+    get_installer_root()
+  }
 }
 
 fn get_installer_root() -> Result<PathBuf, AnyError> {
