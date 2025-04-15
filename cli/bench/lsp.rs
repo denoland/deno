@@ -1,14 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::str::FromStr;
+use std::time::Duration;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use lsp_types::Uri;
-use std::collections::HashMap;
-use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
 use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
 use tower_lsp::lsp_types as lsp;
@@ -70,7 +71,7 @@ fn patch_uris<'a>(
     };
 
     if let Some(new_req) = new_req {
-      *req = new_req;
+      *req = new_req.request;
     }
   }
 }
@@ -129,11 +130,27 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
       }
     }),
   );
-  let re = lazy_regex::regex!(r"Documents in memory: (\d+)");
+  let open_re = lazy_regex::regex!(r"Open: (\d+)");
+  let server_re = lazy_regex::regex!(r"Server: (\d+)");
   let res = res.as_str().unwrap().to_string();
   assert!(res.starts_with("# Deno Language Server Status"));
-  let captures = re.captures(&res).unwrap();
-  let count = captures.get(1).unwrap().as_str().parse::<usize>().unwrap();
+  let open_count = open_re
+    .captures(&res)
+    .unwrap()
+    .get(1)
+    .unwrap()
+    .as_str()
+    .parse::<usize>()
+    .unwrap();
+  let server_count = server_re
+    .captures(&res)
+    .unwrap()
+    .get(1)
+    .unwrap()
+    .as_str()
+    .parse::<usize>()
+    .unwrap();
+  let count = open_count + server_count;
   assert!(count > 1000, "count: {}", count);
 
   client.shutdown();
@@ -150,7 +167,11 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -206,6 +227,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": {
     "enable": true,
     "codeLens": {
@@ -214,6 +237,8 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
       "test": true,
     },
   } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",
@@ -257,7 +282,11 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   for i in 0..10 {
     client.write_notification(
@@ -341,7 +370,11 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
   client.change_configuration(json!({ "deno": { "enable": true } }));
+  let (method, _): (String, Option<Value>) = client.read_notification();
+  assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
 
   client.write_notification(
     "textDocument/didOpen",

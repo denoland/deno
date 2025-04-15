@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_none": {
+      "args": "run --node-modules-dir=none main/main.ts",
+      "exitCode": 1,
+      "output": "node_modules_dir_none.out"
+    },
+    "node_modules_dir_auto": {
+      "args": "run --node-modules-dir=auto main/main.ts",
+      "output": "Download http://localhost:4260/cowsay\n3\n"
+    },
+    "node_modules_dir_manual": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]",
+        "cwd": "main"
+      }, {
+        "args": "run main/main.ts",
+        "output": "3\n"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('./main/deno.lock').trim())"
+        ],
+        "output": "expected_lockfile.out"
+      }, {
+        "args": "run -RW change_patch.ts",
+        "output": ""
+      }, {
+        "args": "install",
+        "output": "[WILDCARD]",
+        "cwd": "main"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('./main/deno.lock').trim())"
+        ],
+        "output": "expected_lockfile_after_change.out"
+      }, {
+        "args": "run main/main.ts",
+        "output": "3\n"
+      }]
+    }
+  }
+}

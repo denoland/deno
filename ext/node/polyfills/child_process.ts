@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -53,7 +53,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-import { kNeedsNpmProcessState } from "ext:runtime/40_process.js";
+import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -132,6 +132,8 @@ export function fork(
           rm = 2;
         }
         execArgv.splice(index, rm);
+      } else if (flag.startsWith("--no-warnings")) {
+        execArgv[index] = "--quiet";
       } else {
         index++;
       }

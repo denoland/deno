@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use deno_broadcast_channel;
 pub use deno_cache;
@@ -16,7 +16,10 @@ pub use deno_kv;
 pub use deno_napi;
 pub use deno_net;
 pub use deno_node;
+pub use deno_os;
 pub use deno_permissions;
+pub use deno_process;
+pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
 pub use deno_url;
@@ -27,15 +30,18 @@ pub use deno_websocket;
 pub use deno_webstorage;
 
 pub mod code_cache;
-pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
+#[cfg(feature = "snapshot")]
 pub mod snapshot;
+pub mod snapshot_info;
 pub mod tokio_util;
+#[cfg(feature = "transpile")]
+pub mod transpile;
 pub mod web_worker;
 pub mod worker;
 
@@ -44,7 +50,8 @@ pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
-mod shared;
+pub mod shared;
+pub use deno_os::exit;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {
@@ -55,7 +62,7 @@ pub struct UnstableGranularFlag {
   pub id: i32,
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
+// NOTE(bartlomieju): keep IDs in sync with `runtime/js/90_deno_ns.js` (search for `unstableFeatures`)
 pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
@@ -99,18 +106,36 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     id: 7,
   },
+  UnstableGranularFlag {
+    name: "no-legacy-abort",
+    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    show_in_help: true,
+    id: 8,
+  },
+  UnstableGranularFlag {
+    name: "node-globals",
+    help_text: "Expose Node globals everywhere",
+    show_in_help: true,
+    id: 9,
+  },
+  UnstableGranularFlag {
+    name: "otel",
+    help_text: "Enable unstable OpenTelemetry features",
+    show_in_help: false,
+    id: 10,
+  },
   // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
-    name: ops::process::UNSTABLE_FEATURE_NAME,
+    name: deno_process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
     show_in_help: false,
-    id: 8,
+    id: 11,
   },
   UnstableGranularFlag {
     name: "temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: true,
-    id: 9,
+    id: 12,
   },
   UnstableGranularFlag {
     name: "unsafe-proto",
@@ -118,19 +143,25 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     // This number is used directly in the JS code. Search
     // for "unstableIds" to see where it's used.
-    id: 10,
+    id: 13,
+  },
+  UnstableGranularFlag {
+    name: "vsock",
+    help_text: "Enable unstable VSOCK APIs",
+    show_in_help: false,
+    id: 14,
   },
   UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable `WebGPU` APIs",
     show_in_help: true,
-    id: 11,
+    id: 15,
   },
   UnstableGranularFlag {
     name: ops::worker_host::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 12,
+    id: 16,
   },
 ];
 

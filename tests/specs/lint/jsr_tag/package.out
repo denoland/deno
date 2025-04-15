@@ -5,7 +5,7 @@ error[verbatim-module-syntax]: All import identifiers are used in types
   | ^^^^^^
   = hint: Change `import` to `import type` and optionally add an explicit side effect import
 
-  docs: https://lint.deno.land/rules/verbatim-module-syntax
+  docs: https://docs.deno.com/lint/rules/verbatim-module-syntax
 
 
 Found 1 problem (1 fixable via --fix)

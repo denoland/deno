@@ -1,34 +1,64 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod args;
-mod auth_tokens;
 mod cache;
 mod cdp;
 mod emit;
-mod errors;
 mod factory;
 mod file_fetcher;
 mod graph_container;
 mod graph_util;
 mod http_util;
-mod js;
 mod jsr;
 mod lsp;
 mod module_loader;
-mod napi;
 mod node;
 mod npm;
 mod ops;
+mod registry;
 mod resolver;
-mod shared;
 mod standalone;
 mod task_runner;
 mod tools;
 mod tsc;
+mod type_checker;
 mod util;
-mod version;
 mod worker;
 
+pub mod sys {
+  #[allow(clippy::disallowed_types)] // ok, definition
+  pub type CliSys = sys_traits::impls::RealSys;
+}
+
+use std::env;
+use std::future::Future;
+use std::io::IsTerminal;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use args::TaskFlags;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_core::futures::FutureExt;
+use deno_core::unsync::JoinHandle;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::WorkerExecutionMode;
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_telemetry::OtelConfig;
+use deno_terminal::colors;
+use factory::CliFactory;
+
+const MODULE_NOT_FOUND: &str = "Module not found";
+const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+
+use self::npm::ResolveSnapshotError;
+use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -36,30 +66,9 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::TaskFlags;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
-use deno_core::unsync::JoinHandle;
-use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_terminal::colors;
-use factory::CliFactory;
-use npm::ResolvePkgFolderFromDenoReqError;
-use standalone::MODULE_NOT_FOUND;
-use standalone::UNSUPPORTED_SCHEME;
-use std::env;
-use std::future::Future;
-use std::io::IsTerminal;
-use std::ops::Deref;
-use std::path::PathBuf;
-use std::sync::Arc;
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -100,14 +109,14 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
-      tools::registry::add(flags, add_flags, tools::registry::AddCommandName::Add).await
+      tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
     }),
     DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
-      tools::registry::remove(flags, remove_flags).await
+      tools::pm::remove(flags, remove_flags).await
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).boxed_local().await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
@@ -126,13 +135,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean()
+      tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      tools::compile::compile(flags, compile_flags).await
+      if compile_flags.eszip {
+        tools::compile::compile_eszip(flags, compile_flags).boxed_local().await
+      } else {
+        tools::compile::compile(flags, compile_flags).await
+      }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags).await
+      tools::coverage::cover_files(flags, coverage_flags)
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -141,9 +154,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async {
-        // make compiler happy since init_project is sync
-        tokio::task::yield_now().await;
-        tools::init::init_project(init_flags)
+        tools::init::init_project(init_flags).await
       })
     }
     DenoSubcommand::Info(info_flags) => {
@@ -161,18 +172,19 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async {
+    DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
-  
+
   Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
   how to setup your favorite text editor.
-  
+
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      lsp::start().await
+      let factory = CliFactory::from_flags(flags.clone());
+      lsp::start(Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api())).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -185,18 +197,26 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::lint::lint(flags, lint_flags).await
       }
     }),
+    DenoSubcommand::Outdated(update_flags) => {
+      spawn_subcommand(async move {
+        tools::pm::outdated(flags, update_flags).await
+      })
+    }
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags.clone()).await
+        // these futures are boxed to prevent stack overflows on Windows
+        tools::run::run_from_stdin(flags.clone()).boxed_local().await
+      } else if flags.eszip {
+        tools::run::run_eszip(flags, run_flags).boxed_local().await
       } else {
         let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(worker::CreateCustomWorkerError::ResolvePkgFolderFromDenoReq(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)))) = any_and_jserrorbox_downcast_ref::<worker::CreateCustomWorkerError>(&script_err) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -208,7 +228,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();
@@ -235,6 +255,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
                   is_run: true,
+                  recursive: false,
+                  filter: None,
+                  eval: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
@@ -302,7 +325,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     ),
     DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
-      tools::registry::publish(flags, publish_flags).await
+      tools::publish::publish(flags, publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
@@ -343,50 +366,73 @@ fn setup_panic_hook() {
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", version::DENO_VERSION_INFO.deno);
+    eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
+
+    let info = &deno_lib::version::DENO_VERSION_INFO;
+    let version =
+      if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+        format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+      } else {
+        info.deno.to_string()
+      };
+
+    let trace = deno_panic::trace();
+    eprintln!("View stack trace at:");
+    eprintln!(
+      "https://panic.deno.com/v{}/{}/{}",
+      version,
+      env!("TARGET"),
+      trace
+    );
+
     orig_hook(panic_info);
-    std::process::exit(1);
+    deno_runtime::exit(1);
   }));
 }
 
-#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
-  eprintln!(
+  log::error!(
     "{}: {}",
     colors::red_bold("error"),
     message.trim_start_matches("error: ")
   );
-  std::process::exit(code);
+  deno_runtime::exit(code);
 }
 
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
-  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-    error.downcast_ref::<SnapshotFromLockfileError>()
+  if let Some(CoreError::Js(e)) =
+    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
-    error_string = e.to_string();
-    error_code = 10;
+    error_string = format_js_error(e);
+  } else if let Some(e @ ResolveSnapshotError { .. }) =
+    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
+  {
+    if let Some(e) = e.maybe_integrity_check_error() {
+      error_string = e.to_string();
+      error_code = 10;
+    }
   }
 
   exit_with_message(&error_string, error_code);
 }
 
-#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
-  eprintln!(
+  log::error!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
     feature
   );
-  std::process::exit(70);
+  deno_runtime::exit(70);
 }
 
 pub fn main() {
+  #[cfg(feature = "dhat-heap")]
+  let profiler = dhat::Profiler::new_heap();
+
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
@@ -407,8 +453,13 @@ pub fn main() {
     run_subcommand(Arc::new(flags)).await
   };
 
-  match create_and_run_current_thread_with_maybe_metrics(future) {
-    Ok(exit_code) => std::process::exit(exit_code),
+  let result = create_and_run_current_thread_with_maybe_metrics(future);
+
+  #[cfg(feature = "dhat-heap")]
+  drop(profiler);
+
+  match result {
+    Ok(exit_code) => deno_runtime::exit(exit_code),
     Err(err) => exit_for_error(err),
   }
 }
@@ -422,11 +473,22 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
+      init_logging(None, None);
       let _ = err.print();
-      std::process::exit(0);
+      deno_runtime::exit(0);
     }
-    Err(err) => exit_for_error(AnyError::from(err)),
+    Err(err) => {
+      init_logging(None, None);
+      exit_for_error(AnyError::from(err))
+    }
   };
+
+  let otel_config = flags.otel_config();
+  deno_telemetry::init(
+    deno_lib::version::otel_runtime_config(),
+    otel_config.clone(),
+  )?;
+  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -439,15 +501,23 @@ fn resolve_flags_and_init(
   }
 
   let default_v8_flags = match flags.subcommand {
-    // Using same default as VSCode:
-    // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-    DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+    DenoSubcommand::Lsp => vec![
+      "--stack-size=1024".to_string(),
+      "--js-explicit-resource-management".to_string(),
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      "--max-old-space-size=3072".to_string(),
+    ],
     _ => {
-      // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-      // and its settings.
-      // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-      // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-      vec!["--no-harmony-import-assertions".to_string()]
+      vec![
+        "--stack-size=1024".to_string(),
+        "--js-explicit-resource-management".to_string(),
+        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+        // and its settings.
+        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+        "--no-harmony-import-assertions".to_string(),
+      ]
     }
   };
 
@@ -456,7 +526,22 @@ fn resolve_flags_and_init(
   deno_core::JsRuntime::init_platform(
     None, /* import assertions enabled */ false,
   );
-  util::logger::init(flags.log_level);
 
   Ok(flags)
+}
+
+fn init_logging(
+  maybe_level: Option<log::Level>,
+  otel_config: Option<OtelConfig>,
+) {
+  deno_lib::util::logger::init(deno_lib::util::logger::InitLoggingOptions {
+    maybe_level,
+    otel_config,
+    // it was considered to hold the draw thread's internal lock
+    // across logging, but if outputting to stderr blocks then that
+    // could potentially block other threads that access the draw
+    // thread's state
+    on_log_start: DrawThread::hide,
+    on_log_end: DrawThread::show,
+  })
 }

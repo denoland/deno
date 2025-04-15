@@ -42,4 +42,5 @@ disallowed-methods = [
   { path = "std::fs::write", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::canonicalize", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::exists", reason = "File system operations should be done using FileSystem trait" },
+  { path = "std::process::exit", reason = "use deno_runtime::exit instead" },
 ]

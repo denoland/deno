@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -59,9 +59,10 @@ import { Socket } from "node:net";
 import {
   kDetached,
   kExtraStdio,
+  kInputOption,
   kIpc,
   kNeedsNpmProcessState,
-} from "ext:runtime/40_process.js";
+} from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -277,6 +278,7 @@ export class ChildProcess extends EventEmitter {
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
+        clearEnv: true,
         cwd,
         env: stringEnv,
         stdin: toDenoStdio(stdin),
@@ -839,6 +841,7 @@ export function normalizeSpawnArguments(
     args,
     cwd,
     detached: !!options.detached,
+    env,
     envPairs,
     file,
     windowsHide: !!options.windowsHide,
@@ -983,6 +986,27 @@ function parseSpawnSyncOutputStreams(
   }
 }
 
+function normalizeInput(input: unknown) {
+  if (input == null) {
+    return null;
+  }
+  if (typeof input === "string") {
+    return Buffer.from(input);
+  }
+  if (input instanceof Uint8Array) {
+    return input;
+  }
+  if (input instanceof DataView) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  throw new ERR_INVALID_ARG_TYPE("input", [
+    "string",
+    "Buffer",
+    "TypedArray",
+    "DataView",
+  ], input);
+}
+
 export function spawnSync(
   command: string,
   args: string[],
@@ -990,6 +1014,7 @@ export function spawnSync(
 ): SpawnSyncResult {
   const {
     env = Deno.env.toObject(),
+    input,
     stdio = ["pipe", "pipe", "pipe"],
     shell = false,
     cwd,
@@ -1006,6 +1031,7 @@ export function spawnSync(
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
   [command, args] = buildCommand(command, args ?? [], shell);
+  const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
   try {
@@ -1019,6 +1045,7 @@ export function spawnSync(
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
+      [kInputOption]: input_,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1191,8 +1218,12 @@ function toDenoArgs(args: string[]): string[] {
     }
 
     if (flagInfo === undefined) {
-      // Not a known flag that expects a value. Just copy it to the output.
-      denoArgs.push(arg);
+      if (arg === "--no-warnings") {
+        denoArgs.push("--quiet");
+      } else {
+        // Not a known flag that expects a value. Just copy it to the output.
+        denoArgs.push(arg);
+      }
       continue;
     }
 
@@ -1335,7 +1366,7 @@ export function setupChannel(target: any, ipc: number) {
           }
         }
 
-        process.nextTick(handleMessage, msg);
+        nextTick(handleMessage, msg);
       }
     } catch (err) {
       if (
@@ -1396,7 +1427,7 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        process.nextTick(callback, err);
+        nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
       }
@@ -1412,7 +1443,18 @@ export function setupChannel(target: any, ipc: number) {
       .then(() => {
         control.unrefCounted();
         if (callback) {
-          process.nextTick(callback, null);
+          nextTick(callback, null);
+        }
+      }, (err: Error) => {
+        control.unrefCounted();
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
         }
       });
     return queueOk[0];
@@ -1429,7 +1471,7 @@ export function setupChannel(target: any, ipc: number) {
     target.connected = false;
     target[kCanDisconnect] = false;
     control[kControlDisconnect]();
-    process.nextTick(() => {
+    nextTick(() => {
       target.channel = null;
       core.close(ipc);
       target.emit("disconnect");

@@ -1,0 +1,7 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic@1": "1.0.0",
+    "npm:@denotest/say-hello@1": "1.0.0"
+  },
+[WILDCARD]

@@ -1,0 +1,1 @@
+error: jsr:@denotest/unstable has only pre-release versions available. Try specifying a version: `deno add jsr:@denotest/unstable@^1.0.0-beta.2`

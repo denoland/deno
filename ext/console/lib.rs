@@ -1,17 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use deno_core::op2;
 use deno_core::v8;
-use std::path::PathBuf;
 
 deno_core::extension!(
   deno_console,
   ops = [op_preview_entries],
   esm = ["01_console.js"],
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_console.d.ts")
-}
 
 #[op2]
 pub fn op_preview_entries<'s>(

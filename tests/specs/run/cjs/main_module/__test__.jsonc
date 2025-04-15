@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read main.cjs",
+  "output": "main.out"
+}

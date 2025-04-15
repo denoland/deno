@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add npm:@denotest/esm-basic jsr:@denotest/add",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.jsonc').trim())"
+      ],
+      "output": "deno.jsonc.out"
+    }
+  ]
+}

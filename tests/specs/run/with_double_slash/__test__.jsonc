@@ -1,0 +1,5 @@
+{
+  "args": "run //",
+  "exitCode": 1,
+  "output": "error: [WILDCARD]"
+}

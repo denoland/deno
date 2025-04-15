@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use flaky_test::flaky_test;
 use test_util as util;
@@ -6,9 +6,8 @@ use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::DenoChild;
-
 use util::assert_not_contains;
+use util::DenoChild;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -55,7 +54,7 @@ where
   let mut str = String::new();
   while let Some(t) = next_line(stderr_lines).await {
     let t = util::strip_ansi_codes(&t);
-    if t.starts_with("Watcher File change detected") {
+    if t.starts_with("Watcher Restarting! File change detected") {
       continue;
     }
     if t.starts_with("Watcher") {
@@ -567,6 +566,82 @@ async fn run_watch_no_dynamic() {
 }
 
 #[flaky_test(tokio)]
+async fn serve_watch_all() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+
+  let another_file = t.path().join("another_file.js");
+  another_file.write("");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg(format!("--watch={another_file}"))
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Change content of the file
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq123!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  another_file.write("export const foo = 0;");
+  // Confirm that the added file is watched as well
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  main_file_to_watch
+    .write("import { foo } from './another_file.js'; console.log(foo);");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("0", &mut stdout_lines).await;
+
+  another_file.write("export const foo = 42;");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("42", &mut stdout_lines).await;
+
+  // Confirm that watch continues even with wrong syntax error
+  another_file.write("syntax error ^^");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("error:", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
 async fn run_watch_npm_specifier() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1073,7 +1148,7 @@ async fn test_watch_doc() {
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
+    "TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),

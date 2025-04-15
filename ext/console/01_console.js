@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -216,7 +216,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
-  temporal: "magenta",
+  temporal: "cyan",
 };
 
 const defaultFG = 39;
@@ -2653,6 +2653,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = StringPrototypeToLowerCase(colorString);
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
@@ -3545,6 +3546,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   getStdoutNoColor,

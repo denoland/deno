@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 /* Copyright Joyent, Inc. and other Node contributors. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -62,10 +62,11 @@ pub fn op_node_sys_to_uv_error(err: i32) -> String {
     WSAEHOSTUNREACH => "EHOSTUNREACH",
     ERROR_INSUFFICIENT_BUFFER => "EINVAL",
     ERROR_INVALID_DATA => "EINVAL",
-    ERROR_INVALID_NAME => "EINVAL",
+    ERROR_INVALID_NAME => "ENOENT",
     ERROR_INVALID_PARAMETER => "EINVAL",
     WSAEINVAL => "EINVAL",
     WSAEPFNOSUPPORT => "EINVAL",
+    ERROR_NOT_A_REPARSE_POINT => "EINVAL",
     ERROR_BEGINNING_OF_MEDIA => "EIO",
     ERROR_BUS_RESET => "EIO",
     ERROR_CRC => "EIO",

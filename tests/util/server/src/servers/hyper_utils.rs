@@ -1,7 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::convert::Infallible;
+use std::future::Future;
+use std::io;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::result::Result;
 
 use bytes::Bytes;
-use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -10,11 +16,6 @@ use http::Request;
 use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::rt::TokioIo;
-use std::convert::Infallible;
-use std::io;
-use std::net::SocketAddr;
-use std::pin::Pin;
-use std::result::Result;
 use tokio::net::TcpListener;
 
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +43,10 @@ where
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
-      println!("ready: {}", options.addr);
+      #[allow(clippy::print_stdout)]
+      {
+        println!("ready: {}", options.addr);
+      }
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -58,13 +62,14 @@ where
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", options.error_msg, e);
     }
   }
 }
 
-pub async fn run_server_with_acceptor<'a, A, F, S>(
+pub async fn run_server_with_acceptor<A, F, S>(
   mut acceptor: Pin<Box<A>>,
   handler: F,
   error_msg: &'static str,
@@ -89,6 +94,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }
@@ -135,6 +141,7 @@ async fn hyper_serve_connection<I, F, S>(
 
   if let Err(e) = result {
     let err_str = e.to_string();
+    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }

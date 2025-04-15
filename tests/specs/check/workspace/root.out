@@ -1,6 +1,20 @@
 Check file:///[WILDLINE]/package-a/mod.ts
 Check file:///[WILDLINE]/package-b/mod.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+Check file:///[WILDLINE]/package-d/mod.ts
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const test: string = add(1, 2);
       ~~~~
-    at [WILDLINE]
+    at file:///[WILDLINE]/package-b/mod.ts:3:7
+
+Check file:///[WILDLINE]/package-c/mod.ts
+TS2554 [ERROR]: Expected 2 arguments, but got 1.
+console.log(Math.pow(""));
+                 ~~~
+    at file:///[WILDLINE]/package-c/check.js:1:18
+
+    An argument for 'y' was not provided.
+        pow(x: number, y: number): number;
+                       ~~~~~~~~~
+        at asset:///lib.es5.d.ts:744:20
+
+error: Type checking failed.

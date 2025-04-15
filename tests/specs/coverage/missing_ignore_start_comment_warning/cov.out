@@ -1,0 +1,8 @@
+WARNING: deno-coverage-ignore-stop comment with no corresponding deno-coverage-ignore-start comment at file:///[WILDLINE]/main.ts:5:3 will be ignored.
+--------------------------------
+File       | Branch % | Line % |
+--------------------------------
+ main.ts   |      0.0 |   40.0 |
+--------------------------------
+ All files |      0.0 |   40.0 |
+--------------------------------

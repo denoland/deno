@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -95,4 +95,5 @@ export function makeSyncWrite(fd: number) {
   };
 }
 
+export const kReinitializeHandle = Symbol("kReinitializeHandle");
 export const normalizedArgsSymbol = Symbol("normalizedArgs");

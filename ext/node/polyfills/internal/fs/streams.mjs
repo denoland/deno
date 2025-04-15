@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -14,11 +14,11 @@ import {
   validateFunction,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.mjs";
+import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
 import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
 import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";
 import { write as fsWrite } from "ext:deno_node/_fs/_fs_write.mjs";
-import { writev as fsWritev } from "ext:deno_node/_fs/_fs_writev.mjs";
+import { writev as fsWritev } from "ext:deno_node/_fs/_fs_writev.ts";
 import { close as fsClose } from "ext:deno_node/_fs/_fs_close.ts";
 import { Buffer } from "node:buffer";
 import {

@@ -1,19 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::lsp::analysis::source_range_to_lsp_range;
-
-use super::definitions::TestModule;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 use deno_ast::swc::ast;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
 use lsp::Range;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use tower_lsp::lsp_types as lsp;
+
+use super::definitions::TestModule;
+use crate::lsp::analysis::source_range_to_lsp_range;
 
 /// Parse an arrow expression for any test steps and return them.
 fn visit_arrow(
@@ -626,11 +626,11 @@ impl Visit for TestCollector {
 
 #[cfg(test)]
 pub mod tests {
-  use crate::lsp::testing::definitions::TestDefinition;
-
-  use super::*;
   use deno_core::resolve_url;
   use lsp::Position;
+
+  use super::*;
+  use crate::lsp::testing::definitions::TestDefinition;
 
   pub fn new_range(l1: u32, c1: u32, l2: u32, c2: u32) -> Range {
     Range::new(Position::new(l1, c1), Position::new(l2, c2))
@@ -650,7 +650,7 @@ pub mod tests {
     .unwrap();
     let text_info = parsed_module.text_info_lazy().clone();
     let mut collector = TestCollector::new(specifier, text_info);
-    parsed_module.module().visit_with(&mut collector);
+    parsed_module.program().visit_with(&mut collector);
     collector.take()
   }
 

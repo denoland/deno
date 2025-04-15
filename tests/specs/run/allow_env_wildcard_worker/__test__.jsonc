@@ -1,0 +1,10 @@
+{
+  "envs": {
+    "DENO_HELLO": "hello",
+    "DENO_BYE": "bye",
+    "AWS_HELLO": "aws"
+  },
+  "args": "run --allow-env --allow-read --unstable-worker-options main.js",
+  "output": "main.out",
+  "exitCode": 1
+}

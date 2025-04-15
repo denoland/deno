@@ -1,4 +1,4 @@
-Download http://localhost:4260/@denotest/subtract
+Download http://localhost:4260/@denotest%2fsubtract
 error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
  4 | -    "npm:@denotest/add@1": "1.0.0"

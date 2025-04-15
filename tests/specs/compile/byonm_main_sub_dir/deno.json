@@ -1,3 +1,3 @@
 {
-  "unstable": ["byonm"]
+  "nodeModulesDir": "manual"
 }

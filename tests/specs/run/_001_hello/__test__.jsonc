@@ -1,0 +1,4 @@
+{
+  "args": "run --reload 001_hello.js",
+  "output": "001_hello.js.out"
+}

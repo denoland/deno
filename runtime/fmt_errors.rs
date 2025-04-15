@@ -1,13 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use std::fmt::Write as _;
+
+use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
-use deno_terminal::colors::cyan;
-use deno_terminal::colors::italic_bold;
-use deno_terminal::colors::red;
-use deno_terminal::colors::yellow;
-use std::fmt::Write as _;
+use deno_terminal::colors;
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -25,6 +24,7 @@ struct IndexedErrorReference<'a> {
 enum FixSuggestionKind {
   Info,
   Hint,
+  Docs,
 }
 
 #[derive(Debug)]
@@ -67,6 +67,13 @@ impl<'a> FixSuggestion<'a> {
       message: FixSuggestionMessage::Multiline(messages),
     }
   }
+
+  pub fn docs(url: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Docs,
+      message: FixSuggestionMessage::Single(url),
+    }
+  }
 }
 
 struct AnsiColors;
@@ -79,10 +86,10 @@ impl deno_core::error::ErrorFormat for AnsiColors {
     use deno_core::error::ErrorElement::*;
     match element {
       Anonymous | NativeFrame | FileName | EvalOrigin => {
-        cyan(s).to_string().into()
+        colors::cyan(s).to_string().into()
       }
-      LineNumber | ColumnNumber => yellow(s).to_string().into(),
-      FunctionName | PromiseAll => italic_bold(s).to_string().into(),
+      LineNumber | ColumnNumber => colors::yellow(s).to_string().into(),
+      FunctionName | PromiseAll => colors::italic_bold(s).to_string().into(),
     }
   }
 }
@@ -115,7 +122,7 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      yellow("Warning"), column_number,
+      colors::yellow("Warning"), column_number,
     );
   }
 
@@ -128,9 +135,9 @@ fn format_maybe_source_line(
   }
   s.push('^');
   let color_underline = if is_error {
-    red(&s).to_string()
+    colors::red(&s).to_string()
   } else {
-    cyan(&s).to_string()
+    colors::cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -201,7 +208,8 @@ fn format_js_error_inner(
 
   if let Some(circular) = &circular {
     if js_error.is_same_error(circular.reference.to) {
-      write!(s, " {}", cyan(format!("<ref *{}>", circular.index))).unwrap();
+      write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
+        .unwrap();
     }
   }
 
@@ -239,7 +247,8 @@ fn format_js_error_inner(
       .unwrap_or(false);
 
     let error_string = if is_caused_by_circular {
-      cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
+      colors::cyan(format!("[Circular *{}]", circular.unwrap().index))
+        .to_string()
     } else {
       format_js_error_inner(cause, circular, false, vec![])
     };
@@ -256,12 +265,23 @@ fn format_js_error_inner(
     for (index, suggestion) in suggestions.iter().enumerate() {
       write!(s, "    ").unwrap();
       match suggestion.kind {
-        FixSuggestionKind::Hint => write!(s, "{} ", cyan("hint:")).unwrap(),
-        FixSuggestionKind::Info => write!(s, "{} ", yellow("info:")).unwrap(),
+        FixSuggestionKind::Hint => {
+          write!(s, "{} ", colors::cyan("hint:")).unwrap()
+        }
+        FixSuggestionKind::Info => {
+          write!(s, "{} ", colors::yellow("info:")).unwrap()
+        }
+        FixSuggestionKind::Docs => {
+          write!(s, "{} ", colors::green("docs:")).unwrap()
+        }
       };
       match suggestion.message {
         FixSuggestionMessage::Single(msg) => {
-          write!(s, "{}", msg).unwrap();
+          if matches!(suggestion.kind, FixSuggestionKind::Docs) {
+            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
+          } else {
+            write!(s, "{}", msg).unwrap();
+          }
         }
         FixSuggestionMessage::Multiline(messages) => {
           for (idx, message) in messages.iter().enumerate() {
@@ -289,18 +309,79 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       || msg.contains("exports is not defined")
       || msg.contains("require is not defined")
     {
+      if let Some(file_name) =
+        e.frames.first().and_then(|f| f.file_name.as_ref())
+      {
+        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
+          return vec![];
+        }
+      }
       return vec![
         FixSuggestion::info_multiline(&[
-          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
-          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
+          cstr!("<u>package.json</> has a <i>\"type\": \"commonjs\"</> option.")
         ]),
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
-          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"),
+          cstr!("or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."),
         ]),
-        FixSuggestion::hint("See https://docs.deno.com/go/commonjs for details"),
+        FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
+      ];
+    } else if msg.contains("__filename is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>__filename</> global is not available in ES modules."
+        )),
+        FixSuggestion::hint(cstr!("Use <u>import.meta.filename</> instead.")),
+      ];
+    } else if msg.contains("__dirname is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>__dirname</> global is not available in ES modules."
+        )),
+        FixSuggestion::hint(cstr!("Use <u>import.meta.dirname</> instead.")),
+      ];
+    } else if msg.contains("Buffer is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>Buffer</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Import it explicitly with <u>import { Buffer } from \"node:buffer\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
+      ];
+    } else if msg.contains("clearImmediate is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>clearImmediate</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
+      ];
+    } else if msg.contains("setImmediate is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>setImmediate</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint_multiline(
+          &[cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
+      ];
+    } else if msg.contains("global is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>global</> is not available in the global scope in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
@@ -347,6 +428,26 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("QuicEndpoint is not a constructor") {
+      return vec![
+        FixSuggestion::info("listenQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("connectQuic is not a function") {
+      return vec![
+        FixSuggestion::info("connectQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("client error (Connect): invalid peer certificate") {
+      return vec![
+        FixSuggestion::hint(
+          "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
         ),
       ];
     // Try to capture errors like:
@@ -403,8 +504,9 @@ pub fn format_js_error(js_error: &JsError) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_format_none_source_line() {

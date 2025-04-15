@@ -1,0 +1,9 @@
+[WILDCARD]
+unhandled rejection at: Promise {
+  <rejected> Error: bar not available
+    at new Foo (file:///[WILDCARD]/unhandled_rejection.ts:8:20)
+    at file:///[WILDCARD]/unhandled_rejection.ts:12:1
+} reason: Error: bar not available
+    at new Foo (file:///[WILDCARD]/unhandled_rejection.ts:8:20)
+    at file:///[WILDCARD]/unhandled_rejection.ts:12:1
+unhandled rejection at: Promise { <rejected> undefined } reason: undefined
