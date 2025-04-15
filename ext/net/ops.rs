@@ -427,7 +427,8 @@ pub async fn op_net_connect_tcp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token, resource_abort_id).await
+  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token, resource_abort_id)
+    .await
 }
 
 #[inline]
@@ -1390,9 +1391,10 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
-        .boxed_local();
+    let mut connect_fut = op_net_connect_tcp_inner::<TestPermission>(
+      conn_state, ip_addr, None, None,
+    )
+    .boxed_local();
     let mut rid = None;
 
     tokio::select! {
