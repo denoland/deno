@@ -1,5 +1,5 @@
 {
-  "args": "test --doc --config ../../../config/deno.json main.ts",
+  "args": "test --doc main.ts markdown.md",
   "exitCode": 0,
   "output": "main.out"
 }

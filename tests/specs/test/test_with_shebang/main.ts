@@ -10,7 +10,7 @@
 /**
  * ```ts
  * #!/usr/bin/env -S deno run --allow-read
- * import { assertEquals } from "@std/assert/equals";
+ * import { assertEquals } from "@std/assert";
  * import { getModuleName, createFoo } from "./mod.ts";
  *
  * const foo = createFoo();
