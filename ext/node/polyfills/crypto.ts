@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -167,6 +167,16 @@ const fipsForced = getOptionValue("--force-fips");
 
 function getRandomValues(typedArray) {
   return webcrypto.getRandomValues(typedArray);
+}
+
+function hash(
+  algorithm: string,
+  data: BinaryLike,
+  outputEncoding: BinaryToTextEncoding = "hex",
+) {
+  const hash = createHash(algorithm);
+  hash.update(data);
+  return hash.digest(outputEncoding);
 }
 
 function createCipheriv(
@@ -350,6 +360,7 @@ export default {
   getDiffieHellman,
   getFips,
   getHashes,
+  hash,
   Hash,
   hkdf,
   hkdfSync,
@@ -489,6 +500,7 @@ export {
   getHashes,
   getRandomValues,
   Hash,
+  hash,
   hkdf,
   hkdfSync,
   Hmac,

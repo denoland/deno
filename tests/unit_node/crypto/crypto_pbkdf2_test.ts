@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { pbkdf2, pbkdf2Sync } from "node:crypto";
 import { assert, assertEquals } from "@std/assert";
 import nodeFixtures from "../testdata/crypto_digest_fixtures.json" with {

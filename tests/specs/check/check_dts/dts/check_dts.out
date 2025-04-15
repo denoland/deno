@@ -1,4 +1,6 @@
-error: TS1039 [ERROR]: Initializers are not allowed in ambient contexts.
+TS1039 [ERROR]: Initializers are not allowed in ambient contexts.
 export const a: string = Deno.version.deno;
                          ~~~~~~~~~~~~~~~~~
     at file:///[WILDCARD]/check_dts.d.ts:2:26
+
+error: Type checking failed.

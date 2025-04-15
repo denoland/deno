@@ -1,61 +1,83 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  op_crypto_get_random_values,
-  op_otel_instrumentation_scope_create_and_enter,
-  op_otel_instrumentation_scope_enter,
-  op_otel_instrumentation_scope_enter_builtin,
+  op_otel_collect_isolate_metrics,
+  op_otel_enable_isolate_metrics,
   op_otel_log,
-  op_otel_metrics_data_point_attribute,
-  op_otel_metrics_data_point_attribute2,
-  op_otel_metrics_data_point_attribute3,
-  op_otel_metrics_gauge,
-  op_otel_metrics_histogram,
-  op_otel_metrics_histogram_data_point,
-  op_otel_metrics_histogram_data_point_entry1,
-  op_otel_metrics_histogram_data_point_entry2,
-  op_otel_metrics_histogram_data_point_entry3,
-  op_otel_metrics_histogram_data_point_entry_final,
-  op_otel_metrics_resource_attribute,
-  op_otel_metrics_resource_attribute2,
-  op_otel_metrics_resource_attribute3,
-  op_otel_metrics_scope,
-  op_otel_metrics_submit,
-  op_otel_metrics_sum,
-  op_otel_metrics_sum_or_gauge_data_point,
-  op_otel_span_attribute,
+  op_otel_log_foreign,
+  op_otel_metric_attribute3,
+  op_otel_metric_observable_record0,
+  op_otel_metric_observable_record1,
+  op_otel_metric_observable_record2,
+  op_otel_metric_observable_record3,
+  op_otel_metric_observation_done,
+  op_otel_metric_record0,
+  op_otel_metric_record1,
+  op_otel_metric_record2,
+  op_otel_metric_record3,
+  op_otel_metric_wait_to_observe,
+  op_otel_span_add_link,
+  op_otel_span_attribute1,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
-  op_otel_span_continue,
-  op_otel_span_flush,
-  op_otel_span_set_dropped,
-  op_otel_span_start,
+  op_otel_span_update_name,
+  OtelMeter,
+  OtelSpan,
+  OtelTracer,
 } from "ext:core/ops";
 import { Console } from "ext:deno_console/01_console.js";
-import { performance } from "ext:deno_web/15_performance.js";
 
 const {
-  SafeWeakMap,
-  Array,
-  ObjectEntries,
-  ReflectApply,
-  SymbolFor,
+  ArrayFrom,
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeReduce,
+  ArrayPrototypeReverse,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
+  DatePrototype,
+  DatePrototypeGetTime,
   Error,
-  Uint8Array,
-  TypedArrayPrototypeSubarray,
+  MapPrototypeEntries,
+  MapPrototypeKeys,
+  Number,
+  NumberParseInt,
+  NumberPrototypeToString,
   ObjectAssign,
   ObjectDefineProperty,
-  WeakRefPrototypeDeref,
-  String,
-  StringPrototypePadStart,
+  ObjectEntries,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  SafeWeakRef,
+  ObjectValues,
+  ReflectApply,
+  SafeArrayIterator,
+  SafeIterator,
+  SafeMap,
+  SafePromiseAll,
+  SafeRegExp,
+  SafeSet,
+  SafeWeakSet,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeSubstring,
+  StringPrototypeTrim,
+  SymbolFor,
+  TypeError,
+  decodeURIComponent,
+  encodeURIComponent,
 } = primordials;
-const { AsyncVariable, setAsyncContext } = core;
+const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
-let DETERMINISTIC = false;
+export let METRICS_ENABLED = false;
+export let PROPAGATORS: TextMapPropagator[] = [];
+let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -82,8 +104,6 @@ interface SpanContext {
   traceState?: TraceState;
 }
 
-type HrTime = [number, number];
-
 enum SpanStatusCode {
   UNSET = 0,
   OK = 1,
@@ -95,7 +115,7 @@ interface SpanStatus {
   message?: string;
 }
 
-export type AttributeValue =
+type AttributeValue =
   | string
   | number
   | boolean
@@ -109,20 +129,18 @@ interface Attributes {
 
 type SpanAttributes = Attributes;
 
+type TimeInput = [number, number] | number | Date;
+
 interface SpanOptions {
-  attributes?: Attributes;
   kind?: SpanKind;
+  attributes?: Attributes;
+  links?: Link[];
+  startTime?: TimeInput;
+  root?: boolean;
 }
 
 interface Link {
   context: SpanContext;
-  attributes?: SpanAttributes;
-  droppedAttributesCount?: number;
-}
-
-interface TimedEvent {
-  time: HrTime;
-  name: string;
   attributes?: SpanAttributes;
   droppedAttributesCount?: number;
 }
@@ -149,476 +167,355 @@ interface IKeyValue {
   key: string;
   value: IAnyValue;
 }
-interface IResource {
-  attributes: IKeyValue[];
-  droppedAttributesCount: number;
+
+function hrToMs(hr: [number, number]): number {
+  return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
-interface InstrumentationLibrary {
-  readonly name: string;
-  readonly version?: string;
-  readonly schemaUrl?: string;
+function isTimeInput(input: unknown): input is TimeInput {
+  return typeof input === "number" ||
+    (input && (ArrayIsArray(input) || isDate(input)));
 }
 
-interface ReadableSpan {
-  readonly name: string;
-  readonly kind: SpanKind;
-  readonly spanContext: () => SpanContext;
-  readonly parentSpanId?: string;
-  readonly startTime: HrTime;
-  readonly endTime: HrTime;
-  readonly status: SpanStatus;
-  readonly attributes: SpanAttributes;
-  readonly links: Link[];
-  readonly events: TimedEvent[];
-  readonly duration: HrTime;
-  readonly ended: boolean;
-  readonly resource: IResource;
-  readonly instrumentationLibrary: InstrumentationLibrary;
-  readonly droppedAttributesCount: number;
-  readonly droppedEventsCount: number;
-  readonly droppedLinksCount: number;
+function timeInputToMs(input?: TimeInput): number | undefined {
+  if (input === undefined) return;
+  if (ArrayIsArray(input)) {
+    return hrToMs(input);
+  } else if (isDate(input)) {
+    return DatePrototypeGetTime(input);
+  }
+  return input;
 }
 
-enum ExportResultCode {
-  SUCCESS = 0,
-  FAILED = 1,
+function countAttributes(attributes?: Attributes): number {
+  return attributes ? ObjectKeys(attributes).length : 0;
 }
 
-interface ExportResult {
-  code: ExportResultCode;
-  error?: Error;
+interface AsyncContextSnapshot {
+  __brand: "AsyncContextSnapshot";
 }
 
-function hrToSecs(hr: [number, number]): number {
-  return ((hr[0] * 1e3 + hr[1] / 1e6) / 1000);
+export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
+  if (!span.isRecording()) return undefined;
+  const context = (CURRENT.get() ?? ROOT_CONTEXT).setValue(SPAN_KEY, span);
+  return CURRENT.enter(context);
 }
 
-const TRACE_FLAG_SAMPLED = 1 << 0;
+export const currentSnapshot = getAsyncContext;
+export const restoreSnapshot = setAsyncContext;
 
-const instrumentationScopes = new SafeWeakMap<
-  InstrumentationLibrary,
-  { __key: "instrumentation-library" }
->();
-let activeInstrumentationLibrary: WeakRef<InstrumentationLibrary> | null = null;
+function isDate(value: unknown): value is Date {
+  return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
+}
 
-function submitSpan(
-  spanId: string | Uint8Array,
-  traceId: string | Uint8Array,
-  traceFlags: number,
-  parentSpanId: string | Uint8Array | null,
-  span: Omit<
-    ReadableSpan,
-    | "spanContext"
-    | "startTime"
-    | "endTime"
-    | "parentSpanId"
-    | "duration"
-    | "ended"
-    | "resource"
-  >,
-  startTime: number,
-  endTime: number,
-) {
-  if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
+interface OtelTracer {
+  __key: "tracer";
 
-  // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?
+  // deno-lint-ignore no-misused-new
+  new (name: string, version?: string, schemaUrl?: string): OtelTracer;
 
-  const instrumentationLibrary = span.instrumentationLibrary;
-  if (
-    !activeInstrumentationLibrary ||
-    WeakRefPrototypeDeref(activeInstrumentationLibrary) !==
-      instrumentationLibrary
+  startSpan(
+    parent: OtelSpan | undefined,
+    name: string,
+    spanKind: SpanKind,
+    startTime: number | undefined,
+    attributeCount: number,
+  ): OtelSpan;
+
+  startSpanForeign(
+    parentTraceId: string,
+    parentSpanId: string,
+    name: string,
+    spanKind: SpanKind,
+    startTime: number | undefined,
+    attributeCount: number,
+  ): OtelSpan;
+}
+
+interface OtelSpan {
+  __key: "span";
+
+  spanContext(): SpanContext;
+  setStatus(status: SpanStatusCode, errorDescription: string): void;
+  addEvent(
+    name: string,
+    startTime: number,
+    droppedAttributeCount: number,
+  ): void;
+  dropEvent(): void;
+  end(endTime: number): void;
+}
+
+interface TracerOptions {
+  schemaUrl?: string;
+}
+
+class TracerProvider {
+  constructor() {
+    throw new TypeError("TracerProvider can not be constructed");
+  }
+
+  static getTracer(
+    name: string,
+    version?: string,
+    options?: TracerOptions,
+  ): Tracer {
+    const tracer = new OtelTracer(name, version, options?.schemaUrl);
+    return new Tracer(tracer);
+  }
+}
+
+class Tracer {
+  #tracer: OtelTracer;
+
+  constructor(tracer: OtelTracer) {
+    this.#tracer = tracer;
+  }
+
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    context: Context,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    optionsOrFn: SpanOptions | F,
+    fnOrContext?: F | Context,
+    maybeFn?: F,
   ) {
-    activeInstrumentationLibrary = new SafeWeakRef(instrumentationLibrary);
-    if (instrumentationLibrary === BUILTIN_INSTRUMENTATION_LIBRARY) {
-      op_otel_instrumentation_scope_enter_builtin();
+    let options;
+    let context;
+    let fn;
+    if (typeof optionsOrFn === "function") {
+      options = undefined;
+      fn = optionsOrFn;
+    } else if (typeof fnOrContext === "function") {
+      options = optionsOrFn;
+      fn = fnOrContext;
+    } else if (typeof maybeFn === "function") {
+      options = optionsOrFn;
+      context = fnOrContext;
+      fn = maybeFn;
     } else {
-      let instrumentationScope = instrumentationScopes
-        .get(instrumentationLibrary);
-
-      if (instrumentationScope === undefined) {
-        instrumentationScope = op_otel_instrumentation_scope_create_and_enter(
-          instrumentationLibrary.name,
-          instrumentationLibrary.version,
-          instrumentationLibrary.schemaUrl,
-        ) as { __key: "instrumentation-library" };
-        instrumentationScopes.set(
-          instrumentationLibrary,
-          instrumentationScope,
-        );
-      } else {
-        op_otel_instrumentation_scope_enter(
-          instrumentationScope,
-        );
-      }
+      throw new Error("startActiveSpan requires a function argument");
     }
-  }
-
-  op_otel_span_start(
-    traceId,
-    spanId,
-    parentSpanId,
-    span.kind,
-    span.name,
-    startTime,
-    endTime,
-  );
-
-  const status = span.status;
-  if (status !== null && status.code !== 0) {
-    op_otel_span_continue(status.code, status.message ?? "");
-  }
-
-  const attributeKvs = ObjectEntries(span.attributes);
-  let i = 0;
-  while (i < attributeKvs.length) {
-    if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-        attributeKvs[i + 2][0],
-        attributeKvs[i + 2][1],
-      );
-      i += 3;
-    } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-      );
-      i += 2;
+    if (options?.root) {
+      context = ROOT_CONTEXT;
     } else {
-      op_otel_span_attribute(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
+      context = context ?? CURRENT.get() ?? ROOT_CONTEXT;
+    }
+    const span = this.startSpan(name, options, context);
+    const ctx = CURRENT.enter(context.setValue(SPAN_KEY, span));
+    try {
+      return ReflectApply(fn, undefined, [span]);
+    } finally {
+      setAsyncContext(ctx);
+    }
+  }
+
+  startSpan(name: string, options?: SpanOptions, context?: Context): Span {
+    if (options?.root) {
+      context = undefined;
+    } else {
+      context = context ?? CURRENT.get();
+    }
+
+    const startTime = timeInputToMs(options?.startTime);
+
+    const parentSpan = context?.getValue(SPAN_KEY) as
+      | Span
+      | { spanContext(): SpanContext }
+      | undefined;
+    const attributesCount = countAttributes(options?.attributes);
+    const parentOtelSpan: OtelSpan | null | undefined = parentSpan !== undefined
+      ? getOtelSpan(parentSpan) ?? undefined
+      : undefined;
+    let otelSpan: OtelSpan;
+    if (parentOtelSpan || !parentSpan) {
+      otelSpan = this.#tracer.startSpan(
+        parentOtelSpan,
+        name,
+        options?.kind ?? 0,
+        startTime,
+        attributesCount,
       );
-      i += 1;
+    } else {
+      const spanContext = parentSpan.spanContext();
+      otelSpan = this.#tracer.startSpanForeign(
+        spanContext.traceId,
+        spanContext.spanId,
+        name,
+        options?.kind ?? 0,
+        startTime,
+        attributesCount,
+      );
     }
+    const span = new Span(otelSpan);
+    if (options?.links) span.addLinks(options?.links);
+    if (options?.attributes) span.setAttributes(options?.attributes);
+    return span;
   }
-
-  // TODO(@lucacasonato): implement links
-  // TODO(@lucacasonato): implement events
-
-  const droppedAttributesCount = span.droppedAttributesCount;
-  const droppedLinksCount = span.droppedLinksCount + span.links.length;
-  const droppedEventsCount = span.droppedEventsCount + span.events.length;
-  if (
-    droppedAttributesCount > 0 || droppedLinksCount > 0 ||
-    droppedEventsCount > 0
-  ) {
-    op_otel_span_set_dropped(
-      droppedAttributesCount,
-      droppedLinksCount,
-      droppedEventsCount,
-    );
-  }
-
-  op_otel_span_flush();
-}
-
-const now = () => (performance.timeOrigin + performance.now()) / 1000;
-
-const SPAN_ID_BYTES = 8;
-const TRACE_ID_BYTES = 16;
-
-const INVALID_TRACE_ID = new Uint8Array(TRACE_ID_BYTES);
-const INVALID_SPAN_ID = new Uint8Array(SPAN_ID_BYTES);
-
-const NO_ASYNC_CONTEXT = {};
-
-let otelLog: (message: string, level: number) => void;
-
-const hexSliceLookupTable = (function () {
-  const alphabet = "0123456789abcdef";
-  const table = new Array(256);
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
-  }
-  return table;
-})();
-
-function bytesToHex(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    out += hexSliceLookupTable[bytes[i]];
-  }
-  return out;
 }
 
 const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-const BUILTIN_INSTRUMENTATION_LIBRARY: InstrumentationLibrary = {} as never;
+let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-let COUNTER = 1;
-
-export let enterSpan: (span: Span) => void;
-export let exitSpan: (span: Span) => void;
-export let endSpan: (span: Span) => void;
-
-export class Span {
-  #traceId: string | Uint8Array;
-  #spanId: Uint8Array;
-  #traceFlags = TRACE_FLAG_SAMPLED;
-
-  #spanContext: SpanContext | null = null;
-
-  #parentSpanId: string | Uint8Array | null = null;
-  #parentSpanIdString: string | null = null;
-
-  #recording = TRACING_ENABLED;
-
-  #kind: number = SpanKind.INTERNAL;
-  #name: string;
-  #startTime: number;
-  #status: { code: number; message?: string } | null = null;
-  #attributes: Attributes = { __proto__: null } as never;
-
-  #droppedEventsCount = 0;
-  #droppedLinksCount = 0;
-
-  #asyncContext = NO_ASYNC_CONTEXT;
+class Span {
+  #otelSpan: OtelSpan | null;
+  #spanContext: SpanContext | undefined;
 
   static {
-    otelLog = function otelLog(message, level) {
-      let traceId = null;
-      let spanId = null;
-      let traceFlags = 0;
-      const span = CURRENT.get()?.getValue(SPAN_KEY);
-      if (span) {
-        // The lint is wrong, we can not use anything but `in` here because this
-        // is a private field.
-        // deno-lint-ignore prefer-primordials
-        if (#traceId in span) {
-          traceId = span.#traceId;
-          spanId = span.#spanId;
-          traceFlags = span.#traceFlags;
-        } else {
-          const context = span.spanContext();
-          traceId = context.traceId;
-          spanId = context.spanId;
-          traceFlags = context.traceFlags;
-        }
-      }
-      return op_otel_log(message, level, traceId, spanId, traceFlags);
-    };
-
-    enterSpan = (span: Span) => {
-      if (!span.#recording) return;
-      const context = (CURRENT.get() || ROOT_CONTEXT).setValue(SPAN_KEY, span);
-      span.#asyncContext = CURRENT.enter(context);
-    };
-
-    exitSpan = (span: Span) => {
-      if (!span.#recording) return;
-      if (span.#asyncContext === NO_ASYNC_CONTEXT) return;
-      setAsyncContext(span.#asyncContext);
-      span.#asyncContext = NO_ASYNC_CONTEXT;
-    };
-
-    endSpan = (span: Span) => {
-      const endTime = now();
-      submitSpan(
-        span.#spanId,
-        span.#traceId,
-        span.#traceFlags,
-        span.#parentSpanId,
-        {
-          name: span.#name,
-          kind: span.#kind,
-          status: span.#status ?? { code: 0 },
-          attributes: span.#attributes,
-          events: [],
-          links: [],
-          droppedAttributesCount: 0,
-          droppedEventsCount: span.#droppedEventsCount,
-          droppedLinksCount: span.#droppedLinksCount,
-          instrumentationLibrary: BUILTIN_INSTRUMENTATION_LIBRARY,
-        },
-        span.#startTime,
-        endTime,
-      );
-    };
+    // deno-lint-ignore prefer-primordials
+    getOtelSpan = (span) => (#otelSpan in span ? span.#otelSpan : undefined);
   }
 
-  constructor(
-    name: string,
-    options?: SpanOptions,
-  ) {
-    if (!this.isRecording) {
-      this.#name = "";
-      this.#startTime = 0;
-      this.#traceId = INVALID_TRACE_ID;
-      this.#spanId = INVALID_SPAN_ID;
-      this.#traceFlags = 0;
-      return;
-    }
-
-    this.#name = name;
-    this.#startTime = now();
-    this.#attributes = options?.attributes ?? { __proto__: null } as never;
-    this.#kind = options?.kind ?? SpanKind.INTERNAL;
-
-    const currentSpan: Span | {
-      spanContext(): { traceId: string; spanId: string };
-    } = CURRENT.get()?.getValue(SPAN_KEY);
-    if (currentSpan) {
-      if (DETERMINISTIC) {
-        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
-      } else {
-        this.#spanId = new Uint8Array(SPAN_ID_BYTES);
-        op_crypto_get_random_values(this.#spanId);
-      }
-      // deno-lint-ignore prefer-primordials
-      if (#traceId in currentSpan) {
-        this.#traceId = currentSpan.#traceId;
-        this.#parentSpanId = currentSpan.#spanId;
-      } else {
-        const context = currentSpan.spanContext();
-        this.#traceId = context.traceId;
-        this.#parentSpanId = context.spanId;
-      }
-    } else {
-      if (DETERMINISTIC) {
-        this.#traceId = StringPrototypePadStart(String(COUNTER++), 32, "0");
-        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
-      } else {
-        const buffer = new Uint8Array(TRACE_ID_BYTES + SPAN_ID_BYTES);
-        op_crypto_get_random_values(buffer);
-        this.#traceId = TypedArrayPrototypeSubarray(buffer, 0, TRACE_ID_BYTES);
-        this.#spanId = TypedArrayPrototypeSubarray(buffer, TRACE_ID_BYTES);
-      }
-    }
+  constructor(otelSpan: OtelSpan | null) {
+    this.#otelSpan = otelSpan;
   }
 
   spanContext() {
     if (!this.#spanContext) {
-      this.#spanContext = {
-        traceId: typeof this.#traceId === "string"
-          ? this.#traceId
-          : bytesToHex(this.#traceId),
-        spanId: typeof this.#spanId === "string"
-          ? this.#spanId
-          : bytesToHex(this.#spanId),
-        traceFlags: this.#traceFlags,
-      };
+      if (this.#otelSpan) {
+        this.#spanContext = this.#otelSpan.spanContext();
+      } else {
+        this.#spanContext = {
+          traceId: "00000000000000000000000000000000",
+          spanId: "0000000000000000",
+          traceFlags: 0,
+        };
+      }
     }
     return this.#spanContext;
   }
 
-  get parentSpanId() {
-    if (!this.#parentSpanIdString && this.#parentSpanId) {
-      if (typeof this.#parentSpanId === "string") {
-        this.#parentSpanIdString = this.#parentSpanId;
-      } else {
-        this.#parentSpanIdString = bytesToHex(this.#parentSpanId);
-      }
+  addEvent(
+    name: string,
+    attributesOrStartTime?: Attributes | TimeInput,
+    startTime?: TimeInput,
+  ): this {
+    if (isTimeInput(attributesOrStartTime)) {
+      startTime = attributesOrStartTime;
+      attributesOrStartTime = undefined;
     }
-    return this.#parentSpanIdString;
-  }
+    const startTimeMs = timeInputToMs(startTime);
 
-  setAttribute(name: string, value: AttributeValue) {
-    if (this.#recording) this.#attributes[name] = value;
+    this.#otelSpan?.addEvent(
+      name,
+      startTimeMs ?? NaN,
+      countAttributes(attributesOrStartTime),
+    );
     return this;
   }
 
-  setAttributes(attributes: Attributes) {
-    if (this.#recording) ObjectAssign(this.#attributes, attributes);
+  addLink(link: Link): this {
+    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
+      countAttributes(link.attributes);
+    const valid = op_otel_span_add_link(
+      this.#otelSpan,
+      link.context.traceId,
+      link.context.spanId,
+      link.context.traceFlags,
+      link.context.isRemote ?? false,
+      droppedAttributeCount,
+    );
+    if (!valid) return this;
     return this;
   }
 
-  setStatus(status: { code: number; message?: string }) {
-    if (this.#recording) {
-      if (status.code === 0) {
-        this.#status = null;
-      } else if (status.code > 2) {
-        throw new Error("Invalid status code");
-      } else {
-        this.#status = status;
-      }
+  addLinks(links: Link[]): this {
+    for (let i = 0; i < links.length; i++) {
+      this.addLink(links[i]);
     }
     return this;
   }
 
-  updateName(name: string) {
-    if (this.#recording) this.#name = name;
+  end(endTime?: TimeInput): void {
+    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
+  }
+
+  isRecording(): boolean {
+    return this.#otelSpan !== undefined;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  recordException(_exception: any, _time?: TimeInput): void {
+    this.#otelSpan?.dropEvent();
+  }
+
+  setAttribute(key: string, value: AttributeValue): this {
+    if (!this.#otelSpan) return this;
+    op_otel_span_attribute1(this.#otelSpan, key, value);
     return this;
   }
 
-  addEvent(_name: never) {
-    // TODO(@lucacasonato): implement events
-    if (this.#recording) this.#droppedEventsCount += 1;
-    return this;
-  }
-
-  addLink(_link: never) {
-    // TODO(@lucacasonato): implement links
-    if (this.#recording) this.#droppedLinksCount += 1;
-    return this;
-  }
-
-  addLinks(links: never[]) {
-    // TODO(@lucacasonato): implement links
-    if (this.#recording) this.#droppedLinksCount += links.length;
-    return this;
-  }
-
-  isRecording() {
-    return this.#recording;
-  }
-}
-
-// Exporter compatible with opentelemetry js library
-class SpanExporter {
-  export(
-    spans: ReadableSpan[],
-    resultCallback: (result: ExportResult) => void,
-  ) {
-    try {
-      for (let i = 0; i < spans.length; i += 1) {
-        const span = spans[i];
-        const context = span.spanContext();
-        submitSpan(
-          context.spanId,
-          context.traceId,
-          context.traceFlags,
-          span.parentSpanId ?? null,
-          span,
-          hrToSecs(span.startTime),
-          hrToSecs(span.endTime),
+  setAttributes(attributes: Attributes): this {
+    if (!this.#otelSpan) return this;
+    const attributeKvs = ObjectEntries(attributes);
+    let i = 0;
+    while (i < attributeKvs.length) {
+      if (i + 2 < attributeKvs.length) {
+        op_otel_span_attribute3(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+          attributeKvs[i + 1][0],
+          attributeKvs[i + 1][1],
+          attributeKvs[i + 2][0],
+          attributeKvs[i + 2][1],
         );
+        i += 3;
+      } else if (i + 1 < attributeKvs.length) {
+        op_otel_span_attribute2(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+          attributeKvs[i + 1][0],
+          attributeKvs[i + 1][1],
+        );
+        i += 2;
+      } else {
+        op_otel_span_attribute1(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+        );
+        i += 1;
       }
-      resultCallback({ code: 0 });
-    } catch (error) {
-      resultCallback({
-        code: 1,
-        error: ObjectPrototypeIsPrototypeOf(error, Error)
-          ? error as Error
-          : new Error(String(error)),
-      });
     }
+    return this;
   }
 
-  async shutdown() {}
+  setStatus(status: SpanStatus): this {
+    this.#otelSpan?.setStatus(status.code, status.message ?? "");
+    return this;
+  }
 
-  async forceFlush() {}
+  updateName(name: string): this {
+    if (!this.#otelSpan) return this;
+    op_otel_span_update_name(this.#otelSpan, name);
+    return this;
+  }
 }
 
 const CURRENT = new AsyncVariable();
 
 class Context {
+  // @ts-ignore __proto__ is not supported in TypeScript
   #data: Record<symbol, unknown> = { __proto__: null };
 
   constructor(data?: Record<symbol, unknown> | null | undefined) {
+    // @ts-ignore __proto__ is not supported in TypeScript
     this.#data = { __proto__: null, ...data };
   }
 
@@ -643,12 +540,16 @@ class Context {
 const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
-class ContextManager {
-  active(): Context {
+export class ContextManager {
+  constructor() {
+    throw new TypeError("ContextManager can not be constructed");
+  }
+
+  static active(): Context {
     return CURRENT.get() ?? ROOT_CONTEXT;
   }
 
-  with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
+  static with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
     context: Context,
     fn: F,
     thisArg?: ThisParameterType<F>,
@@ -663,7 +564,7 @@ class ContextManager {
   }
 
   // deno-lint-ignore no-explicit-any
-  bind<T extends (...args: any[]) => any>(
+  static bind<T extends (...args: any[]) => any>(
     context: Context,
     target: T,
   ): T {
@@ -677,269 +578,534 @@ class ContextManager {
     }) as T;
   }
 
-  enable() {
+  static enable() {
     return this;
   }
 
-  disable() {
+  static disable() {
     return this;
   }
 }
 
-function attributeValue(value: IAnyValue) {
-  return value.boolValue ?? value.stringValue ?? value.doubleValue ??
-    value.intValue;
+// metrics
+
+interface MeterOptions {
+  schemaUrl?: string;
 }
 
-function submitMetrics(resource, scopeMetrics) {
-  let i = 0;
-  while (i < resource.attributes.length) {
-    if (i + 2 < resource.attributes.length) {
-      op_otel_metrics_resource_attribute3(
-        resource.attributes.length,
-        resource.attributes[i].key,
-        attributeValue(resource.attributes[i].value),
-        resource.attributes[i + 1].key,
-        attributeValue(resource.attributes[i + 1].value),
-        resource.attributes[i + 2].key,
-        attributeValue(resource.attributes[i + 2].value),
-      );
-      i += 3;
-    } else if (i + 1 < resource.attributes.length) {
-      op_otel_metrics_resource_attribute2(
-        resource.attributes.length,
-        resource.attributes[i].key,
-        attributeValue(resource.attributes[i].value),
-        resource.attributes[i + 1].key,
-        attributeValue(resource.attributes[i + 1].value),
-      );
-      i += 2;
-    } else {
-      op_otel_metrics_resource_attribute(
-        resource.attributes.length,
-        resource.attributes[i].key,
-        attributeValue(resource.attributes[i].value),
-      );
-      i += 1;
+interface MetricOptions {
+  description?: string;
+
+  unit?: string;
+
+  valueType?: ValueType;
+
+  advice?: MetricAdvice;
+}
+
+enum ValueType {
+  INT = 0,
+  DOUBLE = 1,
+}
+
+interface MetricAdvice {
+  /**
+   * Hint the explicit bucket boundaries for SDK if the metric is been
+   * aggregated with a HistogramAggregator.
+   */
+  explicitBucketBoundaries?: number[];
+}
+
+interface OtelMeter {
+  __key: "meter";
+  createCounter(name: string, description?: string, unit?: string): Instrument;
+  createUpDownCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createGauge(name: string, description?: string, unit?: string): Instrument;
+  createHistogram(
+    name: string,
+    description?: string,
+    unit?: string,
+    explicitBucketBoundaries?: number[],
+  ): Instrument;
+  createObservableCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createObservableUpDownCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createObservableGauge(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+}
+
+class MeterProvider {
+  constructor() {
+    throw new TypeError("MeterProvider can not be constructed");
+  }
+
+  static getMeter(
+    name: string,
+    version?: string,
+    options?: MeterOptions,
+  ): Meter {
+    const meter = new OtelMeter(name, version, options?.schemaUrl);
+    return new Meter(meter);
+  }
+}
+
+type MetricAttributes = Attributes;
+
+type Instrument = { __key: "instrument" };
+
+let batchResultHasObservables: (
+  res: BatchObservableResult,
+  observables: Observable[],
+) => boolean;
+
+class BatchObservableResult {
+  #observables: WeakSet<Observable>;
+
+  constructor(observables: WeakSet<Observable>) {
+    this.#observables = observables;
+  }
+
+  static {
+    batchResultHasObservables = (cb, observables) => {
+      for (const observable of new SafeIterator(observables)) {
+        if (!cb.#observables.has(observable)) return false;
+      }
+      return true;
+    };
+  }
+
+  observe(
+    metric: Observable,
+    value: number,
+    attributes?: MetricAttributes,
+  ): void {
+    if (!this.#observables.has(metric)) return;
+    getObservableResult(metric).observe(value, attributes);
+  }
+}
+
+const BATCH_CALLBACKS = new SafeMap<
+  BatchObservableCallback,
+  BatchObservableResult
+>();
+const INDIVIDUAL_CALLBACKS = new SafeMap<Observable, Set<ObservableCallback>>();
+
+class Meter {
+  #meter: OtelMeter;
+
+  constructor(meter: OtelMeter) {
+    this.#meter = meter;
+  }
+
+  createCounter(name: string, options?: MetricOptions): Counter {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Counter(null, false);
+    const instrument = this.#meter.createCounter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Counter(instrument, false);
+  }
+
+  createUpDownCounter(name: string, options?: MetricOptions): Counter {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Counter(null, true);
+    const instrument = this.#meter.createUpDownCounter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Counter(instrument, true);
+  }
+
+  createGauge(name: string, options?: MetricOptions): Gauge {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Gauge(null);
+    const instrument = this.#meter.createGauge(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Gauge(instrument);
+  }
+
+  createHistogram(name: string, options?: MetricOptions): Histogram {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) return new Histogram(null);
+    const instrument = this.#meter.createHistogram(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+      options?.advice?.explicitBucketBoundaries,
+    ) as Instrument;
+    return new Histogram(instrument);
+  }
+
+  createObservableCounter(name: string, options?: MetricOptions): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
+    const instrument = this.#meter.createObservableCounter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, true));
+  }
+
+  createObservableUpDownCounter(
+    name: string,
+    options?: MetricOptions,
+  ): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
+    const instrument = this.#meter.createObservableUpDownCounter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, false));
+  }
+
+  createObservableGauge(name: string, options?: MetricOptions): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
+    const instrument = this.#meter.createObservableGauge(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, false));
+  }
+
+  addBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void {
+    if (!METRICS_ENABLED) return;
+    const result = new BatchObservableResult(new SafeWeakSet(observables));
+    startObserving();
+    BATCH_CALLBACKS.set(callback, result);
+  }
+
+  removeBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void {
+    if (!METRICS_ENABLED) return;
+    const result = BATCH_CALLBACKS.get(callback);
+    if (result && batchResultHasObservables(result, observables)) {
+      BATCH_CALLBACKS.delete(callback);
     }
   }
+}
 
-  for (let smi = 0; smi < scopeMetrics.length; smi += 1) {
-    const { scope, metrics } = scopeMetrics[smi];
+type BatchObservableCallback = (
+  observableResult: BatchObservableResult,
+) => void | Promise<void>;
 
-    op_otel_metrics_scope(scope.name, scope.schemaUrl, scope.version);
-
-    for (let mi = 0; mi < metrics.length; mi += 1) {
-      const metric = metrics[mi];
-      switch (metric.dataPointType) {
-        case 3:
-          op_otel_metrics_sum(
-            metric.descriptor.name,
-            // deno-lint-ignore prefer-primordials
-            metric.descriptor.description,
-            metric.descriptor.unit,
-            metric.aggregationTemporality,
-            metric.isMonotonic,
-          );
-          for (let di = 0; di < metric.dataPoints.length; di += 1) {
-            const dataPoint = metric.dataPoints[di];
-            op_otel_metrics_sum_or_gauge_data_point(
-              dataPoint.value,
-              hrToSecs(dataPoint.startTime),
-              hrToSecs(dataPoint.endTime),
-            );
-            const attributes = ObjectEntries(dataPoint.attributes);
-            let i = 0;
-            while (i < attributes.length) {
-              if (i + 2 < attributes.length) {
-                op_otel_metrics_data_point_attribute3(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                  attributes[i + 2][0],
-                  attributes[i + 2][1],
-                );
-                i += 3;
-              } else if (i + 1 < attributes.length) {
-                op_otel_metrics_data_point_attribute2(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                );
-                i += 2;
-              } else {
-                op_otel_metrics_data_point_attribute(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                );
-                i += 1;
-              }
-            }
-          }
-          break;
-        case 2:
-          op_otel_metrics_gauge(
-            metric.descriptor.name,
-            // deno-lint-ignore prefer-primordials
-            metric.descriptor.description,
-            metric.descriptor.unit,
-          );
-          for (let di = 0; di < metric.dataPoints.length; di += 1) {
-            const dataPoint = metric.dataPoints[di];
-            op_otel_metrics_sum_or_gauge_data_point(
-              dataPoint.value,
-              hrToSecs(dataPoint.startTime),
-              hrToSecs(dataPoint.endTime),
-            );
-            const attributes = ObjectEntries(dataPoint.attributes);
-            let i = 0;
-            while (i < attributes.length) {
-              if (i + 2 < attributes.length) {
-                op_otel_metrics_data_point_attribute3(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                  attributes[i + 2][0],
-                  attributes[i + 2][1],
-                );
-                i += 3;
-              } else if (i + 1 < attributes.length) {
-                op_otel_metrics_data_point_attribute2(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                );
-                i += 2;
-              } else {
-                op_otel_metrics_data_point_attribute(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                );
-                i += 1;
-              }
-            }
-          }
-          break;
-        case 0:
-          op_otel_metrics_histogram(
-            metric.descriptor.name,
-            // deno-lint-ignore prefer-primordials
-            metric.descriptor.description,
-            metric.descriptor.unit,
-            metric.aggregationTemporality,
-          );
-          for (let di = 0; di < metric.dataPoints.length; di += 1) {
-            const dataPoint = metric.dataPoints[di];
-            const { boundaries, counts } = dataPoint.value.buckets;
-            op_otel_metrics_histogram_data_point(
-              dataPoint.value.count,
-              dataPoint.value.min ?? NaN,
-              dataPoint.value.max ?? NaN,
-              dataPoint.value.sum,
-              hrToSecs(dataPoint.startTime),
-              hrToSecs(dataPoint.endTime),
-              boundaries.length,
-            );
-            let j = 0;
-            while (j < boundaries.length) {
-              if (j + 3 < boundaries.length) {
-                op_otel_metrics_histogram_data_point_entry3(
-                  counts[j],
-                  boundaries[j],
-                  counts[j + 1],
-                  boundaries[j + 1],
-                  counts[j + 2],
-                  boundaries[j + 2],
-                );
-                j += 3;
-              } else if (j + 2 < boundaries.length) {
-                op_otel_metrics_histogram_data_point_entry2(
-                  counts[j],
-                  boundaries[j],
-                  counts[j + 1],
-                  boundaries[j + 1],
-                );
-                j += 2;
-              } else {
-                op_otel_metrics_histogram_data_point_entry1(
-                  counts[j],
-                  boundaries[j],
-                );
-                j += 1;
-              }
-            }
-            op_otel_metrics_histogram_data_point_entry_final(counts[j]);
-            const attributes = ObjectEntries(dataPoint.attributes);
-            let i = 0;
-            while (i < attributes.length) {
-              if (i + 2 < attributes.length) {
-                op_otel_metrics_data_point_attribute3(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                  attributes[i + 2][0],
-                  attributes[i + 2][1],
-                );
-                i += 3;
-              } else if (i + 1 < attributes.length) {
-                op_otel_metrics_data_point_attribute2(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                  attributes[i + 1][0],
-                  attributes[i + 1][1],
-                );
-                i += 2;
-              } else {
-                op_otel_metrics_data_point_attribute(
-                  attributes.length,
-                  attributes[i][0],
-                  attributes[i][1],
-                );
-                i += 1;
-              }
-            }
-          }
-          break;
-        default:
-          continue;
+function record(
+  instrument: Instrument | null,
+  value: number,
+  attributes?: MetricAttributes,
+) {
+  if (instrument === null) return;
+  if (attributes === undefined) {
+    op_otel_metric_record0(instrument, value);
+  } else {
+    const attrs = ObjectEntries(attributes);
+    if (attrs.length === 0) {
+      op_otel_metric_record0(instrument, value);
+    }
+    let i = 0;
+    while (i < attrs.length) {
+      const remaining = attrs.length - i;
+      if (remaining > 3) {
+        op_otel_metric_attribute3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 3) {
+        op_otel_metric_record3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 2) {
+        op_otel_metric_record2(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+        );
+        i += 2;
+      } else if (remaining === 1) {
+        op_otel_metric_record1(instrument, value, attrs[i][0], attrs[i][1]);
+        i += 1;
       }
     }
   }
-
-  op_otel_metrics_submit();
 }
 
-class MetricExporter {
-  export(metrics, resultCallback: (result: ExportResult) => void) {
-    try {
-      submitMetrics(metrics.resource, metrics.scopeMetrics);
-      resultCallback({ code: 0 });
-    } catch (error) {
-      resultCallback({
-        code: 1,
-        error: ObjectPrototypeIsPrototypeOf(error, Error)
-          ? error as Error
-          : new Error(String(error)),
-      });
+function recordObservable(
+  instrument: Instrument | null,
+  value: number,
+  attributes?: MetricAttributes,
+) {
+  if (instrument === null) return;
+  if (attributes === undefined) {
+    op_otel_metric_observable_record0(instrument, value);
+  } else {
+    const attrs = ObjectEntries(attributes);
+    if (attrs.length === 0) {
+      op_otel_metric_observable_record0(instrument, value);
+    }
+    let i = 0;
+    while (i < attrs.length) {
+      const remaining = attrs.length - i;
+      if (remaining > 3) {
+        op_otel_metric_attribute3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 3) {
+        op_otel_metric_observable_record3(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+          attrs[i + 2][0],
+          attrs[i + 2][1],
+        );
+        i += 3;
+      } else if (remaining === 2) {
+        op_otel_metric_observable_record2(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+          attrs[i + 1][0],
+          attrs[i + 1][1],
+        );
+        i += 2;
+      } else if (remaining === 1) {
+        op_otel_metric_observable_record1(
+          instrument,
+          value,
+          attrs[i][0],
+          attrs[i][1],
+        );
+        i += 1;
+      }
     }
   }
+}
 
-  async forceFlush() {}
+class Counter {
+  #instrument: Instrument | null;
+  #upDown: boolean;
 
-  async shutdown() {}
+  constructor(instrument: Instrument | null, upDown: boolean) {
+    this.#instrument = instrument;
+    this.#upDown = upDown;
+  }
+
+  add(value: number, attributes?: MetricAttributes, _context?: Context): void {
+    if (value < 0 && !this.#upDown) {
+      throw new Error("Counter can only be incremented");
+    }
+    record(this.#instrument, value, attributes);
+  }
+}
+
+class Gauge {
+  #instrument: Instrument | null;
+
+  constructor(instrument: Instrument | null) {
+    this.#instrument = instrument;
+  }
+
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void {
+    record(this.#instrument, value, attributes);
+  }
+}
+
+class Histogram {
+  #instrument: Instrument | null;
+
+  constructor(instrument: Instrument | null) {
+    this.#instrument = instrument;
+  }
+
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void {
+    record(this.#instrument, value, attributes);
+  }
+}
+
+type ObservableCallback = (
+  observableResult: ObservableResult,
+) => void | Promise<void>;
+
+let getObservableResult: (observable: Observable) => ObservableResult;
+
+class Observable {
+  #result: ObservableResult;
+
+  constructor(result: ObservableResult) {
+    this.#result = result;
+  }
+
+  static {
+    getObservableResult = (observable) => observable.#result;
+  }
+
+  addCallback(callback: ObservableCallback): void {
+    const res = INDIVIDUAL_CALLBACKS.get(this);
+    if (res) res.add(callback);
+    else INDIVIDUAL_CALLBACKS.set(this, new SafeSet([callback]));
+    startObserving();
+  }
+
+  removeCallback(callback: ObservableCallback): void {
+    const res = INDIVIDUAL_CALLBACKS.get(this);
+    if (res) res.delete(callback);
+    if (res?.size === 0) INDIVIDUAL_CALLBACKS.delete(this);
+  }
+}
+
+class ObservableResult {
+  #instrument: Instrument | null;
+  #isRegularCounter: boolean;
+
+  constructor(instrument: Instrument | null, isRegularCounter: boolean) {
+    this.#instrument = instrument;
+    this.#isRegularCounter = isRegularCounter;
+  }
+
+  observe(
+    this: ObservableResult,
+    value: number,
+    attributes?: MetricAttributes,
+  ): void {
+    if (this.#isRegularCounter) {
+      if (value < 0) {
+        throw new Error("Observable counters can only be incremented");
+      }
+    }
+    recordObservable(this.#instrument, value, attributes);
+  }
+}
+
+async function observe(): Promise<void> {
+  if (ISOLATE_METRICS) {
+    op_otel_collect_isolate_metrics();
+  }
+
+  const promises: Promise<void>[] = [];
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
+    const result = getObservableResult(observable);
+    // Primordials are not needed, because this is a SafeSet.
+    // deno-lint-ignore prefer-primordials
+    for (const callback of callbacks) {
+      // PromiseTry is not in primordials?
+      // deno-lint-ignore prefer-primordials
+      ArrayPrototypePush(promises, Promise.try(callback, result));
+    }
+  }
+  // Primordials are not needed, because this is a SafeMap.
+  // deno-lint-ignore prefer-primordials
+  for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
+    // PromiseTry is not in primordials?
+    // deno-lint-ignore prefer-primordials
+    ArrayPrototypePush(promises, Promise.try(callback, result));
+  }
+  await SafePromiseAll(promises);
+}
+
+let isObserving = false;
+function startObserving() {
+  if (!isObserving) {
+    isObserving = true;
+    (async () => {
+      while (true) {
+        const promise = op_otel_metric_wait_to_observe();
+        core.unrefOpPromise(promise);
+        const ok = await promise;
+        if (!ok) break;
+        await observe();
+        op_otel_metric_observation_done();
+      }
+    })();
+  }
 }
 
 const otelConsoleConfig = {
@@ -948,17 +1114,610 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
+function otelLog(message: string, level: number) {
+  const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
+  const otelSpan = currentSpan !== undefined
+    ? getOtelSpan(currentSpan)
+    : undefined;
+  if (otelSpan || currentSpan === undefined) {
+    op_otel_log(message, level, otelSpan);
+  } else {
+    const spanContext = currentSpan.spanContext();
+    op_otel_log_foreign(
+      message,
+      level,
+      spanContext.traceId,
+      spanContext.spanId,
+      spanContext.traceFlags,
+    );
+  }
+}
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+const VERSION = "00";
+const VERSION_PART = "(?!ff)[\\da-f]{2}";
+const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
+const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
+const FLAGS_PART = "[\\da-f]{2}";
+const TRACE_PARENT_REGEX = new SafeRegExp(
+  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
+);
+const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$", "i");
+const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$", "i");
+const MAX_TRACE_STATE_ITEMS = 32;
+const MAX_TRACE_STATE_LEN = 512;
+const LIST_MEMBERS_SEPARATOR = ",";
+const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
+const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
+const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
+const VALID_VENDOR_KEY =
+  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
+const VALID_KEY_REGEX = new SafeRegExp(
+  `^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`,
+);
+const VALID_VALUE_BASE_REGEX = new SafeRegExp("^[ -~]{0,255}[!-~]$");
+const INVALID_VALUE_COMMA_EQUAL_REGEX = new SafeRegExp(",|=");
+
+const TRACE_PARENT_HEADER = "traceparent";
+const TRACE_STATE_HEADER = "tracestate";
+const INVALID_TRACEID = "00000000000000000000000000000000";
+const INVALID_SPANID = "0000000000000000";
+const INVALID_SPAN_CONTEXT: SpanContext = {
+  traceId: INVALID_TRACEID,
+  spanId: INVALID_SPANID,
+  traceFlags: 0,
+};
+const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
+const BAGGAGE_PROPERTIES_SEPARATOR = ";";
+const BAGGAGE_ITEMS_SEPARATOR = ",";
+const BAGGAGE_HEADER = "baggage";
+const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
+const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
+const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
+
+class NonRecordingSpan implements Span {
+  constructor(
+    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT,
+  ) {}
+
+  spanContext(): SpanContext {
+    return this._spanContext;
+  }
+
+  setAttribute(_key: string, _value: unknown): this {
+    return this;
+  }
+
+  setAttributes(_attributes: SpanAttributes): this {
+    return this;
+  }
+
+  addEvent(_name: string, _attributes?: SpanAttributes): this {
+    return this;
+  }
+
+  addLink(_link: Link): this {
+    return this;
+  }
+
+  addLinks(_links: Link[]): this {
+    return this;
+  }
+
+  setStatus(_status: SpanStatus): this {
+    return this;
+  }
+
+  updateName(_name: string): this {
+    return this;
+  }
+
+  end(_endTime?: TimeInput): void {}
+
+  isRecording(): boolean {
+    return false;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  recordException(_exception: any, _time?: TimeInput): void {}
+}
+
+const otelPropagators = {
+  traceContext: 0,
+  baggage: 1,
+  none: 2,
+};
+
+function parseTraceParent(traceParent: string): SpanContext | null {
+  const match = TRACE_PARENT_REGEX.exec(traceParent);
+  if (!match) return null;
+
+  // According to the specification the implementation should be compatible
+  // with future versions. If there are more parts, we only reject it if it's using version 00
+  // See https://www.w3.org/TR/trace-context/#versioning-of-traceparent
+  if (match[1] === "00" && match[5]) return null;
+
+  return {
+    traceId: match[2],
+    spanId: match[3],
+    traceFlags: NumberParseInt(match[4], 16),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapSetter<Carrier = any> {
+  set(carrier: Carrier, key: string, value: string): void;
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapPropagator<Carrier = any> {
+  inject(
+    context: Context,
+    carrier: Carrier,
+    setter: TextMapSetter<Carrier>,
+  ): void;
+  extract(
+    context: Context,
+    carrier: Carrier,
+    getter: TextMapGetter<Carrier>,
+  ): Context;
+  fields(): string[];
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapGetter<Carrier = any> {
+  keys(carrier: Carrier): string[];
+  get(carrier: Carrier, key: string): undefined | string | string[];
+}
+
+function isTracingSuppressed(context: Context): boolean {
+  return context.getValue(
+    SymbolFor("OpenTelemetry SDK Context Key SUPPRESS_TRACING"),
+  ) === true;
+}
+
+function isValidTraceId(traceId: string): boolean {
+  return VALID_TRACEID_REGEX.test(traceId) && traceId !== INVALID_TRACEID;
+}
+
+function isValidSpanId(spanId: string): boolean {
+  return VALID_SPANID_REGEX.test(spanId) && spanId !== INVALID_SPANID;
+}
+
+function isSpanContextValid(spanContext: SpanContext): boolean {
+  return (
+    isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId)
+  );
+}
+
+function validateKey(key: string): boolean {
+  return VALID_KEY_REGEX.test(key);
+}
+
+function validateValue(value: string): boolean {
+  return (
+    VALID_VALUE_BASE_REGEX.test(value) &&
+    !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value)
+  );
+}
+
+class TraceStateClass implements TraceState {
+  private _internalState: Map<string, string> = new SafeMap();
+
+  constructor(rawTraceState?: string) {
+    if (rawTraceState) this._parse(rawTraceState);
+  }
+
+  set(key: string, value: string): TraceStateClass {
+    const traceState = this._clone();
+    if (traceState._internalState.has(key)) {
+      traceState._internalState.delete(key);
+    }
+    traceState._internalState.set(key, value);
+    return traceState;
+  }
+
+  unset(key: string): TraceStateClass {
+    const traceState = this._clone();
+    traceState._internalState.delete(key);
+    return traceState;
+  }
+
+  get(key: string): string | undefined {
+    return this._internalState.get(key);
+  }
+
+  serialize(): string {
+    return ArrayPrototypeJoin(
+      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
+        ArrayPrototypePush(
+          agg,
+          key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
+        );
+        return agg;
+      }, []),
+      LIST_MEMBERS_SEPARATOR,
+    );
+  }
+
+  private _parse(rawTraceState: string) {
+    if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
+    this._internalState = ArrayPrototypeReduce(
+      ArrayPrototypeReverse(
+        StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
+      ),
+      (agg: Map<string, string>, part: string) => {
+        const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
+        const i = StringPrototypeIndexOf(
+          listMember,
+          LIST_MEMBER_KEY_VALUE_SPLITTER,
+        );
+        if (i !== -1) {
+          const key = StringPrototypeSlice(listMember, 0, i);
+          const value = StringPrototypeSlice(listMember, i + 1, part.length);
+          if (validateKey(key) && validateValue(value)) {
+            agg.set(key, value);
+          }
+        }
+        return agg;
+      },
+      new SafeMap(),
+    );
+
+    // Because of the reverse() requirement, trunc must be done after map is created
+    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
+      this._internalState = new SafeMap(
+        ArrayPrototypeSlice(
+          ArrayPrototypeReverse(
+            ArrayFrom(MapPrototypeEntries(this._internalState)),
+          ),
+          0,
+          MAX_TRACE_STATE_ITEMS,
+        ),
+      );
+    }
+  }
+
+  private _keys(): string[] {
+    return ArrayPrototypeReverse(
+      ArrayFrom(MapPrototypeKeys(this._internalState)),
+    );
+  }
+
+  private _clone(): TraceStateClass {
+    const traceState = new TraceStateClass();
+    traceState._internalState = new SafeMap(this._internalState);
+    return traceState;
+  }
+}
+
+class W3CTraceContextPropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
+      ?.spanContext();
+    if (
+      !spanContext ||
+      isTracingSuppressed(context) ||
+      !isSpanContextValid(spanContext)
+    ) {
+      return;
+    }
+
+    const traceParent =
+      `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
+        NumberPrototypeToString(Number(spanContext.traceFlags || 0), 16)
+      }`;
+
+    setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
+    if (spanContext.traceState) {
+      setter.set(
+        carrier,
+        TRACE_STATE_HEADER,
+        spanContext.traceState.serialize(),
+      );
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
+    if (!traceParentHeader) return context;
+    const traceParent = ArrayIsArray(traceParentHeader)
+      ? traceParentHeader[0]
+      : traceParentHeader;
+    if (typeof traceParent !== "string") return context;
+    const spanContext = parseTraceParent(traceParent);
+    if (!spanContext) return context;
+
+    spanContext.isRemote = true;
+
+    const traceStateHeader = getter.get(carrier, TRACE_STATE_HEADER);
+    if (traceStateHeader) {
+      // If more than one `tracestate` header is found, we merge them into a
+      // single header.
+      const state = ArrayIsArray(traceStateHeader)
+        ? ArrayPrototypeJoin(traceStateHeader, ",")
+        : traceStateHeader;
+      spanContext.traceState = new TraceStateClass(
+        typeof state === "string" ? state : undefined,
+      );
+    }
+    return context.setValue(SPAN_KEY, new NonRecordingSpan(spanContext));
+  }
+
+  fields(): string[] {
+    return [TRACE_PARENT_HEADER, TRACE_STATE_HEADER];
+  }
+}
+
+const baggageEntryMetadataSymbol = SymbolFor("BaggageEntryMetadata");
+
+type BaggageEntryMetadata = { toString(): string } & {
+  __TYPE__: typeof baggageEntryMetadataSymbol;
+};
+
+interface BaggageEntry {
+  value: string;
+  metadata?: BaggageEntryMetadata;
+}
+
+interface ParsedBaggageKeyValue {
+  key: string;
+  value: string;
+  metadata: BaggageEntryMetadata | undefined;
+}
+
+interface Baggage {
+  getEntry(key: string): BaggageEntry | undefined;
+  getAllEntries(): [string, BaggageEntry][];
+  setEntry(key: string, entry: BaggageEntry): Baggage;
+  removeEntry(key: string): Baggage;
+  removeEntries(...key: string[]): Baggage;
+  clear(): Baggage;
+}
+
+export function baggageEntryMetadataFromString(
+  str: string,
+): BaggageEntryMetadata {
+  if (typeof str !== "string") {
+    str = "";
+  }
+
+  return {
+    __TYPE__: baggageEntryMetadataSymbol,
+    toString() {
+      return str;
+    },
+  };
+}
+
+function serializeKeyPairs(keyPairs: string[]): string {
+  return ArrayPrototypeReduce(keyPairs, (hValue: string, current: string) => {
+    const value = `${hValue}${
+      hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
+    }${current}`;
+    return value.length > BAGGAGE_MAX_TOTAL_LENGTH ? hValue : value;
+  }, "");
+}
+
+function getKeyPairs(baggage: Baggage): string[] {
+  return ArrayPrototypeMap(baggage.getAllEntries(), (baggageEntry) => {
+    let entry = `${encodeURIComponent(baggageEntry[0])}=${
+      encodeURIComponent(baggageEntry[1].value)
+    }`;
+
+    // include opaque metadata if provided
+    // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
+    if (baggageEntry[1].metadata !== undefined) {
+      entry += BAGGAGE_PROPERTIES_SEPARATOR +
+        // deno-lint-ignore prefer-primordials
+        baggageEntry[1].metadata.toString();
+    }
+
+    return entry;
+  });
+}
+
+function parsePairKeyValue(
+  entry: string,
+): ParsedBaggageKeyValue | undefined {
+  const valueProps = StringPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
+  if (valueProps.length <= 0) return;
+  const keyPairPart = ArrayPrototypeShift(valueProps);
+  if (!keyPairPart) return;
+  const separatorIndex = StringPrototypeIndexOf(
+    keyPairPart,
+    BAGGAGE_KEY_PAIR_SEPARATOR,
+  );
+  if (separatorIndex <= 0) return;
+  const key = decodeURIComponent(
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, 0, separatorIndex),
+    ),
+  );
+  const value = decodeURIComponent(
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, separatorIndex + 1),
+    ),
+  );
+  let metadata;
+  if (valueProps.length > 0) {
+    metadata = baggageEntryMetadataFromString(
+      ArrayPrototypeJoin(valueProps, BAGGAGE_PROPERTIES_SEPARATOR),
+    );
+  }
+  return { key, value, metadata };
+}
+
+class BaggageImpl implements Baggage {
+  #entries: Map<string, BaggageEntry>;
+
+  constructor(entries?: Map<string, BaggageEntry>) {
+    this.#entries = entries ? new SafeMap(entries) : new SafeMap();
+  }
+
+  getEntry(key: string): BaggageEntry | undefined {
+    const entry = this.#entries.get(key);
+    if (!entry) {
+      return undefined;
+    }
+
+    return ObjectAssign({}, entry);
+  }
+
+  getAllEntries(): [string, BaggageEntry][] {
+    return ArrayPrototypeMap(
+      ArrayFrom(MapPrototypeEntries(this.#entries)),
+      (entry) => [entry[0], entry[1]],
+    );
+  }
+
+  setEntry(key: string, entry: BaggageEntry): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.set(key, entry);
+    return newBaggage;
+  }
+
+  removeEntry(key: string): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.delete(key);
+    return newBaggage;
+  }
+
+  removeEntries(...keys: string[]): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    for (const key of new SafeArrayIterator(keys)) {
+      newBaggage.#entries.delete(key);
+    }
+    return newBaggage;
+  }
+
+  clear(): BaggageImpl {
+    return new BaggageImpl();
+  }
+}
+
+export class W3CBaggagePropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const baggage = context.getValue(baggageEntryMetadataSymbol) as
+      | Baggage
+      | undefined;
+    if (!baggage || isTracingSuppressed(context)) return;
+    const keyPairs = ArrayPrototypeSlice(
+      ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
+        return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
+      }),
+      0,
+      BAGGAGE_MAX_NAME_VALUE_PAIRS,
+    );
+    const headerValue = serializeKeyPairs(keyPairs);
+    if (headerValue.length > 0) {
+      setter.set(carrier, BAGGAGE_HEADER, headerValue);
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const headerValue = getter.get(carrier, BAGGAGE_HEADER);
+    const baggageString = ArrayIsArray(headerValue)
+      ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
+      : headerValue;
+    if (!baggageString) return context;
+    const baggage: Record<string, BaggageEntry> = {};
+    if (baggageString.length === 0) {
+      return context;
+    }
+    const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
+    ArrayPrototypeForEach(pairs, (entry) => {
+      const keyPair = parsePairKeyValue(entry);
+      if (keyPair) {
+        const baggageEntry: BaggageEntry = { value: keyPair.value };
+        if (keyPair.metadata) {
+          baggageEntry.metadata = keyPair.metadata;
+        }
+        baggage[keyPair.key] = baggageEntry;
+      }
+    });
+    if (ObjectEntries(baggage).length === 0) {
+      return context;
+    }
+
+    return context.setValue(
+      baggageEntryMetadataSymbol,
+      new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
+    );
+  }
+
+  fields(): string[] {
+    return [BAGGAGE_HEADER];
+  }
+}
+
+let builtinTracerCache: Tracer;
+
+export function builtinTracer(): Tracer {
+  if (!builtinTracerCache) {
+    builtinTracerCache = new Tracer(OtelTracer.builtin());
+  }
+  return builtinTracerCache;
+}
+
+function enableIsolateMetrics() {
+  op_otel_enable_isolate_metrics();
+  ISOLATE_METRICS = true;
+  startObserving();
+}
+
+// We specify a very high version number, to allow any `@opentelemetry/api`
+// version to load this module. This does cause @opentelemetry/api to not be
+// able to register anything itself with the global registration methods.
+const OTEL_API_COMPAT_VERSION = "1.999.999";
+
 export function bootstrap(
-  config: [] | [
-    typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
-    number,
+  config: [
+    0 | 1,
+    0 | 1,
+    (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
+    ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
 ): void {
-  if (config.length === 0) return;
-  const { 0: consoleConfig, 1: deterministic } = config;
+  const {
+    0: tracingEnabled,
+    1: metricsEnabled,
+    2: consoleConfig,
+    ...propagators
+  } = config;
 
-  TRACING_ENABLED = true;
-  DETERMINISTIC = deterministic === 1;
+  TRACING_ENABLED = tracingEnabled === 1;
+  METRICS_ENABLED = metricsEnabled === 1;
+
+  PROPAGATORS = ArrayPrototypeMap(
+    ArrayPrototypeFilter(
+      ObjectValues(propagators),
+      (propagator) => propagator !== otelPropagators.none,
+    ),
+    (propagator) => {
+      switch (propagator) {
+        case otelPropagators.traceContext:
+          return new W3CTraceContextPropagator();
+        case otelPropagators.baggage:
+          return new W3CBaggagePropagator();
+      }
+    },
+  );
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:
@@ -974,10 +1733,24 @@ export function bootstrap(
     default:
       break;
   }
+
+  if (TRACING_ENABLED || METRICS_ENABLED) {
+    const otel = globalThis[SymbolFor("opentelemetry.js.api.1")] ??= {
+      version: OTEL_API_COMPAT_VERSION,
+    };
+    if (TRACING_ENABLED) {
+      otel.trace = TracerProvider;
+      otel.context = ContextManager;
+    }
+    if (METRICS_ENABLED) {
+      otel.metrics = MeterProvider;
+      enableIsolateMetrics();
+    }
+  }
 }
 
 export const telemetry = {
-  SpanExporter,
-  ContextManager,
-  MetricExporter,
+  tracerProvider: TracerProvider,
+  contextManager: ContextManager,
+  meterProvider: MeterProvider,
 };

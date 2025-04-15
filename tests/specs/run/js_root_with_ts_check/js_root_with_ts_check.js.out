@@ -1,4 +1,9 @@
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 const a = "";
       ^
     at [WILDCARD]
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

@@ -60,7 +60,6 @@
     "email": "ben@npmjs.com"
   },
   "license": "ISC",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/yargs/yargs-parser#readme",
   "repository": {
     "type": "git",

@@ -1,0 +1,10 @@
+{
+  "lint": {
+    "plugins": ["./plugin.ts"],
+    "rules": {
+      "exclude": [
+        "test-plugin/my-rule"
+      ]
+    }
+  }
+}

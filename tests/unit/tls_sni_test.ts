@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertRejects } from "./test_util.ts";
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { resolverSymbol, serverNameSymbol } = Deno[Deno.internal];

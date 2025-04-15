@@ -1,0 +1,87 @@
+{
+  "tempDir": true,
+  "tests": {
+    "upgrades": {
+      "steps": [
+        {
+          "args": "install npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock'))"],
+          "output": "deno.lock.json.out"
+        },
+        {
+          "args": "install --unstable-lockfile-v5 jsr:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "--unstable-lockfile-v5",
+            "console.log(Deno.readTextFileSync('deno.lock'))"
+          ],
+          "output": "deno.lock.v5.json.out"
+        }
+      ]
+    },
+    "missing_unstable_flag": {
+      "steps": [
+        {
+          "args": "install --unstable-lockfile-v5 jsr:@denotest/add npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "--unstable-lockfile-v5",
+            "console.log(Deno.readTextFileSync('deno.lock'))"
+          ],
+          "output": "deno.lock.v5.json.out"
+        },
+        {
+          "args": ["eval", "console.log('test')"],
+          "output": "error.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "does_not_redownload": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', '{\"nodeModulesDir\":\"auto\"}')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "install npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean -q",
+          "output": ""
+        },
+        // lockfile v4 redownloads npm packuments
+        {
+          "args": "run -A empty.js",
+          "output": "Download http://localhost:4260/chalk\n"
+        },
+        {
+          "args": "install --unstable-lockfile-v5 jsr:@denotest/add npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean -q",
+          "output": ""
+        },
+        // lockfile v5 doesn't need to redownload
+        {
+          "args": "run --unstable-lockfile-v5 -A empty.js",
+          "output": ""
+        }
+      ]
+    }
+  }
+}
