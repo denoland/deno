@@ -1,43 +1,85 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod in_memory_broadcast_channel;
 
-pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
-pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
-
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
+use tokio::sync::broadcast::error::SendError as BroadcastSendError;
+use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum BroadcastChannelError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  MPSCSendError(MpscSendError<Box<dyn std::fmt::Debug + Send + Sync>>),
+  #[class(generic)]
+  #[error(transparent)]
+  BroadcastSendError(
+    BroadcastSendError<Box<dyn std::fmt::Debug + Send + Sync>>,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[inherit] JsErrorBox),
+}
+
+impl<T: std::fmt::Debug + Send + Sync + 'static> From<MpscSendError<T>>
+  for BroadcastChannelError
+{
+  fn from(value: MpscSendError<T>) -> Self {
+    BroadcastChannelError::MPSCSendError(MpscSendError(Box::new(value.0)))
+  }
+}
+impl<T: std::fmt::Debug + Send + Sync + 'static> From<BroadcastSendError<T>>
+  for BroadcastChannelError
+{
+  fn from(value: BroadcastSendError<T>) -> Self {
+    BroadcastChannelError::BroadcastSendError(BroadcastSendError(Box::new(
+      value.0,
+    )))
+  }
+}
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
   type Resource: Resource;
 
-  fn subscribe(&self) -> Result<Self::Resource, AnyError>;
+  fn subscribe(&self) -> Result<Self::Resource, BroadcastChannelError>;
 
-  fn unsubscribe(&self, resource: &Self::Resource) -> Result<(), AnyError>;
+  fn unsubscribe(
+    &self,
+    resource: &Self::Resource,
+  ) -> Result<(), BroadcastChannelError>;
 
   async fn send(
     &self,
     resource: &Self::Resource,
     name: String,
     data: Vec<u8>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), BroadcastChannelError>;
 
   async fn recv(
     &self,
     resource: &Self::Resource,
-  ) -> Result<Option<Message>, AnyError>;
+  ) -> Result<Option<Message>, BroadcastChannelError>;
 }
 
 pub type Message = (String, Vec<u8>);
@@ -46,16 +88,13 @@ pub type Message = (String, Vec<u8>);
 #[smi]
 pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state.feature_checker.check_or_exit_with_legacy_fallback(
-    UNSTABLE_FEATURE_NAME,
-    "BroadcastChannel",
-  );
+  state
+    .feature_checker
+    .check_or_exit(UNSTABLE_FEATURE_NAME, "BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))
@@ -65,7 +104,7 @@ where
 pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError>
+) -> Result<(), BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
@@ -80,7 +119,7 @@ pub async fn op_broadcast_send<BC>(
   #[smi] rid: ResourceId,
   #[string] name: String,
   #[buffer] buf: JsBuffer,
-) -> Result<(), AnyError>
+) -> Result<(), BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
@@ -94,7 +133,7 @@ where
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<Message>, AnyError>
+) -> Result<Option<Message>, BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
@@ -120,8 +159,3 @@ deno_core::extension!(deno_broadcast_channel,
     state.put(options.bc);
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("lib.deno_broadcast_channel.d.ts")
-}

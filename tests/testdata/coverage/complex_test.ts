@@ -7,32 +7,29 @@ Deno.test("complex", function () {
 Deno.test("sub process with stdin", async () => {
   // ensure launching deno run with stdin doesn't affect coverage
   const code = "console.log('5')";
-  // deno-lint-ignore no-deprecated-deno-api
-  const p = await Deno.run({
-    cmd: [Deno.execPath(), "run", "-"],
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-"],
     stdin: "piped",
     stdout: "piped",
   });
-  const encoder = new TextEncoder();
-  await p.stdin.write(encoder.encode(code));
-  await p.stdin.close();
-  const output = new TextDecoder().decode(await p.output());
-  p.close();
+  await using child = command.spawn();
+  await ReadableStream.from([code])
+    .pipeThrough(new TextEncoderStream())
+    .pipeTo(child.stdin);
+  const { stdout } = await child.output();
+  const output = new TextDecoder().decode(stdout);
   if (output.trim() !== "5") {
     throw new Error("Failed");
   }
 });
 
-Deno.test("sub process with deno eval", async () => {
+Deno.test("sub process with deno eval", () => {
   // ensure launching deno eval doesn't affect coverage
   const code = "console.log('5')";
-  // deno-lint-ignore no-deprecated-deno-api
-  const p = await Deno.run({
-    cmd: [Deno.execPath(), "eval", code],
-    stdout: "piped",
-  });
-  const output = new TextDecoder().decode(await p.output());
-  p.close();
+  const { stdout } = new Deno.Command(Deno.execPath(), {
+    args: ["eval", code],
+  }).outputSync();
+  const output = new TextDecoder().decode(stdout);
   if (output.trim() !== "5") {
     throw new Error("Failed");
   }

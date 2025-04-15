@@ -1,14 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
+import { ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH } from "ext:deno_node/internal/errors.ts";
 
-function assert(cond) {
-  if (!cond) {
-    throw new Error("assertion failed");
+function toDataView(ab: ArrayBufferLike | ArrayBufferView): DataView {
+  if (ArrayBuffer.isView(ab)) {
+    return new DataView(ab.buffer, ab.byteOffset, ab.byteLength);
   }
+  return new DataView(ab);
 }
 
 /** Compare to array buffers or data views in a way that timing based attacks
@@ -18,16 +20,14 @@ function stdTimingSafeEqual(
   b: ArrayBufferView | ArrayBufferLike | DataView,
 ): boolean {
   if (a.byteLength !== b.byteLength) {
-    return false;
+    throw new ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH();
   }
   if (!(a instanceof DataView)) {
-    a = new DataView(ArrayBuffer.isView(a) ? a.buffer : a);
+    a = toDataView(a);
   }
   if (!(b instanceof DataView)) {
-    b = new DataView(ArrayBuffer.isView(b) ? b.buffer : b);
+    b = toDataView(b);
   }
-  assert(a instanceof DataView);
-  assert(b instanceof DataView);
   const length = a.byteLength;
   let out = 0;
   let i = -1;
@@ -41,7 +41,11 @@ export const timingSafeEqual = (
   a: Buffer | DataView | ArrayBuffer,
   b: Buffer | DataView | ArrayBuffer,
 ): boolean => {
-  if (a instanceof Buffer) a = new DataView(a.buffer);
-  if (a instanceof Buffer) b = new DataView(a.buffer);
+  if (a instanceof Buffer) {
+    a = new DataView(a.buffer, a.byteOffset, a.byteLength);
+  }
+  if (b instanceof Buffer) {
+    b = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  }
   return stdTimingSafeEqual(a, b);
 };

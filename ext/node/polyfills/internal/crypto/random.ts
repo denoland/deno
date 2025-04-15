@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -38,6 +38,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "node:buffer";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 export {

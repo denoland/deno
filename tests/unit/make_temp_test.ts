@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -42,7 +42,7 @@ Deno.test({ permissions: { write: false } }, function makeTempDirSyncPerm() {
   // makeTempDirSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -117,7 +117,7 @@ Deno.test({ permissions: { write: false } }, function makeTempFileSyncPerm() {
   // makeTempFileSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

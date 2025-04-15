@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/json_output/main.ts"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "../mod1.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/mod1.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 52
+              },
+              "end": {
+                "line": 0,
+                "character": 64
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]main.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/json_output/main.ts"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./subdir2/mod2.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/subdir2/mod2.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 40
+              },
+              "end": {
+                "line": 0,
+                "character": 59
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]mod1.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/mod1.ts"
+    },
+    {
+      "kind": "esm",
+      "local": "[WILDCARD]print_hello.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/print_hello.ts"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "../print_hello.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/print_hello.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 27
+              },
+              "end": {
+                "line": 0,
+                "character": 46
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]mod2.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/subdir2/mod2.ts"
+    }
+  ],
+  "redirects": {},
+  "npmPackages": {}
+}

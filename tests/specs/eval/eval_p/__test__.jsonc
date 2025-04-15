@@ -1,0 +1,4 @@
+{
+  "args": "eval -p 1+2",
+  "output": "main.out"
+}

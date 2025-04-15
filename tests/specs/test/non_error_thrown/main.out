@@ -1,0 +1,40 @@
+running 6 tests from [WILDCARD]/main.ts
+foo ... FAILED ([WILDCARD])
+bar ... FAILED ([WILDCARD])
+baz ... FAILED ([WILDCARD])
+qux ... FAILED ([WILDCARD])
+quux ... FAILED ([WILDCARD])
+quuz ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+foo => [WILDCARD]/main.ts:1:6
+error: undefined
+
+bar => [WILDCARD]/main.ts:5:6
+error: null
+
+baz => [WILDCARD]/main.ts:9:6
+error: 123
+
+qux => [WILDCARD]/main.ts:13:6
+error: "Hello, world!"
+
+quux => [WILDCARD]/main.ts:17:6
+error: [ 1, 2, 3 ]
+
+quuz => [WILDCARD]/main.ts:21:6
+error: { a: "Hello, world!", b: [ 1, 2, 3 ] }
+
+ FAILURES 
+
+foo => [WILDCARD]/main.ts:1:6
+bar => [WILDCARD]/main.ts:5:6
+baz => [WILDCARD]/main.ts:9:6
+qux => [WILDCARD]/main.ts:13:6
+quux => [WILDCARD]/main.ts:17:6
+quuz => [WILDCARD]/main.ts:21:6
+
+FAILED | 0 passed | 6 failed ([WILDCARD])
+
+error: Test failed

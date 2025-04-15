@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check swc_syntax_error.ts",
+  "output": "swc_syntax_error.ts.out",
+  "exitCode": 1
+}

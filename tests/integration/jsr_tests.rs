@@ -1,8 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+use deno_cache_dir::HttpCache;
 use deno_lockfile::Lockfile;
+use deno_lockfile::NewLockfileOptions;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageNv;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -60,13 +64,12 @@ fn fast_check_cache() {
 
   // ensure cache works
   let output = check_debug_cmd.run();
-  assert_contains!(output.combined_output(), "Already type checked.");
-  let building_fast_check_msg = "Building fast check graph";
-  assert_not_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(output.combined_output(), "Already type checked");
 
   // now validated
   type_check_cache_path.remove_file();
   let output = check_debug_cmd.run();
+  let building_fast_check_msg = "Building fast check graph";
   assert_contains!(output.combined_output(), building_fast_check_msg);
   assert_contains!(
     output.combined_output(),
@@ -94,10 +97,12 @@ fn fast_check_cache() {
     .run()
     .assert_matches_text(
       "Check file:///[WILDCARD]main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~
     at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+
+error: Type checking failed.
 ",
     )
     .assert_exit_code(1);
@@ -121,8 +126,8 @@ export function asdf(a: number) { let err: number = ''; return Math.random(); }
   );
 }
 
-#[test]
-fn specifiers_in_lockfile() {
+#[tokio::test]
+async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -141,18 +146,21 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::with_lockfile_content(
-    lockfile_path.to_path_buf(),
-    &lockfile_path.read_to_string(),
-    false,
-  )
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+    next_version: false,
+  })
   .unwrap();
   *lockfile
     .content
     .packages
     .specifiers
-    .get_mut("jsr:@denotest/no-module-graph@0.1")
-    .unwrap() = "jsr:@denotest/no-module-graph@0.1.0".to_string();
+    .get_mut(
+      &JsrDepPackageReq::from_str("jsr:@denotest/no-module-graph@0.1").unwrap(),
+    )
+    .unwrap() = "0.1.0".into();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -183,13 +191,24 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let specifier =
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
-    let registry_json_path = deno_dir
-      .path()
-      .join("deps")
-      .join(deno_cache_dir::url_to_filename(&specifier).unwrap());
-    let mut registry_json = registry_json_path.read_json_value();
+    let cache = deno_cache_dir::GlobalHttpCache::new(
+      sys_traits::impls::RealSys,
+      deno_dir.path().join("remote").to_path_buf(),
+    );
+    let entry = cache
+      .get(&cache.cache_item_key(&specifier).unwrap(), None)
+      .unwrap()
+      .unwrap();
+    let mut registry_json: serde_json::Value =
+      serde_json::from_slice(&entry.content).unwrap();
     remove_version(&mut registry_json, version);
-    registry_json_path.write_json(&registry_json);
+    cache
+      .set(
+        &specifier,
+        entry.metadata.headers.clone(),
+        registry_json.to_string().as_bytes(),
+      )
+      .unwrap();
   }
 
   // This tests that when a local machine doesn't have a version
@@ -236,8 +255,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .assert_exit_code(0);
 }
 
-#[test]
-fn lockfile_bad_package_integrity() {
+#[tokio::test]
+async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -256,15 +275,16 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::with_lockfile_content(
-    lockfile_path.to_path_buf(),
-    &lockfile_path.read_to_string(),
-    false,
-  )
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+    next_version: false,
+  })
   .unwrap();
-  let pkg_name = "@denotest/no-module-graph@0.1.1";
-  let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
-  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  let pkg_nv = "@denotest/no-module-graph@0.1.1";
+  let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_nv);
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_nv, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
   let actual_integrity =
@@ -279,7 +299,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
+Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server.
 ", actual_integrity);
   test_context
     .new_command()
@@ -303,7 +323,7 @@ Use the --lock-write flag to regenerate the lockfile or --reload to reload the s
     .assert_exit_code(10);
 
   // now update to the correct integrity
-  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, &original_integrity);
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_nv, &original_integrity);
   lockfile_path.write(lockfile.as_json_string());
 
   // should pass now
@@ -315,7 +335,7 @@ Use the --lock-write flag to regenerate the lockfile or --reload to reload the s
     .assert_exit_code(0);
 
   // now update to a bad integrity again
-  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_nv, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
   // shouldn't matter because we have a vendor folder
@@ -386,12 +406,12 @@ If you modified your global cache, run again with the --reload flag to restore i
     .assert_exit_code(10);
 }
 
-fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {
+fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_nv: &str) -> String {
   lockfile
     .content
     .packages
     .jsr
-    .get(pkg_name)
+    .get(&PackageNv::from_str(pkg_nv).unwrap())
     .unwrap()
     .integrity
     .clone()
@@ -399,14 +419,14 @@ fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {
 
 fn set_lockfile_pkg_integrity(
   lockfile: &mut Lockfile,
-  pkg_name: &str,
+  pkg_nv: &str,
   integrity: &str,
 ) {
   lockfile
     .content
     .packages
     .jsr
-    .get_mut(pkg_name)
+    .get_mut(&PackageNv::from_str(pkg_nv).unwrap())
     .unwrap()
     .integrity = integrity.to_string();
 }

@@ -1,0 +1,19 @@
+Check [WILDCARD]/main.ts
+running 1 test from ./main.ts
+test 0 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 0 => ./main.ts:[WILDCARD]
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+ FAILURES 
+
+test 0 => ./main.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

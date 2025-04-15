@@ -1,0 +1,83 @@
+{
+  "name": "v8flags",
+  "description": "Get available v8 and Node.js flags.",
+  "dist-tags": {
+    "latest": "4.0.1"
+  },
+  "versions": {
+    "4.0.1": {
+      "name": "v8flags",
+      "version": "4.0.1",
+      "description": "Get available v8 and Node.js flags.",
+      "author": {
+        "name": "Gulp Team",
+        "email": "team@gulpjs.com",
+        "url": "https://gulpjs.com/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/gulpjs/v8flags.git"
+      },
+      "license": "MIT",
+      "engines": {
+        "node": ">= 10.13.0"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "eslint .",
+        "pretest": "npm run lint",
+        "test": "nyc mocha --async-only"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "async": "^3.2.2",
+        "eslint": "^7.32.0",
+        "eslint-config-gulp": "^5.0.1",
+        "eslint-plugin-node": "^11.1.0",
+        "expect": "^27.3.1",
+        "mocha": "^8.4.0",
+        "nyc": "^15.1.0",
+        "proxyquire": "^2.1.3"
+      },
+      "nyc": {
+        "reporter": [
+          "lcov",
+          "text-summary"
+        ]
+      },
+      "prettier": {
+        "singleQuote": true
+      },
+      "_id": "v8flags@4.0.1",
+      "gitHead": "27a764557f20f90ea4b6ccd24eaacd9d0b6d3108",
+      "bugs": {
+        "url": "https://github.com/gulpjs/v8flags/issues"
+      },
+      "_nodeVersion": "20.5.0",
+      "_npmVersion": "9.8.0",
+      "dist": {
+        "integrity": "sha512-fcRLaS4H/hrZk9hYwbdRM35D0U8IYMfEClhXxCivOojl+yTRAZH3Zy2sSy6qVCiGbV9YAtPssP6jaChqC9vPCg==",
+        "shasum": "98fe6c4308317c5f394d85a435eb192490f7e132",
+        "tarball": "http://localhost:4260/v8flags/v8flags-4.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 9757
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/gulpjs/v8flags#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gulpjs/v8flags.git"
+  },
+  "author": {
+    "name": "Gulp Team",
+    "email": "team@gulpjs.com",
+    "url": "https://gulpjs.com/"
+  },
+  "bugs": {
+    "url": "https://github.com/gulpjs/v8flags/issues"
+  },
+  "license": "MIT"
+}

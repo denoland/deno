@@ -14,11 +14,6 @@
         "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));"
       ],
       "output": "main.out"
-    },
-    "bundle": {
-      "args": "bundle --quiet main.js",
-      "output": "bundle.out",
-      "exitCode": 1
     }
   }
 }

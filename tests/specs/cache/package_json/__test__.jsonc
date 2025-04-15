@@ -1,5 +1,13 @@
 {
   "tempDir": true,
-  "args": "cache main.ts",
-  "output": "main.cache.out"
+  "steps": [
+    {
+      "args": "cache main.ts",
+      "output": "main.cache.out"
+    },
+    {
+      "args": "eval console.log(Deno.readTextFileSync('deno.lock').trim())",
+      "output": "deno.lock.out"
+    }
+  ]
 }

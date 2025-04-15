@@ -1,0 +1,4 @@
+{
+  "args": "doc",
+  "output": "deno_doc_builtin.out"
+}

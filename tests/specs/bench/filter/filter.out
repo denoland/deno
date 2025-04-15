@@ -1,20 +1,23 @@
 Check [WILDCARD]/bench/filter/a_bench.ts
 Check [WILDCARD]/bench/filter/b_bench.ts
 Check [WILDCARD]/bench/filter/c_bench.ts
-cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/filter/a_bench.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-foo [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+foo [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 [WILDCARD]/bench/filter/b_bench.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-foo [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+foo [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 [WILDCARD]/bench/filter/c_bench.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-foo [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+foo [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]

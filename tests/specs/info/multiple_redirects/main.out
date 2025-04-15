@@ -2,6 +2,7 @@ Download http://localhost:4548/subdir/redirects/redirect1.js
 Download http://localhost:4546/subdir/redirects/redirect1.js
 Download http://localhost:4545/subdir/redirects/redirect1.js
 {
+  "version": 1,
   "roots": [
     "file:///[WILDLINE]/multiple_redirects/main.ts"
   ],
@@ -27,8 +28,6 @@ Download http://localhost:4545/subdir/redirects/redirect1.js
         }
       ],
       "local": "[WILDLINE]main.ts",
-      "emit": null,
-      "map": null,
       "size": 97,
       "mediaType": "TypeScript",
       "specifier": "file:///[WILDLINE]/multiple_redirects/main.ts"
@@ -36,8 +35,6 @@ Download http://localhost:4545/subdir/redirects/redirect1.js
     {
       "kind": "esm",
       "local": "[WILDLINE]",
-      "emit": null,
-      "map": null,
       "size": 27,
       "mediaType": "JavaScript",
       "specifier": "http://localhost:4545/subdir/redirects/redirect1.js"

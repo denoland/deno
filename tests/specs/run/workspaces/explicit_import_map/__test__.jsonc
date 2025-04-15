@@ -1,5 +1,13 @@
 {
-  "args": "run -A --import-map=./import_map.json main.ts",
-  "output": "main.out",
-  "tempDir": true
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --import-map=./import_map.json",
+      "output": "install.out"
+    },
+    {
+      "args": "run -A --import-map=./import_map.json main.ts",
+      "output": "main.out"
+    }
+  ]
 }

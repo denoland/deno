@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -9,11 +9,15 @@ pub struct DotTestReporter {
   width: usize,
   cwd: Url,
   summary: TestSummary,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 #[allow(clippy::print_stdout)]
 impl DotTestReporter {
-  pub fn new(cwd: Url) -> DotTestReporter {
+  pub fn new(
+    cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -26,6 +30,7 @@ impl DotTestReporter {
       width: console_width,
       cwd,
       summary: TestSummary::new(),
+      failure_format_options,
     }
   }
 
@@ -92,7 +97,7 @@ impl TestReporter for DotTestReporter {
 
   fn report_wait(&mut self, _description: &TestDescription) {
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
   }
 
   fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
@@ -144,7 +149,7 @@ impl TestReporter for DotTestReporter {
 
   fn report_step_wait(&mut self, _description: &TestStepDescription) {
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
   }
 
   fn report_step_result(
@@ -190,6 +195,7 @@ impl TestReporter for DotTestReporter {
       &self.cwd,
       &self.summary,
       elapsed,
+      &self.failure_format_options,
     );
     println!();
   }

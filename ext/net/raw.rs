@@ -1,16 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::io::TcpStreamResource;
-use crate::ops_tls::TlsStreamResource;
-use deno_core::error::bad_resource;
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::rc::Rc;
+
+use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
-use std::borrow::Cow;
-use std::rc::Rc;
+use deno_error::JsErrorBox;
+
+use crate::io::TcpStreamResource;
+use crate::ops_tls::TlsStreamResource;
 
 pub trait NetworkStreamTrait: Into<NetworkStream> {
   type Resource;
@@ -67,10 +69,10 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
   fn take(
     resource_table: &mut ResourceTable,
     listener_rid: ResourceId,
-  ) -> Result<Option<NetworkStreamListener>, AnyError> {
+  ) -> Result<Option<NetworkStreamListener>, JsErrorBox> {
     if let Ok(resource_rc) = resource_table.take::<Self>(listener_rid) {
       let resource = Rc::try_unwrap(resource_rc)
-        .map_err(|_| bad_resource("Listener is currently in use"))?;
+        .map_err(|_| JsErrorBox::new("Busy", "Listener is currently in use"))?;
       return Ok(Some(resource.listener.into_inner().into()));
     }
     Ok(None)
@@ -241,13 +243,13 @@ macro_rules! network_stream {
 
       /// Return a `NetworkStreamListener` if a resource exists for this `ResourceId` and it is currently
       /// not locked.
-      pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, AnyError> {
+      pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, JsErrorBox> {
         $(
           if let Some(resource) = NetworkListenerResource::<$listener>::take(resource_table, listener_rid)? {
             return Ok(resource)
           }
         )*
-        Err(bad_resource_id())
+        Err(JsErrorBox::from_err(ResourceError::BadResourceId))
       }
     }
   };
@@ -278,6 +280,14 @@ network_stream!(
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
+  ],
+  [
+    Vsock,
+    vsock,
+    tokio_vsock::VsockStream,
+    tokio_vsock::VsockListener,
+    tokio_vsock::VsockAddr,
+    crate::io::VsockStreamResource
   ]
 );
 
@@ -305,6 +315,8 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
+  #[cfg(unix)]
+  Vsock(tokio_vsock::VsockAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -320,12 +332,51 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(unix)]
+impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
+  fn from(value: tokio_vsock::VsockAddr) -> Self {
+    NetworkStreamAddress::Vsock(value)
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TakeNetworkStreamError {
+  #[class("Busy")]
+  #[error("TCP stream is currently in use")]
+  TcpBusy,
+  #[class("Busy")]
+  #[error("TLS stream is currently in use")]
+  TlsBusy,
+  #[cfg(unix)]
+  #[class("Busy")]
+  #[error("Unix socket is currently in use")]
+  UnixBusy,
+  #[cfg(unix)]
+  #[class("Busy")]
+  #[error("Vsock socket is currently in use")]
+  VsockBusy,
+  #[class(generic)]
+  #[error(transparent)]
+  ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
+  #[class(generic)]
+  #[error(transparent)]
+  ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+  #[cfg(unix)]
+  #[class(generic)]
+  #[error("Cannot reunite halves from different streams")]
+  ReuniteVsock,
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(deno_core::error::ResourceError),
+}
+
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).
 /// This method will extract a stream from the resource table and return it, unwrapped.
 pub fn take_network_stream_resource(
   resource_table: &mut ResourceTable,
   stream_rid: ResourceId,
-) -> Result<NetworkStream, AnyError> {
+) -> Result<NetworkStream, TakeNetworkStreamError> {
   // The stream we're attempting to unwrap may be in use somewhere else. If that's the case, we cannot proceed
   // with the process of unwrapping this connection, so we just return a bad resource error.
   // See also: https://github.com/denoland/deno/pull/16242
@@ -334,7 +385,7 @@ pub fn take_network_stream_resource(
   {
     // This TCP connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+      .map_err(|_| TakeNetworkStreamError::TcpBusy)?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Tcp(tcp_stream));
@@ -344,7 +395,7 @@ pub fn take_network_stream_resource(
   {
     // This TLS connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TLS stream is currently in use"))?;
+      .map_err(|_| TakeNetworkStreamError::TlsBusy)?;
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
     return Ok(NetworkStream::Tls(tls_stream));
@@ -356,13 +407,30 @@ pub fn take_network_stream_resource(
   {
     // This UNIX socket might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("UNIX stream is currently in use"))?;
+      .map_err(|_| TakeNetworkStreamError::UnixBusy)?;
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Unix(unix_stream));
   }
 
-  Err(bad_resource_id())
+  #[cfg(unix)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
+  {
+    // This Vsock socket might be used somewhere else.
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::VsockBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    if !read_half.is_pair_of(&write_half) {
+      return Err(TakeNetworkStreamError::ReuniteVsock);
+    }
+    let vsock_stream = read_half.unsplit(write_half);
+    return Ok(NetworkStream::Vsock(vsock_stream));
+  }
+
+  Err(TakeNetworkStreamError::Resource(
+    ResourceError::BadResourceId,
+  ))
 }
 
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).
@@ -370,6 +438,6 @@ pub fn take_network_stream_resource(
 pub fn take_network_stream_listener_resource(
   resource_table: &mut ResourceTable,
   listener_rid: ResourceId,
-) -> Result<NetworkStreamListener, AnyError> {
+) -> Result<NetworkStreamListener, JsErrorBox> {
   NetworkStreamListener::take_resource(resource_table, listener_rid)
 }

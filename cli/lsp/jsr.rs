@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
-use crate::file_fetcher::FileFetcher;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
-use crate::jsr::JsrFetchResolver;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
@@ -14,18 +12,21 @@ use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::jsr::JsrFetchResolver;
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -34,8 +35,8 @@ pub struct JsrCacheResolver {
   /// The `module_graph` fields of the version infos should be forcibly absent.
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
-  info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
-  workspace_scope_by_name: HashMap<String, ModuleSpecifier>,
+  info_by_name: DashMap<StackString, Option<Arc<JsrPackageInfo>>>,
+  workspace_scope_by_name: HashMap<StackString, ModuleSpecifier>,
   cache: Arc<dyn HttpCache>,
 }
 
@@ -60,7 +61,7 @@ impl JsrCacheResolver {
           continue;
         };
         let nv = PackageNv {
-          name: jsr_pkg_config.name.clone(),
+          name: jsr_pkg_config.name.as_str().into(),
           version: version.clone(),
         };
         info_by_name.insert(
@@ -93,20 +94,23 @@ impl JsrCacheResolver {
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
-      for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
-        let Some(req) = req_url.strip_prefix("jsr:") else {
+      for (dep_req, version) in &lockfile.lock().content.packages.specifiers {
+        let req = match dep_req.kind {
+          deno_semver::package::PackageKind::Jsr => &dep_req.req,
+          deno_semver::package::PackageKind::Npm => {
+            continue;
+          }
+        };
+        let Ok(version) = Version::parse_standard(version) else {
           continue;
         };
-        let Some(nv) = nv_url.strip_prefix("jsr:") else {
-          continue;
-        };
-        let Ok(req) = PackageReq::from_str(req) else {
-          continue;
-        };
-        let Ok(nv) = PackageNv::from_str(nv) else {
-          continue;
-        };
-        nv_by_req.insert(req, Some(nv));
+        nv_by_req.insert(
+          req.clone(),
+          Some(PackageNv {
+            name: req.name.clone(),
+            version,
+          }),
+        );
       }
     }
     Self {
@@ -123,8 +127,8 @@ impl JsrCacheResolver {
       return nv.value().clone();
     }
     let maybe_get_nv = || {
-      let name = req.name.clone();
-      let package_info = self.package_info(&name)?;
+      let name = &req.name;
+      let package_info = self.package_info(name)?;
       // Find the first matching version of the package which is cached.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
@@ -142,7 +146,10 @@ impl JsrCacheResolver {
           self.package_version_info(&nv).is_some()
         })
         .cloned()?;
-      Some(PackageNv { name, version })
+      Some(PackageNv {
+        name: name.clone(),
+        version,
+      })
     };
     let nv = maybe_get_nv();
     self.nv_by_req.insert(req.clone(), nv.clone());
@@ -157,7 +164,7 @@ impl JsrCacheResolver {
     let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
     let info = self.package_version_info(nv)?;
-    let path = info.export(&normalize_export_name(req_ref.sub_path()))?;
+    let path = info.export(&req_ref.export_name())?;
     if let Some(workspace_scope) = self.workspace_scope_by_name.get(&nv.name) {
       workspace_scope.join(path).ok()
     } else {
@@ -214,7 +221,10 @@ impl JsrCacheResolver {
     None
   }
 
-  pub fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
+  pub fn package_info(
+    &self,
+    name: &StackString,
+  ) -> Option<Arc<JsrPackageInfo>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
@@ -224,7 +234,7 @@ impl JsrCacheResolver {
       serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
     };
     let info = read_cached_package_info().map(Arc::new);
-    self.info_by_name.insert(name.to_string(), info.clone());
+    self.info_by_name.insert(name.clone(), info.clone());
     info
   }
 
@@ -259,41 +269,14 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .read_file_bytes(
-      &cache.cache_item_key(url).ok()?,
-      None,
-      deno_cache_dir::GlobalToLocalCopy::Disallow,
-    )
+    .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
-}
-
-// TODO(nayeemrmn): This is duplicated from a private function in deno_graph
-// 0.65.1. Make it public or cleanup otherwise.
-fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
-  let Some(sub_path) = sub_path else {
-    return Cow::Borrowed(".");
-  };
-  if sub_path.is_empty() || matches!(sub_path, "/" | ".") {
-    Cow::Borrowed(".")
-  } else {
-    let sub_path = if sub_path.starts_with('/') {
-      Cow::Owned(format!(".{}", sub_path))
-    } else if !sub_path.starts_with("./") {
-      Cow::Owned(format!("./{}", sub_path))
-    } else {
-      Cow::Borrowed(sub_path)
-    };
-    if let Some(prefix) = sub_path.strip_suffix('/') {
-      Cow::Owned(prefix.to_string())
-    } else {
-      sub_path
-    }
-  }
+    .map(|f| f.content.into_owned())
 }
 
 #[derive(Debug)]
 pub struct CliJsrSearchApi {
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: JsrFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
@@ -301,7 +284,7 @@ pub struct CliJsrSearchApi {
 }
 
 impl CliJsrSearchApi {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     let resolver = JsrFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
@@ -324,7 +307,7 @@ impl CliJsrSearchApi {
   }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl PackageSearchApi for CliJsrSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
     if let Some(names) = self.search_cache.get(query) {
@@ -333,14 +316,10 @@ impl PackageSearchApi for CliJsrSearchApi {
     let mut search_url = jsr_api_url().join("packages")?;
     search_url.query_pairs_mut().append_pair("query", query);
     let file_fetcher = self.file_fetcher.clone();
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn(async move {
-      file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
-        .await?
-        .into_text_decoded()
-    })
-    .await??;
+    let file = {
+      let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
+      TextDecodedFile::decode(file)?
+    };
     let names = Arc::new(parse_jsr_search_response(&file.source)?);
     self.search_cache.insert(query.to_string(), names.clone());
     Ok(names)

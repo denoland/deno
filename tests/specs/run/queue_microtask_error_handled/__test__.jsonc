@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet queue_microtask_error_handled.ts",
+  "output": "queue_microtask_error_handled.ts.out"
+}

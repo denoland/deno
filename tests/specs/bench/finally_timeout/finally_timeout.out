@@ -1,11 +1,12 @@
 Check [WILDCARD]/finally_timeout.ts
-cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/finally_timeout.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-error      error: Error: fail
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+error       error: Error: fail
 [WILDCARD]
-success [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+success [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
 error: Bench failed

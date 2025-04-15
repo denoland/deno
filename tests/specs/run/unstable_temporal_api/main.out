@@ -1,0 +1,10 @@
+Check [WILDCARD]
+Temporal.Now [WILDCARD]
+Temporal.Instant 1969-07-20T20:17:00Z
+Temporal.ZonedDateTime 1995-12-07T03:24:30.0000035-08:00[America/Los_Angeles]
+Temporal.PlainDate 2006-08-24
+Temporal.PlainTime 19:39:09.068346205
+Temporal.PlainDateTime 1995-12-07T15:00:00
+Temporal.PlainYearMonth 2020-10
+Temporal.PlainMonthDay 07-14
+Temporal.Duration PT130H20M

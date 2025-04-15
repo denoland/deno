@@ -1,0 +1,6 @@
+Check file://[WILDCARD]/lib.test.ts
+running 1 test from [WILDCARD]lib.test.ts
+should add ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

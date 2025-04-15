@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --no-check error_no_check.ts",
+  "output": "error_no_check.ts.out",
+  "exitCode": 1
+}

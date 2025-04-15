@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_011_bad_module_specifier.ts",
+  "output": "error_011_bad_module_specifier.ts.out",
+  "exitCode": 1
+}

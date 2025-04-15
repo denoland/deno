@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
+
 use test_util as util;
 
 util::unit_test_factory!(
@@ -15,7 +16,6 @@ util::unit_test_factory!(
     blob_test,
     body_test,
     broadcast_channel_test,
-    buffer_test,
     build_test,
     cache_api_test,
     chmod_test,
@@ -38,7 +38,6 @@ util::unit_test_factory!(
     file_test,
     filereader_test,
     files_test,
-    flock_test,
     fs_events_test,
     get_random_values_test,
     globals_test,
@@ -48,13 +47,14 @@ util::unit_test_factory!(
     image_data_test,
     internals_test,
     intl_test,
-    io_test,
     jupyter_test,
     kv_test,
     kv_queue_test_no_db_close,
     kv_queue_test,
     kv_queue_undelivered_test,
     link_test,
+    lint_selectors_test,
+    lint_plugin_test,
     make_temp_test,
     message_channel_test,
     mkdir_test,
@@ -69,6 +69,7 @@ util::unit_test_factory!(
     process_test,
     progressevent_test,
     promise_hooks_test,
+    quic_test,
     read_dir_test,
     read_file_test,
     read_link_test,
@@ -78,7 +79,6 @@ util::unit_test_factory!(
     remove_test,
     rename_test,
     request_test,
-    resources_test,
     response_test,
     serve_test,
     signal_test,
@@ -88,7 +88,6 @@ util::unit_test_factory!(
     structured_clone_test,
     symbol_test,
     symlink_test,
-    sync_test,
     test_util,
     testing_test,
     text_encoding_test,
@@ -119,29 +118,62 @@ util::unit_test_factory!(
 fn js_unit_test(test: String) {
   let _g = util::http_server();
 
-  let deno = util::deno_cmd()
+  let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
     .arg(util::deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable")
+    // TODO(bartlomieju): would be better if we could apply this unstable
+    // flag to particular files, but there's many of them that rely on unstable
+    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
+    .arg("--unstable-net")
+    .arg("--unstable-vsock")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
-  // TODO(mmastrac): it would be better to just load a test CA for all tests
-  let deno = if test == "websocket_test" || test == "tls_sni_test" {
-    deno.arg("--unsafely-ignore-certificate-errors")
-  } else {
-    deno
+  if test == "broadcast_channel_test" {
+    deno = deno.arg("--unstable-broadcast-channel");
+  }
+
+  if test == "cron_test" {
+    deno = deno.arg("--unstable-cron");
+  }
+
+  if test.contains("kv_") {
+    deno = deno.arg("--unstable-kv");
+  }
+
+  if test == "worker_permissions_test" || test == "worker_test" {
+    deno = deno.arg("--unstable-worker-options");
+  }
+
+  // Some tests require the root CA cert file to be loaded.
+  if test == "websocket_test" {
+    deno = deno.arg(format!(
+      "--cert={}",
+      util::testdata_path()
+        .join("tls")
+        .join("RootCA.pem")
+        .to_string_lossy()
+    ));
   };
+
+  if test == "tls_sni_test" {
+    // TODO(lucacasonato): fix the SNI in the certs so that this is not needed
+    deno = deno.arg("--unsafely-ignore-certificate-errors");
+  }
 
   let mut deno = deno
     .arg("-A")
-    .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
-    .piped_output()
-    .spawn()
-    .expect("failed to spawn script");
+    .arg(util::tests_path().join("unit").join(format!("{test}.ts")));
+
+  // update the snapshots if when `UPDATE=1`
+  if std::env::var_os("UPDATE") == Some("1".into()) {
+    deno = deno.arg("--").arg("--update");
+  }
+
+  let mut deno = deno.piped_output().spawn().expect("failed to spawn script");
 
   let now = Instant::now();
   let stdout = deno.stdout.take().unwrap();

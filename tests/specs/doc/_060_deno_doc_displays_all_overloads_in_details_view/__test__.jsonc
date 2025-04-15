@@ -1,0 +1,4 @@
+{
+  "args": "doc --filter NS.test 060_deno_doc_displays_all_overloads_in_details_view.ts",
+  "output": "060_deno_doc_displays_all_overloads_in_details_view.ts.out"
+}

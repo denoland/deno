@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: Temporal is not defined
+Temporal.Now.instant();
+^
+    at [WILDCARD]temporal.ts:1:1
+
+    info: Temporal is an unstable API.
+    hint: Run again with `--unstable-temporal` flag to enable this API.

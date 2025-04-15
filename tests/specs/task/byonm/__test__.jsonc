@@ -32,10 +32,6 @@
         "args": "install",
         "output": "[WILDCARD]"
       }, {
-        // implied byonm from DENO_FUTURE
-        "envs": {
-          "DENO_FUTURE": "1"
-        },
         "args": "task say",
         "output": "package_json_say.out"
       }, {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
 use deno_core::OpState;
@@ -16,10 +16,10 @@ deno_core::extension!(
     op_bootstrap_user_agent,
     op_bootstrap_language,
     op_bootstrap_log_level,
-    op_bootstrap_no_color,
     op_bootstrap_color_depth,
-    op_bootstrap_is_stdout_tty,
-    op_bootstrap_is_stderr_tty,
+    op_bootstrap_no_color,
+    op_bootstrap_stdout_no_color,
+    op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
@@ -36,7 +36,6 @@ deno_core::extension!(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
-  pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
@@ -54,9 +53,8 @@ impl Default for SnapshotOptions {
     };
 
     Self {
-      deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
-      v8_version: deno_core::v8_version(),
+      v8_version: deno_core::v8::VERSION_STRING,
       target,
     }
   }
@@ -97,14 +95,10 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 #[serde]
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
-  if options.unstable {
-    return vec!["--unstable".to_string()];
-  }
-
-  let mut flags = Vec::new();
-  for (name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-    if options.unstable_features.contains(id) {
-      flags.push(format!("--unstable-{}", name));
+  let mut flags = Vec::with_capacity(options.unstable_features.len());
+  for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+    if options.unstable_features.contains(&granular_flag.id) {
+      flags.push(format!("--unstable-{}", granular_flag.name));
     }
   }
   flags
@@ -123,12 +117,6 @@ pub fn op_bootstrap_log_level(state: &mut OpState) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.no_color
-}
-
-#[op2(fast)]
 pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
   let options = state.borrow::<BootstrapOptions>();
   match options.color_level {
@@ -140,13 +128,24 @@ pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_stdout_tty(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.is_stdout_tty
+pub fn op_bootstrap_no_color(_state: &mut OpState) -> bool {
+  !deno_terminal::colors::use_color()
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_stderr_tty(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.is_stderr_tty
+pub fn op_bootstrap_stdout_no_color(_state: &mut OpState) -> bool {
+  if deno_terminal::colors::force_color() {
+    return false;
+  }
+
+  !deno_terminal::is_stdout_tty() || !deno_terminal::colors::use_color()
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
+  if deno_terminal::colors::force_color() {
+    return false;
+  }
+
+  !deno_terminal::is_stderr_tty() || !deno_terminal::colors::use_color()
 }

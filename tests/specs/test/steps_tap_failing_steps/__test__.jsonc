@@ -1,0 +1,5 @@
+{
+  "args": "test --reporter=tap failing_steps.ts",
+  "exitCode": 1,
+  "output": "failing_steps.tap.out"
+}

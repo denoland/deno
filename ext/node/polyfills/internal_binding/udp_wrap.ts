@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -337,16 +337,10 @@ export class UDP extends HandleWrap {
     try {
       listener = DenoListenDatagram(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
-        return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
-        return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
-
-      // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.NetAddr;

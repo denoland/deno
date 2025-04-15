@@ -1,0 +1,2 @@
+error: Failed to install "http" specifier. If you are trying to install http://example.com/ globally, run again with `-g` flag:
+  deno install -g http://example.com/

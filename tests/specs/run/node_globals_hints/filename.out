@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: __filename is not defined
+__filename;
+^
+    at [WILDCARD]filename.js:1:1
+
+    info: __filename global is not available in ES modules.
+    hint: Use import.meta.filename instead.

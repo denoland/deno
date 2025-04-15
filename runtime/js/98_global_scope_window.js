@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -60,15 +60,18 @@ const language = memoizeLazy(() => op_bootstrap_language());
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
       const webgpu = loadWebGPU();
+      webgpu.initGPU();
       return webgpu.gpu;
     },
   },
   hardwareConcurrency: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -77,6 +80,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   userAgent: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -85,6 +89,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   language: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -93,6 +98,7 @@ ObjectDefineProperties(Navigator.prototype, {
     },
   },
   languages: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -107,7 +113,6 @@ const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
   Window: globalInterfaces.windowConstructorDescriptor,
-  window: core.propGetterOnly(() => globalThis),
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),

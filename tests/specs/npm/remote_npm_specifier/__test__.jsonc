@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A remote_npm_specifier/main.ts",
+  "output": "remote_npm_specifier/main.out",
+  "exitCode": 0
+}

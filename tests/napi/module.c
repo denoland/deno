@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 typedef struct napi_module {
   int nm_version;
   unsigned int nm_flags;

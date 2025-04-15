@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -11,7 +11,7 @@ import {
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
 } from "node:http";
-import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
+import { Agent as HttpAgent } from "node:_http_agent";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
@@ -112,7 +112,7 @@ export const globalAgent = new Agent({
 
 /** HttpsClientRequest class loosely follows http.ClientRequest class API. */
 class HttpsClientRequest extends ClientRequest {
-  override _encrypted: true;
+  override _encrypted = true;
   override defaultProtocol = "https:";
   override _getClient(): Deno.HttpClient | undefined {
     if (caCerts === null) {

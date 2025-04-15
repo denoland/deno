@@ -1,0 +1,5 @@
+{
+  "args": "task non-existent",
+  "output": "non_existent.out",
+  "exitCode": 1
+}

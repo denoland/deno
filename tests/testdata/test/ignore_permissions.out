@@ -1,6 +1,0 @@
-Check [WILDCARD]/test/ignore_permissions.ts
-running 1 test from ./test/ignore_permissions.ts
-ignore ... ignored ([WILDCARD])
-
-ok | 0 passed | 0 failed | 1 ignored ([WILDCARD])
-

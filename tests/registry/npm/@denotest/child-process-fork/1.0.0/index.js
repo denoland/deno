@@ -1,14 +1,9 @@
 const path = require("path");
+const childProcess = require("node:child_process");
 
 function childProcessFork(path) {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", path],
-    env: {
-      "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE": Deno[Deno.internal].core.ops.op_npm_process_state(),
-    }
-  });
-  const child = command.spawn();
-  child.status.then(() => {
+  const child = childProcess.fork(path);
+  child.on("exit", () => {
     console.log("Done.");
   });
 }

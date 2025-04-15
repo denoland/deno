@@ -1,829 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
-
-  /** Information for a HTTP request.
-   *
-   * @category HTTP Server
-   * @experimental
-   */
-  export interface ServeHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
-    /** The completion promise */
-    completed: Promise<void>;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Retrieve the process umask.  If `mask` is provided, sets the process umask.
-   * This call always returns what the umask was before the call.
-   *
-   * ```ts
-   * console.log(Deno.umask());  // e.g. 18 (0o022)
-   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
-   * console.log(Deno.umask());  // e.g. 63 (0o077)
-   * ```
-   *
-   * This API is under consideration to determine if permissions are required to
-   * call it.
-   *
-   * *Note*: This API is not implemented on Windows
-   *
-   * @category File System
-   * @experimental
-   */
-  export function umask(mask?: number): number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All plain number types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeNumberType =
-    | "u8"
-    | "i8"
-    | "u16"
-    | "i16"
-    | "u32"
-    | "i32"
-    | "f32"
-    | "f64";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All BigInt number types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBigIntType =
-    | "u64"
-    | "i64"
-    | "usize"
-    | "isize";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native boolean type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBooleanType = "bool";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native pointer type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativePointerType = "pointer";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native buffer type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBufferType = "buffer";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native function type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeFunctionType = "function";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native void type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeVoidType = "void";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native struct type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeStructType = { readonly struct: readonly NativeType[] };
-
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export const brand: unique symbol;
-
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
-    [brand]: T;
-  };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
-    & "function"
-    & {
-      [brand]: T;
-    };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All supported types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeType =
-    | NativeNumberType
-    | NativeBigIntType
-    | NativeBooleanType
-    | NativePointerType
-    | NativeBufferType
-    | NativeFunctionType
-    | NativeStructType;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeResultType = NativeType | NativeVoidType;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol parameters and unsafe callback return
-   * types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for unsafe callback return types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeResultType<
-    T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : T extends NativeVoidType ? void
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion of parameter types of foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
-    //
-    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
-        ? readonly ToNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: ToNativeType<T[K]>;
-        }
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol return types and unsafe callback
-   * parameters.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol return types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeResultType<
-    T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeVoidType ? void
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeParameterTypes<
-    T extends readonly NativeType[],
-  > =
-    //
-    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
-        ? readonly FromNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: FromNativeType<T[K]>;
-        }
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The interface for a foreign function as defined by its parameter and result
-   * types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-    NonBlocking extends boolean = boolean,
-  > {
-    /** Name of the symbol.
-     *
-     * Defaults to the key name in symbols object. */
-    name?: string;
-    /** The parameters of the foreign function. */
-    parameters: Parameters;
-    /** The result (return value) of the foreign function. */
-    result: Result;
-    /** When `true`, function calls will run on a dedicated blocking thread and
-     * will return a `Promise` resolving to the `result`. */
-    nonblocking?: NonBlocking;
-    /** When `true`, dlopen will not fail if the symbol is not found.
-     * Instead, the symbol will be set to `null`.
-     *
-     * @default {false} */
-    optional?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignStatic<Type extends NativeType = NativeType> {
-    /** Name of the symbol, defaults to the key name in symbols object. */
-    name?: string;
-    /** The type of the foreign static value. */
-    type: Type;
-    /** When `true`, dlopen will not fail if the symbol is not found.
-     * Instead, the symbol will be set to `null`.
-     *
-     * @default {false} */
-    optional?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A foreign library interface descriptor.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignLibraryInterface {
-    [name: string]: ForeignFunction | ForeignStatic;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type that infers a foreign symbol.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction ? FromForeignFunction<T>
-      : T extends ForeignStatic ? FromNativeType<T["type"]>
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   *  @category FFI
-   *  @experimental
-   */
-  export type FromForeignFunction<T extends ForeignFunction> =
-    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
-      : (
-        ...args: ToNativeParameterTypes<T["parameters"]>
-      ) => StaticForeignSymbolReturnType<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
-    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
-    IsAsync extends true ? Promise<T> : T;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type that infers a foreign library interface.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
-    {
-      [K in keyof T]: T[K]["optional"] extends true
-        ? StaticForeignSymbol<T[K]> | null
-        : StaticForeignSymbol<T[K]>;
-    };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A non-null pointer, represented as an object
-   * at runtime. The object's prototype is `null`
-   * and cannot be changed. The object cannot be
-   * assigned to either and is thus entirely read-only.
-   *
-   * To interact with memory through a pointer use the
-   * {@linkcode UnsafePointerView} class. To create a
-   * pointer from an address or the get the address of
-   * a pointer use the static methods of the
-   * {@linkcode UnsafePointer} class.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type PointerObject<T = unknown> = { [brand]: T };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Pointers are represented either with a {@linkcode PointerObject}
-   * object or a `null` if the pointer is null.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type PointerValue<T = unknown> = null | PointerObject<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A collection of static functions for interacting with pointer objects.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafePointer {
-    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: bigint): PointerValue<T>;
-    /** Returns `true` if the two pointers point to the same address. */
-    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
-    /** Return the direct memory pointer to the typed array in memory. */
-    static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
-    ): PointerValue<T>;
-    /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset<T = unknown>(
-      value: PointerObject,
-      offset: number,
-    ): PointerValue<T>;
-    /** Get the numeric value of a pointer */
-    static value(value: PointerValue): bigint;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe pointer view to a memory location as specified by the `pointer`
-   * value. The `UnsafePointerView` API follows the standard built in interface
-   * {@linkcode DataView} for accessing the underlying types at an memory
-   * location (numbers, strings and raw bytes).
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafePointerView {
-    constructor(pointer: PointerObject);
-
-    pointer: PointerObject;
-
-    /** Gets a boolean at the specified byte offset from the pointer. */
-    getBool(offset?: number): boolean;
-    /** Gets an unsigned 8-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint8(offset?: number): number;
-    /** Gets a signed 8-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt8(offset?: number): number;
-    /** Gets an unsigned 16-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint16(offset?: number): number;
-    /** Gets a signed 16-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt16(offset?: number): number;
-    /** Gets an unsigned 32-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint32(offset?: number): number;
-    /** Gets a signed 32-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt32(offset?: number): number;
-    /** Gets an unsigned 64-bit integer at the specified byte offset from the
-     * pointer. */
-    getBigUint64(offset?: number): bigint;
-    /** Gets a signed 64-bit integer at the specified byte offset from the
-     * pointer. */
-    getBigInt64(offset?: number): bigint;
-    /** Gets a signed 32-bit float at the specified byte offset from the
-     * pointer. */
-    getFloat32(offset?: number): number;
-    /** Gets a signed 64-bit float at the specified byte offset from the
-     * pointer. */
-    getFloat64(offset?: number): number;
-    /** Gets a pointer at the specified byte offset from the pointer */
-    getPointer<T = unknown>(offset?: number): PointerValue<T>;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the pointer. */
-    getCString(offset?: number): string;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the specified pointer. */
-    static getCString(
-      pointer: PointerObject,
-      offset?: number,
-    ): string;
-    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
-     * offset from the pointer. */
-    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
-    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
-     * offset from the specified pointer. */
-    static getArrayBuffer(
-      pointer: PointerObject,
-      byteLength: number,
-      offset?: number,
-    ): ArrayBuffer;
-    /** Copies the memory of the pointer into a typed array.
-     *
-     * Length is determined from the typed array's `byteLength`.
-     *
-     * Also takes optional byte offset from the pointer. */
-    copyInto(destination: BufferSource, offset?: number): void;
-    /** Copies the memory of the specified pointer into a typed array.
-     *
-     * Length is determined from the typed array's `byteLength`.
-     *
-     * Also takes optional byte offset from the pointer. */
-    static copyInto(
-      pointer: PointerObject,
-      destination: BufferSource,
-      offset?: number,
-    ): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe pointer to a function, for calling functions that are not present
-   * as symbols.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
-    /** The pointer to the function. */
-    pointer: PointerObject<Fn>;
-    /** The definition of the function. */
-    definition: Fn;
-
-    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
-    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Fn);
-
-    /** Call the foreign function. */
-    call: FromForeignFunction<Fn>;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Definition of a unsafe callback function.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface UnsafeCallbackDefinition<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-  > {
-    /** The parameters of the callbacks. */
-    parameters: Parameters;
-    /** The current result of the callback. */
-    result: Result;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe callback function.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type UnsafeCallbackFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
-    ...args: FromNativeParameterTypes<Parameters>
-  ) => ToNativeResultType<Result>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe function pointer for passing JavaScript functions as C function
-   * pointers to foreign function calls.
-   *
-   * The function pointer remains valid until the `close()` method is called.
-   *
-   * All `UnsafeCallback` are always thread safe in that they can be called from
-   * foreign threads without crashing. However, they do not wake up the Deno event
-   * loop by default.
-   *
-   * If a callback is to be called from foreign threads, use the `threadSafe()`
-   * static constructor or explicitly call `ref()` to have the callback wake up
-   * the Deno event loop when called from foreign threads. This also stops
-   * Deno's process from exiting while the callback still exists and is not
-   * unref'ed.
-   *
-   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
-   * a ref'ed callback does not stop it from waking up the Deno event loop when
-   * called from foreign threads.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafeCallback<
-    const Definition extends UnsafeCallbackDefinition =
-      UnsafeCallbackDefinition,
-  > {
-    constructor(
-      definition: Definition,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    );
-
-    /** The pointer to the unsafe callback. */
-    readonly pointer: PointerObject<Definition>;
-    /** The definition of the unsafe callback. */
-    readonly definition: Definition;
-    /** The callback function. */
-    readonly callback: UnsafeCallbackFunction<
-      Definition["parameters"],
-      Definition["result"]
-    >;
-
-    /**
-     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
-     * wake up the Deno event loop when called from foreign threads.
-     *
-     * This also stops Deno's process from exiting while the callback still
-     * exists and is not unref'ed.
-     */
-    static threadSafe<
-      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
-    >(
-      definition: Definition,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    ): UnsafeCallback<Definition>;
-
-    /**
-     * Increments the callback's reference counting and returns the new
-     * reference count.
-     *
-     * After `ref()` has been called, the callback always wakes up the
-     * Deno event loop when called from foreign threads.
-     *
-     * If the callback's reference count is non-zero, it keeps Deno's
-     * process from exiting.
-     */
-    ref(): number;
-
-    /**
-     * Decrements the callback's reference counting and returns the new
-     * reference count.
-     *
-     * Calling `unref()` does not stop a callback from waking up the Deno
-     * event loop when called from foreign threads.
-     *
-     * If the callback's reference counter is zero, it no longer keeps
-     * Deno's process from exiting.
-     */
-    unref(): number;
-
-    /**
-     * Removes the C function pointer associated with this instance.
-     *
-     * Continuing to use the instance or the C function pointer after closing
-     * the `UnsafeCallback` will lead to errors and crashes.
-     *
-     * Calling this method sets the callback's reference counting to zero,
-     * stops the callback from waking up the Deno event loop when called from
-     * foreign threads and no longer keeps Deno's process from exiting.
-     */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A dynamic library resource.  Use {@linkcode Deno.dlopen} to load a dynamic
-   * library and return this interface.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
-    /** All of the registered library along with functions for calling them. */
-    symbols: StaticForeignLibraryInterface<S>;
-    /** Removes the pointers associated with the library symbols.
-     *
-     * Continuing to use symbols that are part of the library will lead to
-     * errors and crashes.
-     *
-     * Calling this method will also immediately set any references to zero and
-     * will no longer keep Deno's process from exiting.
-     */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Opens an external dynamic library and registers symbols, making foreign
-   * functions available to be called.
-   *
-   * Requires `allow-ffi` permission. Loading foreign dynamic libraries can in
-   * theory bypass all of the sandbox permissions. While it is a separate
-   * permission users should acknowledge in practice that is effectively the
-   * same as running with the `allow-all` permission.
-   *
-   * @example Given a C library which exports a foreign function named `add()`
-   *
-   * ```ts
-   * // Determine library extension based on
-   * // your OS.
-   * let libSuffix = "";
-   * switch (Deno.build.os) {
-   *   case "windows":
-   *     libSuffix = "dll";
-   *     break;
-   *   case "darwin":
-   *     libSuffix = "dylib";
-   *     break;
-   *   default:
-   *     libSuffix = "so";
-   *     break;
-   * }
-   *
-   * const libName = `./libadd.${libSuffix}`;
-   * // Open library and define exported symbols
-   * const dylib = Deno.dlopen(
-   *   libName,
-   *   {
-   *     "add": { parameters: ["isize", "isize"], result: "isize" },
-   *   } as const,
-   * );
-   *
-   * // Call the symbol `add`
-   * const result = dylib.symbols.add(35n, 34n); // 69n
-   *
-   * console.log(`Result from external addition of 35 and 34: ${result}`);
-   * ```
-   *
-   * @tags allow-ffi
-   * @category FFI
-   * @experimental
-   */
-  export function dlopen<const S extends ForeignLibraryInterface>(
-    filename: string | URL,
-    symbols: S,
-  ): DynamicLibrary<S>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -844,222 +28,17 @@ declare namespace Deno {
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11" | "wayland",
-      windowHandle: Deno.PointerValue<unknown>,
-      displayHandle: Deno.PointerValue<unknown>,
+      options: {
+        system: "cocoa" | "win32" | "x11" | "wayland";
+        windowHandle: Deno.PointerValue<unknown>;
+        displayHandle: Deno.PointerValue<unknown>;
+        width: number;
+        height: number;
+      },
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
   }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * These are unstable options which can be used with {@linkcode Deno.run}.
-   *
-   * @category Sub Process
-   * @experimental
-   */
-  export interface UnstableRunOptions extends RunOptions {
-    /** If `true`, clears the environment variables before executing the
-     * sub-process.
-     *
-     * @default {false} */
-    clearEnv?: boolean;
-    /** For POSIX systems, sets the group ID for the sub process. */
-    gid?: number;
-    /** For POSIX systems, sets the user ID for the sub process. */
-    uid?: number;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
-   * an array of program arguments, the first of which is the binary.
-   *
-   * ```ts
-   * const p = Deno.run({
-   *   cmd: ["curl", "https://example.com"],
-   * });
-   * const status = await p.status();
-   * ```
-   *
-   * Subprocess uses same working directory as parent process unless `opt.cwd`
-   * is specified.
-   *
-   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
-   * Doesn't guarantee that only `opt.env` variables are present,
-   * as the OS may set environmental variables for processes.
-   *
-   * Environmental variables for subprocess can be specified using `opt.env`
-   * mapping.
-   *
-   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
-   * in the child process. Failure in the setuid call will cause the spawn to fail.
-   *
-   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
-   * This has the same semantics as the uid field.
-   *
-   * By default subprocess inherits stdio of parent process. To change
-   * this this, `opt.stdin`, `opt.stdout`, and `opt.stderr` can be set
-   * independently to a resource ID (_rid_) of an open file, `"inherit"`,
-   * `"piped"`, or `"null"`:
-   *
-   * - _number_: the resource ID of an open file/resource. This allows you to
-   *   read or write to a file.
-   * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-   *   parent.
-   * - `"piped"`: A new pipe should be arranged to connect the parent and child
-   *   sub-process.
-   * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-   *   the stream to `/dev/null`.
-   *
-   * Details of the spawned process are returned as an instance of
-   * {@linkcode Deno.Process}.
-   *
-   * Requires `allow-run` permission.
-   *
-   * @tags allow-run
-   * @category Sub Process
-   * @experimental
-   */
-  export function run<T extends UnstableRunOptions = UnstableRunOptions>(
-    opt: T,
-  ): Process<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
-   * designed to allow custom certificates or proxies to be used with `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const req = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface HttpClient extends Disposable {
-    /** Close the HTTP client. */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The options used when creating a {@linkcode Deno.HttpClient}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface CreateHttpClientOptions {
-    /** A list of root certificates that will be used in addition to the
-     * default root certificates to verify the peer's certificate.
-     *
-     * Must be in PEM format. */
-    caCerts?: string[];
-    /** A HTTP proxy to use for new connections. */
-    proxy?: Proxy;
-    /** Sets the maximum numer of idle connections per host allowed in the pool. */
-    poolMaxIdlePerHost?: number;
-    /** Set an optional timeout for idle sockets being kept-alive.
-     * Set to false to disable the timeout. */
-    poolIdleTimeout?: number | false;
-    /**
-     * Whether HTTP/1.1 is allowed or not.
-     *
-     * @default {true}
-     */
-    http1?: boolean;
-    /** Whether HTTP/2 is allowed or not.
-     *
-     * @default {true}
-     */
-    http2?: boolean;
-    /** Whether setting the host header is allowed or not.
-     *
-     * @default {false}
-     */
-    allowHost?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The definition of a proxy when specifying
-   * {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface Proxy {
-    /** The string URL of the proxy server to use. */
-    url: string;
-    /** The basic auth credentials to be used against the proxy server. */
-    basicAuth?: BasicAuth;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
-   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface BasicAuth {
-    /** The username to be used against the proxy server. */
-    username: string;
-    /** The password to be used against the proxy server. */
-    password: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @example ```ts
-   * const client = Deno.createHttpClient({
-   *   proxy: { url: "http://myproxy.com:8080" }
-   * });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions,
-  ): HttpClient;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * // Load a client key and certificate that we'll use to connect
-   * const key = await Deno.readTextFile("./key.key");
-   * const cert = await Deno.readTextFile("./cert.crt");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
-  ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1098,7 +77,8 @@ declare namespace Deno {
    * @category Network
    * @experimental
    */
-  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+  export interface DatagramConn
+    extends AsyncIterable<[Uint8Array<ArrayBuffer>, Addr]> {
     /** Joins an IPv4 multicast group. */
     joinMulticastV4(
       address: string,
@@ -1116,7 +96,7 @@ declare namespace Deno {
      * Messages are received in the format of a tuple containing the data array
      * and the address information.
      */
-    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array<ArrayBuffer>, Addr]>;
     /** Sends a message to the target via the connection. The method resolves
      * with the number of bytes sent. */
     send(p: Uint8Array, addr: Addr): Promise<number>;
@@ -1125,7 +105,9 @@ declare namespace Deno {
     close(): void;
     /** Return the address of the instance. */
     readonly addr: Addr;
-    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<
+      [Uint8Array<ArrayBuffer>, Addr]
+    >;
   }
 
   /**
@@ -1218,44 +200,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Acquire an advisory file-system lock synchronously for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file synchronously.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
@@ -1271,7 +215,7 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export function openKv(path?: string): Promise<Deno.Kv>;
+  export function openKv(path?: string): Promise<Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1352,7 +296,8 @@ declare namespace Deno {
    * executions. Each element in the array represents the number of milliseconds
    * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
    * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
+   * second, 5 seconds, and 10 seconds delay between each retry. There is a
+   * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
    * @category Cloud
    * @experimental
@@ -1534,7 +479,11 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+  export interface KvEntry<T> {
+    key: KvKey;
+    value: T;
+    versionstamp: string;
+  }
 
   /**
    * **UNSTABLE**: New API, yet to be vetted.
@@ -1739,7 +688,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): this;
@@ -1970,7 +919,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): Promise<KvCommitResult>;
@@ -2100,10 +1049,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type VegaObject = {
+    export interface VegaObject {
       $schema: string;
       [key: string]: unknown;
-    };
+    }
 
     /**
      * A collection of supported media types and data for Jupyter frontends.
@@ -2111,7 +1060,7 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type MediaBundle = {
+    export interface MediaBundle {
       "text/plain"?: string;
       "text/html"?: string;
       "image/svg+xml"?: string;
@@ -2137,7 +1086,7 @@ declare namespace Deno {
 
       // Must support a catch all for custom media types / mimetypes
       [key: string]: string | object | undefined;
-    };
+    }
 
     /**
      * @category Jupyter
@@ -2149,9 +1098,9 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type Displayable = {
+    export interface Displayable {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
-    };
+    }
 
     /**
      * Display function for Jupyter Deno Kernel.
@@ -2163,7 +1112,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export function display(obj: unknown, options?: DisplayOptions): void;
+    export function display(
+      obj: unknown,
+      options?: DisplayOptions,
+    ): Promise<void>;
 
     /**
      * Show Markdown in Jupyter frontends with a tagged template function.
@@ -2233,15 +1185,41 @@ declare namespace Deno {
     ): Displayable;
 
     /**
-     * Format an object for displaying in Deno
+     * Display a JPG or PNG image.
      *
-     * @param obj - The object to be displayed
-     * @returns MediaBundle
+     * ```
+     * Deno.jupyter.image("./cat.jpg");
+     * Deno.jupyter.image("./dog.png");
+     * ```
      *
      * @category Jupyter
      * @experimental
      */
-    export function format(obj: unknown): MediaBundle;
+    export function image(path: string): Displayable;
+
+    /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * const img = Deno.readFileSync("./cat.jpg");
+     * Deno.jupyter.image(img);
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(data: Uint8Array): Displayable;
+
+    /**
+     * Format an object for displaying in Deno
+     *
+     * @param obj - The object to be displayed
+     * @returns Promise<MediaBundle>
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function format(obj: unknown): Promise<MediaBundle>;
 
     /**
      * Broadcast a message on IO pub channel.
@@ -2273,30 +1251,3163 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
-  }
-}
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
- * The [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
- * which also supports setting a {@linkcode Deno.HttpClient} which provides a
- * way to connect via proxies and use custom TLS certificates.
- *
- * @tags allow-net, allow-read
- * @category Fetch
- * @experimental
- */
-declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
-): Promise<Response>;
+    export {}; // only export exports
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * APIs for working with the OpenTelemetry observability framework. Deno can
+   * export traces, metrics, and logs to OpenTelemetry compatible backends via
+   * the OTLP protocol.
+   *
+   * Deno automatically instruments the runtime with OpenTelemetry traces and
+   * metrics. This data is exported via OTLP to OpenTelemetry compatible
+   * backends. User logs from the `console` API are exported as OpenTelemetry
+   * logs via OTLP.
+   *
+   * User code can also create custom traces, metrics, and logs using the
+   * OpenTelemetry API. This is done using the official OpenTelemetry package
+   * for JavaScript:
+   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
+   * Deno integrates with this package to provide tracing, metrics, and trace
+   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
+   * and custom user code. Deno automatically registers the providers with the
+   * OpenTelemetry API, so users can start creating custom traces, metrics, and
+   * logs without any additional setup.
+   *
+   * @example Using OpenTelemetry API to create custom traces
+   * ```ts,ignore
+   * import { trace } from "npm:@opentelemetry/api@1";
+   *
+   * const tracer = trace.getTracer("example-tracer");
+   *
+   * async function doWork() {
+   *   return tracer.startActiveSpan("doWork", async (span) => {
+   *     span.setAttribute("key", "value");
+   *     await new Promise((resolve) => setTimeout(resolve, 1000));
+   *     span.end();
+   *   });
+   * }
+   *
+   * Deno.serve(async (req) => {
+   *   await doWork();
+   *   const resp = await fetch("https://example.com");
+   *   return resp;
+   * });
+   * ```
+   *
+   * @category Telemetry
+   * @experimental
+   */
+  export namespace telemetry {
+    /**
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * TracerProvider interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const tracerProvider: any;
+
+    /**
+     * A ContextManager compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * ContextManager interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const contextManager: any;
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * MeterProvider interface.
+     *
+     * @category Telemetry
+     * @experimental
+     */
+    // deno-lint-ignore no-explicit-any
+    export const meterProvider: any;
+
+    export {}; // only export exports
+  }
+
+  /**
+   * @category Linter
+   * @experimental
+   */
+  export namespace lint {
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export type Range = [number, number];
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Fix {
+      range: Range;
+      text?: string;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Fixer {
+      insertTextAfter(node: Node, text: string): Fix;
+      insertTextAfterRange(range: Range, text: string): Fix;
+      insertTextBefore(node: Node, text: string): Fix;
+      insertTextBeforeRange(range: Range, text: string): Fix;
+      remove(node: Node): Fix;
+      removeRange(range: Range): Fix;
+      replaceText(node: Node, text: string): Fix;
+      replaceTextRange(range: Range, text: string): Fix;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ReportData {
+      node?: Node;
+      range?: Range;
+      message: string;
+      hint?: string;
+      fix?(fixer: Fixer): Fix | Iterable<Fix>;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface SourceCode {
+      /**
+       * Get the source test of a node. Omit `node` to get the
+       * full source code.
+       */
+      getText(node?: Node): string;
+      /**
+       * Returns array of ancestors of the current node, excluding the
+       * current node.
+       */
+      getAncestors(node: Node): Node[];
+      /**
+       * Get the full source code.
+       */
+      text: string;
+      /**
+       * Get the root node of the file. It's always the `Program` node.
+       */
+      ast: Program;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface RuleContext {
+      /**
+       * The running rule id: `<plugin-name>/<rule-name>`
+       */
+      id: string;
+      /**
+       * Name of the file that's currently being linted.
+       */
+      filename: string;
+      /**
+       * Helper methods for working with the raw source code.
+       */
+      sourceCode: SourceCode;
+      /**
+       * Report a lint error.
+       */
+      report(data: ReportData): void;
+      /**
+       * @deprecated Use `ctx.filename` instead.
+       */
+      getFilename(): string;
+      /**
+       * @deprecated Use `ctx.sourceCode` instead.
+       */
+      getSourceCode(): SourceCode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export type LintVisitor =
+      & {
+        [P in Node["type"]]?: (node: Extract<Node, { type: P }>) => void;
+      }
+      & {
+        [P in Node["type"] as `${P}:exit`]?: (
+          node: Extract<Node, { type: P }>,
+        ) => void;
+      }
+      & // Custom selectors which cannot be typed by us
+      // deno-lint-ignore no-explicit-any
+      Partial<{ [key: string]: (node: any) => void }>;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Rule {
+      create(ctx: RuleContext): LintVisitor;
+      destroy?(ctx: RuleContext): void;
+    }
+
+    /**
+     * In your plugins file do something like
+     *
+     * ```ts
+     * export default {
+     *   name: "my-plugin",
+     *   rules: {
+     *     "no-foo": {
+     *        create(ctx) {
+     *          return {
+     *             VariableDeclaration(node) {}
+     *          }
+     *        }
+     *     }
+     *   }
+     * } satisfies Deno.lint.Plugin
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface Plugin {
+      name: string;
+      rules: Record<string, Rule>;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Diagnostic {
+      id: string;
+      message: string;
+      hint?: string;
+      range: Range;
+      fix?: Fix[];
+    }
+
+    /**
+     * This API is useful for testing lint plugins.
+     *
+     * It throws an error if it's not used in `deno test` subcommand.
+     * @category Linter
+     * @experimental
+     */
+    export function runPlugin(
+      plugin: Plugin,
+      fileName: string,
+      source: string,
+    ): Diagnostic[];
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Program {
+      type: "Program";
+      range: Range;
+      sourceType: "module" | "script";
+      body: Statement[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportSpecifier {
+      type: "ImportSpecifier";
+      range: Range;
+      imported: Identifier | StringLiteral;
+      local: Identifier;
+      importKind: "type" | "value";
+      parent: ExportAllDeclaration | ExportNamedDeclaration | ImportDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDefaultSpecifier {
+      type: "ImportDefaultSpecifier";
+      range: Range;
+      local: Identifier;
+      parent: ImportDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportNamespaceSpecifier {
+      type: "ImportNamespaceSpecifier";
+      range: Range;
+      local: Identifier;
+      parent: ImportDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportAttribute {
+      type: "ImportAttribute";
+      range: Range;
+      key: Identifier | Literal;
+      value: Literal;
+      parent:
+        | ExportAllDeclaration
+        | ExportNamedDeclaration
+        | ImportDeclaration
+        | TSImportType;
+    }
+
+    /**
+     * An import declaration, examples:
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDeclaration {
+      type: "ImportDeclaration";
+      range: Range;
+      importKind: "type" | "value";
+      source: StringLiteral;
+      specifiers: Array<
+        | ImportDefaultSpecifier
+        | ImportNamespaceSpecifier
+        | ImportSpecifier
+      >;
+      attributes: ImportAttribute[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportDefaultDeclaration {
+      type: "ExportDefaultDeclaration";
+      range: Range;
+      declaration:
+        | ClassDeclaration
+        | Expression
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration;
+      exportKind: "type" | "value";
+      parent: BlockStatement | Program | TSModuleBlock;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportNamedDeclaration {
+      type: "ExportNamedDeclaration";
+      range: Range;
+      exportKind: "type" | "value";
+      specifiers: ExportSpecifier[];
+      declaration:
+        | ClassDeclaration
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSImportEqualsDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration
+        | null;
+      source: StringLiteral | null;
+      attributes: ImportAttribute[];
+      parent: BlockStatement | Program | TSModuleBlock;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportAllDeclaration {
+      type: "ExportAllDeclaration";
+      range: Range;
+      exportKind: "type" | "value";
+      exported: Identifier | null;
+      source: StringLiteral;
+      attributes: ImportAttribute[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamespaceExportDeclaration {
+      type: "TSNamespaceExportDeclaration";
+      range: Range;
+      id: Identifier;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportEqualsDeclaration {
+      type: "TSImportEqualsDeclaration";
+      range: Range;
+      importKind: "type" | "value";
+      id: Identifier;
+      moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExternalModuleReference {
+      type: "TSExternalModuleReference";
+      range: Range;
+      expression: StringLiteral;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportSpecifier {
+      type: "ExportSpecifier";
+      range: Range;
+      exportKind: "type" | "value";
+      exported: Identifier | StringLiteral;
+      local: Identifier | StringLiteral;
+      parent: ExportNamedDeclaration;
+    }
+
+    /**
+     * Variable declaration.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclaration {
+      type: "VariableDeclaration";
+      range: Range;
+      declare: boolean;
+      kind: "let" | "var" | "const" | "await using" | "using";
+      declarations: VariableDeclarator[];
+      parent: Node;
+    }
+
+    /**
+     * A VariableDeclaration can declare multiple variables. This node
+     * represents a single declaration out of that.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclarator {
+      type: "VariableDeclarator";
+      range: Range;
+      id: ArrayPattern | ObjectPattern | Identifier;
+      init: Expression | null;
+      definite: boolean;
+      parent: VariableDeclaration;
+    }
+
+    /**
+     * Function/Method parameter
+     * @category Linter
+     * @experimental
+     */
+    export type Parameter =
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty;
+
+    /**
+     * TypeScript accessibility modifiers used in classes
+     * @category Linter
+     * @experimental
+     */
+    export type Accessibility = "private" | "protected" | "public";
+
+    /**
+     * Declares a function in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionDeclaration {
+      type: "FunctionDeclaration";
+      range: Range;
+      declare: boolean;
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | null;
+      params: Parameter[];
+      parent:
+        | BlockStatement
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | Program;
+    }
+
+    /**
+     * Experimental: Decorators
+     * @category Linter
+     * @experimental
+     */
+    export interface Decorator {
+      type: "Decorator";
+      range: Range;
+      expression:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion;
+      parent: Node;
+    }
+
+    /**
+     * Declares a class in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassDeclaration {
+      type: "ClassDeclaration";
+      range: Range;
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      implements: TSClassImplements[];
+      body: ClassBody;
+      parent: Node;
+    }
+
+    /**
+     * Similar to ClassDeclaration but for declaring a class as an
+     * expression. The main difference is that the class name(=id) can
+     * be omitted.
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassExpression {
+      type: "ClassExpression";
+      range: Range;
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      superTypeArguments: TSTypeParameterInstantiation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      implements: TSClassImplements[];
+      body: ClassBody;
+      parent: Node;
+    }
+
+    /**
+     * Represents the body of a class and contains all members
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassBody {
+      type: "ClassBody";
+      range: Range;
+      body: Array<
+        | AccessorProperty
+        | MethodDefinition
+        | PropertyDefinition
+        | StaticBlock
+        // Stage 1 Proposal:
+        // https://github.com/tc39/proposal-grouped-and-auto-accessors
+        // | TSAbstractAccessorProperty
+        | TSAbstractMethodDefinition
+        | TSAbstractPropertyDefinition
+        | TSIndexSignature
+      >;
+      parent: ClassDeclaration | ClassExpression;
+    }
+
+    /**
+     * Static class initializiation block.
+     * @category Linter
+     * @experimental
+     */
+    export interface StaticBlock {
+      type: "StaticBlock";
+      range: Range;
+      body: Statement[];
+      parent: ClassBody;
+    }
+
+    // Stage 1 Proposal:
+    // https://github.com/tc39/proposal-grouped-and-auto-accessors
+    // | TSAbstractAccessorProperty
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface AccessorProperty {
+      type: "AccessorProperty";
+      range: Range;
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
+      parent: ClassBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface PropertyDefinition {
+      type: "PropertyDefinition";
+      range: Range;
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | PrivateIdentifier;
+      value: Expression | null;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      parent: ClassBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface MethodDefinition {
+      type: "MethodDefinition";
+      range: Range;
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "constructor" | "get" | "method" | "set";
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | Expression;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+      parent: ClassBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface BlockStatement {
+      type: "BlockStatement";
+      range: Range;
+      body: Statement[];
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * The `debugger;` statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface DebuggerStatement {
+      type: "DebuggerStatement";
+      range: Range;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Legacy JavaScript feature, that's discouraged from being used today.
+     * @deprecated
+     * @category Linter
+     * @experimental
+     */
+    export interface WithStatement {
+      type: "WithStatement";
+      range: Range;
+      object: Expression;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Returns a value from a function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ReturnStatement {
+      type: "ReturnStatement";
+      range: Range;
+      argument: Expression | null;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Custom control flow based on labels.
+     * @category Linter
+     * @experimental
+     */
+    export interface LabeledStatement {
+      type: "LabeledStatement";
+      range: Range;
+      label: Identifier;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Break any loop or labeled statement, example:
+     *
+     * ```ts
+     * while (true) {
+     *   break;
+     * }
+     *
+     * for (let i = 0; i < 10; i++) {
+     *   if (i > 5) break;
+     * }
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BreakStatement {
+      type: "BreakStatement";
+      range: Range;
+      label: Identifier | null;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Terminates the current loop and continues with the next iteration.
+     * @category Linter
+     * @experimental
+     */
+    export interface ContinueStatement {
+      type: "ContinueStatement";
+      range: Range;
+      label: Identifier | null;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Execute a statement the test passes, otherwise the alternate
+     * statement, if it was defined.
+     * @category Linter
+     * @experimental
+     */
+    export interface IfStatement {
+      type: "IfStatement";
+      range: Range;
+      test: Expression;
+      consequent: Statement;
+      alternate: Statement | null;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Match an expression against a series of cases.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchStatement {
+      type: "SwitchStatement";
+      range: Range;
+      discriminant: Expression;
+      cases: SwitchCase[];
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * A single case of a SwitchStatement.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchCase {
+      type: "SwitchCase";
+      range: Range;
+      test: Expression | null;
+      consequent: Statement[];
+      parent: SwitchStatement;
+    }
+
+    /**
+     * Throw a user defined exception. Stops execution
+     * of the current function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThrowStatement {
+      type: "ThrowStatement";
+      range: Range;
+      argument: Expression;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Run a loop while the test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface WhileStatement {
+      type: "WhileStatement";
+      range: Range;
+      test: Expression;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Re-run loop for as long as test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface DoWhileStatement {
+      type: "DoWhileStatement";
+      range: Range;
+      test: Expression;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Classic for-loop.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForStatement {
+      type: "ForStatement";
+      range: Range;
+      init: Expression | VariableDeclaration | null;
+      test: Expression | null;
+      update: Expression | null;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Enumerate over all enumerable string properties of an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForInStatement {
+      type: "ForInStatement";
+      range: Range;
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Iterate over sequence of values from an iterator.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForOfStatement {
+      type: "ForOfStatement";
+      range: Range;
+      await: boolean;
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Statement that holds an expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface ExpressionStatement {
+      type: "ExpressionStatement";
+      range: Range;
+      expression: Expression;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface TryStatement {
+      type: "TryStatement";
+      range: Range;
+      block: BlockStatement;
+      handler: CatchClause | null;
+      finalizer: BlockStatement | null;
+      parent:
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * The catch clause of a try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface CatchClause {
+      type: "CatchClause";
+      range: Range;
+      param: ArrayPattern | ObjectPattern | Identifier | null;
+      body: BlockStatement;
+      parent: TryStatement;
+    }
+
+    /**
+     * An array literal
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayExpression {
+      type: "ArrayExpression";
+      range: Range;
+      elements: Array<Expression | SpreadElement>;
+      parent: Node;
+    }
+
+    /**
+     * An object literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectExpression {
+      type: "ObjectExpression";
+      range: Range;
+      properties: Array<Property | SpreadElement>;
+      parent: Node;
+    }
+
+    /**
+     * Compare left and right value with the specifier operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface BinaryExpression {
+      type: "BinaryExpression";
+      range: Range;
+      operator:
+        | "&"
+        | "**"
+        | "*"
+        | "||"
+        | "|"
+        | "^"
+        | "==="
+        | "=="
+        | "!=="
+        | "!="
+        | ">="
+        | ">>>"
+        | ">>"
+        | ">"
+        | "in"
+        | "instanceof"
+        | "<="
+        | "<<"
+        | "<"
+        | "-"
+        | "%"
+        | "+"
+        | "/";
+      left: Expression | PrivateIdentifier;
+      right: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Chain expressions based on the operator specified
+     * @category Linter
+     * @experimental
+     */
+    export interface LogicalExpression {
+      type: "LogicalExpression";
+      range: Range;
+      operator: "&&" | "??" | "||";
+      left: Expression;
+      right: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Declare a function as an expression. Similar to `FunctionDeclaration`,
+     * with an optional name (=id).
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionExpression {
+      type: "FunctionExpression";
+      range: Range;
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement;
+      parent: Node;
+    }
+
+    /**
+     * Arrow function expression
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrowFunctionExpression {
+      type: "ArrowFunctionExpression";
+      range: Range;
+      async: boolean;
+      generator: boolean;
+      id: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | Expression;
+      parent: Node;
+    }
+
+    /**
+     * The `this` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThisExpression {
+      type: "ThisExpression";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * The `super` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface Super {
+      type: "Super";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * Apply operand on value based on the specified operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface UnaryExpression {
+      type: "UnaryExpression";
+      range: Range;
+      operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
+      argument: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Create a new instance of a class.
+     * @category Linter
+     * @experimental
+     */
+    export interface NewExpression {
+      type: "NewExpression";
+      range: Range;
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      arguments: Array<Expression | SpreadElement>;
+      parent: Node;
+    }
+
+    /**
+     * Dynamically import a module.
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportExpression {
+      type: "ImportExpression";
+      range: Range;
+      source: Expression;
+      options: Expression | null;
+      parent: Node;
+    }
+
+    /**
+     * A function call.
+     * @category Linter
+     * @experimental
+     */
+    export interface CallExpression {
+      type: "CallExpression";
+      range: Range;
+      optional: boolean;
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | null;
+      arguments: Array<Expression | SpreadElement>;
+      parent: Node;
+    }
+
+    /**
+     * Syntactic sugar to increment or decrement a value.
+     * @category Linter
+     * @experimental
+     */
+    export interface UpdateExpression {
+      type: "UpdateExpression";
+      range: Range;
+      prefix: boolean;
+      operator: "++" | "--";
+      argument: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Updaate a variable or property.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentExpression {
+      type: "AssignmentExpression";
+      range: Range;
+      operator:
+        | "&&="
+        | "&="
+        | "**="
+        | "*="
+        | "||="
+        | "|="
+        | "^="
+        | "="
+        | ">>="
+        | ">>>="
+        | "<<="
+        | "-="
+        | "%="
+        | "+="
+        | "??="
+        | "/=";
+      left: Expression;
+      right: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Inline if-statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface ConditionalExpression {
+      type: "ConditionalExpression";
+      range: Range;
+      test: Expression;
+      consequent: Expression;
+      alternate: Expression;
+      parent: Node;
+    }
+
+    /**
+     * MemberExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface MemberExpression {
+      type: "MemberExpression";
+      range: Range;
+      optional: boolean;
+      computed: boolean;
+      object: Expression;
+      property: Expression | Identifier | PrivateIdentifier;
+      parent: Node;
+    }
+
+    /**
+     * ChainExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface ChainExpression {
+      type: "ChainExpression";
+      range: Range;
+      expression:
+        | CallExpression
+        | MemberExpression
+        | TSNonNullExpression;
+      parent: Node;
+    }
+
+    /**
+     * Execute multiple expressions in sequence.
+     * @category Linter
+     * @experimental
+     */
+    export interface SequenceExpression {
+      type: "SequenceExpression";
+      range: Range;
+      expressions: Expression[];
+      parent: Node;
+    }
+
+    /**
+     * A template literal string.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateLiteral {
+      type: "TemplateLiteral";
+      range: Range;
+      quasis: TemplateElement[];
+      expressions: Expression[];
+      parent: Node;
+    }
+
+    /**
+     * The static portion of a template literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateElement {
+      type: "TemplateElement";
+      range: Range;
+      tail: boolean;
+      raw: string;
+      cooked: string;
+      parent: TemplateLiteral | TSTemplateLiteralType;
+    }
+
+    /**
+     * Tagged template expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface TaggedTemplateExpression {
+      type: "TaggedTemplateExpression";
+      range: Range;
+      tag: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      quasi: TemplateLiteral;
+      parent: Node;
+    }
+
+    /**
+     * Pause or resume a generator function.
+     * @category Linter
+     * @experimental
+     */
+    export interface YieldExpression {
+      type: "YieldExpression";
+      range: Range;
+      delegate: boolean;
+      argument: Expression | null;
+      parent: Node;
+    }
+
+    /**
+     * Await a `Promise` and get its fulfilled value.
+     * @category Linter
+     * @experimental
+     */
+    export interface AwaitExpression {
+      type: "AwaitExpression";
+      range: Range;
+      argument: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Can either be `import.meta` or `new.target`.
+     * @category Linter
+     * @experimental
+     */
+    export interface MetaProperty {
+      type: "MetaProperty";
+      range: Range;
+      meta: Identifier;
+      property: Identifier;
+      parent: Node;
+    }
+
+    /**
+     * Custom named node by the developer. Can be a variable name,
+     * a function name, parameter, etc.
+     * @category Linter
+     * @experimental
+     */
+    export interface Identifier {
+      type: "Identifier";
+      range: Range;
+      name: string;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      parent: Node;
+    }
+
+    /**
+     * Private members inside of classes, must start with `#`.
+     * @category Linter
+     * @experimental
+     */
+    export interface PrivateIdentifier {
+      type: "PrivateIdentifier";
+      range: Range;
+      name: string;
+      parent:
+        | TSAbstractPropertyDefinition
+        | TSPropertySignature
+        | PropertyDefinition
+        | MethodDefinition
+        | BinaryExpression
+        | MemberExpression;
+    }
+
+    /**
+     * Assign default values in parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentPattern {
+      type: "AssignmentPattern";
+      range: Range;
+      left: ArrayPattern | ObjectPattern | Identifier;
+      right: Expression;
+      parent: Node;
+    }
+
+    /**
+     * Destructure an array.
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayPattern {
+      type: "ArrayPattern";
+      range: Range;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      elements: Array<
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement
+        | null
+      >;
+      parent: Node;
+    }
+
+    /**
+     * Destructure an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectPattern {
+      type: "ObjectPattern";
+      range: Range;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      properties: Array<Property | RestElement>;
+      parent: Node;
+    }
+
+    /**
+     * The rest of function parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface RestElement {
+      type: "RestElement";
+      range: Range;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      argument:
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface SpreadElement {
+      type: "SpreadElement";
+      range: Range;
+      argument: Expression;
+      parent:
+        | ArrayExpression
+        | CallExpression
+        | NewExpression
+        | ObjectExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Property {
+      type: "Property";
+      range: Range;
+      shorthand: boolean;
+      computed: boolean;
+      method: boolean;
+      kind: "get" | "init" | "set";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | Expression
+        | TSEmptyBodyFunctionExpression;
+      parent: ObjectExpression | ObjectPattern;
+    }
+
+    /**
+     * Represents numbers that are too high or too low to be represented
+     * by the `number` type.
+     *
+     * ```ts
+     * const a = 9007199254740991n;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BigIntLiteral {
+      type: "Literal";
+      range: Range;
+      raw: string;
+      bigint: string;
+      value: bigint;
+      parent: Node;
+    }
+
+    /**
+     * Either `true` or `false`
+     * @category Linter
+     * @experimental
+     */
+    export interface BooleanLiteral {
+      type: "Literal";
+      range: Range;
+      raw: "false" | "true";
+      value: boolean;
+      parent: Node;
+    }
+
+    /**
+     * A number literal
+     *
+     * ```ts
+     * 1;
+     * 1.2;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface NumberLiteral {
+      type: "Literal";
+      range: Range;
+      raw: string;
+      value: number;
+      parent: Node;
+    }
+
+    /**
+     * The `null` literal
+     * @category Linter
+     * @experimental
+     */
+    export interface NullLiteral {
+      type: "Literal";
+      range: Range;
+      raw: "null";
+      value: null;
+      parent: Node;
+    }
+
+    /**
+     * A string literal
+     *
+     * ```ts
+     * "foo";
+     * 'foo "bar"';
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface StringLiteral {
+      type: "Literal";
+      range: Range;
+      raw: string;
+      value: string;
+      parent: Node;
+    }
+
+    /**
+     * A regex literal:
+     *
+     * ```ts
+     * /foo(bar|baz)$/g
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface RegExpLiteral {
+      type: "Literal";
+      range: Range;
+      raw: string;
+      regex: {
+        flags: string;
+        pattern: string;
+      };
+      value: RegExp | null;
+      parent: Node;
+    }
+
+    /**
+     * Union type of all Literals
+     * @category Linter
+     * @experimental
+     */
+    export type Literal =
+      | BigIntLiteral
+      | BooleanLiteral
+      | NullLiteral
+      | NumberLiteral
+      | RegExpLiteral
+      | StringLiteral;
+
+    /**
+     * User named identifier inside JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXIdentifier {
+      type: "JSXIdentifier";
+      range: Range;
+      name: string;
+      parent:
+        | JSXNamespacedName
+        | JSXOpeningElement
+        | JSXAttribute
+        | JSXClosingElement
+        | JSXMemberExpression;
+    }
+
+    /**
+     * Namespaced name in JSX
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXNamespacedName {
+      type: "JSXNamespacedName";
+      range: Range;
+      namespace: JSXIdentifier;
+      name: JSXIdentifier;
+      parent:
+        | JSXOpeningElement
+        | JSXAttribute
+        | JSXClosingElement
+        | JSXMemberExpression;
+    }
+
+    /**
+     * Empty JSX expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXEmptyExpression {
+      type: "JSXEmptyExpression";
+      range: Range;
+      parent: JSXAttribute | JSXElement | JSXFragment;
+    }
+
+    /**
+     * A JSX element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXElement {
+      type: "JSXElement";
+      range: Range;
+      openingElement: JSXOpeningElement;
+      closingElement: JSXClosingElement | null;
+      children: JSXChild[];
+      parent: Node;
+    }
+
+    /**
+     * The opening tag of a JSXElement
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningElement {
+      type: "JSXOpeningElement";
+      range: Range;
+      selfClosing: boolean;
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      attributes: Array<JSXAttribute | JSXSpreadAttribute>;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      parent: JSXElement;
+    }
+
+    /**
+     * A JSX attribute
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXAttribute {
+      type: "JSXAttribute";
+      range: Range;
+      name: JSXIdentifier | JSXNamespacedName;
+      value:
+        | JSXElement
+        | JSXExpressionContainer
+        | Literal
+        | null;
+      parent: JSXOpeningElement;
+    }
+
+    /**
+     * Spreads an object as JSX attributes.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXSpreadAttribute {
+      type: "JSXSpreadAttribute";
+      range: Range;
+      argument: Expression;
+      parent: JSXOpeningElement;
+    }
+
+    /**
+     * The closing tag of a JSXElement. Only used when the element
+     * is not self-closing.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingElement {
+      type: "JSXClosingElement";
+      range: Range;
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      parent: JSXElement;
+    }
+
+    /**
+     * Usually a passthrough node to pass multiple sibling elements as
+     * the JSX syntax requires one root element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXFragment {
+      type: "JSXFragment";
+      range: Range;
+      openingFragment: JSXOpeningFragment;
+      closingFragment: JSXClosingFragment;
+      children: JSXChild[];
+      parent: Node;
+    }
+
+    /**
+     * The opening tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningFragment {
+      type: "JSXOpeningFragment";
+      range: Range;
+      parent: JSXFragment;
+    }
+
+    /**
+     * The closing tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingFragment {
+      type: "JSXClosingFragment";
+      range: Range;
+      parent: JSXFragment;
+    }
+
+    /**
+     * Inserts a normal JS expression into JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXExpressionContainer {
+      type: "JSXExpressionContainer";
+      range: Range;
+      expression: Expression | JSXEmptyExpression;
+      parent: JSXAttribute | JSXElement | JSXFragment;
+    }
+
+    /**
+     * Plain text in JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXText {
+      type: "JSXText";
+      range: Range;
+      raw: string;
+      value: string;
+      parent: JSXElement | JSXFragment;
+    }
+
+    /**
+     * JSX member expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXMemberExpression {
+      type: "JSXMemberExpression";
+      range: Range;
+      object:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      property: JSXIdentifier;
+      parent: JSXOpeningElement | JSXClosingElement;
+    }
+
+    /**
+     * Union type of all possible child nodes in JSX
+     * @category Linter
+     * @experimental
+     */
+    export type JSXChild =
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXFragment
+      | JSXText;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleDeclaration {
+      type: "TSModuleDeclaration";
+      range: Range;
+      declare: boolean;
+      kind: "global" | "module" | "namespace";
+      id: Identifier | Literal | TSQualifiedName;
+      body: TSModuleBlock | undefined;
+      parent:
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | Program
+        | StaticBlock
+        | BlockStatement
+        | WithStatement
+        | LabeledStatement
+        | IfStatement
+        | SwitchCase
+        | WhileStatement
+        | DoWhileStatement
+        | ForStatement
+        | ForInStatement
+        | ForOfStatement
+        | TSModuleBlock;
+    }
+
+    /**
+     * Body of a `TSModuleDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleBlock {
+      type: "TSModuleBlock";
+      range: Range;
+      body: Array<
+        | ExportAllDeclaration
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | ImportDeclaration
+        | Statement
+        | TSImportEqualsDeclaration
+        | TSNamespaceExportDeclaration
+      >;
+      parent: TSModuleDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSClassImplements {
+      type: "TSClassImplements";
+      range: Range;
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      parent: ClassDeclaration | ClassExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractMethodDefinition {
+      type: "TSAbstractMethodDefinition";
+      range: Range;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      kind: "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractPropertyDefinition {
+      type: "TSAbstractPropertyDefinition";
+      range: Range;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      definite: boolean;
+      declare: boolean;
+      readonly: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | Expression
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      value: Expression | null;
+      parent: ClassBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEmptyBodyFunctionExpression {
+      type: "TSEmptyBodyFunctionExpression";
+      range: Range;
+      declare: boolean;
+      expression: boolean;
+      async: boolean;
+      generator: boolean;
+      id: null;
+      body: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      parent:
+        | MethodDefinition
+        | Property
+        | TSAbstractMethodDefinition
+        | TSParameterProperty;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSParameterProperty {
+      type: "TSParameterProperty";
+      range: Range;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      parameter:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | RestElement;
+      parent:
+        | ArrowFunctionExpression
+        | FunctionDeclaration
+        | FunctionExpression
+        | TSDeclareFunction
+        | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSCallSignatureDeclaration {
+      type: "TSCallSignatureDeclaration";
+      range: Range;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      parent: TSInterfaceBody | TSTypeLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSPropertySignature {
+      type: "TSPropertySignature";
+      range: Range;
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      key:
+        | PrivateIdentifier
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      parent: TSInterfaceBody | TSTypeLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSDeclareFunction {
+      type: "TSDeclareFunction";
+      range: Range;
+      async: boolean;
+      declare: boolean;
+      generator: boolean;
+      body: undefined;
+      id: Identifier | null;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      parent: Node;
+    }
+
+    /**
+     * ```ts
+     * enum Foo { A, B };
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumDeclaration {
+      type: "TSEnumDeclaration";
+      range: Range;
+      declare: boolean;
+      const: boolean;
+      id: Identifier;
+      body: TSEnumBody;
+      parent: Node;
+    }
+
+    /**
+     * The body of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumBody {
+      type: "TSEnumBody";
+      range: Range;
+      members: TSEnumMember[];
+      parent: TSEnumDeclaration;
+    }
+
+    /**
+     * A member of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumMember {
+      type: "TSEnumMember";
+      range: Range;
+      id:
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      initializer: Expression | undefined;
+      parent: TSEnumBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAssertion {
+      type: "TSTypeAssertion";
+      range: Range;
+      expression: Expression;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterInstantiation {
+      type: "TSTypeParameterInstantiation";
+      range: Range;
+      params: TypeNode[];
+      parent:
+        | ClassExpression
+        | NewExpression
+        | CallExpression
+        | TaggedTemplateExpression
+        | JSXOpeningElement
+        | TSClassImplements
+        | TSInstantiationExpression
+        | TSInterfaceHeritage
+        | TSTypeQuery
+        | TSTypeReference
+        | TSImportType;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAliasDeclaration {
+      type: "TSTypeAliasDeclaration";
+      range: Range;
+      declare: boolean;
+      id: Identifier;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSatisfiesExpression {
+      type: "TSSatisfiesExpression";
+      range: Range;
+      expression: Expression;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAsExpression {
+      type: "TSAsExpression";
+      range: Range;
+      expression: Expression;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInstantiationExpression {
+      type: "TSInstantiationExpression";
+      range: Range;
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNonNullExpression {
+      type: "TSNonNullExpression";
+      range: Range;
+      expression: Expression;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSThisType {
+      type: "TSThisType";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceDeclaration {
+      type: "TSInterfaceDeclaration";
+      range: Range;
+      declare: boolean;
+      id: Identifier;
+      extends: TSInterfaceHeritage[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      body: TSInterfaceBody;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceBody {
+      type: "TSInterfaceBody";
+      range: Range;
+      body: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+      parent: TSInterfaceDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConstructSignatureDeclaration {
+      type: "TSConstructSignatureDeclaration";
+      range: Range;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation;
+      parent: TSInterfaceBody | TSTypeLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMethodSignature {
+      type: "TSMethodSignature";
+      range: Range;
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "get" | "set" | "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      returnType: TSTypeAnnotation | undefined;
+      params: Parameter[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      parent: TSInterfaceBody | TSTypeLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceHeritage {
+      type: "TSInterfaceHeritage";
+      range: Range;
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      parent: TSInterfaceBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexSignature {
+      type: "TSIndexSignature";
+      range: Range;
+      readonly: boolean;
+      static: boolean;
+      parameters: Parameter[];
+      typeAnnotation: TSTypeAnnotation | undefined;
+      parent: ClassBody | TSInterfaceBody | TSTypeLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnionType {
+      type: "TSUnionType";
+      range: Range;
+      types: TypeNode[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntersectionType {
+      type: "TSIntersectionType";
+      range: Range;
+      types: TypeNode[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInferType {
+      type: "TSInferType";
+      range: Range;
+      typeParameter: TSTypeParameter;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeOperator {
+      type: "TSTypeOperator";
+      range: Range;
+      operator: "keyof" | "readonly" | "unique";
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexedAccessType {
+      type: "TSIndexedAccessType";
+      range: Range;
+      indexType: TypeNode;
+      objectType: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * ```ts
+     * const a: any = null;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAnyKeyword {
+      type: "TSAnyKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnknownKeyword {
+      type: "TSUnknownKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNumberKeyword {
+      type: "TSNumberKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSObjectKeyword {
+      type: "TSObjectKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBooleanKeyword {
+      type: "TSBooleanKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBigIntKeyword {
+      type: "TSBigIntKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSStringKeyword {
+      type: "TSStringKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSymbolKeyword {
+      type: "TSSymbolKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSVoidKeyword {
+      type: "TSVoidKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUndefinedKeyword {
+      type: "TSUndefinedKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNullKeyword {
+      type: "TSNullKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNeverKeyword {
+      type: "TSNeverKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntrinsicKeyword {
+      type: "TSIntrinsicKeyword";
+      range: Range;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSRestType {
+      type: "TSRestType";
+      range: Range;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConditionalType {
+      type: "TSConditionalType";
+      range: Range;
+      checkType: TypeNode;
+      extendsType: TypeNode;
+      trueType: TypeNode;
+      falseType: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMappedType {
+      type: "TSMappedType";
+      range: Range;
+      readonly: boolean;
+      optional: boolean;
+      nameType: TypeNode | null;
+      typeAnnotation: TypeNode | undefined;
+      constraint: TypeNode;
+      key: Identifier;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSLiteralType {
+      type: "TSLiteralType";
+      range: Range;
+      literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTemplateLiteralType {
+      type: "TSTemplateLiteralType";
+      range: Range;
+      quasis: TemplateElement[];
+      types: TypeNode[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeLiteral {
+      type: "TSTypeLiteral";
+      range: Range;
+      members: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSOptionalType {
+      type: "TSOptionalType";
+      range: Range;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAnnotation {
+      type: "TSTypeAnnotation";
+      range: Range;
+      typeAnnotation: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSArrayType {
+      type: "TSArrayType";
+      range: Range;
+      elementType: TypeNode;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeQuery {
+      type: "TSTypeQuery";
+      range: Range;
+      exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeReference {
+      type: "TSTypeReference";
+      range: Range;
+      typeName: Identifier | ThisExpression | TSQualifiedName;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypePredicate {
+      type: "TSTypePredicate";
+      range: Range;
+      asserts: boolean;
+      parameterName: Identifier | TSThisType;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTupleType {
+      type: "TSTupleType";
+      range: Range;
+      elementTypes: TypeNode[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamedTupleMember {
+      type: "TSNamedTupleMember";
+      range: Range;
+      label: Identifier;
+      elementType: TypeNode;
+      optional: boolean;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterDeclaration {
+      type: "TSTypeParameterDeclaration";
+      range: Range;
+      params: TSTypeParameter[];
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameter {
+      type: "TSTypeParameter";
+      range: Range;
+      in: boolean;
+      out: boolean;
+      const: boolean;
+      name: Identifier;
+      constraint: TypeNode | null;
+      default: TypeNode | null;
+      parent: TSInferType | TSMappedType | TSTypeParameterDeclaration;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportType {
+      type: "TSImportType";
+      range: Range;
+      argument: TypeNode;
+      qualifier: Identifier | ThisExpression | TSQualifiedName | null;
+      typeArguments: TSTypeParameterInstantiation | null;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExportAssignment {
+      type: "TSExportAssignment";
+      range: Range;
+      expression: Expression;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSFunctionType {
+      type: "TSFunctionType";
+      range: Range;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      parent: Node;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSQualifiedName {
+      type: "TSQualifiedName";
+      range: Range;
+      left: Identifier | ThisExpression | TSQualifiedName;
+      right: Identifier;
+      parent: Node;
+    }
+
+    /**
+     * Union type of all possible statement nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Statement =
+      | BlockStatement
+      | BreakStatement
+      | ClassDeclaration
+      | ContinueStatement
+      | DebuggerStatement
+      | DoWhileStatement
+      | ExportAllDeclaration
+      | ExportDefaultDeclaration
+      | ExportNamedDeclaration
+      | ExpressionStatement
+      | ForInStatement
+      | ForOfStatement
+      | ForStatement
+      | FunctionDeclaration
+      | IfStatement
+      | ImportDeclaration
+      | LabeledStatement
+      | ReturnStatement
+      | SwitchStatement
+      | ThrowStatement
+      | TryStatement
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSExportAssignment
+      | TSImportEqualsDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSNamespaceExportDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration
+      | WhileStatement
+      | WithStatement;
+
+    /**
+     * Union type of all possible expression nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Expression =
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | AssignmentExpression
+      | AwaitExpression
+      | BinaryExpression
+      | CallExpression
+      | ChainExpression
+      | ClassExpression
+      | ConditionalExpression
+      | FunctionExpression
+      | Identifier
+      | ImportExpression
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | LogicalExpression
+      | MemberExpression
+      | MetaProperty
+      | NewExpression
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | TemplateLiteral
+      | ThisExpression
+      | TSAsExpression
+      | TSInstantiationExpression
+      | TSNonNullExpression
+      | TSSatisfiesExpression
+      | TSTypeAssertion
+      | UnaryExpression
+      | UpdateExpression
+      | YieldExpression;
+
+    /**
+     * Union type of all possible type nodes in TypeScript
+     * @category Linter
+     * @experimental
+     */
+    export type TypeNode =
+      | TSAnyKeyword
+      | TSArrayType
+      | TSBigIntKeyword
+      | TSBooleanKeyword
+      | TSConditionalType
+      | TSFunctionType
+      | TSImportType
+      | TSIndexedAccessType
+      | TSInferType
+      | TSIntersectionType
+      | TSIntrinsicKeyword
+      | TSLiteralType
+      | TSMappedType
+      | TSNamedTupleMember
+      | TSNeverKeyword
+      | TSNullKeyword
+      | TSNumberKeyword
+      | TSObjectKeyword
+      | TSOptionalType
+      | TSQualifiedName
+      | TSRestType
+      | TSStringKeyword
+      | TSSymbolKeyword
+      | TSTemplateLiteralType
+      | TSThisType
+      | TSTupleType
+      | TSTypeLiteral
+      | TSTypeOperator
+      | TSTypePredicate
+      | TSTypeQuery
+      | TSTypeReference
+      | TSUndefinedKeyword
+      | TSUnionType
+      | TSUnknownKeyword
+      | TSVoidKeyword;
+
+    /**
+     * Union type of all possible AST nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Node =
+      | Program
+      | Expression
+      | Statement
+      | TypeNode
+      | ImportSpecifier
+      | ImportDefaultSpecifier
+      | ImportNamespaceSpecifier
+      | ImportAttribute
+      | TSExternalModuleReference
+      | ExportSpecifier
+      | VariableDeclarator
+      | Decorator
+      | ClassBody
+      | StaticBlock
+      | PropertyDefinition
+      | MethodDefinition
+      | SwitchCase
+      | CatchClause
+      | TemplateElement
+      | PrivateIdentifier
+      | AssignmentPattern
+      | RestElement
+      | SpreadElement
+      | Property
+      | JSXIdentifier
+      | JSXNamespacedName
+      | JSXEmptyExpression
+      | JSXOpeningElement
+      | JSXAttribute
+      | JSXSpreadAttribute
+      | JSXClosingElement
+      | JSXOpeningFragment
+      | JSXClosingFragment
+      | JSXExpressionContainer
+      | JSXText
+      | JSXMemberExpression
+      | TSModuleBlock
+      | TSClassImplements
+      | TSAbstractMethodDefinition
+      | TSAbstractPropertyDefinition
+      | TSEmptyBodyFunctionExpression
+      | TSCallSignatureDeclaration
+      | TSPropertySignature
+      | TSEnumBody
+      | TSEnumMember
+      | TSTypeParameterInstantiation
+      | TSInterfaceBody
+      | TSConstructSignatureDeclaration
+      | TSMethodSignature
+      | TSInterfaceHeritage
+      | TSIndexSignature
+      | TSTypeAnnotation
+      | TSTypeParameterDeclaration
+      | TSTypeParameter;
+
+    export {}; // only export exports
+  }
+
+  export {}; // only export exports
+}
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category Workers
  * @experimental
  */
-declare interface WorkerOptions {
+interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
@@ -2337,7 +4448,7 @@ declare interface WorkerOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStreamOptions {
+interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
   headers?: HeadersInit;
@@ -2348,9 +4459,9 @@ declare interface WebSocketStreamOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketConnection {
-  readable: ReadableStream<string | Uint8Array>;
-  writable: WritableStream<string | Uint8Array>;
+interface WebSocketConnection {
+  readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
+  writable: WritableStream<string | Uint8Array<ArrayBufferLike>>;
   extensions: string;
   protocol: string;
 }
@@ -2360,7 +4471,7 @@ declare interface WebSocketConnection {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketCloseInfo {
+interface WebSocketCloseInfo {
   code?: number;
   reason?: string;
 }
@@ -2371,7 +4482,7 @@ declare interface WebSocketCloseInfo {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStream {
+interface WebSocketStream {
   url: string;
   opened: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
@@ -2395,7 +4506,7 @@ declare var WebSocketStream: {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketError extends DOMException {
+interface WebSocketError extends DOMException {
   readonly closeCode: number;
   readonly reason: string;
 }
@@ -2606,7 +4717,7 @@ declare namespace Temporal {
   /**
    * When the name of a unit is provided to a Temporal API as a string, it is
    * usually singular, e.g. 'day' or 'hour'. But plural unit names like 'days'
-   * or 'hours' are aso accepted too.
+   * or 'hours' are also accepted.
    *
    * @category Temporal
    * @experimental
@@ -2756,8 +4867,8 @@ declare namespace Temporal {
      * - `ceil`: Always round up, towards the end of time.
      * - `trunc`: Always round down, towards the beginning of time. This mode is
      *   the default.
-     * - `floor`: Also round down, towards the beginning of time. This mode acts
-     *   the same as `trunc`, but it's included for consistency with
+     * - `floor`: Also round down, towards the beginning of time. This mode acts the
+     *   same as `trunc`, but it's included for consistency with
      *   `Temporal.Duration.round()` where negative values are allowed and
      *   `trunc` rounds towards zero, unlike `floor` which rounds towards
      *   negative infinity which is usually unexpected. For this reason, `trunc`
@@ -2925,8 +5036,8 @@ declare namespace Temporal {
          * This value must be either a `Temporal.PlainDateTime`, a
          * `Temporal.ZonedDateTime`, or a string or object value that can be
          * passed to `from()` of those types. Examples:
-         * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-         * - `'2020-01'01'`
+         * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+         * - `'2020-01-01'`
          * - `Temporal.PlainDate.from('2020-01-01')`
          *
          * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -2971,8 +5082,8 @@ declare namespace Temporal {
        * This value must be either a `Temporal.PlainDateTime`, a
        * `Temporal.ZonedDateTime`, or a string or object value that can be passed
        * to `from()` of those types. Examples:
-       * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-       * - `'2020-01'01'`
+       * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+       * - `'2020-01-01'`
        * - `Temporal.PlainDate.from('2020-01-01')`
        *
        * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -2992,8 +5103,7 @@ declare namespace Temporal {
     };
 
   /**
-   * Options to control behavior of `Duration.compare()`, `Duration.add()`, and
-   * `Duration.subtract()`
+   * Options to control behavior of `Duration.compare()`
    *
    * @category Temporal
    * @experimental
@@ -3007,8 +5117,8 @@ declare namespace Temporal {
      * This value must be either a `Temporal.PlainDateTime`, a
      * `Temporal.ZonedDateTime`, or a string or object value that can be passed
      * to `from()` of those types. Examples:
-     * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-     * - `'2020-01'01'`
+     * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+     * - `'2020-01-01'`
      * - `Temporal.PlainDate.from('2020-01-01')`
      *
      * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -3026,6 +5136,16 @@ declare namespace Temporal {
       | PlainDateTimeLike
       | string;
   }
+
+  /**
+   * Options to control behaviour of `ZonedDateTime.prototype.getTimeZoneTransition()`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type TransitionDirection = "next" | "previous" | {
+    direction: "next" | "previous";
+  };
 
   /**
    * @category Temporal
@@ -3127,9 +5247,7 @@ declare namespace Temporal {
    * @experimental
    */
   export class Instant {
-    static fromEpochSeconds(epochSeconds: number): Temporal.Instant;
     static fromEpochMilliseconds(epochMilliseconds: number): Temporal.Instant;
-    static fromEpochMicroseconds(epochMicroseconds: bigint): Temporal.Instant;
     static fromEpochNanoseconds(epochNanoseconds: bigint): Temporal.Instant;
     static from(item: Temporal.Instant | string): Temporal.Instant;
     static compare(
@@ -3137,9 +5255,7 @@ declare namespace Temporal {
       two: Temporal.Instant | string,
     ): ComparisonResult;
     constructor(epochNanoseconds: bigint);
-    readonly epochSeconds: number;
     readonly epochMilliseconds: number;
-    readonly epochMicroseconds: bigint;
     readonly epochNanoseconds: bigint;
     equals(other: Temporal.Instant | string): boolean;
     add(
@@ -3190,9 +5306,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.Instant;
-    toZonedDateTime(
-      calendarAndTimeZone: { timeZone: TimeZoneLike; calendar: CalendarLike },
-    ): Temporal.ZonedDateTime;
     toZonedDateTimeISO(tzLike: TimeZoneLike): Temporal.ZonedDateTime;
     toLocaleString(
       locales?: string | string[],
@@ -3205,355 +5318,18 @@ declare namespace Temporal {
   }
 
   /**
-   * @category Temporal
-   * @experimental
-   */
-  export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
-    year: number;
-  };
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type MonthCodeOrMonthAndYear =
-    | (YearOrEraAndEraYear & { month: number })
-    | {
-      monthCode: string;
-    };
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type MonthOrMonthCode = { month: number } | { monthCode: string };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export interface CalendarProtocol {
-    id: string;
-    year(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    month(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    monthCode(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): string;
-    day(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    era(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): string | undefined;
-    eraYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    dayOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    dayOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    weekOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    yearOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInMonth(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    monthsInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    inLeapYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): boolean;
-    dateFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainDate;
-    yearMonthFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode,
-      options?: AssignmentOptions,
-    ): Temporal.PlainYearMonth;
-    monthDayFromFields(
-      fields: MonthCodeOrMonthAndYear & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainMonthDay;
-    dateAdd(
-      date: Temporal.PlainDate | PlainDateLike | string,
-      duration: Temporal.Duration | DurationLike | string,
-      options?: ArithmeticOptions,
-    ): Temporal.PlainDate;
-    dateUntil(
-      one: Temporal.PlainDate | PlainDateLike | string,
-      two: Temporal.PlainDate | PlainDateLike | string,
-      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
-    ): Temporal.Duration;
-    fields(fields: Iterable<string>): Iterable<string>;
-    mergeFields(
-      fields: Record<string, unknown>,
-      additionalFields: Record<string, unknown>,
-    ): Record<string, unknown>;
-    toString?(): string;
-    toJSON?(): string;
-  }
-
-  /**
-   * Any of these types can be passed to Temporal methods instead of a Temporal.Calendar.
+   * Any of these types can be passed to Temporal methods instead of a calendar ID.
    *
    * @category Temporal
    * @experimental
    */
   export type CalendarLike =
     | string
-    | CalendarProtocol
     | ZonedDateTime
     | PlainDateTime
     | PlainDate
     | PlainYearMonth
     | PlainMonthDay;
-
-  /**
-   * A `Temporal.Calendar` is a representation of a calendar system. It includes
-   * information about how many days are in each year, how many months are in
-   * each year, how many days are in each month, and how to do arithmetic in
-   * that calendar system.
-   *
-   * See https://tc39.es/proposal-temporal/docs/calendar.html for more details.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export class Calendar implements CalendarProtocol {
-    static from(item: CalendarLike): Temporal.Calendar | CalendarProtocol;
-    constructor(calendarIdentifier: string);
-    readonly id: string;
-    year(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    month(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    monthCode(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): string;
-    day(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    era(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): string | undefined;
-    eraYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    dayOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    dayOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    weekOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    yearOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInMonth(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    monthsInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    inLeapYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): boolean;
-    dateFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainDate;
-    yearMonthFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode,
-      options?: AssignmentOptions,
-    ): Temporal.PlainYearMonth;
-    monthDayFromFields(
-      fields: MonthCodeOrMonthAndYear & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainMonthDay;
-    dateAdd(
-      date: Temporal.PlainDate | PlainDateLike | string,
-      duration: Temporal.Duration | DurationLike | string,
-      options?: ArithmeticOptions,
-    ): Temporal.PlainDate;
-    dateUntil(
-      one: Temporal.PlainDate | PlainDateLike | string,
-      two: Temporal.PlainDate | PlainDateLike | string,
-      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
-    ): Temporal.Duration;
-    fields(fields: Iterable<string>): string[];
-    mergeFields(
-      fields: Record<string, unknown>,
-      additionalFields: Record<string, unknown>,
-    ): Record<string, unknown>;
-    toString(): string;
-    toJSON(): string;
-    readonly [Symbol.toStringTag]: "Temporal.Calendar";
-  }
 
   /**
    * @category Temporal
@@ -3567,17 +5343,6 @@ declare namespace Temporal {
     monthCode?: string;
     day?: number;
     calendar?: CalendarLike;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainDateISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    calendar: string | CalendarProtocol;
   };
 
   /**
@@ -3605,7 +5370,7 @@ declare namespace Temporal {
       isoYear: number,
       isoMonth: number,
       isoDay: number,
-      calendar?: CalendarLike,
+      calendar?: string,
     );
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
@@ -3614,11 +5379,10 @@ declare namespace Temporal {
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3651,7 +5415,6 @@ declare namespace Temporal {
     ): Temporal.PlainDateTime;
     toZonedDateTime(
       timeZoneAndTime:
-        | TimeZoneProtocol
         | string
         | {
           timeZone: TimeZoneLike;
@@ -3660,7 +5423,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     toPlainYearMonth(): Temporal.PlainYearMonth;
     toPlainMonthDay(): Temporal.PlainMonthDay;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3689,23 +5451,6 @@ declare namespace Temporal {
     microsecond?: number;
     nanosecond?: number;
     calendar?: CalendarLike;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainDateTimeISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
-    calendar: string | CalendarProtocol;
   };
 
   /**
@@ -3740,7 +5485,7 @@ declare namespace Temporal {
       millisecond?: number,
       microsecond?: number,
       nanosecond?: number,
-      calendar?: CalendarLike,
+      calendar?: string,
     );
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
@@ -3755,11 +5500,10 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3772,9 +5516,6 @@ declare namespace Temporal {
     ): Temporal.PlainDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.PlainDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.PlainDateTime;
     withCalendar(calendar: CalendarLike): Temporal.PlainDateTime;
     add(
@@ -3831,10 +5572,7 @@ declare namespace Temporal {
       options?: ToInstantOptions,
     ): Temporal.ZonedDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
-    getISOFields(): PlainDateTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3877,20 +5615,18 @@ declare namespace Temporal {
     constructor(
       isoMonth: number,
       isoDay: number,
-      calendar?: CalendarLike,
+      calendar?: string,
       referenceISOYear?: number,
     );
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     equals(other: Temporal.PlainMonthDay | PlainMonthDayLike | string): boolean;
     with(
       monthDayLike: PlainMonthDayLike,
       options?: AssignmentOptions,
     ): Temporal.PlainMonthDay;
     toPlainDate(year: { year: number }): Temporal.PlainDate;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3915,19 +5651,6 @@ declare namespace Temporal {
   };
 
   /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainTimeISOFields = {
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
-  };
-
-  /**
    * A `Temporal.PlainTime` represents a wall-clock time, with a precision in
    * nanoseconds, and without any time zone. "Wall-clock time" refers to the
    * concept of a time as expressed in everyday usage — the time that you read
@@ -3940,7 +5663,7 @@ declare namespace Temporal {
    * `Temporal.PlainDateTime` by combining it with a `Temporal.PlainDate` using the
    * `toPlainDateTime()` method.
    *
-   * See https://tc39.es/proposal-temporal/docs/time.html for more details.
+   * See https://tc39.es/proposal-temporal/docs/plaintime.html for more details.
    *
    * @category Temporal
    * @experimental
@@ -4013,14 +5736,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.PlainTime;
-    toPlainDateTime(
-      temporalDate: Temporal.PlainDate | PlainDateLike | string,
-    ): Temporal.PlainDateTime;
-    toZonedDateTime(timeZoneAndDate: {
-      timeZone: TimeZoneLike;
-      plainDate: Temporal.PlainDate | PlainDateLike | string;
-    }): Temporal.ZonedDateTime;
-    getISOFields(): PlainTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4032,89 +5747,12 @@ declare namespace Temporal {
   }
 
   /**
-   * A plain object implementing the protocol for a custom time zone.
+   * Any of these types can be passed to Temporal methods instead of a time zone ID.
    *
    * @category Temporal
    * @experimental
    */
-  export interface TimeZoneProtocol {
-    id: string;
-    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
-    getOffsetStringFor?(instant: Temporal.Instant | string): string;
-    getPlainDateTimeFor?(
-      instant: Temporal.Instant | string,
-      calendar?: CalendarLike,
-    ): Temporal.PlainDateTime;
-    getInstantFor?(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-      options?: ToInstantOptions,
-    ): Temporal.Instant;
-    getNextTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPossibleInstantsFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-    ): Temporal.Instant[];
-    toString?(): string;
-    toJSON?(): string;
-  }
-
-  /**
-   * Any of these types can be passed to Temporal methods instead of a Temporal.TimeZone.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export type TimeZoneLike = string | TimeZoneProtocol | ZonedDateTime;
-
-  /**
-   * A `Temporal.TimeZone` is a representation of a time zone: either an
-   * {@link https://www.iana.org/time-zones|IANA time zone}, including
-   * information about the time zone such as the offset between the local time
-   * and UTC at a particular time, and daylight saving time (DST) changes; or
-   * simply a particular UTC offset with no DST.
-   *
-   * `Temporal.ZonedDateTime` is the only Temporal type to contain a time zone.
-   * Other types, like `Temporal.Instant` and `Temporal.PlainDateTime`, do not
-   * contain any time zone information, and a `Temporal.TimeZone` object is
-   * required to convert between them.
-   *
-   * See https://tc39.es/proposal-temporal/docs/timezone.html for more details.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export class TimeZone implements TimeZoneProtocol {
-    static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
-    constructor(timeZoneIdentifier: string);
-    readonly id: string;
-    equals(timeZone: TimeZoneLike): boolean;
-    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
-    getOffsetStringFor(instant: Temporal.Instant | string): string;
-    getPlainDateTimeFor(
-      instant: Temporal.Instant | string,
-      calendar?: CalendarLike,
-    ): Temporal.PlainDateTime;
-    getInstantFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-      options?: ToInstantOptions,
-    ): Temporal.Instant;
-    getNextTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPossibleInstantsFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-    ): Temporal.Instant[];
-    toString(): string;
-    toJSON(): string;
-    readonly [Symbol.toStringTag]: "Temporal.TimeZone";
-  }
+  export type TimeZoneLike = string | ZonedDateTime;
 
   /**
    * @category Temporal
@@ -4151,7 +5789,7 @@ declare namespace Temporal {
     constructor(
       isoYear: number,
       isoMonth: number,
-      calendar?: CalendarLike,
+      calendar?: string,
       referenceISODay?: number,
     );
     readonly era: string | undefined;
@@ -4160,7 +5798,6 @@ declare namespace Temporal {
     readonly month: number;
     readonly monthCode: string;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly daysInMonth: number;
     readonly daysInYear: number;
     readonly monthsInYear: number;
@@ -4189,7 +5826,6 @@ declare namespace Temporal {
       options?: DifferenceOptions<"year" | "month">,
     ): Temporal.Duration;
     toPlainDate(day: { day: number }): Temporal.PlainDate;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4226,25 +5862,6 @@ declare namespace Temporal {
    * @category Temporal
    * @experimental
    */
-  export type ZonedDateTimeISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
-    offset: string;
-    timeZone: string | TimeZoneProtocol;
-    calendar: string | CalendarProtocol;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
   export class ZonedDateTime {
     static from(
       item: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
@@ -4254,11 +5871,7 @@ declare namespace Temporal {
       one: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
       two: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
     ): ComparisonResult;
-    constructor(
-      epochNanoseconds: bigint,
-      timeZone: TimeZoneLike,
-      calendar?: CalendarLike,
-    );
+    constructor(epochNanoseconds: bigint, timeZone: string, calendar?: string);
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
     readonly year: number;
@@ -4272,13 +5885,11 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly timeZoneId: string;
-    getTimeZone(): TimeZoneProtocol;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly hoursInDay: number;
     readonly daysInWeek: number;
     readonly daysInMonth: number;
@@ -4287,9 +5898,7 @@ declare namespace Temporal {
     readonly inLeapYear: boolean;
     readonly offsetNanoseconds: number;
     readonly offset: string;
-    readonly epochSeconds: number;
     readonly epochMilliseconds: number;
-    readonly epochMicroseconds: bigint;
     readonly epochNanoseconds: bigint;
     equals(other: Temporal.ZonedDateTime | ZonedDateTimeLike | string): boolean;
     with(
@@ -4298,9 +5907,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.ZonedDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.ZonedDateTime;
     withCalendar(calendar: CalendarLike): Temporal.ZonedDateTime;
     withTimeZone(timeZone: TimeZoneLike): Temporal.ZonedDateTime;
@@ -4354,13 +5960,13 @@ declare namespace Temporal {
       >,
     ): Temporal.ZonedDateTime;
     startOfDay(): Temporal.ZonedDateTime;
+    getTimeZoneTransition(
+      direction: TransitionDirection,
+    ): Temporal.ZonedDateTime | null;
     toInstant(): Temporal.Instant;
     toPlainDateTime(): Temporal.PlainDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
-    getISOFields(): ZonedDateTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4396,67 +6002,15 @@ declare namespace Temporal {
     instant: () => Temporal.Instant;
 
     /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The `calendar` parameter is required. When using the ISO 8601 calendar or
-     * if you don't understand the need for or implications of a calendar, then
-     * a more ergonomic alternative to this method is
-     * `Temporal.Now.zonedDateTimeISO()`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
-     * current time zone will be used.
-     */
-    zonedDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.ZonedDateTime;
-
-    /**
      * Get the current calendar date and clock time in a specific time zone,
      * using the ISO 8601 calendar.
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     zonedDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.ZonedDateTime;
-
-    /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateTimeISO`.
-     *
-     * Note that the `Temporal.PlainDateTime` type does not persist the time zone,
-     * but retaining the time zone is required for most time-zone-related use
-     * cases. Therefore, it's usually recommended to use
-     * `Temporal.Now.zonedDateTimeISO` or `Temporal.Now.zonedDateTime` instead
-     * of this function.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDateTime;
 
     /**
      * Get the current date and clock time in a specific time zone, using the
@@ -4469,32 +6023,10 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainDateTime;
-
-    /**
-     * Get the current calendar date in a specific calendar and time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateISO`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDate: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDate;
 
     /**
      * Get the current date in a specific time zone, using the ISO 8601
@@ -4502,8 +6034,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainDateISO: (tzLike?: TimeZoneLike) => Temporal.PlainDate;
@@ -4513,8 +6044,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainTime;
@@ -4536,7 +6066,7 @@ declare namespace Temporal {
  * @category Temporal
  * @experimental
  */
-declare interface Date {
+interface Date {
   toTemporalInstant(): Temporal.Instant;
 }
 
@@ -4546,6 +6076,24 @@ declare interface Date {
  */
 declare namespace Intl {
   /**
+   * Types that can be formatted using Intl.DateTimeFormat methods.
+   *
+   * This type defines what values can be passed to Intl.DateTimeFormat methods
+   * for internationalized date and time formatting. It includes standard Date objects
+   * and Temporal API date/time types.
+   *
+   * @example
+   * ```ts
+   * // Using with Date object
+   * const date = new Date();
+   * const formatter = new Intl.DateTimeFormat('en-US');
+   * console.log(formatter.format(date));
+   *
+   * // Using with Temporal types (when available)
+   * const instant = Temporal.Now.instant();
+   * console.log(formatter.format(instant));
+   * ```
+   *
    * @category Intl
    * @experimental
    */
@@ -4560,10 +6108,52 @@ declare namespace Intl {
     | Temporal.PlainMonthDay;
 
   /**
+   * Represents a part of a formatted date range produced by Intl.DateTimeFormat.formatRange().
+   *
+   * Each part has a type and value that describes its role within the formatted string.
+   * The source property indicates whether the part comes from the start date, end date, or
+   * is shared between them.
+   *
+   * @example
+   * ```ts
+   * const dtf = new Intl.DateTimeFormat('en', {
+   *   dateStyle: 'long',
+   *   timeStyle: 'short'
+   * });
+   * const parts = dtf.formatRangeToParts(
+   *   new Date(2023, 0, 1, 12, 0),
+   *   new Date(2023, 0, 3, 15, 30)
+   * );
+   * console.log(parts);
+   * // Parts might include elements like:
+   * // { type: 'month', value: 'January', source: 'startRange' }
+   * // { type: 'day', value: '1', source: 'startRange' }
+   * // { type: 'literal', value: ' - ', source: 'shared' }
+   * // { type: 'day', value: '3', source: 'endRange' }
+   * // ...
+   * ```
+   *
    * @category Intl
    * @experimental
    */
   export interface DateTimeFormatRangePart {
+    /**
+     * The type of date or time component this part represents.
+     * Possible values: 'day', 'dayPeriod', 'era', 'fractionalSecond', 'hour',
+     * 'literal', 'minute', 'month', 'relatedYear', 'second', 'timeZoneName',
+     * 'weekday', 'year', etc.
+     */
+    type: string;
+
+    /** The string value of this part. */
+    value: string;
+
+    /**
+     * Indicates which date in the range this part comes from.
+     * - 'startRange': The part is from the start date
+     * - 'endRange': The part is from the end date
+     * - 'shared': The part is shared between both dates (like separators)
+     */
     source: "shared" | "startRange" | "endRange";
   }
 
@@ -4576,7 +6166,12 @@ declare namespace Intl {
      * Format a date into a string according to the locale and formatting
      * options of this `Intl.DateTimeFormat` object.
      *
-     * @param date The date to format.
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'full' });
+     * const date = new Date(2023, 0, 1);
+     * console.log(formatter.format(date)); // Output: "Sunday, January 1, 2023"
+     * ```
      */
     format(date?: Formattable | number): string;
 
@@ -4584,7 +6179,12 @@ declare namespace Intl {
      * Allow locale-aware formatting of strings produced by
      * `Intl.DateTimeFormat` formatters.
      *
-     * @param date The date to format.
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'full' });
+     * const date = new Date(2023, 0, 1);
+     * console.log(formatter.format(date)); // Output: "Sunday, January 1, 2023"
+     * ```
      */
     formatToParts(
       date?: Formattable | number,
@@ -4597,6 +6197,15 @@ declare namespace Intl {
      * @param startDate The start date of the range to format.
      * @param endDate The start date of the range to format. Must be the same
      * type as `startRange`.
+     *
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'long' });
+     * const startDate = new Date(2023, 0, 1);
+     * const endDate = new Date(2023, 0, 5);
+     * console.log(formatter.formatRange(startDate, endDate));
+     * // Output: "January 1 – 5, 2023"
+     * ```
      */
     formatRange<T extends Formattable>(startDate: T, endDate: T): string;
     formatRange(startDate: Date | number, endDate: Date | number): string;
@@ -4608,6 +6217,25 @@ declare namespace Intl {
      * @param startDate The start date of the range to format.
      * @param endDate The start date of the range to format. Must be the same
      * type as `startRange`.
+     *
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'long' });
+     * const startDate = new Date(2023, 0, 1);
+     * const endDate = new Date(2023, 0, 5);
+     * const parts = formatter.formatRangeToParts(startDate, endDate);
+     * console.log(parts);
+     * // Output might include:
+     * // [
+     * //   { type: 'month', value: 'January', source: 'startRange' },
+     * //   { type: 'literal', value: ' ', source: 'shared' },
+     * //   { type: 'day', value: '1', source: 'startRange' },
+     * //   { type: 'literal', value: ' – ', source: 'shared' },
+     * //   { type: 'day', value: '5', source: 'endRange' },
+     * //   { type: 'literal', value: ', ', source: 'shared' },
+     * //   { type: 'year', value: '2023', source: 'shared' }
+     * // ]
+     * ```
      */
     formatRangeToParts<T extends Formattable>(
       startDate: T,
@@ -4638,7 +6266,7 @@ declare namespace Intl {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
   /**
    * The size in bytes of each element in the array.
    */
@@ -4647,7 +6275,7 @@ declare interface Float16Array {
   /**
    * The ArrayBuffer instance referenced by the array.
    */
-  readonly buffer: ArrayBufferLike;
+  readonly buffer: TArrayBuffer;
 
   /**
    * The length in bytes of the array.
@@ -4658,6 +6286,12 @@ declare interface Float16Array {
    * The offset in bytes of the array.
    */
   readonly byteOffset: number;
+
+  /**
+   * Returns the item located at the specified index.
+   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
+   */
+  at(index: number): number | undefined;
 
   /**
    * Returns the this object after copying a section of the array identified by start and end
@@ -4679,7 +6313,7 @@ declare interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   every(
-    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    predicate: (value: number, index: number, array: this) => unknown,
     thisArg?: any,
   ): boolean;
 
@@ -4701,9 +6335,9 @@ declare interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   filter(
-    predicate: (value: number, index: number, array: Float16Array) => any,
+    predicate: (value: number, index: number, array: this) => any,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Returns the value of the first element in the array where predicate is true, and undefined
@@ -4715,7 +6349,7 @@ declare interface Float16Array {
    * predicate. If it is not provided, undefined is used instead.
    */
   find(
-    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    predicate: (value: number, index: number, obj: this) => boolean,
     thisArg?: any,
   ): number | undefined;
 
@@ -4729,7 +6363,51 @@ declare interface Float16Array {
    * predicate. If it is not provided, undefined is used instead.
    */
   findIndex(
-    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    predicate: (value: number, index: number, obj: this) => boolean,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate findLast calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found, findLast
+   * immediately returns that element value. Otherwise, findLast returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends number>(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => value is S,
+    thisArg?: any,
+  ): S | undefined;
+  findLast(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => unknown,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(
+    predicate: (
+      value: number,
+      index: number,
+      array: this,
+    ) => unknown,
     thisArg?: any,
   ): number;
 
@@ -4741,9 +6419,16 @@ declare interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   forEach(
-    callbackfn: (value: number, index: number, array: Float16Array) => void,
+    callbackfn: (value: number, index: number, array: this) => void,
     thisArg?: any,
   ): void;
+
+  /**
+   * Determines whether an array includes a certain element, returning true or false as appropriate.
+   * @param searchElement The element to search for.
+   * @param fromIndex The position in this array at which to begin searching for searchElement.
+   */
+  includes(searchElement: number, fromIndex?: number): boolean;
 
   /**
    * Returns the index of the first occurrence of a value in an array.
@@ -4782,9 +6467,9 @@ declare interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   map(
-    callbackfn: (value: number, index: number, array: Float16Array) => number,
+    callbackfn: (value: number, index: number, array: this) => number,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Calls the specified callback function for all the elements in an array. The return value of
@@ -4801,7 +6486,7 @@ declare interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
   ): number;
   reduce(
@@ -4809,7 +6494,7 @@ declare interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
     initialValue: number,
   ): number;
@@ -4829,7 +6514,7 @@ declare interface Float16Array {
       previousValue: U,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => U,
     initialValue: U,
   ): U;
@@ -4849,7 +6534,7 @@ declare interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
   ): number;
   reduceRight(
@@ -4857,7 +6542,7 @@ declare interface Float16Array {
       previousValue: number,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => number,
     initialValue: number,
   ): number;
@@ -4877,7 +6562,7 @@ declare interface Float16Array {
       previousValue: U,
       currentValue: number,
       currentIndex: number,
-      array: Float16Array,
+      array: this,
     ) => U,
     initialValue: U,
   ): U;
@@ -4885,7 +6570,7 @@ declare interface Float16Array {
   /**
    * Reverses the elements in an Array.
    */
-  reverse(): Float16Array;
+  reverse(): this;
 
   /**
    * Sets a value or an array of values.
@@ -4899,7 +6584,7 @@ declare interface Float16Array {
    * @param start The beginning of the specified portion of the array.
    * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
    */
-  slice(start?: number, end?: number): Float16Array;
+  slice(start?: number, end?: number): Float16Array<ArrayBuffer>;
 
   /**
    * Determines whether the specified callback function returns true for any element of an array.
@@ -4910,7 +6595,7 @@ declare interface Float16Array {
    * If thisArg is omitted, undefined is used as the this value.
    */
   some(
-    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    predicate: (value: number, index: number, array: this) => unknown,
     thisArg?: any,
   ): boolean;
 
@@ -4931,12 +6616,34 @@ declare interface Float16Array {
    * @param begin The index of the beginning of the array.
    * @param end The index of the end of the array.
    */
-  subarray(begin?: number, end?: number): Float16Array;
+  subarray(begin?: number, end?: number): Float16Array<TArrayBuffer>;
 
   /**
    * Converts a number to a string by using the current locale.
    */
-  toLocaleString(): string;
+  toLocaleString(
+    locales?: string | string[],
+    options?: Intl.NumberFormatOptions,
+  ): string;
+
+  /**
+   * Copies the array and returns the copy with the elements in reverse order.
+   */
+  toReversed(): Float16Array<ArrayBuffer>;
+
+  /**
+   * Copies and sorts the array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
+   * myNums.toSorted((a, b) => a - b) // Float16Array<Buffer>(4) [-22.5, 1, 2, 11.5]
+   * ```
+   */
+  toSorted(
+    compareFn?: (a: number, b: number) => number,
+  ): Float16Array<ArrayBuffer>;
 
   /**
    * Returns a string representation of an array.
@@ -4944,24 +6651,52 @@ declare interface Float16Array {
   toString(): string;
 
   /** Returns the primitive value of the specified object. */
-  valueOf(): Float16Array;
+  valueOf(): this;
+
+  /**
+   * Copies the array and inserts the given number at the provided index.
+   * @param index The index of the value to overwrite. If the index is
+   * negative, then it replaces from the end of the array.
+   * @param value The value to insert into the copied array.
+   * @returns A copy of the original array with the inserted value.
+   */
+  with(index: number, value: number): Float16Array<ArrayBuffer>;
 
   [index: number]: number;
+
+  [Symbol.iterator](): ArrayIterator<number>;
+
+  /**
+   * Returns an array of key, value pairs for every entry in the array
+   */
+  entries(): ArrayIterator<[number, number]>;
+
+  /**
+   * Returns an list of keys in the array
+   */
+  keys(): ArrayIterator<number>;
+
+  /**
+   * Returns an list of values in the array
+   */
+  values(): ArrayIterator<number>;
+
+  readonly [Symbol.toStringTag]: "Float16Array";
 }
 
 /**
  * @category Platform
  * @experimental
  */
-declare interface Float16ArrayConstructor {
-  readonly prototype: Float16Array;
-  new (length: number): Float16Array;
-  new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
-  new (
-    buffer: ArrayBufferLike,
+interface Float16ArrayConstructor {
+  readonly prototype: Float16Array<ArrayBufferLike>;
+  new (length?: number): Float16Array<ArrayBuffer>;
+  new (array: ArrayLike<number> | Iterable<number>): Float16Array<ArrayBuffer>;
+  new <TArrayBuffer extends ArrayBufferLike = ArrayBuffer>(
+    buffer: TArrayBuffer,
     byteOffset?: number,
     length?: number,
-  ): Float16Array;
+  ): Float16Array<TArrayBuffer>;
 
   /**
    * The size in bytes of each element in the array.
@@ -4972,17 +6707,17 @@ declare interface Float16ArrayConstructor {
    * Returns a new array from a set of elements.
    * @param items A set of elements to include in the new array object.
    */
-  of(...items: number[]): Float16Array;
+  of(...items: number[]): Float16Array<ArrayBuffer>;
 
   /**
    * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param arrayLike An array-like object to convert to an array.
    */
-  from(arrayLike: ArrayLike<number>): Float16Array;
+  from(arrayLike: ArrayLike<number>): Float16Array<ArrayBuffer>;
 
   /**
    * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param arrayLike An array-like object to convert to an array.
    * @param mapfn A mapping function to call on every element of the array.
    * @param thisArg Value of 'this' used to invoke the mapfn.
    */
@@ -4990,8 +6725,27 @@ declare interface Float16ArrayConstructor {
     arrayLike: ArrayLike<T>,
     mapfn: (v: T, k: number) => number,
     thisArg?: any,
-  ): Float16Array;
+  ): Float16Array<ArrayBuffer>;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param elements An iterable object to convert to an array.
+   */
+  from(elements: Iterable<number>): Float16Array<ArrayBuffer>;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param elements An iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from<T>(
+    elements: Iterable<T>,
+    mapfn?: (v: T, k: number) => number,
+    thisArg?: any,
+  ): Float16Array<ArrayBuffer>;
 }
+
 /**
  * @category Platform
  * @experimental
@@ -5002,169 +6756,30 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Platform
  * @experimental
  */
-declare interface Float16 {
-  [Symbol.iterator](): IterableIterator<number>;
+interface Math {
   /**
-   * Returns an array of key, value pairs for every entry in the array
+   * Returns the nearest half precision float representation of a number.
+   * @param x A numeric expression.
+   *
+   * @category Platform
+   * @experimental
    */
-  entries(): IterableIterator<[number, number]>;
-  /**
-   * Returns an list of keys in the array
-   */
-  keys(): IterableIterator<number>;
-  /**
-   * Returns an list of values in the array
-   */
-  values(): IterableIterator<number>;
+  f16round(x: number): number;
 }
 
 /**
  * @category Platform
  * @experimental
  */
-declare interface Float16Constructor {
-  new (elements: Iterable<number>): Float16;
-
-  /**
-   * Creates an array from an array-like or iterable object.
-   * @param arrayLike An array-like or iterable object to convert to an array.
-   * @param mapfn A mapping function to call on every element of the array.
-   * @param thisArg Value of 'this' used to invoke the mapfn.
-   */
-  from(
-    arrayLike: Iterable<number>,
-    mapfn?: (v: number, k: number) => number,
-    thisArg?: any,
-  ): Float16;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface Float16Array {
-  readonly [Symbol.toStringTag]: "Float16Array";
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface Float16Array {
-  /**
-   * Determines whether an array includes a certain element, returning true or false as appropriate.
-   * @param searchElement The element to search for.
-   * @param fromIndex The position in this array at which to begin searching for searchElement.
-   */
-  includes(searchElement: number, fromIndex?: number): boolean;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface Float16ArrayConstructor {
-  new (): Float16Array;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface Float16Array {
-  /**
-   * Returns the item located at the specified index.
-   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
-   */
-  at(index: number): number | undefined;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface Float16Array {
-  /**
-   * Returns the value of the last element in the array where predicate is true, and undefined
-   * otherwise.
-   * @param predicate findLast calls predicate once for each element of the array, in descending
-   * order, until it finds one where predicate returns true. If such an element is found, findLast
-   * immediately returns that element value. Otherwise, findLast returns undefined.
-   * @param thisArg If provided, it will be used as the this value for each invocation of
-   * predicate. If it is not provided, undefined is used instead.
-   */
-  findLast<S extends number>(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => value is S,
-    thisArg?: any,
-  ): S | undefined;
-  findLast(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => unknown,
-    thisArg?: any,
-  ): number | undefined;
-
-  /**
-   * Returns the index of the last element in the array where predicate is true, and -1
-   * otherwise.
-   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
-   * order, until it finds one where predicate returns true. If such an element is found,
-   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
-   * @param thisArg If provided, it will be used as the this value for each invocation of
-   * predicate. If it is not provided, undefined is used instead.
-   */
-  findLastIndex(
-    predicate: (
-      value: number,
-      index: number,
-      array: Float16Array,
-    ) => unknown,
-    thisArg?: any,
-  ): number;
-
-  /**
-   * Copies the array and returns the copy with the elements in reverse order.
-   */
-  toReversed(): Float16Array;
-
-  /**
-   * Copies and sorts the array.
-   * @param compareFn Function used to determine the order of the elements. It is expected to return
-   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-   * value otherwise. If omitted, the elements are sorted in ascending order.
-   * ```ts
-   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
-   * myNums.toSorted((a, b) => a - b) // Float16Array(4) [-22.5, 1, 2, 11.5]
-   * ```
-   */
-  toSorted(compareFn?: (a: number, b: number) => number): Float16Array;
-
-  /**
-   * Copies the array and inserts the given number at the provided index.
-   * @param index The index of the value to overwrite. If the index is
-   * negative, then it replaces from the end of the array.
-   * @param value The value to insert into the copied array.
-   * @returns A copy of the original array with the inserted value.
-   */
-  with(index: number, value: number): Float16Array;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-declare interface DataView {
+interface DataView<TArrayBuffer extends ArrayBufferLike> {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
    * no alignment constraint; multi-byte values may be fetched from any offset.
    * @param byteOffset The place in the buffer at which the value should be retrieved.
    * @param littleEndian If false or undefined, a big-endian value should be read.
+   *
+   * @category Platform
+   * @experimental
    */
   getFloat16(byteOffset: number, littleEndian?: boolean): number;
 
@@ -5173,6 +6788,20 @@ declare interface DataView {
    * @param byteOffset The place in the buffer at which the value should be set.
    * @param value The value to set.
    * @param littleEndian If false or undefined, a big-endian value should be written.
+   *
+   * @category Platform
+   * @experimental
    */
   setFloat16(byteOffset: number, value: number, littleEndian?: boolean): void;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+interface ErrorConstructor {
+  /**
+   * Indicates whether the argument provided is a built-in Error instance or not.
+   */
+  isError(error: unknown): error is Error;
 }

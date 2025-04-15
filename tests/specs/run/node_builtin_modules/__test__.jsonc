@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "ts": {
+      "args": "run --quiet --allow-read mod.ts hello there",
+      "output": "mod.ts.out"
+    },
+    "js": {
+      "args": "run --quiet --allow-read mod.js hello there",
+      "output": "mod.js.out"
+    }
+  }
+}

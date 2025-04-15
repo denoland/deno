@@ -1,0 +1,4 @@
+{
+  "args": "check --quiet declaration_header_file_with_no_exports.ts",
+  "output": ""
+}

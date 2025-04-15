@@ -1,0 +1,44 @@
+{
+  "tests": {
+    "cjs_check": {
+      "args": "check index.cts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "cjs_run": {
+      "args": "run index.cts",
+      "output": "run_cjs.out"
+    },
+    "mjs_run": {
+      "args": "run index.mjs",
+      "output": "run_mts.out"
+    },
+    "jsdoc_import_decl": {
+      "args": "check jsdoc_import_decl.js",
+      "output": "jsdoc_import_decl.out",
+      "exitCode": 1
+    },
+    "resolution_mode_import": {
+      "args": "check resolution_mode_import.mts",
+      "output": "resolution_mode_import.out",
+      "exitCode": 1
+    },
+    "resolution_mode_require": {
+      "args": "check resolution_mode_require.mts",
+      "output": "resolution_mode_require.out",
+      "exitCode": 1
+    },
+    "resolution_mode_require_jsdoc": {
+      "args": "check resolution_mode_require_jsdoc.js",
+      "output": "resolution_mode_require_jsdoc.out",
+      "exitCode": 1
+    },
+    "resolution_mode_require_import_type": {
+      // waiting on https://github.com/swc-project/swc/issues/9377
+      "ignore": true,
+      "args": "check resolution_mode_require_import_type.ts",
+      "output": "resolution_mode_require_import_type.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -45,7 +45,7 @@ Deno.test({ permissions: { write: false } }, function writeTextFileSyncPerm() {
   // The following should fail due to no write permission
   assertThrows(() => {
     Deno.writeTextFileSync(filename, "Hello");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -144,7 +144,7 @@ Deno.test(
     // The following should fail due to no write permission
     await assertRejects(async () => {
       await Deno.writeTextFile(filename, "Hello");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

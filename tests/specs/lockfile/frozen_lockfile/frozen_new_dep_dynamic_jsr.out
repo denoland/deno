@@ -1,16 +1,16 @@
 Download http://127.0.0.1:4250/@denotest/add/meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
-error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno cache --frozen=false` or rerun with `--frozen=false` to update it.
+error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
- 5 | -      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 5 | +      "jsr:@denotest/add@1": "jsr:@denotest/add@1.0.0",
- 6 | +      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 7 | +    },
- 8 | +    "jsr": {
- 9 | +      "@denotest/add@1.0.0": {
-10 | +        "integrity": "[WILDCARD]"
-11 | +      }
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "jsr:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/add@1": "1.0.0"
+ 6 | +  },
+ 7 | +  "jsr": {
+ 8 | +    "@denotest/add@1.0.0": {
+ 9 | +      "integrity": "[WILDCARD]"
+10 | +    }
 const { add } = await import(scheme + "@denotest/add@1");
                 ^
     at [WILDCARD]

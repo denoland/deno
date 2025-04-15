@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, getCratesPublishOrder } from "./deps.ts";
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -10,7 +10,7 @@ import {
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
-import { createSecureContext } from "ext:deno_node/_tls_common.ts";
+import { createSecureContext } from "node:_tls_common";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { connResetException } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
@@ -68,6 +68,7 @@ export class TLSSocket extends net.Socket {
   secureConnecting: boolean;
   _SNICallback: any;
   servername: string | null;
+  alpnProtocol: string | boolean | null;
   alpnProtocols: string[] | null;
   authorized: boolean;
   authorizationError: any;
@@ -78,7 +79,7 @@ export class TLSSocket extends net.Socket {
   ssl: any;
 
   _start() {
-    this[kHandle].afterConnect();
+    this[kHandle].afterConnectTls();
   }
 
   constructor(socket: any, opts: any = kEmptyObject) {
@@ -114,6 +115,7 @@ export class TLSSocket extends net.Socket {
     this.secureConnecting = true;
     this._SNICallback = null;
     this.servername = null;
+    this.alpnProtocol = null;
     this.alpnProtocols = tlsOptions.ALPNProtocols;
     this.authorized = false;
     this.authorizationError = null;
@@ -146,20 +148,50 @@ export class TLSSocket extends net.Socket {
           : new TCP(TCPConstants.SOCKET);
       }
 
-      // Patches `afterConnect` hook to replace TCP conn with TLS conn
-      const afterConnect = handle.afterConnect;
-      handle.afterConnect = async (req: any, status: number) => {
+      const { promise, resolve } = Promise.withResolvers();
+
+      // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
+      handle.afterConnectTls = async () => {
+        options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
+        if (tlssock._needsSockInitWorkaround) {
+          // skips the TLS handshake for @npmcli/agent as it's handled by
+          // onSocket handler of ClientRequest object.
+          tlssock.emit("secure");
+          tlssock.removeListener("end", onConnectEnd);
+          return;
+        }
+
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          try {
+            const hs = await conn.handshake();
+            if (hs.alpnProtocol) {
+              tlssock.alpnProtocol = hs.alpnProtocol;
+            } else {
+              tlssock.alpnProtocol = false;
+            }
+          } catch {
+            // Don't interrupt "secure" event to let the first read/write
+            // operation emit the error.
+          }
+
+          // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
+          handle.upgrading = false;
+          if (!handle.pauseOnCreate) {
+            handle.readStart();
+          }
+
+          resolve();
+
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
         } catch {
           // TODO(kt3k): Handle this
         }
-        return afterConnect.call(handle, req, status);
       };
 
+      handle.upgrading = promise;
       (handle as any).verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.
       };
@@ -269,6 +301,7 @@ export class ServerImpl extends EventEmitter {
         // Creates TCP handle and socket directly from Deno.TlsConn.
         // This works as TLS socket. We don't use TLSSocket class for doing
         // this because Deno.startTls only supports client side tcp connection.
+        // TODO(@satyarohith): set TLSSocket.alpnProtocol when we use TLSSocket class.
         const handle = new TCP(TCPConstants.SOCKET, await listener.accept());
         const socket = new net.Socket({ handle });
         this.emit("secureConnection", socket);

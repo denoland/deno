@@ -1,0 +1,5 @@
+{
+  "args": "test -A --no-check test_no_sanitizers/test.js",
+  "output": "test_no_sanitizers/test.out",
+  "exitCode": 0
+}

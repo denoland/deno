@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use std::env::current_exe;
 use std::io::Write;
 use std::path::Path;
 
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use jupyter_runtime::dirs::user_data_dir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
@@ -58,9 +58,9 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(&user_data_dir, "logo-32x32.png", DENO_ICON_32)?;
-  install_icon(&user_data_dir, "logo-64x64.png", DENO_ICON_64)?;
-  install_icon(&user_data_dir, "logo-svg.svg", DENO_ICON_SVG)?;
+  install_icon(&kernel_dir, "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(&kernel_dir, "logo-64x64.png", DENO_ICON_64)?;
+  install_icon(&kernel_dir, "logo-svg.svg", DENO_ICON_SVG)?;
 
   log::info!("✅ Deno kernelspec installed successfully.");
   Ok(())

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
@@ -10,15 +10,15 @@ try {
 }
 
 // Skip these tests on linux CI, because the vulkan emulator is not good enough
-// yet, and skip on macOS CI because these do not have virtual GPUs.
-const isLinuxOrMacCI =
-  (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
+// yet, and skip on macOS x86 CI because these do not have virtual GPUs.
+const isCIWithoutGPU = (Deno.build.os === "linux" ||
+  (Deno.build.os === "darwin" && Deno.build.arch === "x86_64")) && isCI;
 // Skip these tests in WSL because it doesn't have good GPU support.
 const isWsl = await checkIsWsl();
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -36,75 +36,105 @@ Deno.test({
     code: shaderCode,
   });
 
-  const size = new Uint32Array(numbers).byteLength;
+  const size = new Float32Array(numbers).byteLength;
 
-  const stagingBuffer = device.createBuffer({
+  const inputDataBuffer = device.createBuffer({
+    label: "Input Data Buffer",
     size: size,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-  });
-
-  const storageBuffer = device.createBuffer({
-    label: "Storage Buffer",
-    size: size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
-      GPUBufferUsage.COPY_SRC,
+    usage: GPUBufferUsage.STORAGE,
     mappedAtCreation: true,
   });
-
-  const buf = new Uint32Array(storageBuffer.getMappedRange());
-
+  const buf = new Float32Array(inputDataBuffer.getMappedRange());
   buf.set(numbers);
+  inputDataBuffer.unmap();
 
-  storageBuffer.unmap();
-
-  const computePipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
+  const outputDataBuffer = device.createBuffer({
+    label: "Output Data Buffer",
+    size: size,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
-  const bindGroupLayout = computePipeline.getBindGroupLayout(0);
 
+  const downloadBuffer = device.createBuffer({
+    label: "Download Buffer",
+    size: size,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      // input buffer
+      {
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "read-only-storage",
+          minBindingSize: 4,
+        },
+      },
+      // output buffer
+      {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "storage",
+          minBindingSize: 4,
+        },
+      },
+    ],
+  });
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
     entries: [
       {
         binding: 0,
         resource: {
-          buffer: storageBuffer,
+          buffer: inputDataBuffer,
+        },
+      },
+      {
+        binding: 1,
+        resource: {
+          buffer: outputDataBuffer,
         },
       },
     ],
   });
-
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
+  });
+  const computePipeline = device.createComputePipeline({
+    layout: pipelineLayout,
+    compute: {
+      module: shaderModule,
+      entryPoint: "doubleMe",
+    },
+  });
   const encoder = device.createCommandEncoder();
 
   const computePass = encoder.beginComputePass();
   computePass.setPipeline(computePipeline);
   computePass.setBindGroup(0, bindGroup);
-  computePass.insertDebugMarker("compute collatz iterations");
   computePass.dispatchWorkgroups(numbers.length);
   computePass.end();
 
-  encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
+  encoder.copyBufferToBuffer(outputDataBuffer, 0, downloadBuffer, 0, size);
 
   device.queue.submit([encoder.finish()]);
 
-  await stagingBuffer.mapAsync(1);
+  await downloadBuffer.mapAsync(GPUMapMode.READ);
 
-  const data = stagingBuffer.getMappedRange();
+  const data = downloadBuffer.getMappedRange();
 
-  assertEquals(new Uint32Array(data), new Uint32Array([0, 2, 7, 55]));
+  assertEquals(new Float32Array(data), new Float32Array([2, 8, 6, 590]));
 
-  stagingBuffer.unmap();
+  downloadBuffer.unmap();
 
   device.destroy();
 });
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -129,10 +159,18 @@ Deno.test({
     vertex: {
       module: shaderModule,
       entryPoint: "vs_main",
+      // only test purpose
+      constants: {
+        value: 0.5,
+      },
     },
     fragment: {
       module: shaderModule,
       entryPoint: "fs_main",
+      // only test purpose
+      constants: {
+        value: 0.5,
+      },
       targets: [
         {
           format: "rgba8unorm-srgb",
@@ -191,8 +229,7 @@ Deno.test({
     dimensions,
   );
 
-  const bundle = encoder.finish();
-  device.queue.submit([bundle]);
+  device.queue.submit([encoder.finish()]);
 
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
@@ -208,7 +245,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuAdapterHasFeatures() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -218,7 +255,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuNullWindowSurfaceThrows() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -228,11 +265,30 @@ Deno.test({
 
   assertThrows(
     () => {
-      new Deno.UnsafeWindowSurface("cocoa", null, null);
+      new Deno.UnsafeWindowSurface({
+        system: "cocoa",
+        windowHandle: null,
+        displayHandle: null,
+        width: 0,
+        height: 0,
+      });
     },
   );
 
   device.destroy();
+});
+
+Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
+  assertThrows(
+    () => {
+      // @ts-expect-error width and height are required
+      new Deno.UnsafeWindowSurface({
+        system: "x11",
+        windowHandle: null,
+        displayHandle: null,
+      });
+    },
+  );
 });
 
 Deno.test(function getPreferredCanvasFormat() {
@@ -241,7 +297,7 @@ Deno.test(function getPreferredCanvasFormat() {
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUColor() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -263,7 +319,7 @@ Deno.test({
   const invalidSize = [0, 0, 0];
 
   const msgIncludes =
-    "A sequence of number used as a GPUColor must have exactly 4 elements.";
+    "A sequence of number used as a GPUColor must have exactly 4 elements, received 3 elements";
 
   // validate the argument of descriptor.colorAttachments[@@iterator].clearValue property's length of GPUCommandEncoder.beginRenderPass when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-beginrenderpass
@@ -304,7 +360,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUExtent3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -329,7 +385,7 @@ Deno.test({
   const overSize = [256, 256, 1, 1];
 
   const msgIncludes =
-    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements.";
+    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements";
 
   // validate the argument of descriptor.size property's length of GPUDevice.createTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpudevice-createtexture
@@ -404,7 +460,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUOrigin3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -429,7 +485,7 @@ Deno.test({
   const overSize = [256, 256, 1, 1];
 
   const msgIncludes =
-    "A sequence of number used as a GPUOrigin3D must have at most 3 elements.";
+    "A sequence of number used as a GPUOrigin3D must have at most 3 elements, received 4 elements";
 
   // validate the argument of destination.origin property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
@@ -497,7 +553,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function beginRenderPassWithoutDepthClearValue() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -522,6 +578,56 @@ Deno.test({
   });
 
   assert(renderPass);
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function adapterLimitsAreNumbers() {
+  const limitNames = [
+    "maxTextureDimension1D",
+    "maxTextureDimension2D",
+    "maxTextureDimension3D",
+    "maxTextureArrayLayers",
+    "maxBindGroups",
+    "maxDynamicUniformBuffersPerPipelineLayout",
+    "maxDynamicStorageBuffersPerPipelineLayout",
+    "maxSampledTexturesPerShaderStage",
+    "maxSamplersPerShaderStage",
+    "maxStorageBuffersPerShaderStage",
+    "maxStorageTexturesPerShaderStage",
+    "maxUniformBuffersPerShaderStage",
+    "maxUniformBufferBindingSize",
+    "maxStorageBufferBindingSize",
+    "minUniformBufferOffsetAlignment",
+    "minStorageBufferOffsetAlignment",
+    "maxVertexBuffers",
+    "maxVertexAttributes",
+    "maxVertexBufferArrayStride",
+    "maxComputeWorkgroupStorageSize",
+    "maxComputeInvocationsPerWorkgroup",
+    "maxComputeWorkgroupSizeX",
+    "maxComputeWorkgroupSizeY",
+    "maxComputeWorkgroupSizeZ",
+    "maxComputeWorkgroupsPerDimension",
+  ];
+
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  for (const limitName of limitNames) {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assertEquals(typeof adapter.limits[limitName], "number", limitName);
+  }
+
+  const device = await adapter.requestDevice({
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    requiredLimits: adapter.limits,
+  });
+  assert(device);
 
   device.destroy();
 });

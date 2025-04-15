@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -39,15 +39,10 @@ const {
   Symbol,
   MathMin,
   DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
   ObjectPrototypeIsPrototypeOf,
   String,
   TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
   StringPrototypeToLowerCase,
-  Uint8Array,
 } = primordials;
 const { isTypedArray } = core;
 
@@ -88,21 +83,11 @@ function normalizeBuffer(buf: Buffer) {
   }
   if (isBufferType(buf)) {
     return buf;
-  } else if (isTypedArray(buf)) {
-    return Buffer.from(
-      new Uint8Array(
-        TypedArrayPrototypeGetBuffer(buf),
-        TypedArrayPrototypeGetByteOffset(buf),
-        TypedArrayPrototypeGetByteLength(buf),
-      ),
-    );
   } else {
     return Buffer.from(
-      new Uint8Array(
-        DataViewPrototypeGetBuffer(buf),
-        DataViewPrototypeGetByteOffset(buf),
-        DataViewPrototypeGetByteLength(buf),
-      ),
+      isTypedArray(buf)
+        ? TypedArrayPrototypeGetBuffer(buf)
+        : DataViewPrototypeGetBuffer(buf),
     );
   }
 }
@@ -418,6 +403,7 @@ StringDecoder.prototype.text = function text(
 
 ObjectDefineProperties(StringDecoder.prototype, {
   lastNeed: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get(this: StringDecoder): number {
@@ -425,6 +411,7 @@ ObjectDefineProperties(StringDecoder.prototype, {
     },
   },
   lastTotal: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get(this: StringDecoder): number {

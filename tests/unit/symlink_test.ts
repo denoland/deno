@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertRejects,
@@ -62,7 +62,7 @@ Deno.test(
   function symlinkSyncPerm() {
     assertThrows(() => {
       Deno.symlinkSync("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -152,11 +152,11 @@ Deno.test(
   async function symlinkNoFullWritePermissions() {
     await assertRejects(
       () => Deno.symlink("old", "new"),
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
     );
     assertThrows(
       () => Deno.symlinkSync("old", "new"),
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
     );
   },
 );
@@ -166,11 +166,11 @@ Deno.test(
   async function symlinkNoFullReadPermissions() {
     await assertRejects(
       () => Deno.symlink("old", "new"),
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
     );
     assertThrows(
       () => Deno.symlinkSync("old", "new"),
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
     );
   },
 );

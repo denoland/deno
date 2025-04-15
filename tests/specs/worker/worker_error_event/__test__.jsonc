@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A error_event.ts",
+  "output": "error_event.ts.out",
+  "exitCode": 1
+}

@@ -1,22 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::request_properties::HttpConnectionProperties;
-use crate::response_body::ResponseBytesInner;
-use crate::response_body::ResponseStreamResult;
-use deno_core::error::AnyError;
-use deno_core::futures::ready;
-use deno_core::BufView;
-use deno_core::OpState;
-use deno_core::ResourceId;
-use http::request::Parts;
-use hyper::body::Body;
-use hyper::body::Frame;
-use hyper::body::Incoming;
-use hyper::body::SizeHint;
-use hyper::header::HeaderMap;
-use hyper::upgrade::OnUpgrade;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use scopeguard::guard;
-use scopeguard::ScopeGuard;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -25,9 +9,31 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+
+use deno_core::BufView;
+use deno_core::OpState;
+use deno_core::ResourceId;
+use deno_error::JsErrorBox;
+use http::request::Parts;
+use hyper::body::Body;
+use hyper::body::Frame;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
+use hyper::upgrade::OnUpgrade;
+use scopeguard::guard;
+use scopeguard::ScopeGuard;
+use tokio::sync::oneshot;
+
+use crate::request_properties::HttpConnectionProperties;
+use crate::response_body::ResponseBytesInner;
+use crate::response_body::ResponseStreamResult;
+use crate::OtelInfo;
+use crate::OtelInfoAttributes;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -181,13 +187,50 @@ pub(crate) async fn handle_request(
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  legacy_abort: bool,
 ) -> Result<Response, hyper_v014::Error> {
+  let otel_info = if let Some(otel) = deno_telemetry::OTEL_GLOBALS
+    .get()
+    .filter(|o| o.has_metrics())
+  {
+    let instant = std::time::Instant::now();
+    let size_hint = request.size_hint();
+    Some(OtelInfo::new(
+      otel,
+      instant,
+      size_hint.upper().unwrap_or(size_hint.lower()),
+      OtelInfoAttributes {
+        http_request_method: OtelInfoAttributes::method(request.method()),
+        url_scheme: request
+          .uri()
+          .scheme_str()
+          .map(|s| Cow::Owned(s.to_string()))
+          .unwrap_or_else(|| Cow::Borrowed("http")),
+        network_protocol_version: OtelInfoAttributes::version(
+          request.version(),
+        ),
+        server_address: request.uri().host().map(|host| host.to_string()),
+        server_port: request.uri().port_u16().map(|port| port as i64),
+        error_type: Default::default(),
+        http_response_status_code: Default::default(),
+      },
+    ))
+  } else {
+    None
+  };
+
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state),
+    HttpRecord::new(
+      request,
+      request_info,
+      server_state,
+      otel_info,
+      legacy_abort,
+    ),
     HttpRecord::cancel,
   );
 
@@ -206,8 +249,13 @@ pub(crate) async fn handle_request(
   Ok(response)
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("upgrade unavailable")]
+pub struct UpgradeUnavailableError;
+
 struct HttpRecordInner {
   server_state: SignallingRc<HttpServerState>,
+  closed_channel: Option<oneshot::Sender<()>>,
   request_info: HttpConnectionProperties,
   request_parts: http::request::Parts,
   request_body: Option<RequestBodyState>,
@@ -221,6 +269,8 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
+  legacy_abort: bool,
+  otel_info: Option<OtelInfo>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -241,6 +291,8 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
+    otel_info: Option<OtelInfo>,
+    legacy_abort: bool,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
@@ -273,9 +325,12 @@ impl HttpRecord {
       response_body_finished: false,
       response_body_waker: None,
       trailers: None,
+      closed_channel: None,
       been_dropped: false,
       finished: false,
+      legacy_abort,
       needs_close_after_finish: false,
+      otel_info,
     });
     record
   }
@@ -307,6 +362,10 @@ impl HttpRecord {
 
   pub fn needs_close_after_finish(&self) -> RefMut<'_, bool> {
     RefMut::map(self.self_mut(), |inner| &mut inner.needs_close_after_finish)
+  }
+
+  pub fn on_cancel(&self, sender: oneshot::Sender<()>) {
+    self.self_mut().closed_channel = Some(sender);
   }
 
   fn recycle(self: Rc<Self>) {
@@ -344,14 +403,14 @@ impl HttpRecord {
   }
 
   /// Perform the Hyper upgrade on this record.
-  pub fn upgrade(&self) -> Result<OnUpgrade, AnyError> {
+  pub fn upgrade(&self) -> Result<OnUpgrade, UpgradeUnavailableError> {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
     self
       .self_mut()
       .request_parts
       .extensions
       .remove::<OnUpgrade>()
-      .ok_or_else(|| AnyError::msg("upgrade unavailable"))
+      .ok_or(UpgradeUnavailableError)
   }
 
   /// Take the Hyper body from this record.
@@ -387,6 +446,12 @@ impl HttpRecord {
     inner.been_dropped = true;
     // The request body might include actual resources.
     inner.request_body.take();
+
+    if inner.legacy_abort || !inner.response_body_finished {
+      if let Some(closed_channel) = inner.closed_channel.take() {
+        let _ = closed_channel.send(());
+      }
+    }
   }
 
   /// Complete this record, potentially expunging it if it is fully complete (ie: cancelled as well).
@@ -463,7 +528,7 @@ impl HttpRecord {
   fn response_ready(&self) -> impl Future<Output = ()> + '_ {
     struct HttpRecordReady<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordReady<'a> {
+    impl Future for HttpRecordReady<'_> {
       type Output = ();
 
       fn poll(
@@ -472,6 +537,7 @@ impl HttpRecord {
       ) -> Poll<Self::Output> {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_ready {
+          mut_self.otel_info.take();
           return Poll::Ready(());
         }
         mut_self.response_waker = Some(cx.waker().clone());
@@ -487,7 +553,7 @@ impl HttpRecord {
   pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordFinished<'a> {
+    impl Future for HttpRecordFinished<'_> {
       type Output = bool;
 
       fn poll(
@@ -508,6 +574,22 @@ impl HttpRecord {
 
     HttpRecordFinished(self)
   }
+
+  pub fn otel_info_set_status(&self, status: u16) {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
+      info.attributes.http_response_status_code = Some(status as _);
+      info.handle_duration_and_request_size();
+    }
+  }
+
+  pub fn otel_info_set_error(&self, error: &'static str) {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
+      info.attributes.error_type = Some(error);
+      info.handle_duration_and_request_size();
+    }
+  }
 }
 
 #[repr(transparent)]
@@ -515,7 +597,7 @@ pub struct HttpRecordResponse(ManuallyDrop<Rc<HttpRecord>>);
 
 impl Body for HttpRecordResponse {
   type Data = BufView;
-  type Error = AnyError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -545,10 +627,10 @@ impl Body for HttpRecordResponse {
           ready!(Pin::new(stm).poll_frame(cx))
         }
         ResponseBytesInner::GZipStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
         ResponseBytesInner::BrotliStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
       };
       // This is where we retry the NoData response
@@ -564,6 +646,16 @@ impl Body for HttpRecordResponse {
       }
       record.take_response_body();
     }
+
+    if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
+      let mut http = self.0 .0.borrow_mut();
+      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
+        if let Some(response_size) = &mut otel_info.response_size {
+          *response_size += buf.len() as u64;
+        }
+      }
+    }
+
     Poll::Ready(res.into())
   }
 
@@ -593,16 +685,18 @@ impl Drop for HttpRecordResponse {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::response_body::Compression;
-  use crate::response_body::ResponseBytesInner;
+  use std::error::Error as StdError;
+
   use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
   use hyper::body::Body;
   use hyper::service::service_fn;
   use hyper::service::HttpService;
   use hyper_util::rt::TokioIo;
-  use std::error::Error as StdError;
+
+  use super::*;
+  use crate::response_body::Compression;
+  use crate::response_body::ResponseBytesInner;
 
   /// Execute client request on service and concurrently map the response.
   async fn serve_request<B, S, T, F>(
@@ -640,7 +734,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_handle_request() -> Result<(), AnyError> {
+  async fn test_handle_request() -> Result<(), deno_core::error::AnyError> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let server_state = HttpServerState::new();
     let server_state_check = server_state.clone();
@@ -656,6 +750,7 @@ mod tests {
         request_info.clone(),
         server_state.clone(),
         tx.clone(),
+        true,
       )
     });
 

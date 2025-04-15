@@ -1,28 +1,29 @@
 Check [WILDCARD]/fail.ts
-cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/fail.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-bench0     error: Error
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+bench0      error: Error
 [WILDCARD]
-bench1     error: Error
+bench1      error: Error
 [WILDCARD]
-bench2     error: Error
+bench2      error: Error
 [WILDCARD]
-bench3     error: Error
+bench3      error: Error
 [WILDCARD]
-bench4     error: Error
+bench4      error: Error
 [WILDCARD]
-bench5     error: Error
+bench5      error: Error
 [WILDCARD]
-bench6     error: Error
+bench6      error: Error
 [WILDCARD]
-bench7     error: Error
+bench7      error: Error
 [WILDCARD]
-bench8     error: Error
+bench8      error: Error
 [WILDCARD]
-bench9     error: Error
+bench9      error: Error
 [WILDCARD]
 error: Bench failed

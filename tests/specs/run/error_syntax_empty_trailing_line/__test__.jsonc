@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_syntax_empty_trailing_line.mjs",
+  "output": "error_syntax_empty_trailing_line.mjs.out",
+  "exitCode": 1
+}

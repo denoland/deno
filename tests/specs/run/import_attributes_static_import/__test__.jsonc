@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read static_import.ts",
+  "output": "static_import.out"
+}

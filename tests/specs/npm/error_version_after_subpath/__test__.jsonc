@@ -1,0 +1,5 @@
+{
+  "args": "run -A --quiet error_version_after_subpath/main.js",
+  "output": "error_version_after_subpath/main.out",
+  "exitCode": 1
+}

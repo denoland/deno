@@ -7,7 +7,6 @@ const permissions: Deno.PermissionName[] = [
   "env",
   "run",
   "ffi",
-  "hrtime",
 ];
 
 for (const name of permissions) {

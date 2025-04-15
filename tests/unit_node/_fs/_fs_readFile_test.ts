@@ -1,8 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertMatch } from "@std/assert";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -120,4 +120,27 @@ Deno.test("[std/node/fs] readFile callback isn't called twice if error is thrown
 Deno.test("fs.promises.readFile with no arg call rejects with error correctly", async () => {
   // @ts-ignore no arg call needs to be supported
   await promises.readFile().catch((_e) => {});
+});
+
+Deno.test("fs.readFile error message contains path + syscall", async () => {
+  const path = "/does/not/exist";
+  const err = await new Promise((resolve) => {
+    readFile(path, "utf-8", (err) => resolve(err));
+  });
+  if (err instanceof Error) {
+    assert(err.message.includes(path), "Path not found in error message");
+    assertMatch(err.message, /[,\s]open\s/);
+  }
+});
+
+Deno.test("fs.readFileSync error message contains path + syscall", () => {
+  const path = "/does/not/exist";
+  try {
+    readFileSync(path, "utf-8");
+  } catch (err) {
+    if (err instanceof Error) {
+      assert(err.message.includes(path), "Path not found in error message");
+      assertMatch(err.message, /[,\s]open\s/);
+    }
+  }
 });

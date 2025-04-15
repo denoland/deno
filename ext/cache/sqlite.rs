@@ -1,5 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use std::borrow::Cow;
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::future::poll_fn;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -7,20 +8,14 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use async_trait::async_trait;
-use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
@@ -28,11 +23,12 @@ use crate::deserialize_headers;
 use crate::get_header;
 use crate::serialize_headers;
 use crate::vary_header_matches;
-use crate::Cache;
 use crate::CacheDeleteRequest;
+use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
+use crate::CacheResponseResource;
 
 #[derive(Clone)]
 pub struct SqliteBackedCache {
@@ -41,10 +37,14 @@ pub struct SqliteBackedCache {
 }
 
 impl SqliteBackedCache {
-  pub fn new(cache_storage_dir: PathBuf) -> Self {
+  pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     {
-      std::fs::create_dir_all(&cache_storage_dir)
-        .expect("failed to create cache dir");
+      std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
+        CacheError::CacheStorageDirectory {
+          dir: cache_storage_dir.clone(),
+          source,
+        }
+      })?;
       let path = cache_storage_dir.join("cache_metadata.db");
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
@@ -56,18 +56,14 @@ impl SqliteBackedCache {
         PRAGMA synchronous=NORMAL;
         PRAGMA optimize;
       ";
-      connection
-        .execute_batch(initial_pragmas)
-        .expect("failed to execute pragmas");
-      connection
-        .execute(
-          "CREATE TABLE IF NOT EXISTS cache_storage (
+      connection.execute_batch(initial_pragmas)?;
+      connection.execute(
+        "CREATE TABLE IF NOT EXISTS cache_storage (
                     id              INTEGER PRIMARY KEY,
                     cache_name      TEXT NOT NULL UNIQUE
                 )",
-          (),
-        )
-        .expect("failed to create cache_storage table");
+        (),
+      )?;
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS request_response_list (
@@ -85,24 +81,23 @@ impl SqliteBackedCache {
                     UNIQUE (cache_id, request_url)
                 )",
           (),
-        )
-        .expect("failed to create request_response_list table");
-      SqliteBackedCache {
+        )?;
+      Ok(SqliteBackedCache {
         connection: Arc::new(Mutex::new(connection)),
         cache_storage_dir,
-      }
+      })
     }
   }
 }
 
-#[async_trait(?Send)]
-impl Cache for SqliteBackedCache {
-  type CacheMatchResourceType = CacheResponseResource;
-
+impl SqliteBackedCache {
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.
-  async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
+  pub async fn storage_open(
+    &self,
+    cache_name: String,
+  ) -> Result<i64, CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
     spawn_blocking(move || {
@@ -121,14 +116,17 @@ impl Cache for SqliteBackedCache {
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
       std::fs::create_dir_all(responses_dir)?;
-      Ok::<i64, AnyError>(cache_id)
+      Ok::<i64, CacheError>(cache_id)
     })
     .await?
   }
 
   /// Check if a cache with the provided name exists.
   /// Note: this doesn't check the disk, it only checks the sqlite db.
-  async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError> {
+  pub async fn storage_has(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
     spawn_blocking(move || {
       let db = db.lock();
@@ -140,13 +138,16 @@ impl Cache for SqliteBackedCache {
           Ok(count > 0)
         },
       )?;
-      Ok::<bool, AnyError>(cache_exists)
+      Ok::<bool, CacheError>(cache_exists)
     })
     .await?
   }
 
   /// Delete a cache storage. Internally, this deletes the row in the sqlite db.
-  async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
+  pub async fn storage_delete(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
     spawn_blocking(move || {
@@ -167,19 +168,21 @@ impl Cache for SqliteBackedCache {
           std::fs::remove_dir_all(cache_dir)?;
         }
       }
-      Ok::<bool, AnyError>(maybe_cache_id.is_some())
+      Ok::<bool, CacheError>(maybe_cache_id.is_some())
     })
     .await?
   }
 
-  async fn put(
+  pub async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("SystemTime is before unix epoch");
 
     if let Some(resource) = resource {
       let body_key = hash(&format!(
@@ -193,7 +196,11 @@ impl Cache for SqliteBackedCache {
       let mut file = tokio::fs::File::create(response_path).await?;
       let mut buf = BufMutView::new(64 * 1024);
       loop {
-        let (size, buf2) = resource.clone().read_byob(buf).await?;
+        let (size, buf2) = resource
+          .clone()
+          .read_byob(buf)
+          .await
+          .map_err(CacheError::Other)?;
         if size == 0 {
           break;
         }
@@ -219,12 +226,12 @@ impl Cache for SqliteBackedCache {
     Ok(())
   }
 
-  async fn r#match(
+  pub async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
     Option<(CacheMatchResponseMeta, Option<CacheResponseResource>)>,
-    AnyError,
+    CacheError,
   > {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
@@ -290,19 +297,20 @@ impl Cache for SqliteBackedCache {
           }
           Err(err) => return Err(err.into()),
         };
-        return Ok(Some((cache_meta, Some(CacheResponseResource::new(file)))));
+        Ok(Some((
+          cache_meta,
+          Some(CacheResponseResource::sqlite(file)),
+        )))
       }
-      Some((cache_meta, None)) => {
-        return Ok(Some((cache_meta, None)));
-      }
-      None => return Ok(None),
+      Some((cache_meta, None)) => Ok(Some((cache_meta, None))),
+      None => Ok(None),
     }
   }
 
-  async fn delete(
+  pub async fn delete(
     &self,
     request: CacheDeleteRequest,
-  ) -> Result<bool, AnyError> {
+  ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
     spawn_blocking(move || {
       // TODO(@satyarohith): remove the response body from disk if one exists
@@ -311,17 +319,17 @@ impl Cache for SqliteBackedCache {
         "DELETE FROM request_response_list WHERE cache_id = ?1 AND request_url = ?2",
         (request.cache_id, &request.request_url),
       )?;
-      Ok::<bool, AnyError>(rows_effected > 0)
+      Ok::<bool, CacheError>(rows_effected > 0)
     })
     .await?
   }
 }
 
 async fn insert_cache_asset(
-  db: Arc<Mutex<rusqlite::Connection>>,
+  db: Arc<Mutex<Connection>>,
   put: CachePutRequest,
   response_body_key: Option<String>,
-) -> Result<Option<String>, deno_core::anyhow::Error> {
+) -> Result<Option<String>, CacheError> {
   spawn_blocking(move || {
     let maybe_response_body = {
       let db = db.lock();
@@ -339,7 +347,7 @@ async fn insert_cache_asset(
           response_body_key,
           put.response_status,
           put.response_status_text,
-          SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+          SystemTime::now().duration_since(UNIX_EPOCH).expect("SystemTime is before unix epoch").as_secs(),
         ),
         |row| {
           let response_body_key: Option<String> = row.get(0)?;
@@ -347,7 +355,7 @@ async fn insert_cache_asset(
         },
       )?
     };
-      Ok::<Option<String>, AnyError>(maybe_response_body)
+    Ok::<Option<String>, CacheError>(maybe_response_body)
   }).await?
 }
 
@@ -361,33 +369,6 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
 impl deno_core::Resource for SqliteBackedCache {
   fn name(&self) -> std::borrow::Cow<str> {
     "SqliteBackedCache".into()
-  }
-}
-
-pub struct CacheResponseResource {
-  file: AsyncRefCell<tokio::fs::File>,
-}
-
-impl CacheResponseResource {
-  fn new(file: tokio::fs::File) -> Self {
-    Self {
-      file: AsyncRefCell::new(file),
-    }
-  }
-
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
-    let resource = deno_core::RcRef::map(&self, |r| &r.file);
-    let mut file = resource.borrow_mut().await;
-    let nread = file.read(data).await?;
-    Ok(nread)
-  }
-}
-
-impl Resource for CacheResponseResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "CacheResponseResource".into()
   }
 }
 

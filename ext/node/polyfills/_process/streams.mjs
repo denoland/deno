@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -63,24 +63,41 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
+
+  // We cannot call `writer?.isTerminal()` eagerly here
+  let getIsTTY = () => writer?.isTerminal();
+  const getColumns = () =>
+    stream._columns ||
+    (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
+
   ObjectDefineProperties(stream, {
     columns: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () =>
-        writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined,
+      get: () => getColumns(),
+      set: (value) => {
+        stream._columns = value;
+      },
     },
     rows: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
     },
     isTTY: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () => writer?.isTerminal(),
+      // Allow users to overwrite it
+      get: () => getIsTTY(),
+      set: (value) => {
+        getIsTTY = () => value;
+      },
     },
     getWindowSize: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       value: () =>
@@ -158,9 +175,11 @@ export const initStdin = (warmup = false) => {
       break;
     }
     case "TTY": {
-      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
-      // just return null to re-use it.
-      if (!warmup) {
+      // FIXME: We should be able to create stdin handle during warmup and re-use it but
+      // cppgc object wraps crash in snapshot mode.
+      //
+      // To reproduce crash, change the condition to `if (!warmup)` below:
+      if (warmup) {
         return null;
       }
       stdin = new readStream(fd);
@@ -203,6 +222,7 @@ export const initStdin = (warmup = false) => {
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
   ObjectDefineProperty(stdin, "isTTY", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
@@ -216,6 +236,7 @@ export const initStdin = (warmup = false) => {
     return stdin;
   };
   ObjectDefineProperty(stdin, "isRaw", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {

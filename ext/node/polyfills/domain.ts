@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // This code has been inspired by https://github.com/bevry/domain-browser/commit/8bce7f4a093966ca850da75b024239ad5d0b33c6
 
@@ -15,9 +15,20 @@ function emitError(e) {
   this.emit("error", e);
 }
 
+// TODO(bartlomieju): maybe use this one
+// deno-lint-ignore prefer-const
+let stack = [];
+export const _stack = stack;
+export const active = null;
+
 export function create() {
   return new Domain();
 }
+
+export function createDomain() {
+  return new Domain();
+}
+
 export class Domain extends EventEmitter {
   #handler;
 
@@ -85,6 +96,9 @@ export class Domain extends EventEmitter {
   }
 }
 export default {
+  _stack,
   create,
+  active,
+  createDomain,
   Domain,
 };

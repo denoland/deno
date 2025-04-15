@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/076_info_json_deps_order.ts"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./recursive_imports/A.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 18
+              },
+              "end": {
+                "line": 1,
+                "character": 44
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]076_info_json_deps_order.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./B.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]A.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/A.ts"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./C.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]B.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/B.ts"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./A.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]C.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/C.ts"
+    },
+    {
+      "kind": "esm",
+      "local": "[WILDCARD]common.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/common.ts"
+    }
+  ],
+  "redirects": {},
+  "npmPackages": {}
+}

@@ -1,0 +1,22 @@
+running 1 test from ./document_test.js
+document query selector ... FAILED [WILDCARD]
+
+ ERRORS 
+
+document query selector => ./document_test.js:1:6
+error: ReferenceError: document is not defined
+  document.querySelector("div");
+  ^
+    at [WILDCARD]document_test.js:2:3
+
+    info: document global is not available in Deno.
+    hint: Use a library like happy-dom, deno_dom, linkedom or JSDom
+          and setup the document global according to the library documentation.
+
+ FAILURES 
+
+document query selector => ./document_test.js:1:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

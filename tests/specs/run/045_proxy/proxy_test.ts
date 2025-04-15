@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 const addr = Deno.args[1] || "localhost:4555";
 
 function proxyServer() {
@@ -108,7 +108,6 @@ async function testFetchProgrammaticProxy() {
       "--quiet",
       "--reload",
       "--allow-net=localhost:4545,localhost:4555",
-      "--unstable",
       "programmatic_proxy_client.ts",
     ],
   }).output();

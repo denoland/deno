@@ -1,0 +1,5 @@
+{
+  "args": "task --config deno.json non_existent",
+  "output": "task_non_existent.out",
+  "exitCode": 1
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -50,7 +50,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, function realPathSyncPerm() {
   assertThrows(() => {
     Deno.realPathSync("some_file");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function realPathSyncNotFound() {
@@ -104,7 +104,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function realPathPerm() {
   await assertRejects(async () => {
     await Deno.realPath("some_file");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function realPathNotFound() {

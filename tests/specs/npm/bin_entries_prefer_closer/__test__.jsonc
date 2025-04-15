@@ -1,7 +1,4 @@
 {
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "tempDir": true,
   "steps": [
     {
@@ -21,6 +18,13 @@
     {
       "args": "task run-no-ext",
       "output": "Task run-no-ext cli-no-ext hello world\n@denotest/bin 0.7.0\n"
+    },
+    {
+      // even though we didn't put it in .bin, make sure the bin entry is marked executable
+      "if": "unix",
+      "commandName": "node_modules/.deno/@denotest+bin@1.0.0/node_modules/@denotest/bin/cli-cjs.js",
+      "args": "hello",
+      "output": "hello\n"
     }
   ]
 }

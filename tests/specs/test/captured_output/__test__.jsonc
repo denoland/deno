@@ -1,0 +1,5 @@
+{
+  "args": "test -A captured_output.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

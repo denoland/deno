@@ -4,6 +4,7 @@
     "include": [
       "ban-untagged-todo",
       "camelcase",
+      "no-console",
       "guard-for-in"
     ],
     "exclude": [

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -28,6 +28,7 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -115,6 +116,7 @@ const _binaryType = Symbol("[[binaryType]]");
 const _eventLoop = Symbol("[[eventLoop]]");
 const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
+const _cancelHandle = Symbol("[[cancelHandle]]");
 
 const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
@@ -135,6 +137,7 @@ class WebSocket extends EventTarget {
     this[_idleTimeoutDuration] = 0;
     this[_idleTimeoutTimeout] = undefined;
     this[_sendQueue] = [];
+    this[_cancelHandle] = undefined;
 
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -161,26 +164,20 @@ class WebSocket extends EventTarget {
 
     if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
       throw new DOMException(
-        "Only ws & wss schemes are allowed in a WebSocket URL.",
+        `Only ws & wss schemes are allowed in a WebSocket URL: received ${wsURL.protocol}`,
         "SyntaxError",
       );
     }
 
     if (wsURL.hash !== "" || StringPrototypeEndsWith(wsURL.href, "#")) {
       throw new DOMException(
-        "Fragments are not allowed in a WebSocket URL.",
+        "Fragments are not allowed in a WebSocket URL",
         "SyntaxError",
       );
     }
 
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
-
-    op_ws_check_permission_and_cancel_handle(
-      "WebSocket.abort()",
-      this[_url],
-      false,
-    );
 
     if (typeof protocols === "string") {
       protocols = [protocols];
@@ -195,7 +192,7 @@ class WebSocket extends EventTarget {
         )
     ) {
       throw new DOMException(
-        "Can't supply multiple times the same protocol.",
+        "Cannot supply multiple times the same protocol",
         "SyntaxError",
       );
     }
@@ -208,16 +205,25 @@ class WebSocket extends EventTarget {
       )
     ) {
       throw new DOMException(
-        "Invalid protocol value.",
+        "Invalid protocol value",
         "SyntaxError",
       );
     }
+
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
+      "WebSocket.abort()",
+      this[_url],
+      true,
+    );
+
+    this[_cancelHandle] = cancelRid;
 
     PromisePrototypeThen(
       op_ws_create(
         "new WebSocket()",
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
+        cancelRid,
       ),
       (create) => {
         this[_rid] = create.rid;
@@ -254,6 +260,12 @@ class WebSocket extends EventTarget {
           { error: err, message: ErrorPrototypeToString(err) },
         );
         this.dispatchEvent(errorEv);
+
+        if (this[_cancelHandle]) {
+          core.tryClose(this[_cancelHandle]);
+
+          this[_cancelHandle] = undefined;
+        }
 
         const closeEv = new CloseEvent("close");
         this.dispatchEvent(closeEv);
@@ -329,8 +341,12 @@ class WebSocket extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, prefix);
     data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
+    if (this[_readyState] === CONNECTING) {
+      throw new DOMException("'readyState' not OPEN", "InvalidStateError");
+    }
+
     if (this[_readyState] !== OPEN) {
-      throw new DOMException("readyState not OPEN", "InvalidStateError");
+      return;
     }
 
     if (this[_sendQueue].length === 0) {
@@ -376,7 +392,7 @@ class WebSocket extends EventTarget {
         !(code === 1000 || (3000 <= code && code < 5000))
       ) {
         throw new DOMException(
-          "The close code must be either 1000 or in the range of 3000 to 4999.",
+          `The close code must be either 1000 or in the range of 3000 to 4999: received ${code}`,
           "InvalidAccessError",
         );
       }
@@ -387,9 +403,16 @@ class WebSocket extends EventTarget {
       TypedArrayPrototypeGetByteLength(core.encode(reason)) > 123
     ) {
       throw new DOMException(
-        "The close reason may not be longer than 123 bytes.",
+        "The close reason may not be longer than 123 bytes",
         "SyntaxError",
       );
+    }
+
+    if (this[_cancelHandle]) {
+      // Cancel ongoing handshake.
+      core.tryClose(this[_cancelHandle]);
+
+      this[_cancelHandle] = undefined;
     }
 
     if (this[_readyState] === CONNECTING) {
@@ -488,8 +511,11 @@ class WebSocket extends EventTarget {
           /* error */
           this[_readyState] = CLOSED;
 
+          const message = op_ws_get_error(rid);
+          const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
-            message: op_ws_get_error(rid),
+            error,
+            message,
           });
           this.dispatchEvent(errorEv);
 
@@ -627,15 +653,19 @@ class WebSocket extends EventTarget {
 
 ObjectDefineProperties(WebSocket, {
   CONNECTING: {
+    __proto__: null,
     value: 0,
   },
   OPEN: {
+    __proto__: null,
     value: 1,
   },
   CLOSING: {
+    __proto__: null,
     value: 2,
   },
   CLOSED: {
+    __proto__: null,
     value: 3,
   },
 });

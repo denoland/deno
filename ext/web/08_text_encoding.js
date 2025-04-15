@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../fetch/lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
@@ -56,8 +56,8 @@ class TextDecoder {
   /** @type {boolean} */
   #utf8SinglePass;
 
-  /** @type {number | null} */
-  #rid = null;
+  /** @type {object | null} */
+  #handle = null;
 
   /**
    * @param {string} label
@@ -159,7 +159,7 @@ class TextDecoder {
       }
 
       // Fast path for single pass encoding.
-      if (!stream && this.#rid === null) {
+      if (!stream && this.#handle === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
           return op_encoding_decode_utf8(input, this.#ignoreBOM);
@@ -173,18 +173,17 @@ class TextDecoder {
         );
       }
 
-      if (this.#rid === null) {
-        this.#rid = op_encoding_new_decoder(
+      if (this.#handle === null) {
+        this.#handle = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
           this.#ignoreBOM,
         );
       }
-      return op_encoding_decode(input, this.#rid, stream);
+      return op_encoding_decode(input, this.#handle, stream);
     } finally {
-      if (!stream && this.#rid !== null) {
-        core.close(this.#rid);
-        this.#rid = null;
+      if (!stream && this.#handle !== null) {
+        this.#handle = null;
       }
     }
   }

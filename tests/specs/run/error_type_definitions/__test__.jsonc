@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check error_type_definitions.ts",
+  "output": "error_type_definitions.ts.out",
+  "exitCode": 1
+}

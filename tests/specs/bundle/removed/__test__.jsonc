@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "args": "bundle",
+      "output": "bundle.out",
+      "exitCode": 1
+    },
+    {
+      "args": "bundle --help",
+      "output": "bundle_help.out"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file ban-types prefer-primordials
@@ -745,6 +745,9 @@ function validateThrownError(
     }
     message = error;
     error = undefined;
+  }
+  if (error?.prototype !== undefined && e instanceof error) {
+    return true;
   }
   if (
     typeof error === "function" &&

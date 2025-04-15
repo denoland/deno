@@ -1,0 +1,22 @@
+Check [WILDCARD]/ops_sanitizer_unstable.ts
+running 2 tests from [WILDCARD]/ops_sanitizer_unstable.ts
+no-op ... ok ([WILDCARD])
+leak interval ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+leak interval => [WILDCARD]/ops_sanitizer_unstable.ts:[WILDCARD]
+error: Leaks detected:
+  - An interval was started in this test, but never completed. This is often caused by not calling `clearInterval`. The operation was started here:
+    at [WILDCARD]
+    at setInterval ([WILDCARD])
+    at fn ([WILDCARD]/ops_sanitizer_unstable.ts:[WILDCARD])
+    at [WILDCARD]
+
+ FAILURES 
+
+leak interval => [WILDCARD]/ops_sanitizer_unstable.ts:[WILDCARD]
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed

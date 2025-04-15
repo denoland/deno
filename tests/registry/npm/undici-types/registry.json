@@ -1,0 +1,45 @@
+{
+  "name": "undici-types",
+  "dist-tags": {
+    "latest": "6.20.0"
+  },
+  "versions": {
+    "6.20.0": {
+      "name": "undici-types",
+      "version": "6.20.0",
+      "license": "MIT",
+      "_id": "undici-types@6.20.0",
+      "bugs": {
+        "url": "https://github.com/nodejs/undici/issues"
+      },
+      "dist": {
+        "shasum": "8171bf22c1f588d1554d55bf204bc624af388433",
+        "tarball": "http://localhost:4260/undici-types/undici-types-6.20.0.tgz",
+        "fileCount": 41,
+        "integrity": "sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==",
+        "unpackedSize": 83349
+      },
+      "types": "index.d.ts",
+      "gitHead": "24b940329af4ad7b72fad89824a3d0cee924d23f",
+      "repository": {
+        "url": "git+https://github.com/nodejs/undici.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "A stand-alone types package for Undici",
+      "directories": {},
+      "_nodeVersion": "20.17.0",
+      "_hasShrinkwrap": false
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/nodejs/undici/issues"
+  },
+  "license": "MIT",
+  "homepage": "https://undici.nodejs.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nodejs/undici.git"
+  },
+  "description": "A stand-alone types package for Undici"
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --v8-flags=--expose-gc finalization_registry.js",
+  "output": "finalization_registry.js.out"
+}

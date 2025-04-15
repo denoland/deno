@@ -1,0 +1,5 @@
+{
+  "args": "run dom_exception_formatting.ts",
+  "output": "dom_exception_formatting.ts.out",
+  "exitCode": 1
+}

@@ -1,5 +1,5 @@
 {
-  "nodeModulesDir": true,
+  "nodeModulesDir": "auto",
   "tasks": {
     "cat": "cat",
     "rm_node_modules": "rm -rf node_modules"

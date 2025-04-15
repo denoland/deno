@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -18,7 +18,7 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify, SymbolFor } = primordials;
+const { JSONStringify, SafeArrayIterator, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -624,6 +624,15 @@ function createInvalidArgType(
   return msg;
 }
 
+export class ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH extends NodeRangeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH",
+      "Input buffers must have the same length",
+    );
+  }
+}
+
 export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
   constructor(name: string, expected: string | string[], actual: unknown) {
     const msg = createInvalidArgType(name, expected);
@@ -924,6 +933,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_JWK extends NodeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_JWK", "Invalid JWK");
   }
 }
 
@@ -1868,6 +1883,11 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
+  constructor() {
+    super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
+  }
+}
 export class ERR_SOCKET_DGRAM_IS_CONNECTED extends NodeError {
   constructor() {
     super("ERR_SOCKET_DGRAM_IS_CONNECTED", `Already connected`);
@@ -2289,10 +2309,10 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
 }
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
-  constructor(error: Error) {
+  constructor(error?: Error) {
     super(
       "ERR_HTTP2_STREAM_CANCEL",
-      typeof error.message === "string"
+      error && typeof error.message === "string"
         ? `The pending stream has been canceled (caused by: ${error.message})`
         : "The pending stream has been canceled",
     );
@@ -2375,6 +2395,15 @@ export class ERR_INVALID_RETURN_VALUE extends NodeTypeError {
           value,
         )
       }.`,
+    );
+  }
+}
+
+export class ERR_NOT_IMPLEMENTED extends NodeError {
+  constructor(message?: string) {
+    super(
+      "ERR_NOT_IMPLEMENTED",
+      message ? `Not implemented: ${message}` : "Not implemented",
     );
   }
 }
@@ -2552,19 +2581,6 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
   }
 }
 
-export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
-  constructor() {
-    const code = isWindows ? "ENOENT" : "ENOTDIR";
-    const ctx: NodeSystemErrorCtx = {
-      message: "not a directory",
-      syscall: "home",
-      code,
-      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
-    };
-    super(code, ctx, "Path is not a directory");
-  }
-}
-
 export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   constructor() {
     super(
@@ -2640,17 +2656,50 @@ export function aggregateTwoErrors(
   }
   return innerError || outerError;
 }
+
+export class NodeAggregateError extends AggregateError {
+  code: string;
+  constructor(errors, message) {
+    super(new SafeArrayIterator(errors), message);
+    this.code = errors[0]?.code;
+  }
+
+  get [kIsNodeError]() {
+    return true;
+  }
+
+  // deno-lint-ignore adjacent-overload-signatures
+  get ["constructor"]() {
+    return AggregateError;
+  }
+}
+
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
+codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
+codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
+codes.ERR_MISSING_ARGS = ERR_MISSING_ARGS;
+codes.ERR_MULTIPLE_CALLBACK = ERR_MULTIPLE_CALLBACK;
+codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
+codes.ERR_SOCKET_CONNECTION_TIMEOUT = ERR_SOCKET_CONNECTION_TIMEOUT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
 codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
 codes.ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL =
   ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL;
 codes.ERR_PARSE_ARGS_UNKNOWN_OPTION = ERR_PARSE_ARGS_UNKNOWN_OPTION;
+codes.ERR_STREAM_ALREADY_FINISHED = ERR_STREAM_ALREADY_FINISHED;
+codes.ERR_STREAM_CANNOT_PIPE = ERR_STREAM_CANNOT_PIPE;
+codes.ERR_STREAM_DESTROYED = ERR_STREAM_DESTROYED;
+codes.ERR_STREAM_NULL_VALUES = ERR_STREAM_NULL_VALUES;
+codes.ERR_STREAM_PREMATURE_CLOSE = ERR_STREAM_PREMATURE_CLOSE;
+codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
+codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
+codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
+codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2733,6 +2782,7 @@ export default {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,
@@ -2815,6 +2865,7 @@ export default {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_TYPE_RANGE,
+  ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_INVALID_ASYNC_ID,
@@ -2844,6 +2895,7 @@ export default {
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,
+  ERR_NOT_IMPLEMENTED,
   ERR_INVALID_URI,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,

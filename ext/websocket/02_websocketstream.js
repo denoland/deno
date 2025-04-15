@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -323,6 +323,8 @@ class WebSocketStream {
                   } catch (_) {
                     // needed to ignore warnings & assertions
                   }
+                }, () => {
+                  // needed to ignore warnings & assertions
                 });
 
                 PromisePrototypeThen(this[_closeSent].promise, () => {
@@ -335,7 +337,6 @@ class WebSocketStream {
               cancel: async (reason) => {
                 let closeCode = null;
                 let reasonString = "";
-
                 if (
                   ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, reason)
                 ) {

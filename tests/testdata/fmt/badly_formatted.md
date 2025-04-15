@@ -32,7 +32,7 @@ function foo(): number {
 {
   // Comment in JSON
   "key":          "value",
-                "key2":      
+                "key2":
                 "value2",
 }
 
@@ -43,4 +43,35 @@ function foo(): number {
   "numbers":
   ["1",      "2"]
 }
+```
+
+```yaml
+-  item1
+-  item2
+```
+
+```css
+#app>.btn{ color : #000 }
+```
+
+```html
+<div class=container > content </div>
+```
+
+```svelte
+<script lang=ts>
+let a:number
+</script>
+```
+
+
+```sql
+  seLect * , biz, buz
+from baz;
+```
+
+```sql
+-- deno-fmt-ignore-file
+  seLect * , biz, buz
+from baz;
 ```

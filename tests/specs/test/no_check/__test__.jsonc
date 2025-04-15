@@ -1,0 +1,5 @@
+{
+  "args": "test --no-check main.ts",
+  "exitCode": 1,
+  "output": "main.out"
+}

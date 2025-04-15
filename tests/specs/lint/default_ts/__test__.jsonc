@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin": {
+      "args": "lint -",
+      "input": "const _x: string = \"foo\";",
+      "output": "Checked 1 file\n"
+    },
+    "ext_flag": {
+      "args": "lint --ext=ts as_ts.js",
+      "output": "Checked 1 file\n"
+    },
+    "extensionless": {
+      "args": "lint extensionless",
+      "output": "error: No target files found.\n",
+      "exitCode": 1
+    },
+    "extensionless_with_flag": {
+      "args": "lint --ext=ts extensionless",
+      "output": "Checked 1 file\n"
+    }
+  }
+}

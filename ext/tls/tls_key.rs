@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! These represent the various types of TLS keys we support for both client and server
 //! connections.
@@ -11,29 +11,40 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::Either;
-use deno_core::futures::FutureExt;
-use deno_core::unsync::spawn;
-use rustls::ServerConfig;
-use rustls_tokio_stream::ServerConfigProvider;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::poll_fn;
 use std::future::ready;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use deno_core::futures::future::Either;
+use deno_core::futures::FutureExt;
+use deno_core::unsync::spawn;
+use rustls::ServerConfig;
+use rustls_tokio_stream::ServerConfigProvider;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use webpki::types::CertificateDer;
 use webpki::types::PrivateKeyDer;
 
-type ErrorType = Rc<AnyError>;
+#[derive(Debug, thiserror::Error)]
+pub enum TlsKeyError {
+  #[error(transparent)]
+  Rustls(#[from] rustls::Error),
+  #[error("Failed: {0}")]
+  Failed(ErrorType),
+  #[error(transparent)]
+  JoinError(#[from] tokio::task::JoinError),
+  #[error(transparent)]
+  RecvError(#[from] tokio::sync::broadcast::error::RecvError),
+}
+
+type ErrorType = Arc<Box<str>>;
 
 /// A TLS certificate/private key pair.
 /// see https://docs.rs/rustls-pki-types/latest/rustls_pki_types/#cloning-private-keys
@@ -114,7 +125,7 @@ impl TlsKeyResolver {
     &self,
     sni: String,
     alpn: Vec<Vec<u8>>,
-  ) -> Result<Arc<ServerConfig>, AnyError> {
+  ) -> Result<Arc<ServerConfig>, TlsKeyError> {
     let key = self.resolve(sni).await?;
 
     let mut tls_config = ServerConfig::builder()
@@ -183,7 +194,7 @@ impl TlsKeyResolver {
   pub fn resolve(
     &self,
     sni: String,
-  ) -> impl Future<Output = Result<TlsKey, AnyError>> {
+  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> {
     let mut cache = self.inner.cache.borrow_mut();
     let mut recv = match cache.get(&sni) {
       None => {
@@ -194,7 +205,7 @@ impl TlsKeyResolver {
       }
       Some(TlsKeyState::Resolving(recv)) => recv.resubscribe(),
       Some(TlsKeyState::Resolved(res)) => {
-        return Either::Left(ready(res.clone().map_err(|_| anyhow!("Failed"))));
+        return Either::Left(ready(res.clone().map_err(TlsKeyError::Failed)));
       }
     };
     drop(cache);
@@ -212,7 +223,7 @@ impl TlsKeyResolver {
           // Someone beat us to it
         }
       }
-      res.map_err(|_| anyhow!("Failed"))
+      res.map_err(TlsKeyError::Failed)
     });
     Either::Right(async move { handle.await? })
   }
@@ -247,20 +258,21 @@ impl TlsKeyLookup {
   }
 
   /// Resolve a previously polled item.
-  pub fn resolve(&self, sni: String, res: Result<TlsKey, AnyError>) {
+  pub fn resolve(&self, sni: String, res: Result<TlsKey, String>) {
     _ = self
       .pending
       .borrow_mut()
       .remove(&sni)
       .unwrap()
-      .send(res.map_err(Rc::new));
+      .send(res.map_err(|e| Arc::new(e.into_boxed_str())));
   }
 }
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
   use deno_core::unsync::spawn;
+
+  use super::*;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     let manifest_dir =

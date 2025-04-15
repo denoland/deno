@@ -1,0 +1,6 @@
+error: Uncaught (in promise) Error: boom!
+  throw new Error("boom!");
+        ^
+    at boom (file:///[WILDLINE]standalone_error.ts:2:9)
+    at foo (file:///[WILDLINE]standalone_error.ts:6:3)
+    at file:///[WILDLINE]standalone_error.ts:9:1

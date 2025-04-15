@@ -1,7 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
+
+use deno_core::anyhow::Context;
 
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
@@ -15,19 +17,28 @@ pub struct JunitTestReporter {
   // from child to parent to build the full test name that reflects the test
   // hierarchy.
   test_name_tree: TestNameTree,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 impl JunitTestReporter {
-  pub fn new(cwd: Url, output_path: String) -> Self {
+  pub fn new(
+    cwd: Url,
+    output_path: String,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> Self {
     Self {
       cwd,
       output_path,
       cases: IndexMap::new(),
       test_name_tree: TestNameTree::new(),
+      failure_format_options,
     }
   }
 
-  fn convert_status(status: &TestResult) -> quick_junit::TestCaseStatus {
+  fn convert_status(
+    status: &TestResult,
+    failure_format_options: &TestFailureFormatOptions,
+  ) -> quick_junit::TestCaseStatus {
     match status {
       TestResult::Ok => quick_junit::TestCaseStatus::success(),
       TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
@@ -35,7 +46,7 @@ impl JunitTestReporter {
         kind: quick_junit::NonSuccessKind::Failure,
         message: Some(failure.overview()),
         ty: None,
-        description: Some(failure.detail()),
+        description: Some(failure.format(failure_format_options).into_owned()),
         reruns: vec![],
       },
       TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
@@ -50,6 +61,7 @@ impl JunitTestReporter {
 
   fn convert_step_status(
     status: &TestStepResult,
+    failure_format_options: &TestFailureFormatOptions,
   ) -> quick_junit::TestCaseStatus {
     match status {
       TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
@@ -59,7 +71,9 @@ impl JunitTestReporter {
           kind: quick_junit::NonSuccessKind::Failure,
           message: Some(failure.overview()),
           ty: None,
-          description: Some(failure.detail()),
+          description: Some(
+            failure.format(failure_format_options).into_owned(),
+          ),
           reruns: vec![],
         }
       }
@@ -111,7 +125,7 @@ impl TestReporter for JunitTestReporter {
     elapsed: u64,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
-      case.status = Self::convert_status(result);
+      case.status = Self::convert_status(result, &self.failure_format_options);
       case.set_time(Duration::from_millis(elapsed));
     }
   }
@@ -153,7 +167,8 @@ impl TestReporter for JunitTestReporter {
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
-      case.status = Self::convert_step_status(result);
+      case.status =
+        Self::convert_step_status(result, &self.failure_format_options);
       case.set_time(Duration::from_millis(elapsed));
     }
   }

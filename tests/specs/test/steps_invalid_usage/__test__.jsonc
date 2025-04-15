@@ -1,0 +1,5 @@
+{
+  "args": "test invalid_usage.ts",
+  "exitCode": 1,
+  "output": "invalid_usage.out"
+}

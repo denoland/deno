@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run --no-config --unstable-temporal --check main.ts",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "config": {
+      "args": "run --unstable-temporal --check main.ts",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "missing_flag": {
+      "args": "run --no-config missing_flag.js",
+      "output": "missing_flag.out",
+      "exitCode": 1
+    }
+  }
+}

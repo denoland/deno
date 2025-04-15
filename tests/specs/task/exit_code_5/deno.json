@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "exit_code_5": "echo $(echo 10 ; exit 2) && exit 5"
+  }
+}

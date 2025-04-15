@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -58,15 +58,18 @@ const workerNavigator = webidl.createBranded(WorkerNavigator);
 
 ObjectDefineProperties(WorkerNavigator.prototype, {
   gpu: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       const webgpu = loadWebGPU();
+      webgpu.initGPU();
       return webgpu.gpu;
     },
   },
   hardwareConcurrency: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -75,6 +78,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   userAgent: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -83,6 +87,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   language: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -91,6 +96,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   languages: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {

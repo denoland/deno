@@ -1,0 +1,6 @@
+{
+  "test": {
+    "include": ["./include/"],
+    "exclude": ["./ignore", "./include/2_test.ts"]
+  }
+}

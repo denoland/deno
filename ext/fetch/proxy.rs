@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Parts of this module should be able to be replaced with other crates
 //! eventually, once generic versions appear in hyper-util, et al.
@@ -13,7 +13,6 @@ use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
 use deno_tls::rustls::ClientConfig as TlsConfig;
-
 use http::header::HeaderValue;
 use http::uri::Scheme;
 use http::Uri;
@@ -23,6 +22,7 @@ use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
+use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
@@ -96,7 +96,7 @@ pub(crate) fn from_env() -> Proxies {
   if env::var_os("REQUEST_METHOD").is_none() {
     if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
       intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Https) {
+    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
       intercepts.push(proxy);
     }
   }
@@ -107,9 +107,10 @@ pub(crate) fn from_env() -> Proxies {
 }
 
 pub fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
+  use std::io::Write;
+
   use base64::prelude::BASE64_STANDARD;
   use base64::write::EncoderWriter;
-  use std::io::Write;
 
   let mut buf = b"Basic ".to_vec();
   {
@@ -192,10 +193,12 @@ impl Target {
 
     if let Some((userinfo, host_port)) = authority.as_str().split_once('@') {
       let (user, pass) = userinfo.split_once(':')?;
+      let user = percent_decode_str(user).decode_utf8_lossy();
+      let pass = percent_decode_str(pass).decode_utf8_lossy();
       if is_socks {
         socks_auth = Some((user.into(), pass.into()));
       } else {
-        http_auth = Some(basic_auth(user, Some(pass)));
+        http_auth = Some(basic_auth(&user, Some(&pass)));
       }
       builder = builder.authority(host_port);
     } else {
@@ -465,7 +468,7 @@ where
           let connecting = connector.call(proxy_dst);
           let tls = TlsConnector::from(self.tls.clone());
           Box::pin(async move {
-            let mut io = connecting.await.map_err(Into::<BoxError>::into)?;
+            let mut io = connecting.await?;
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
@@ -727,7 +730,14 @@ where
         }
       }
       Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::SocksTls(ref p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().negotiated_h2()
+        } else {
+          tunneled_tls.0.connected()
+        }
+      }
     }
   }
 }
@@ -762,6 +772,16 @@ fn test_proxy_parse_from_env() {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_some());
       assert!(auth.unwrap().is_sensitive());
+    }
+    _ => panic!("bad target"),
+  }
+
+  // percent encoded user info
+  match parse("us%2Fer:p%2Fass@127.0.0.1:6666") {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      let auth = auth.unwrap();
+      assert_eq!(auth.to_str().unwrap(), "Basic dXMvZXI6cC9hc3M=");
     }
     _ => panic!("bad target"),
   }

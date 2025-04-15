@@ -1,15 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   Date,
   DatePrototypeGetDate,
   DatePrototypeGetHours,
   DatePrototypeGetMinutes,
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
+  ErrorCaptureStackTrace,
   ErrorPrototype,
   NumberPrototypeToString,
   ObjectDefineProperty,
@@ -25,9 +27,13 @@ const {
   StringPrototypeIsWellFormed,
   StringPrototypePadStart,
   StringPrototypeToWellFormed,
+  PromiseResolve,
 } = primordials;
 
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import {
+  createDeferredPromise,
+  promisify,
+} from "ext:deno_node/internal/util.mjs";
 import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
@@ -35,24 +41,34 @@ import {
   formatWithOptions,
   inspect,
   stripVTControlCharacters,
+  styleText,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
 import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import process from "node:process";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateAbortSignal,
+  validateNumber,
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 export {
   callbackify,
   debuglog,
+  debuglog as debug,
   format,
   formatWithOptions,
   inspect,
   parseArgs,
   promisify,
   stripVTControlCharacters,
+  styleText,
   types,
 };
 
@@ -167,6 +183,7 @@ export function inherits<T, U>(
     );
   }
   ObjectDefineProperty(ctor, "super_", {
+    __proto__: null,
     value: superCtor,
     writable: true,
     configurable: true,
@@ -233,6 +250,7 @@ function timestamp(): string {
  */
 // deno-lint-ignore no-explicit-any
 export function log(...args: any[]) {
+  // deno-lint-ignore no-console
   console.log("%s - %s", timestamp(), ReflectApply(format, undefined, args));
 }
 
@@ -286,6 +304,81 @@ export function deprecate(fn: any, msg: string, code?: any) {
   return deprecated;
 }
 
+// deno-lint-ignore require-await
+export async function aborted(
+  signal: AbortSignal,
+  // deno-lint-ignore no-explicit-any
+  _resource: any,
+): Promise<void> {
+  if (signal === undefined) {
+    throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  validateAbortSignal(signal, "signal");
+  if (signal.aborted) {
+    return PromiseResolve();
+  }
+  const abortPromise = createDeferredPromise();
+  signal[abortSignal.add](abortPromise.resolve);
+  return abortPromise.promise;
+}
+
+function prepareStackTrace(_error, stackTraces) {
+  return ArrayPrototypeMap(stackTraces, (stack) => {
+    return ({
+      functionName: stack.getFunctionName() ?? "",
+      // TODO(kt3k): This needs to be script's id
+      scriptId: "0",
+      scriptName: stack.getFileName(),
+      lineNumber: stack.getLineNumber(),
+      column: stack.getColumnNumber(),
+      columnNumber: stack.getColumnNumber(),
+    });
+  });
+}
+
+const kDefaultMaxCallStackSizeToCapture = 200;
+
+// deno-lint-ignore-start
+/**
+ * Returns the call sites of the current call stack
+ * @param frameCount The limit of the number of frames to return
+ * @param _options The options
+ * @returns The call sites
+ */
+export function getCallSites(
+  frameCount = 10,
+  options: unknown = { __proto__: null },
+) {
+  validateNumber(
+    frameCount,
+    "frameCount",
+    0,
+    kDefaultMaxCallStackSizeToCapture,
+  );
+  if (options) {
+    validateObject(options, "options");
+  }
+  const target = {};
+  // deno-lint-ignore prefer-primordials
+  const original = Error.prepareStackTrace;
+  // deno-lint-ignore prefer-primordials
+  const limitOriginal = Error.stackTraceLimit;
+
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = frameCount;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = prepareStackTrace;
+  ErrorCaptureStackTrace(target, getCallSites);
+
+  const capturedTraces = target.stack;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = original;
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = limitOriginal;
+
+  return capturedTraces;
+}
+
 export { getSystemErrorName, isDeepStrictEqual };
 
 export default {
@@ -308,7 +401,9 @@ export default {
   isPrimitive,
   isBuffer,
   _extend,
+  getCallSites,
   getSystemErrorName,
+  aborted,
   deprecate,
   callbackify,
   parseArgs,
@@ -321,5 +416,7 @@ export default {
   toUSVString,
   log,
   debuglog,
+  debug: debuglog,
   isDeepStrictEqual,
+  styleText,
 };
