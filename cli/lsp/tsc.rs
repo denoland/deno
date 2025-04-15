@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -18,6 +19,7 @@ use std::thread;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_config::deno_json::ConfigFile;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
@@ -46,13 +48,18 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
+use deno_semver::jsr::JsrDepPackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeResolutionKind;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPathRef;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -84,6 +91,7 @@ use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
+use super::resolver::LspScopedResolver;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
@@ -645,6 +653,7 @@ impl TsServer {
       .request::<Vec<CodeFixAction>>(snapshot, req, scope, token)
       .await
       .and_then(|mut actions| {
+        eprintln!("CODE FIXES: {:?}", actions);
         for action in &mut actions {
           action.normalize(&self.specifier_map, token)?;
         }
@@ -4246,11 +4255,6 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if !specifier.contains("/node_modules/@types/node/") {
-      // The ts server doesn't give completions from files in
-      // `node_modules/.deno/`. We work around it like this.
-      specifier = specifier.replace("/node_modules/", "/$node_modules/");
-    }
     let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
@@ -4275,9 +4279,7 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
-    let specifier_str = original
-      .replace(".d.ts.d.ts", ".d.ts")
-      .replace("$node_modules", "node_modules");
+    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
     let specifier = ModuleSpecifier::parse(&specifier_str)?;
     if specifier.as_str() != original {
       self
@@ -4349,9 +4351,189 @@ impl State {
   }
 }
 
+#[op2]
+#[serde]
+fn op_export_modules_for_module(
+  state: &mut OpState,
+  #[string] module: String,
+) -> IndexSet<String> {
+  let Ok(referrer) = ModuleSpecifier::parse(&module) else {
+    return Default::default();
+  };
+  let state = state.borrow::<State>();
+  let scoped_resolver = state
+    .state_snapshot
+    .resolver
+    .get_scoped_resolver(Some(&referrer));
+  let mut urls = IndexSet::new();
+
+  get_jsr_and_npm_importable_paths(
+    scoped_resolver,
+    state,
+    Some(&referrer),
+    &mut urls,
+  );
+
+  // Include all remote modules and any modules in the current
+  // package (or else all user code)
+  // todo(THIS PR): this is wrong and should group by scope
+  let in_npm_pkg_checker = scoped_resolver.as_in_npm_pkg_checker();
+  for uri in state
+    .state_snapshot
+    .document_modules
+    .document_urls_for_scope_for_tsc(Some(&referrer))
+  {
+    let url = uri_to_url(&uri);
+    let should_add = match url.scheme() {
+      // todo(THIS PR): also filter out specifiers in other packages
+      "file" => !in_npm_pkg_checker.in_npm_package(&url),
+      "cache" => false,
+      _ => true,
+    };
+    if should_add {
+      urls.insert(state.specifier_map.denormalize(&url));
+    }
+  }
+
+  urls
+}
+
+fn get_jsr_and_npm_importable_paths(
+  scoped_resolver: &LspScopedResolver,
+  state: &State,
+  maybe_referrer: Option<&Url>,
+  urls: &mut IndexSet<String>,
+) {
+  fn is_auto_importable_media_type(media_type: MediaType) -> bool {
+    match media_type {
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx => true,
+      MediaType::Css
+      | MediaType::Json
+      | MediaType::Html
+      | MediaType::Sql
+      | MediaType::Wasm
+      | MediaType::SourceMap
+      | MediaType::Unknown => false,
+    }
+  }
+
+  // Discover all the npm package export modules
+  let mut config_deps = BTreeMap::new();
+  if let Some(config_data) = scoped_resolver.as_config_data() {
+    let workspace = &config_data.member_dir.workspace;
+    let workspace_root_dir = workspace.resolve_member_dir(workspace.root_dir());
+    let mut workspace_dirs = Vec::with_capacity(2);
+    workspace_dirs.push(config_data.member_dir.as_ref());
+    if workspace_root_dir.dir_url() != config_data.member_dir.dir_url() {
+      workspace_dirs.push(&workspace_root_dir);
+    }
+    for workspace_dir in workspace_dirs {
+      if let Some(deno_json) = workspace_dir.maybe_deno_json() {
+        for req in crate::args::deno_json::deno_json_deps(deno_json) {
+          config_deps.entry(req).or_insert(&deno_json.specifier);
+        }
+      }
+
+      if let Some(npm_resolver) = scoped_resolver.as_npm_resolver() {
+        if let Some(node_resolver) = scoped_resolver.as_node_resolver() {
+          let pkg_jsons =
+            config_data.member_dir.maybe_pkg_json().into_iter().chain(
+              config_data.member_dir.workspace.root_pkg_json().into_iter(),
+            );
+          for pkg_json in pkg_jsons {
+            let deps = pkg_json.resolve_local_package_json_deps();
+            let pkg_json_path = UrlOrPathRef::from_path(&pkg_json.path);
+            for specifier in
+              deps.dependencies.keys().chain(deps.dev_dependencies.keys())
+            {
+              // TODO: This seems slightly wrong because the specifier won't necessarily
+              // be the package name for the global resolver, which is what this expects
+              if let Ok(pkg_folder) = npm_resolver
+                .resolve_package_folder_from_package(specifier, &pkg_json_path)
+              {
+                let exports = node_resolver.all_exported_files_for_package(
+                  &pkg_folder,
+                  ResolutionMode::Import,
+                  NodeResolutionKind::Types,
+                );
+                for export in exports {
+                  if is_auto_importable_media_type(export.media_type) {
+                    if let Ok(url) =
+                      deno_path_util::url_from_file_path(&export.path)
+                    {
+                      eprintln!("INSERTING2: {}", url.as_str());
+                      urls.insert(state.specifier_map.denormalize(&url));
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if let Some(npm_resolver) = scoped_resolver.as_npm_resolver() {
+    if let Some(node_resolver) = scoped_resolver.as_node_resolver() {
+      let dep_info = scoped_resolver.dep_info();
+      for (req, referrer) in &dep_info.npm_reqs {
+        let maybe_package_folder = npm_resolver
+          .resolve_pkg_folder_from_deno_module_req(
+            &req,
+            maybe_referrer.unwrap_or(referrer),
+          )
+          .ok();
+        if let Some(pkg_folder) = maybe_package_folder {
+          let exports = node_resolver.all_exported_files_for_package(
+            &pkg_folder,
+            // todo: check if the referrer is cjs and provide require
+            ResolutionMode::Import,
+            NodeResolutionKind::Types,
+          );
+          for export in exports {
+            if is_auto_importable_media_type(export.media_type) {
+              if let Ok(url) = deno_path_util::url_from_file_path(&export.path)
+              {
+                eprintln!("INSERTING: {}", url.as_str());
+                urls.insert(state.specifier_map.denormalize(&url));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve all the exports of jsr packages
+  if let Some(jsr_cache_resolver) = scoped_resolver.as_jsr_cache_resolver() {
+    urls.extend(
+      jsr_cache_resolver
+        .all_jsr_pkg_modules()
+        .into_iter()
+        .filter(|i| {
+          is_auto_importable_media_type(MediaType::from_specifier_and_headers(
+            &i.url, None,
+          ))
+        })
+        .map(|i| state.specifier_map.denormalize(&i.url)),
+    );
+  }
+}
+
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
-  let state = state.borrow_mut::<State>();
+  let state = state.borrow::<State>();
   state.token.is_cancelled()
 }
 
@@ -4720,13 +4902,30 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
             lsp_log!("failed to resolve {req_ref} to file URL");
             continue;
           };
-          script_names.insert(resolved.to_string());
+          script_names.insert(state.specifier_map.denormalize(&resolved));
         } else {
-          script_names.insert(specifier.to_string());
+          script_names.insert(state.specifier_map.denormalize(specifier));
         }
       }
     }
+
+    // add the importable paths
+    get_jsr_and_npm_importable_paths(
+      scoped_resolver,
+      state,
+      None,
+      script_names,
+    );
   }
+
+  let unscoped_resolver =
+    state.state_snapshot.resolver.get_scoped_resolver(None);
+  get_jsr_and_npm_importable_paths(
+    unscoped_resolver,
+    state,
+    None,
+    &mut result.unscoped,
+  );
 
   // finally include the documents
   for (scope, modules) in state
@@ -4762,28 +4961,16 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some(types_specifier) = &types_specifier {
-        script_names.insert(types_specifier.to_string());
+        script_names.insert(state.specifier_map.denormalize(types_specifier));
       }
       if types_specifier.is_none() || is_open {
-        script_names.insert(module.specifier.to_string());
+        script_names.insert(state.specifier_map.denormalize(&module.specifier));
       }
     }
   }
 
-  for script_names in result
-    .by_scope
-    .values_mut()
-    .chain(std::iter::once(&mut result.unscoped))
-  {
-    *script_names = std::mem::take(script_names)
-      .into_iter()
-      .map(|s| match ModuleSpecifier::parse(&s) {
-        Ok(s) => state.specifier_map.denormalize(&s),
-        Err(_) => s,
-      })
-      .collect();
-  }
   state.performance.measure(mark);
+  eprintln!("RESULT: {:?}", result);
   result
 }
 
@@ -4932,6 +5119,7 @@ fn run_tsc_thread(
 
 deno_core::extension!(deno_tsc,
   ops = [
+    op_export_modules_for_module,
     op_is_cancelled,
     op_is_node_file,
     op_load,

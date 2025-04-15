@@ -91,6 +91,7 @@ export function setLogDebug(debug, source) {
 function printStderr(msg) {
   core.print(msg, true);
 }
+globalThis.printStderr = (text) => printStderr(text + "\n");
 
 /** @param args {any[]} */
 export function debug(...args) {

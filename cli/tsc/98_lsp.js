@@ -286,12 +286,22 @@ let hasStarted = false;
 
 function createLs() {
   let exportInfoMap = undefined;
+  let exportImportablePathsCache = undefined;
   const newHost = {
     ...host,
     getCachedExportInfoMap: () => {
       // this export info map is specific to
       // the language service instance
       return exportInfoMap;
+    },
+    getExportImportablePathsFromModule(referrerPath) {
+      if (exportImportablePathsCache?.referrer !== referrerPath) {
+        exportImportablePathsCache = {
+          referrer: referrerPath,
+          exports: ops.op_export_modules_for_module(referrerPath),
+        };
+      }
+      return exportImportablePathsCache.exports;
     },
   };
   const ls = ts.createLanguageService(

@@ -877,7 +877,9 @@ pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
   + sys_traits::BaseFsRead
+  + sys_traits::BaseFsReadDir
   + sys_traits::EnvCurrentDir
+  + node_resolver::NodeResolverSys
   + Clone
 {
 }
@@ -886,7 +888,9 @@ impl<
     T: sys_traits::BaseFsCanonicalize
       + sys_traits::BaseFsMetadata
       + sys_traits::BaseFsRead
+      + sys_traits::BaseFsReadDir
       + sys_traits::EnvCurrentDir
+      + node_resolver::NodeResolverSys
       + Clone,
   > ExtNodeSys for T
 {

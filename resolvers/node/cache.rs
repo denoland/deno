@@ -122,7 +122,7 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
     }
   }
 
-  pub fn exists_(&self, path: &Path) -> bool {
+  pub fn exists(&self, path: &Path) -> bool {
     self.get_file_type(path).is_ok()
   }
 

@@ -588,6 +588,15 @@ fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   true
 }
 
+#[op2]
+#[serde]
+fn op_export_modules_for_module(
+  _state: &mut OpState,
+  #[string] _module: String,
+) -> Vec<String> {
+  Vec::new()
+}
+
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
@@ -1278,6 +1287,7 @@ deno_core::extension!(deno_cli_tsc,
   ops = [
     op_create_hash,
     op_emit,
+    op_export_modules_for_module,
     op_is_node_file,
     op_load,
     op_remap_specifier,

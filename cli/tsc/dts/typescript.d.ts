@@ -6557,6 +6557,8 @@ declare namespace ts {
         isKnownTypesPackageName?(name: string): boolean;
         installPackage?(options: InstallPackageOptions): Promise<ApplyCodeActionCommandResult>;
         writeFile?(fileName: string, content: string): void;
+        getExportImportablePathsFromModule(filePath: string): string[];
+        getCachedExportInfoMap?(): ExportInfoMap;
         getParsedCommandLine?(fileName: string): ParsedCommandLine | undefined;
         jsDocParsingMode?: JSDocParsingMode | undefined;
     }

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,6 +9,7 @@ use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
@@ -27,6 +29,12 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
+
+pub struct JsrPackageExportedModule {
+  /// Reverse mapping.
+  pub export: String,
+  pub url: Url,
+}
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -160,17 +168,25 @@ impl JsrCacheResolver {
     &self,
     req_ref: &JsrPackageReqReference,
   ) -> Option<ModuleSpecifier> {
-    let req = req_ref.req().clone();
-    let maybe_nv = self.req_to_nv(&req);
+    let maybe_nv = self.req_to_nv(req_ref.req());
     let nv = maybe_nv.as_ref()?;
+    let url = self.jsr_nv_to_resource_url(nv)?;
     let info = self.package_version_info(nv)?;
     let path = info.export(&req_ref.export_name())?;
+    url.join(path).ok()
+  }
+
+  pub fn jsr_nv_to_resource_url<'a>(
+    &'a self,
+    nv: &PackageNv,
+  ) -> Option<Cow<'a, ModuleSpecifier>> {
     if let Some(workspace_scope) = self.workspace_scope_by_name.get(&nv.name) {
-      workspace_scope.join(path).ok()
+      Some(Cow::Borrowed(workspace_scope))
     } else {
       jsr_url()
-        .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
+        .join(&format!("{}/{}", &nv.name, &nv.version))
         .ok()
+        .map(Cow::Owned)
     }
   }
 
@@ -219,6 +235,45 @@ impl JsrCacheResolver {
       }
     }
     None
+  }
+
+  pub fn all_jsr_pkg_modules(&self) -> Vec<JsrPackageExportedModule> {
+    let mut result = Vec::new();
+    for item in &self.nv_by_req {
+      if let Some(nv) = item.as_ref() {
+        result.extend(self.exported_modules_for_package(nv))
+      }
+    }
+    result
+  }
+
+  pub fn exported_modules_for_package(
+    &self,
+    nv: &PackageNv,
+  ) -> Vec<JsrPackageExportedModule> {
+    let Some(version_info) = self.package_version_info(nv) else {
+      return Vec::new();
+    };
+    let Some(base_url) = self.jsr_nv_to_resource_url(nv) else {
+      return Vec::new();
+    };
+    match &version_info.exports {
+      serde_json::Value::Object(map) => {
+        let mut exports = Vec::with_capacity(map.len());
+        for (key, value) in map {
+          if let serde_json::Value::String(value) = value {
+            if let Ok(url) = base_url.join(value) {
+              exports.push(JsrPackageExportedModule {
+                export: key.clone(),
+                url,
+              });
+            }
+          }
+        }
+        exports
+      }
+      _ => Vec::new(),
+    }
   }
 
   pub fn package_info(

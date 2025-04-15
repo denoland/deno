@@ -4433,7 +4433,7 @@ impl Inner {
       roots.extend(
         dep_info
           .npm_reqs
-          .iter()
+          .keys()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );
     }
