@@ -168,19 +168,19 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
 
   if (previousValue) {
     if (!previousCpuUsageValueIsValid(previousValue.user)) {
-      validateObject(previousValue, "previousValue");
+      validateObject(previousValue, "prevValue");
 
-      validateNumber(previousValue.user, "previousValue.user");
+      validateNumber(previousValue.user, "prevValue.user");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
-        "previousValue.user",
+        "prevValue.user",
         previousValue.user,
       );
     }
 
     if (!previousCpuUsageValueIsValid(previousValue.system)) {
-      validateNumber(previousValue.system, "previousValue.system");
+      validateNumber(previousValue.system, "prevValue.system");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
-        "previousValue.system",
+        "prevValue.system",
         previousValue.system,
       );
     }
