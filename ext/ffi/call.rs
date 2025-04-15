@@ -125,7 +125,7 @@ where
         ffi_args.push(ffi_parse_f64_arg(value)?);
       }
       NativeType::Buffer => {
-        ffi_args.push(ffi_parse_buffer_arg(scope, value)?);
+        ffi_args.push(ffi_parse_buffer_arg(value)?);
       }
       NativeType::Struct(_) => {
         ffi_args.push(ffi_parse_struct_arg(scope, value)?);

@@ -378,6 +378,12 @@ function _afterConnect(
     socket.emit("connect");
     socket.emit("ready");
 
+    // Deno specific: run tls handshake if it's from a tls socket
+    // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
+    if (typeof handle.afterConnectTls === "function") {
+      handle.afterConnectTls();
+    }
+
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
     if (readable && !socket.isPaused()) {
@@ -907,6 +913,7 @@ function _lookupAndConnect(
     family: options.family,
     hints: options.hints || 0,
     all: false,
+    port,
   };
 
   if (
@@ -956,7 +963,9 @@ function _lookupAndConnect(
         err: ErrnoException | null,
         ip: string,
         addressType: number,
+        netPermToken,
       ) {
+        self._handle?.setNetPermToken(netPermToken);
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1020,7 +1029,8 @@ function _lookupAndConnectMultiple(
   timeout: number | undefined,
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(host, dnsopts, function emitLookup(err, addresses) {
+    lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
+      self._handle?.setNetPermToken(netPermToken);
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.
@@ -1162,6 +1172,7 @@ const pkgsNeedsSockInitWorkaround = [
   "@npmcli/agent",
   "npm-check-updates",
   "playwright-core",
+  "twitter-api-v2",
 ];
 
 /**
@@ -1233,7 +1244,7 @@ export class Socket extends Duplex {
 
     super(options);
 
-    // Note: If the socket is created from one of `pkgNeedsSockInitWorkaround`,
+    // Note: If the TCP/TLS socket is created from one of `pkgNeedsSockInitWorkaround`,
     // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
     // That swaps the sequence of op_node_http_request_with_conn() call and
     // initial socket read. That causes op_node_http_request_with_conn() not
@@ -1243,9 +1254,8 @@ export class Socket extends Duplex {
     // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
-      errorStack?.includes(pkg)
-    );
+    this._needsSockInitWorkaround = options.handle?.ipc !== true &&
+      pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
     if (this._needsSockInitWorkaround) {
       this.pause();
     }
@@ -2173,7 +2183,7 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
-  dnsLookup(address, function doListen(err, ip, addressType) {
+  dnsLookup(address, { port }, function doListen(err, ip, addressType) {
     if (err) {
       server.emit("error", err);
     } else {

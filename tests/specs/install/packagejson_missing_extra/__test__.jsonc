@@ -1,0 +1,45 @@
+{
+  "tempDir": true,
+  "tests": {
+    "missing_bin": {
+      "steps": [
+        {
+          "args": "install npm:denotest-packagejson-missing-info@1.0.0-missingbin",
+          "output": "missingbin.out"
+        },
+        {
+          "args": "run -A ./has-bin.ts denotest",
+          "output": ""
+        }
+      ]
+    },
+    "missing_scripts": {
+      "steps": [
+        {
+          "args": "install npm:denotest-packagejson-missing-info@0.5.0-missingscripts",
+          "output": "missingscripts.out"
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "[WILDCARD]running 'postinstall' script\n"
+        }
+      ]
+    },
+    "missing_deprecated": {
+      "steps": [
+        {
+          "args": "install npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated",
+          "output": "missingdeprecated.out"
+        }
+      ]
+    },
+    "missing_deprecated_with_lazy_caching": {
+      "steps": [
+        {
+          "args": "install --unstable-npm-lazy-caching npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated",
+          "output": "missingdeprecated.out"
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
@@ -15,6 +16,8 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::TypesNotFoundError;
+use node_resolver::types_package_name;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
@@ -22,6 +25,8 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -50,6 +55,7 @@ mod byonm;
 mod local;
 pub mod managed;
 
+#[derive(Debug)]
 pub enum CreateInNpmPkgCheckerOptions<'a> {
   Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
   Byonm,
@@ -128,6 +134,18 @@ pub enum ResolveReqWithSubPathErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
+}
+
+impl ResolveReqWithSubPathErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_)
+      | ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
+        package_subpath_resolve_error,
+      ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -233,7 +251,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
     match self {
       NpmResolver::Byonm(byonm_resolver) => {
@@ -330,7 +348,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Url, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
@@ -347,7 +365,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Url, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
@@ -362,6 +380,41 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
+        if err.as_types_not_found().is_some() {
+          let maybe_definitely_typed_req =
+            if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+              let snapshot = npm_resolver.resolution().snapshot();
+              if let Some(nv) = snapshot.package_reqs().get(req) {
+                let type_req = find_definitely_typed_package(
+                  nv,
+                  snapshot.package_reqs().iter(),
+                );
+
+                type_req.map(|(r, _)| r).cloned()
+              } else {
+                None
+              }
+            } else {
+              Some(
+                PackageReq::from_str(&format!(
+                  "{}@*",
+                  types_package_name(&req.name)
+                ))
+                .unwrap(),
+              )
+            };
+          if let Some(req) = maybe_definitely_typed_req {
+            if let Ok(resolved) = self.resolve_req_with_sub_path(
+              &req,
+              sub_path,
+              referrer,
+              resolution_mode,
+              resolution_kind,
+            ) {
+              return Ok(resolved);
+            }
+          }
+        }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
@@ -397,6 +450,8 @@ impl<
           | NodeResolveErrorKind::PackageImportsResolve(_)
           | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
           | NodeResolveErrorKind::DataUrlReferrer(_)
+          | NodeResolveErrorKind::PathToUrl(_)
+          | NodeResolveErrorKind::UrlToFilePath(_)
           | NodeResolveErrorKind::TypesNotFound(_)
           | NodeResolveErrorKind::FinalizeResolution(_) => Err(
             ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
@@ -404,6 +459,12 @@ impl<
           NodeResolveErrorKind::PackageResolve(err) => {
             let err = err.into_kind();
             match err {
+              PackageResolveErrorKind::UrlToFilePath(err) => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(
+                  NodeResolveErrorKind::UrlToFilePath(err).into_box(),
+                )
+                .into_box(),
+              ),
               PackageResolveErrorKind::ClosestPkgJson(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
@@ -415,6 +476,12 @@ impl<
               ),
               PackageResolveErrorKind::PackageFolderResolve(err) => {
                 match err.as_kind() {
+                  PackageFolderResolveErrorKind::PathToUrl(err) => Err(
+                    ResolveIfForNpmPackageErrorKind::NodeResolve(
+                      NodeResolveErrorKind::PathToUrl(err.clone()).into_box(),
+                    )
+                    .into_box(),
+                  ),
                   PackageFolderResolveErrorKind::Io(
                     PackageFolderResolveIoError { package_name, .. },
                   )
@@ -471,4 +538,42 @@ impl<
       }
     }
   }
+}
+
+/// Attempt to choose the "best" `@types/*` package
+/// if possible. If multiple versions exist, try to match
+/// the major and minor versions of the `@types` package with the
+/// actual package, falling back to the latest @types version present.
+pub fn find_definitely_typed_package<'a>(
+  nv: &'a PackageNv,
+  packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
+) -> Option<(&'a PackageReq, &'a PackageNv)> {
+  let types_name = types_package_name(&nv.name);
+  let mut best_patch = 0;
+  let mut highest: Option<(&PackageReq, &PackageNv)> = None;
+  let mut best = None;
+
+  for (req, type_nv) in packages {
+    if type_nv.name != types_name {
+      continue;
+    }
+    if type_nv.version.major == nv.version.major
+      && type_nv.version.minor == nv.version.minor
+      && type_nv.version.patch >= best_patch
+      && type_nv.version.pre == nv.version.pre
+    {
+      best = Some((req, type_nv));
+      best_patch = type_nv.version.patch;
+    }
+
+    if let Some((_, highest_nv)) = highest {
+      if type_nv.version > highest_nv.version {
+        highest = Some((req, type_nv));
+      }
+    } else {
+      highest = Some((req, type_nv));
+    }
+  }
+
+  best.or(highest)
 }

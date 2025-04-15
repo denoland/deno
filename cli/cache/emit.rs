@@ -6,25 +6,25 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
-use deno_lib::cache::DiskCache;
+use deno_lib::version::DENO_VERSION_INFO;
 
-use crate::sys::CliSys;
+use super::DiskCache;
 
 /// The cache that stores previously emitted files.
 #[derive(Debug)]
 pub struct EmitCache {
-  disk_cache: DiskCache<CliSys>,
+  disk_cache: DiskCache,
   emit_failed_flag: AtomicFlag,
   file_serializer: EmitFileSerializer,
 }
 
 impl EmitCache {
-  pub fn new(disk_cache: DiskCache<CliSys>) -> Self {
+  pub fn new(disk_cache: DiskCache) -> Self {
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),
       file_serializer: EmitFileSerializer {
-        cli_version: crate::version::DENO_VERSION_INFO.deno,
+        cli_version: DENO_VERSION_INFO.deno,
       },
     }
   }
@@ -148,7 +148,7 @@ impl EmitFileSerializer {
     // it's ok to use an insecure hash here because
     // if someone can change the emit source then they
     // can also change the version hash
-    crate::cache::FastInsecureHasher::new_without_deno_version() // use cli_version property instead
+    deno_lib::util::hash::FastInsecureHasher::new_without_deno_version() // use cli_version property instead
       .write(bytes)
       // emit should not be re-used between cli versions
       .write_str(self.cli_version)
@@ -167,7 +167,7 @@ mod test {
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
     let disk_cache =
-      DiskCache::new(CliSys::default(), temp_dir.path().as_path());
+      DiskCache::new(CliSys::default(), temp_dir.path().to_path_buf());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {

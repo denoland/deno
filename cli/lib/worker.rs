@@ -1,11 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::colors;
@@ -25,12 +28,12 @@ use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -42,9 +45,11 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
+use node_resolver::UrlOrPath;
 use url::Url;
 
-use crate::env::has_trace_permissions_enabled;
+use crate::args::has_trace_permissions_enabled;
 use crate::sys::DenoLibSys;
 use crate::util::checksum;
 
@@ -113,9 +118,9 @@ impl StorageKeyResolver {
   }
 }
 
-// TODO(bartlomieju): this should be moved to some other place, added to avoid string
-// duplication between worker setups and `deno info` output.
 pub fn get_cache_storage_dir() -> PathBuf {
+  // ok because this won't ever be used by the js runtime
+  #[allow(clippy::disallowed_methods)]
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
 }
@@ -131,10 +136,34 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
   })
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveNpmBinaryEntrypointError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
+  #[class(generic)]
+  #[error("{original:#}\n\nFallback failed: {fallback:#}")]
+  Fallback {
+    fallback: ResolveNpmBinaryEntrypointFallbackError,
+    original: ResolvePkgJsonBinExportError,
+  },
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveNpmBinaryEntrypointFallbackError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  #[class(generic)]
+  #[error("Cannot find module '{0}'")]
+  ModuleNotFound(UrlOrPath),
+}
+
 pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
-  pub deno_version: &'static str,
-  pub deno_user_agent: &'static str,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -143,6 +172,8 @@ pub struct LibMainWorkerOptions {
   pub inspect_wait: bool,
   pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
+  /// If this is a `deno compile`-ed executable.
+  pub is_standalone: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -152,6 +183,7 @@ pub struct LibMainWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
   pub node_ipc: Option<i64>,
+  pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
@@ -263,7 +295,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         main_module: args.main_module.clone(),
         worker_id: args.worker_id,
         bootstrap: BootstrapOptions {
-          deno_version: shared.options.deno_version.to_string(),
+          deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
           args: shared.options.argv.clone(),
           cpu_count: std::thread::available_parallelism()
             .map(|p| p.get())
@@ -273,13 +305,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           enable_testing_features: shared.options.enable_testing_features,
           locale: deno_core::v8::icu::get_language_tag(),
           location: Some(args.main_module),
-          no_color: !colors::use_color(),
           color_level: colors::get_color_level(),
-          is_stdout_tty: deno_terminal::is_stdout_tty(),
-          is_stderr_tty: deno_terminal::is_stderr_tty(),
           unstable_features,
-          user_agent: shared.options.deno_user_agent.to_string(),
+          user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
+          is_standalone: shared.options.is_standalone,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -288,6 +318,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
           otel_config: shared.options.otel_config.clone(),
+          no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
         },
         extensions: vec![],
@@ -359,6 +390,21 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
+  pub fn create_main_worker(
+    &self,
+    mode: WorkerExecutionMode,
+    permissions: PermissionsContainer,
+    main_module: Url,
+  ) -> Result<LibMainWorker, CoreError> {
+    self.create_custom_worker(
+      mode,
+      main_module,
+      permissions,
+      vec![],
+      Default::default(),
+    )
+  }
+
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -420,7 +466,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
-        deno_version: shared.options.deno_version.to_string(),
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -430,18 +476,17 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
-        no_color: !colors::use_color(),
-        is_stdout_tty: deno_terminal::is_stdout_tty(),
-        is_stderr_tty: deno_terminal::is_stderr_tty(),
         color_level: colors::get_color_level(),
         unstable_features,
-        user_agent: shared.options.deno_user_agent.to_string(),
+        user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
+        is_standalone: shared.options.is_standalone,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.options.node_ipc,
         mode,
+        no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
@@ -475,6 +520,84 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       main_module,
       worker,
     })
+  }
+
+  pub fn resolve_npm_binary_entrypoint(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+  ) -> Result<Url, ResolveNpmBinaryEntrypointError> {
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(package_folder, sub_path)
+    {
+      Ok(path) => Ok(url_from_file_path(&path)?),
+      Err(original_err) => {
+        // if the binary entrypoint was not found, fallback to regular node resolution
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
+        match result {
+          Ok(Some(path)) => Ok(url_from_file_path(&path)?),
+          Ok(None) => {
+            Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
+              original_err,
+            ))
+          }
+          Err(fallback_err) => Err(ResolveNpmBinaryEntrypointError::Fallback {
+            original: original_err,
+            fallback: fallback_err,
+          }),
+        }
+      }
+    }
+  }
+
+  /// resolve the binary entrypoint using regular node resolution
+  fn resolve_binary_entrypoint_fallback(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+  ) -> Result<Option<PathBuf>, ResolveNpmBinaryEntrypointFallbackError> {
+    // only fallback if the user specified a sub path
+    if sub_path.is_none() {
+      // it's confusing to users if the package doesn't have any binary
+      // entrypoint and we just execute the main script which will likely
+      // have blank output, so do not resolve the entrypoint in this case
+      return Ok(None);
+    }
+
+    let specifier = self
+      .shared
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        /* referrer */ None,
+        node_resolver::ResolutionMode::Import,
+        node_resolver::NodeResolutionKind::Execution,
+      )
+      .map_err(
+        ResolveNpmBinaryEntrypointFallbackError::PackageSubpathResolve,
+      )?;
+    let path = match specifier {
+      UrlOrPath::Url(ref url) => match url_to_file_path(url) {
+        Ok(path) => path,
+        Err(_) => {
+          return Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
+            specifier,
+          ));
+        }
+      },
+      UrlOrPath::Path(path) => path,
+    };
+    if self.shared.sys.fs_exists_no_err(&path) {
+      Ok(Some(path))
+    } else {
+      Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
+        UrlOrPath::Path(path),
+      ))
+    }
   }
 }
 
@@ -534,6 +657,33 @@ impl LibMainWorker {
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
+  }
+
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", self.main_module);
+
+    self.execute_main_module().await?;
+    self.worker.dispatch_load_event()?;
+
+    loop {
+      self
+        .worker
+        .run_event_loop(/* wait for inspector */ false)
+        .await?;
+
+      let web_continue = self.worker.dispatch_beforeunload_event()?;
+      if !web_continue {
+        let node_continue = self.worker.dispatch_process_beforeexit_event()?;
+        if !node_continue {
+          break;
+        }
+      }
+    }
+
+    self.worker.dispatch_unload_event()?;
+    self.worker.dispatch_process_exit_event()?;
+
+    Ok(self.worker.exit_code())
   }
 
   #[inline]

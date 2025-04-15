@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -11,9 +12,9 @@ use std::time::Duration;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -82,13 +83,11 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string =
-      match crate::util::result::any_and_jserrorbox_downcast_ref::<CoreError>(
-        &err,
-      ) {
-        Some(CoreError::Js(e)) => format_js_error(e),
-        _ => format!("{err:?}"),
-      };
+    let error_string = match any_and_jserrorbox_downcast_ref::<CoreError>(&err)
+    {
+      Some(CoreError::Js(e)) => format_js_error(e),
+      _ => format!("{err:?}"),
+    };
     log::error!(
       "{}: {}",
       colors::red_bold("error"),

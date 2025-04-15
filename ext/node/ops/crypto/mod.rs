@@ -276,7 +276,7 @@ pub fn op_node_cipheriv_final(
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
-  context.r#final(auto_pad, input, output).map_err(Into::into)
+  context.r#final(auto_pad, input, output)
 }
 
 #[op2]
@@ -332,17 +332,6 @@ pub fn op_node_decipheriv_decrypt(
   true
 }
 
-#[op2(fast)]
-pub fn op_node_decipheriv_take(
-  state: &mut OpState,
-  #[smi] rid: u32,
-) -> Result<(), cipher::DecipherContextError> {
-  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
-  Rc::try_unwrap(context)
-    .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
-  Ok(())
-}
-
 #[op2]
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
@@ -355,9 +344,7 @@ pub fn op_node_decipheriv_final(
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
-  context
-    .r#final(auto_pad, input, output, auth_tag)
-    .map_err(Into::into)
+  context.r#final(auto_pad, input, output, auth_tag)
 }
 
 #[op2]
@@ -582,7 +569,7 @@ fn scrypt(
     parallelization,
     keylen as usize,
   )
-  .unwrap();
+  .map_err(|_| JsErrorBox::generic("scrypt params construction failed"))?;
 
   // Call into scrypt
   let res = scrypt::scrypt(&password, &salt, &params, output_buffer);

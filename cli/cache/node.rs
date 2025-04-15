@@ -137,6 +137,8 @@ impl NodeAnalysisCacheInner {
 
 #[cfg(test)]
 mod test {
+  use deno_ast::ModuleExportsAndReExports;
+
   use super::*;
 
   #[test]
@@ -148,10 +150,10 @@ mod test {
       .get_cjs_analysis("file.js", CacheDBHash::new(2))
       .unwrap()
       .is_none());
-    let cjs_analysis = CliCjsAnalysis::Cjs {
+    let cjs_analysis = CliCjsAnalysis::Cjs(ModuleExportsAndReExports {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
-    };
+    });
     cache
       .set_cjs_analysis("file.js", CacheDBHash::new(2), &cjs_analysis)
       .unwrap();

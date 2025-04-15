@@ -6,6 +6,8 @@ use deno_ast::swc::common::Span;
 use deno_ast::swc::common::DUMMY_SP;
 use indexmap::IndexMap;
 
+use crate::util::text_encoding::Utf16Map;
+
 /// Each property has this flag to mark what kind of value it holds-
 /// Plain objects and arrays are not supported yet, but could be easily
 /// added if needed.
@@ -212,6 +214,15 @@ impl SerializeCtx {
     self.root_idx = idx;
   }
 
+  pub fn map_utf8_spans_to_utf16(&mut self, map: &Utf16Map) {
+    for value in &mut self.spans {
+      *value = map
+        .utf8_to_utf16_offset((*value).into())
+        .unwrap_or_else(|| panic!("Failed converting '{value}' to utf16."))
+        .into();
+    }
+  }
+
   /// Allocate a node's header
   fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags)
   where
@@ -274,7 +285,13 @@ impl SerializeCtx {
   where
     K: Into<u8> + Display + Clone,
   {
-    self.append_inner(kind, span.lo.0, span.hi.0)
+    let (start, end) = if *span == DUMMY_SP {
+      (0, 0)
+    } else {
+      // -1 is because swc stores spans 1-indexed
+      (span.lo.0 - 1, span.hi.0 - 1)
+    };
+    self.append_inner(kind, start, end)
   }
 
   pub fn append_inner<K>(
@@ -468,6 +485,22 @@ impl SerializeCtx {
     };
   }
 
+  /// Helper for writing optional node offsets with undefined as empty value
+  pub fn write_maybe_undef_ref<P>(
+    &mut self,
+    prop: P,
+    parent: &PendingRef,
+    value: Option<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    if let Some(v) = value {
+      self.write_ref(prop, parent, v);
+    } else {
+      self.write_undefined(prop);
+    };
+  }
+
   /// Write a vec of node offsets into the property. The necessary space
   /// has been reserved earlier.
   pub fn write_ref_vec<P>(
@@ -499,6 +532,31 @@ impl SerializeCtx {
 
       prev_id = item.0;
     }
+  }
+
+  pub fn write_maybe_ref_vec_skip<P>(
+    &mut self,
+    prop: P,
+    parent_ref: &PendingRef,
+    value: Option<Vec<NodeRef>>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    if let Some(value) = value {
+      self.write_ref_vec(prop, parent_ref, value);
+    }
+  }
+
+  pub fn write_ref_vec_or_empty<P>(
+    &mut self,
+    prop: P,
+    parent_ref: &PendingRef,
+    value: Option<Vec<NodeRef>>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    let actual = value.unwrap_or_default();
+    self.write_ref_vec(prop, parent_ref, actual)
   }
 
   /// Serialize all information we have into a buffer that can be sent to JS.

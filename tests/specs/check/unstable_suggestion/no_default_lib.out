@@ -1,5 +1,7 @@
 Check file:///[WILDLINE]/no_default_lib.ts
-error: TS2304 [ERROR]: Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />
+TS2304 [ERROR]: Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />
 console.log(Deno);
             ~~~~
     at file:///[WILDLINE]/no_default_lib.ts:5:13
+
+error: Type checking failed.

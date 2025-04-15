@@ -79,6 +79,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/globals/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }
