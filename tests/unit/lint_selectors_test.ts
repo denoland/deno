@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assertEquals } from "@std/assert/equals";
 import {
@@ -6,10 +6,12 @@ import {
   ATTR_EXISTS_NODE,
   BinOp,
   ELEM_NODE,
+  FIELD_NODE,
   Lexer,
   parseSelector,
   PSEUDO_FIRST_CHILD,
   PSEUDO_HAS,
+  PSEUDO_IS,
   PSEUDO_LAST_CHILD,
   PSEUDO_NOT,
   PSEUDO_NTH_CHILD,
@@ -20,6 +22,9 @@ import {
 import { assertThrows } from "@std/assert";
 
 Deno.test("splitSelectors", () => {
+  assertEquals(splitSelectors("*"), ["*"]);
+  assertEquals(splitSelectors("*,*"), ["*", "*"]);
+  assertEquals(splitSelectors("*,*     "), ["*", "*"]);
   assertEquals(splitSelectors("foo"), ["foo"]);
   assertEquals(splitSelectors("foo, bar"), ["foo", "bar"]);
   assertEquals(splitSelectors("foo:f(bar, baz)"), ["foo:f(bar, baz)"]);
@@ -252,6 +257,19 @@ Deno.test("Lexer - Pseudo", () => {
   ]);
 });
 
+Deno.test("Lexer - field", () => {
+  assertEquals(testLexer(".bar"), [
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "bar" },
+  ]);
+  assertEquals(testLexer(".bar.baz"), [
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "bar" },
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "baz" },
+  ]);
+});
+
 Deno.test("Parser - Elem", () => {
   assertEquals(testParse("Foo"), [[
     {
@@ -331,6 +349,33 @@ Deno.test("Parser - Relation", () => {
       elem: 2,
       wildcard: false,
     },
+  ]]);
+});
+
+Deno.test("Parser - Field", () => {
+  assertEquals(testParse("Foo.bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [2] },
+  ]]);
+  assertEquals(testParse("Foo .bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [2] },
+  ]]);
+  assertEquals(testParse("Foo .foo.bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [1, 2] },
   ]]);
 });
 
@@ -510,7 +555,7 @@ Deno.test("Parser - Pseudo nth-child", () => {
   assertThrows(() => testParse(":nth-child(2n - 1 foo)"));
 });
 
-Deno.test("Parser - Pseudo has/is/where", () => {
+Deno.test("Parser - Pseudo :has()", () => {
   assertEquals(testParse(":has(Foo:has(Foo), Bar)"), [[
     {
       type: PSEUDO_HAS,
@@ -530,14 +575,17 @@ Deno.test("Parser - Pseudo has/is/where", () => {
       ],
     },
   ]]);
-  assertEquals(testParse(":where(Foo:where(Foo), Bar)"), [[
+});
+
+Deno.test("Parser - Pseudo :is()/:where()/:matches()", () => {
+  assertEquals(testParse(":is(Foo:is(Foo), Bar)"), [[
     {
-      type: PSEUDO_HAS,
+      type: PSEUDO_IS,
       selectors: [
         [
           { type: ELEM_NODE, elem: 1, wildcard: false },
           {
-            type: PSEUDO_HAS,
+            type: PSEUDO_IS,
             selectors: [
               [{ type: ELEM_NODE, elem: 1, wildcard: false }],
             ],
@@ -549,19 +597,63 @@ Deno.test("Parser - Pseudo has/is/where", () => {
       ],
     },
   ]]);
-  assertEquals(testParse(":is(Foo:is(Foo), Bar)"), [[
+  assertEquals(testParse(":where(Foo:where(Foo), Bar)"), [[
     {
-      type: PSEUDO_HAS,
+      type: PSEUDO_IS,
       selectors: [
         [
           { type: ELEM_NODE, elem: 1, wildcard: false },
           {
-            type: PSEUDO_HAS,
+            type: PSEUDO_IS,
             selectors: [
               [{ type: ELEM_NODE, elem: 1, wildcard: false }],
             ],
           },
         ],
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
+  assertEquals(testParse(":matches(Foo:matches(Foo), Bar)"), [[
+    {
+      type: PSEUDO_IS,
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 1, wildcard: false },
+          {
+            type: PSEUDO_IS,
+            selectors: [
+              [{ type: ELEM_NODE, elem: 1, wildcard: false }],
+            ],
+          },
+        ],
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
+
+  assertEquals(testParse("Foo:is(Bar)"), [[
+    { type: ELEM_NODE, elem: 1, wildcard: false },
+    {
+      type: PSEUDO_IS,
+      selectors: [
+        [
+          { type: ELEM_NODE, elem: 2, wildcard: false },
+        ],
+      ],
+    },
+  ]]);
+
+  assertEquals(testParse("Foo :is(Bar)"), [[
+    { type: ELEM_NODE, elem: 1, wildcard: false },
+    { type: RELATION_NODE, op: BinOp.Space },
+    {
+      type: PSEUDO_IS,
+      selectors: [
         [
           { type: ELEM_NODE, elem: 2, wildcard: false },
         ],

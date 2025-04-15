@@ -1,11 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
@@ -15,6 +12,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
+
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use test_util::PathRef;
 
 mod lsp;

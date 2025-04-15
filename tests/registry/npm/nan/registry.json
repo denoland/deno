@@ -57,6 +57,5 @@
   "bugs": {
     "url": "https://github.com/nodejs/nan/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

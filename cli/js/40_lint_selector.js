@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 
@@ -9,13 +9,13 @@
 /** @typedef {import("./40_lint_types.d.ts").AttrBin} AttrBin */
 /** @typedef {import("./40_lint_types.d.ts").AttrSelector} AttrSelector */
 /** @typedef {import("./40_lint_types.d.ts").ElemSelector} ElemSelector */
+/** @typedef {import("./40_lint_types.d.ts").FieldSelector} FieldSelector */
 /** @typedef {import("./40_lint_types.d.ts").PseudoNthChild} PseudoNthChild */
 /** @typedef {import("./40_lint_types.d.ts").PseudoHas} PseudoHas */
 /** @typedef {import("./40_lint_types.d.ts").PseudoNot} PseudoNot */
 /** @typedef {import("./40_lint_types.d.ts").Relation} SRelation */
 /** @typedef {import("./40_lint_types.d.ts").Selector} Selector */
 /** @typedef {import("./40_lint_types.d.ts").SelectorParseCtx} SelectorParseCtx */
-/** @typedef {import("./40_lint_types.d.ts").NextFn} NextFn */
 /** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} Transformer */
 
@@ -170,6 +170,31 @@ export class Lexer {
     } else {
       this.ch = this.input.charCodeAt(this.i);
     }
+  }
+
+  peek() {
+    const value = this.value;
+    const start = this.start;
+    const end = this.end;
+    const i = this.i;
+    const ch = this.ch;
+    const token = this.token;
+
+    this.next();
+
+    const result = {
+      token: this.token,
+      value: this.value,
+    };
+
+    this.vaue = value;
+    this.start = start;
+    this.end = end;
+    this.i = i;
+    this.ch = ch;
+    this.token = token;
+
+    return result;
   }
 
   next() {
@@ -376,6 +401,8 @@ export const PSEUDO_HAS = 6;
 export const PSEUDO_NOT = 7;
 export const PSEUDO_FIRST_CHILD = 8;
 export const PSEUDO_LAST_CHILD = 9;
+export const FIELD_NODE = 10;
+export const PSEUDO_IS = 11;
 
 /**
  * Parse out all unique selectors of a selector list.
@@ -406,8 +433,9 @@ export function splitSelectors(input) {
     }
   }
 
-  if (last < input.length - 1) {
-    out.push(input.slice(last).trim());
+  const remaining = input.slice(last).trim();
+  if (remaining.length > 0) {
+    out.push(remaining);
   }
 
   return out;
@@ -456,6 +484,19 @@ export function parseSelector(input, toElem, toAttr) {
           type: RELATION_NODE,
           op: BinOp.Space,
         });
+      } else if (lex.token === Token.Colon) {
+        const peeked = lex.peek();
+
+        if (
+          peeked.token === Token.Word &&
+          (peeked.value === "is" || peeked.value === "where" ||
+            peeked.value === "matches")
+        ) {
+          current.push({
+            type: RELATION_NODE,
+            op: BinOp.Space,
+          });
+        }
       }
 
       continue;
@@ -490,6 +531,26 @@ export function parseSelector(input, toElem, toAttr) {
 
       lex.expect(Token.BracketClose);
       lex.next();
+      continue;
+    } else if (lex.token === Token.Dot) {
+      lex.next();
+      lex.expect(Token.Word);
+
+      const props = [toAttr(lex.value)];
+      lex.next();
+
+      while (lex.token === Token.Dot) {
+        lex.next();
+        lex.expect(Token.Word);
+
+        props.push(toAttr(lex.value));
+        lex.next();
+      }
+
+      current.push({
+        type: FIELD_NODE,
+        props,
+      });
       continue;
     } else if (lex.token === Token.Colon) {
       lex.next();
@@ -594,10 +655,22 @@ export function parseSelector(input, toElem, toAttr) {
 
           continue;
         }
-
-        case "has":
         case "where":
+        case "matches":
         case "is": {
+          lex.next();
+          lex.expect(Token.BraceOpen);
+          lex.next();
+
+          current.push({
+            type: PSEUDO_IS,
+            selectors: [],
+          });
+          stack.push([]);
+
+          continue;
+        }
+        case "has": {
           lex.next();
           lex.expect(Token.BraceOpen);
           lex.next();
@@ -682,7 +755,10 @@ function popSelector(result, stack) {
 
     if (node.type === PSEUDO_NTH_CHILD) {
       node.of = sel;
-    } else if (node.type === PSEUDO_HAS || node.type === PSEUDO_NOT) {
+    } else if (
+      node.type === PSEUDO_HAS || node.type === PSEUDO_IS ||
+      node.type === PSEUDO_NOT
+    ) {
       node.selectors.push(sel);
     } else {
       throw new Error(`Multiple selectors not allowed here`);
@@ -708,6 +784,9 @@ export function compileSelector(selector) {
     switch (node.type) {
       case ELEM_NODE:
         fn = matchElem(node, fn);
+        break;
+      case FIELD_NODE:
+        fn = matchField(node, fn);
         break;
       case RELATION_NODE:
         switch (node.op) {
@@ -743,9 +822,11 @@ export function compileSelector(selector) {
         fn = matchNthChild(node, fn);
         break;
       case PSEUDO_HAS:
-        // FIXME
-        // fn = matchIs(part, fn);
-        throw new Error("TODO: :has");
+        fn = matchHas(node.selectors, fn);
+        break;
+      case PSEUDO_IS:
+        fn = matchIs(node.selectors, fn);
+        break;
       case PSEUDO_NOT:
         fn = matchNot(node.selectors, fn);
         break;
@@ -761,25 +842,23 @@ export function compileSelector(selector) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchFirstChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const first = ctx.getFirstChild(parent);
+    const first = ctx.getFirstChild(id);
     return first === id && next(ctx, first);
   };
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchLastChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const last = ctx.getLastChild(parent);
+    const last = ctx.getLastChild(id);
     return last === id && next(ctx, id);
   };
 }
@@ -806,7 +885,7 @@ function getNthAnB(node, i) {
 
 /**
  * @param {PseudoNthChild} node
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchNthChild(node, next) {
@@ -845,7 +924,64 @@ function matchNthChild(node, next) {
 
 /**
  * @param {Selector[]} selectors
- * @param {NextFn} next
+ * @param {MatcherFn} next
+ * @returns {MatcherFn}
+ */
+function matchIs(selectors, next) {
+  /** @type {MatcherFn[]} */
+  const compiled = [];
+
+  for (let i = 0; i < selectors.length; i++) {
+    const sel = selectors[i];
+    compiled.push(compileSelector(sel));
+  }
+
+  return (ctx, id) => {
+    for (let i = 0; i < compiled.length; i++) {
+      const sel = compiled[i];
+      if (sel(ctx, id)) return next(ctx, id);
+    }
+
+    return false;
+  };
+}
+
+/**
+ * @param {Selector[]} selectors
+ * @param {MatcherFn} next
+ * @returns {MatcherFn}
+ */
+function matchHas(selectors, next) {
+  /** @type {MatcherFn[]} */
+  const compiled = [];
+
+  for (let i = 0; i < selectors.length; i++) {
+    const sel = selectors[i];
+    compiled.push(compileSelector(sel));
+  }
+
+  /** @type {Map<number, boolean>} */
+  const cache = new Map();
+
+  return (ctx, id) => {
+    if (next(ctx, id)) {
+      const cached = cache.get(id);
+      if (cached !== undefined) return cached;
+
+      const match = ctx.subSelect(compiled, id);
+      cache.set(id, match);
+      if (match) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+}
+
+/**
+ * @param {Selector[]} selectors
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchNot(selectors, next) {
@@ -857,20 +993,27 @@ function matchNot(selectors, next) {
     compiled.push(compileSelector(sel));
   }
 
+  /** @type {Map<number, boolean>} */
+  const cache = new Map();
+
   return (ctx, id) => {
-    for (let i = 0; i < compiled.length; i++) {
-      const fn = compiled[i];
-      if (fn(ctx, id)) {
-        return false;
+    if (next(ctx, id)) {
+      const cached = cache.get(id);
+      if (cached !== undefined) return cached;
+
+      const match = ctx.subSelect(compiled, id);
+      cache.set(id, !match);
+      if (!match) {
+        return true;
       }
     }
 
-    return next(ctx, id);
+    return false;
   };
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchDescendant(next) {
@@ -890,20 +1033,20 @@ function matchDescendant(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchChild(next) {
   return (ctx, id) => {
     const parent = ctx.getParent(id);
-    if (parent < 0) return false;
+    if (parent === 0) return false;
 
     return next(ctx, parent);
   };
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchAdjacent(next) {
@@ -919,7 +1062,7 @@ function matchAdjacent(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchFollowing(next) {
@@ -954,9 +1097,44 @@ function matchElem(part, next) {
     else if (part.elem === 0) return false;
 
     const type = ctx.getType(id);
-    if (type > 0 && type === part.elem) return next(ctx, id);
+    if (type > 0 && type === part.elem) {
+      return next(ctx, id);
+    }
 
     return false;
+  };
+}
+
+/**
+ * @param {FieldSelector} part
+ * @param {MatcherFn} next
+ * @returns {MatcherFn}
+ */
+function matchField(part, next) {
+  return (ctx, id) => {
+    let child = id;
+    let parent = ctx.getParent(id);
+    if (parent === 0) return false;
+
+    // Fields are stored left-ro-right but we need to match
+    // them right-to-left because we're matching selectors
+    // in that direction. Matching right to left is done for
+    // performance and reduces the number of potential mismatches.
+    for (let i = part.props.length - 1; i >= 0; i--) {
+      const prop = part.props[i];
+      const value = ctx.getField(parent, prop);
+
+      if (value === -1) return false;
+      if (value !== child) return false;
+
+      if (i > 0) {
+        child = parent;
+        parent = ctx.getParent(parent);
+        if (parent === 0) return false;
+      }
+    }
+
+    return next(ctx, parent);
   };
 }
 
@@ -967,7 +1145,16 @@ function matchElem(part, next) {
  */
 function matchAttrExists(attr, next) {
   return (ctx, id) => {
-    return ctx.hasAttrPath(id, attr.prop, 0) ? next(ctx, id) : false;
+    try {
+      ctx.getAttrPathValue(id, attr.prop, 0);
+      return next(ctx, id);
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+
+      throw err;
+    }
   };
 }
 
@@ -978,9 +1165,15 @@ function matchAttrExists(attr, next) {
  */
 function matchAttrBin(attr, next) {
   return (ctx, id) => {
-    if (!ctx.hasAttrPath(id, attr.prop, 0)) return false;
-    const value = ctx.getAttrPathValue(id, attr.prop, 0);
-    if (!matchAttrValue(attr, value)) return false;
+    try {
+      const value = ctx.getAttrPathValue(id, attr.prop, 0);
+      if (!matchAttrValue(attr, value)) return false;
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+      throw err;
+    }
     return next(ctx, id);
   };
 }
@@ -993,9 +1186,13 @@ function matchAttrBin(attr, next) {
 function matchAttrValue(attr, value) {
   switch (attr.op) {
     case BinOp.Equal:
-      return value === attr.value;
+      return attr.value instanceof RegExp
+        ? attr.value.test(value)
+        : value === attr.value;
     case BinOp.NotEqual:
-      return value !== attr.value;
+      return attr.value instanceof RegExp
+        ? !attr.value.test(value)
+        : value !== attr.value;
     case BinOp.Greater:
       return typeof value === "number" && typeof attr.value === "number" &&
         value > attr.value;

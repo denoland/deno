@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // just a hack to get a body object
@@ -27,7 +27,7 @@ Deno.test(async function arrayBufferFromByteArrays() {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {
-    const body = buildBody(new type(buffer));
+    const body = buildBody(new type(buffer as ArrayBuffer));
     const text = new TextDecoder("utf-8").decode(await body.arrayBuffer());
     assertEquals(text, "ahoyhoy8");
   }

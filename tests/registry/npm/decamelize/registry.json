@@ -62,6 +62,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/decamelize/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
@@ -373,10 +373,6 @@ export interface AssertionErrorConstructorOptions {
   stackStartFunction?: Function;
 }
 
-interface ErrorWithStackTraceLimit extends ErrorConstructor {
-  stackTraceLimit: number;
-}
-
 export class AssertionError extends Error {
   [key: string]: unknown;
 
@@ -398,10 +394,8 @@ export class AssertionError extends Error {
       expected,
     } = options;
 
-    // TODO(schwarzkopfb): `stackTraceLimit` should be added to `ErrorConstructor` in
-    // cli/dts/lib.deno.shared_globals.d.ts
-    const limit = (Error as ErrorWithStackTraceLimit).stackTraceLimit;
-    (Error as ErrorWithStackTraceLimit).stackTraceLimit = 0;
+    const limit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
 
     if (message != null) {
       super(String(message));
@@ -501,7 +495,7 @@ export class AssertionError extends Error {
       }
     }
 
-    (Error as ErrorWithStackTraceLimit).stackTraceLimit = limit;
+    Error.stackTraceLimit = limit;
 
     this.generatedMessage = !message;
     ObjectDefineProperty(this, "name", {

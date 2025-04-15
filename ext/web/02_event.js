@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -1520,6 +1520,7 @@ export {
   ErrorEvent,
   Event,
   EventTarget,
+  EventTargetPrototype,
   listenerCount,
   MessageEvent,
   ProgressEvent,

@@ -1,9 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io;
 use std::io::Write;
-
 use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
+use deno_core::serde_json;
+use deno_core::unsync::spawn_blocking;
+use deno_lib::version::DENO_VERSION_INFO;
+use deno_runtime::WorkerExecutionMode;
+use rustyline::error::ReadlineError;
+use tokio_util::sync::CancellationToken;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -13,12 +21,6 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
-use deno_core::error::AnyError;
-use deno_core::futures::StreamExt;
-use deno_core::serde_json;
-use deno_core::unsync::spawn_blocking;
-use deno_runtime::WorkerExecutionMode;
-use rustyline::error::ReadlineError;
 
 mod channel;
 mod editor;
@@ -117,7 +119,11 @@ async fn read_line_and_poll(
             line_text,
             position,
           }) => {
-            let result = repl_session.language_server.completions(&line_text, position).await;
+            let result = repl_session.language_server.completions(
+              &line_text,
+              position,
+              CancellationToken::new(),
+            ).await;
             message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
           }
           None => {}, // channel closed
@@ -164,9 +170,10 @@ pub async fn run(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = factory.root_permissions_container()?;
-  let npm_resolver = factory.npm_resolver().await?.clone();
+  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -187,11 +194,13 @@ pub async fn run(
   let worker = worker.into_main_worker();
   let session = ReplSession::initialize(
     cli_options,
-    npm_resolver,
+    npm_installer,
     resolver,
+    tsconfig_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,
+    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api()),
   )
   .await?;
   let rustyline_channel = rustyline_channel();
@@ -244,7 +253,7 @@ pub async fn run(
   if !cli_options.is_quiet() {
     let mut handle = io::stdout().lock();
 
-    writeln!(handle, "Deno {}", crate::version::DENO_VERSION_INFO.deno)?;
+    writeln!(handle, "Deno {}", DENO_VERSION_INFO.deno)?;
     writeln!(handle, "exit using ctrl+d, ctrl+c, or close()")?;
 
     if repl_flags.is_default_command {

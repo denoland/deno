@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "cowsay": "1.2"
+  }
+}

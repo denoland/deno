@@ -1,11 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
-use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::TextDecodedFile;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
-use crate::jsr::JsrFetchResolver;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
@@ -21,11 +18,15 @@ use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::jsr::JsrFetchResolver;
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -306,7 +307,7 @@ impl CliJsrSearchApi {
   }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl PackageSearchApi for CliJsrSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
     if let Some(names) = self.search_cache.get(query) {
@@ -315,12 +316,10 @@ impl PackageSearchApi for CliJsrSearchApi {
     let mut search_url = jsr_api_url().join("packages")?;
     search_url.query_pairs_mut().append_pair("query", query);
     let file_fetcher = self.file_fetcher.clone();
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn(async move {
+    let file = {
       let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
-      TextDecodedFile::decode(file)
-    })
-    .await??;
+      TextDecodedFile::decode(file)?
+    };
     let names = Arc::new(parse_jsr_search_response(&file.source)?);
     self.search_cache.insert(query.to_string(), names.clone());
     Ok(names)
