@@ -50,7 +50,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.46.2", features = ["transpiling"] }
+deno_ast = { version = "=0.46.5", features = ["transpiling"] }
 deno_core = { version = "0.343.0" }
 
 deno_cache_dir = "=0.18.0"
