@@ -1086,7 +1086,7 @@ pub fn open_options_with_access_check(
 
     let path = maybe_resolved;
 
-    let (resolved, path) = match path {
+    let (_resolved, path) = match path {
       CheckedPath::Resolved(path) => (true, path),
       CheckedPath::Unresolved(path) => (false, path),
     };
@@ -1105,7 +1105,7 @@ pub fn open_options_with_access_check(
       // with the exception of /proc/ which is too special, and /dev/std* which might point to
       // proc.
       use std::os::unix::fs::OpenOptionsExt;
-      if resolved {
+      if _resolved {
         opts.custom_flags(libc::O_NOFOLLOW);
       }
     }
