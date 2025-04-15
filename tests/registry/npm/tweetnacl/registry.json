@@ -73,6 +73,5 @@
   "bugs": {
     "url": "https://github.com/dchest/tweetnacl-js/issues"
   },
-  "license": "Unlicense",
-  "readmeFilename": "README.md"
+  "license": "Unlicense"
 }

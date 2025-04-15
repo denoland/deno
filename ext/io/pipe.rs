@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::io;
 use std::pin::Pin;
 use std::process::Stdio;
@@ -299,12 +299,13 @@ pub fn pipe_impl() -> io::Result<(PipeRead, PipeWrite)> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
   use std::io::Read;
   use std::io::Write;
+
   use tokio::io::AsyncReadExt;
   use tokio::io::AsyncWriteExt;
+
+  use super::*;
 
   #[test]
   fn test_pipe() {

@@ -1,13 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
@@ -59,13 +59,15 @@ import {
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
-  endSpan,
+  builtinTracer,
+  ContextManager,
   enterSpan,
-  exitSpan,
-  Span,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromError,
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
@@ -320,10 +322,10 @@ function httpRedirectFetch(request, response, terminator) {
   // Drop confidential headers when redirecting to a less secure protocol
   // or to a different domain that is not a superdomain
   if (
-    locationURL.protocol !== currentURL.protocol &&
-      locationURL.protocol !== "https:" ||
-    locationURL.host !== currentURL.host &&
-      !isSubdomain(locationURL.host, currentURL.host)
+    (locationURL.protocol !== currentURL.protocol &&
+      locationURL.protocol !== "https:") ||
+    (locationURL.host !== currentURL.host &&
+      !isSubdomain(locationURL.host, currentURL.host))
   ) {
     for (let i = 0; i < request.headerList.length; i++) {
       if (
@@ -352,10 +354,11 @@ function httpRedirectFetch(request, response, terminator) {
  */
 function fetch(input, init = { __proto__: null }) {
   let span;
+  let snapshot;
   try {
     if (TRACING_ENABLED) {
-      span = new Span("fetch", { kind: 2 });
-      enterSpan(span);
+      span = builtinTracer().startSpan("fetch", { kind: 2 });
+      snapshot = enterSpan(span);
     }
 
     // There is an async dispatch later that causes a stack trace disconnect.
@@ -371,6 +374,15 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
+        const context = ContextManager.active();
+        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+          propagator.inject(context, requestObject.headers, {
+            set(carrier, key, value) {
+              carrier.append(key, value);
+            },
+          });
+        }
+
         updateSpanFromRequest(span, requestObject);
       }
 
@@ -378,6 +390,11 @@ function fetch(input, init = { __proto__: null }) {
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
+        if (span) {
+          // Handles this case here as this is the only case where `result` promise
+          // is settled immediately.
+          updateSpanFromError(span, requestObject.signal.reason);
+        }
         reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
@@ -448,15 +465,17 @@ function fetch(input, init = { __proto__: null }) {
     });
 
     if (opPromise) {
-      PromisePrototypeCatch(result, () => {});
+      PromisePrototypeCatch(result, (e) => {
+        if (span) {
+          updateSpanFromError(span, e);
+        }
+      });
       return (async function fetch() {
         try {
           await opPromise;
           return result;
         } finally {
-          if (span) {
-            endSpan(span);
-          }
+          span?.end();
         }
       })();
     }
@@ -469,19 +488,17 @@ function fetch(input, init = { __proto__: null }) {
       // XXX: This should always be true, otherwise `opPromise` would be present.
       if (op_fetch_promise_is_settled(result)) {
         // It's already settled.
-        endSpan(span);
+        span?.end();
       } else {
         // Not settled yet, we can return a new wrapper promise.
         return SafePromisePrototypeFinally(result, () => {
-          endSpan(span);
+          span?.end();
         });
       }
     }
     return result;
   } finally {
-    if (span) {
-      exitSpan(span);
-    }
+    if (snapshot) restoreSnapshot(snapshot);
   }
 }
 
@@ -508,8 +525,11 @@ function abortFetch(request, responseObject, error) {
  */
 function isSubdomain(subdomain, domain) {
   const dot = subdomain.length - domain.length - 1;
-  return dot > 0 && subdomain[dot] === "." &&
-    StringPrototypeEndsWith(subdomain, domain);
+  return (
+    dot > 0 &&
+    subdomain[dot] === "." &&
+    StringPrototypeEndsWith(subdomain, domain)
+  );
 }
 
 /**

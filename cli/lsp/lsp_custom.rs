@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -14,7 +14,7 @@ pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
 #[serde(rename_all = "camelCase")]
 pub struct TaskDefinition {
   pub name: String,
-  pub command: String,
+  pub command: Option<String>,
   pub source_uri: lsp::Uri,
 }
 
@@ -57,6 +57,7 @@ pub struct DenoConfigurationData {
 #[serde(rename_all = "camelCase")]
 pub struct DidRefreshDenoConfigurationTreeNotificationParams {
   pub data: Vec<DenoConfigurationData>,
+  pub deno_dir_npm_folder_uri: Option<lsp::Uri>,
 }
 
 pub enum DidRefreshDenoConfigurationTreeNotification {}

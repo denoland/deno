@@ -21,11 +21,17 @@ Node esm importing node cjs
     named: [Function (anonymous)],
     MyClass: [class MyClass]
   },
+  "module.exports": {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
   named: [Function (anonymous)]
 }
 [Module: null prototype] {
   __esModule: true,
   default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  "module.exports": { default: [Function (anonymous)], named: [Function (anonymous)] },
   named: [Function (anonymous)]
 }
 ===========================
@@ -41,6 +47,11 @@ Deno esm importing node cjs
   MyClass: [class MyClass],
   __esModule: true,
   default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  "module.exports": {
     default: [Function (anonymous)],
     named: [Function (anonymous)],
     MyClass: [class MyClass]

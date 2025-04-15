@@ -1,8 +1,0 @@
-{
-  "scope": "deno",
-  "name": "otel",
-  "latest": "0.0.2",
-  "versions": {
-    "0.0.2": {}
-  }
-}

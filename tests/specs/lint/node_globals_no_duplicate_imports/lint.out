@@ -5,7 +5,7 @@ error[no-node-globals]: NodeJS globals are not available in Deno
   |              ^^^^^^^^^^^^
   = hint: Add `import { setImmediate } from "node:timers";`
 
-  docs: https://lint.deno.land/rules/no-node-globals
+  docs: https://docs.deno.com/lint/rules/no-node-globals
 
 
 error[no-node-globals]: NodeJS globals are not available in Deno
@@ -15,7 +15,7 @@ error[no-node-globals]: NodeJS globals are not available in Deno
   |              ^^^^^^^^^^^^
   = hint: Add `import { setImmediate } from "node:timers";`
 
-  docs: https://lint.deno.land/rules/no-node-globals
+  docs: https://docs.deno.com/lint/rules/no-node-globals
 
 
 Found 2 problems (2 fixable via --fix)

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // NOTICE: This deployment/npm folder was lifted from https://github.com/dprint/dprint/blob/0ba79811cc96d2dee8e0cf766a8c8c0fc44879c2/deployment/npm/
 // with permission (Copyright 2019-2023 David Sherret)
 import $ from "jsr:@david/dax@^0.42.0";
@@ -48,8 +48,8 @@ const packages: Package[] = [{
 
 const markdownText = `# Deno
 
-[Deno](https://www.deno.com)
-([/ˈdiːnoʊ/](http://ipa-reader.xyz/?text=%CB%88di%CB%90no%CA%8A), pronounced
+[Deno](https://deno.com)
+([/ˈdiːnoʊ/](https://ipa-reader.com/?text=%CB%88di%CB%90no%CA%8A), pronounced
 \`dee-no\`) is a JavaScript, TypeScript, and WebAssembly runtime with secure
 defaults and a great developer experience. It's built on [V8](https://v8.dev/),
 [Rust](https://www.rust-lang.org/), and [Tokio](https://tokio.rs/).

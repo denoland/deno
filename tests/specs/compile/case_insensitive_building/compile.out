@@ -1,0 +1,12 @@
+Compile file:///[WILDLINE]/main.js to main[WILDLINE]
+
+Embedded Files
+
+main[WILDLINE]
+├── file.txt ([WILDLINE])
+└── main.js ([WILDLINE])
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+
