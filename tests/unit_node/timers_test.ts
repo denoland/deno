@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, fail } from "@std/assert";
 import * as timers from "node:timers";
@@ -98,6 +98,16 @@ Deno.test("[node/timers refresh cancelled timer]", () => {
   }, 1);
   clearTimeout(p);
   p.refresh();
+});
+
+Deno.test("[node/timers] clearTimeout with number", () => {
+  const timer = +timers.setTimeout(() => fail(), 10);
+  timers.clearTimeout(timer);
+});
+
+Deno.test("[node/timers] clearInterval with number", () => {
+  const timer = +timers.setInterval(() => fail(), 10);
+  timers.clearInterval(timer);
 });
 
 Deno.test("[node/timers setImmediate returns Immediate object]", () => {

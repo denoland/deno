@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::str::FromStr;
 
 use phf::phf_set;
-use std::str::FromStr;
 
 // Data obtained from https://github.com/jshttp/mime-db/blob/fa5e4ef3cc8907ec3c5ec5b85af0c63d7059a5cd/db.json
 // Important! Keep this list sorted alphabetically.

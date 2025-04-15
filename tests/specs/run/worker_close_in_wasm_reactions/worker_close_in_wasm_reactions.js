@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // https://github.com/denoland/deno/issues/12263
 // Test for a panic that happens when a worker is closed in the reactions of a

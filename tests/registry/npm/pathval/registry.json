@@ -107,6 +107,5 @@
   "bugs": {
     "url": "https://github.com/chaijs/pathval/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

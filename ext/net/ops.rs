@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::io::TcpStreamResource;
-use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
-use crate::tcp::TcpListener;
-use crate::NetPermissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
+use std::rc::Rc;
+use std::str::FromStr;
+
 use deno_core::op2;
-use deno_core::CancelFuture;
-
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsBuffer;
@@ -21,28 +22,31 @@ use deno_core::ResourceId;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
+use hickory_proto::ProtoError;
+use hickory_proto::ProtoErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
-use hickory_resolver::error::ResolveError;
-use hickory_resolver::error::ResolveErrorKind;
 use hickory_resolver::system_conf;
-use hickory_resolver::AsyncResolver;
+use hickory_resolver::ResolveError;
+use hickory_resolver::ResolveErrorKind;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
 use socket2::Protocol;
 use socket2::Socket;
 use socket2::Type;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
-use std::rc::Rc;
-use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+
+use crate::io::TcpStreamResource;
+use crate::raw::NetworkListenerResource;
+use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
+use crate::NetPermissions;
+
+pub type Fd = u32;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -65,62 +69,92 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetError {
+  #[class("BadResource")]
   #[error("Listener has been closed")]
   ListenerClosed,
+  #[class("Busy")]
   #[error("Listener already in use")]
   ListenerBusy,
+  #[class("BadResource")]
   #[error("Socket has been closed")]
   SocketClosed,
+  #[class("NotConnected")]
   #[error("Socket has been closed")]
   SocketClosedNotConnected,
+  #[class("Busy")]
   #[error("Socket already in use")]
   SocketBusy,
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class("Busy")]
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
   #[error("No resolved address found")]
   NoResolvedAddress,
+  #[class(generic)]
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
+  #[class(inherit)]
   #[error("{0}")]
   Map(crate::io::MapError),
+  #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
+  #[class("NotFound")]
   #[error("{0}")]
   DnsNotFound(ResolveError),
+  #[class("NotConnected")]
   #[error("{0}")]
   DnsNotConnected(ResolveError),
+  #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
+  #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
+  #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(generic)]
   #[error("unexpected key type")]
   UnexpectedKeyType,
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
-  InvalidHostname(String), // TypeError
+  InvalidHostname(String),
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
   #[error("{0}")]
   Tls(#[from] deno_tls::TlsError),
+  #[class("InvalidData")]
   #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
-  ListenTlsRequiresKey, // InvalidData
+  ListenTlsRequiresKey,
+  #[class(inherit)]
   #[error("{0}")]
-  RootCertStore(deno_core::anyhow::Error),
+  RootCertStore(deno_error::JsErrorBox),
+  #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
+  #[class(generic)]
+  #[error("VSOCK is not supported on this platform")]
+  VsockUnsupported,
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -136,7 +170,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
+) -> Result<(ResourceId, IpAddr, IpAddr, Option<Fd>), NetError> {
   let resource = state
     .borrow()
     .resource_table
@@ -151,6 +185,14 @@ pub async fn op_net_accept_tcp(
     .try_or_cancel(cancel)
     .await
     .map_err(accept_err)?;
+  let mut _fd_raw: Option<Fd> = None;
+  #[cfg(not(windows))]
+  {
+    use std::os::fd::AsFd;
+    use std::os::fd::AsRawFd;
+    let fd = tcp_stream.as_fd();
+    _fd_raw = Some(fd.as_raw_fd() as u32);
+  }
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -158,7 +200,12 @@ pub async fn op_net_accept_tcp(
   let rid = state
     .resource_table
     .add(TcpStreamResource::new(tcp_stream.into_split()));
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok((
+    rid,
+    IpAddr::from(local_addr),
+    IpAddr::from(remote_addr),
+    _fd_raw,
+  ))
 }
 
 #[op2(async)]
@@ -343,31 +390,65 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+/// If this token is present in op_net_connect_tcp call and
+/// the hostname matches with one of the resolved IPs, then
+/// the permission check is performed against the original hostname.
+pub struct NetPermToken {
+  pub hostname: String,
+  pub port: Option<u16>,
+  pub resolved_ips: Vec<String>,
+}
+
+impl deno_core::GarbageCollected for NetPermToken {}
+
+impl NetPermToken {
+  /// Checks if the given address is included in the resolved IPs.
+  pub fn includes(&self, addr: &str) -> bool {
+    self.resolved_ips.iter().any(|ip| ip == addr)
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_net_get_ips_from_perm_token(
+  #[cppgc] token: &NetPermToken,
+) -> Vec<String> {
+  token.resolved_ips.clone()
+}
+
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[cppgc] net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
+    // If token exists and the address matches to its resolved ips,
+    // then we can check net permission against token.hostname, instead of addr.hostname
+    let hostname_to_check = match net_perm_token {
+      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
+      _ => addr.hostname.clone(),
+    };
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -530,6 +611,145 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
+#[cfg(unix)]
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_net_connect_vsock<NP>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockStream;
+
+  state
+    .borrow()
+    .feature_checker
+    .check_or_exit("vsock", "Deno.connect");
+
+  state.borrow_mut().borrow_mut::<NP>().check_vsock(
+    cid,
+    port,
+    "Deno.connect()",
+  )?;
+
+  let addr = VsockAddr::new(cid, port);
+  let vsock_stream = VsockStream::connect(addr).await?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(crate::io::VsockStreamResource::new(
+        vsock_stream.into_split(),
+      ));
+
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(stack_trace)]
+#[serde]
+pub fn op_net_listen_vsock<NP>(
+  state: &mut OpState,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, u32, u32), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockListener;
+
+  state.feature_checker.check_or_exit("vsock", "Deno.listen");
+
+  state
+    .borrow_mut::<NP>()
+    .check_vsock(cid, port, "Deno.listen()")?;
+
+  let addr = VsockAddr::new(cid, port);
+  let listener = VsockListener::bind(addr)?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = NetworkListenerResource::new(listener);
+  let rid = state.resource_table.add(listener_resource);
+  Ok((rid, local_addr.cid(), local_addr.port()))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_vsock(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError> {
+  use tokio_vsock::VsockListener;
+
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<VsockListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (vsock_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add(crate::io::VsockStreamResource::new(
+      vsock_stream.into_split(),
+    ));
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_accept_vsock() -> Result<(), NetError> {
+  Err(NetError::VsockUnsupported)
+}
+
 #[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
@@ -646,7 +866,7 @@ where
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts);
+  let resolver = hickory_resolver::Resolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -674,11 +894,21 @@ where
 
   lookup
     .map_err(|e| match e.kind() {
-      ResolveErrorKind::NoRecordsFound { .. } => NetError::DnsNotFound(e),
-      ResolveErrorKind::Message("No connections available") => {
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+      {
+        NetError::DnsNotFound(e)
+      }
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::NoConnections { .. }) =>
+      {
         NetError::DnsNotConnected(e)
       }
-      ResolveErrorKind::Timeout => NetError::DnsTimedOut(e),
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(**kind, ProtoErrorKind::Timeout { .. }) =>
+      {
+        NetError::DnsTimedOut(e)
+      }
       _ => NetError::Dns(e),
     })?
     .iter()
@@ -701,10 +931,8 @@ pub fn op_set_nodelay_inner(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay).map_err(NetError::Map)
 }
 
@@ -723,10 +951,8 @@ pub fn op_set_keepalive_inner(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive).map_err(NetError::Map)
 }
 
@@ -823,7 +1049,14 @@ fn rdata_to_return_record(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::ToSocketAddrs;
+  use std::path::Path;
+  use std::path::PathBuf;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -844,13 +1077,8 @@ mod tests {
   use hickory_proto::rr::record_data::RData;
   use hickory_proto::rr::Name;
   use socket2::SockRef;
-  use std::net::Ipv4Addr;
-  use std::net::Ipv6Addr;
-  use std::net::ToSocketAddrs;
-  use std::path::Path;
-  use std::path::PathBuf;
-  use std::sync::Arc;
-  use std::sync::Mutex;
+
+  use super::*;
 
   #[test]
   fn rdata_to_return_record_a() {
@@ -1062,6 +1290,15 @@ mod tests {
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
+
+    fn check_vsock(
+      &mut self,
+      _cid: u32,
+      _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1112,7 +1349,7 @@ mod tests {
       }
     );
 
-    let mut runtime = JsRuntime::new(RuntimeOptions {
+    let runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
       feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
@@ -1127,7 +1364,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 

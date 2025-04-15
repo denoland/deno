@@ -1,0 +1,13 @@
+Source:
+const value = "unfixed";
+console.log(value);
+
+Source VariableDeclarator:
+value = "unfixed"
+
+Ancestors:
+[ "Program", "VariableDeclaration" ]
+
+Ast:
+Program
+Checked 1 file

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -39,6 +39,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -298,6 +299,34 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
   WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
+  WebTransport: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransport,
+    loadWebTransport,
+  ),
+  WebTransportBidirectionalStream: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportBidirectionalStream,
+    loadWebTransport,
+  ),
+  WebTransportDatagramDuplexStream: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportDatagramDuplexStream,
+    loadWebTransport,
+  ),
+  WebTransportReceiveStream: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportReceiveStream,
+    loadWebTransport,
+  ),
+  WebTransportSendGroup: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportSendGroup,
+    loadWebTransport,
+  ),
+  WebTransportSendStream: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportSendStream,
+    loadWebTransport,
+  ),
+  WebTransportError: core.propNonEnumerableLazyLoaded(
+    (wt) => wt.WebTransportError,
+    loadWebTransport,
+  ),
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};

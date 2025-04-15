@@ -6,7 +6,7 @@
   }, {
     "if": "unix",
     "args": "compile --allow-read=data --include . --output main link.js",
-    "output": "[WILDCARD]"
+    "output": "compile.out"
   }, {
     "if": "unix",
     "commandName": "./main",
@@ -16,7 +16,7 @@
   }, {
     "if": "windows",
     "args": "compile --allow-read=data --include . --output main.exe link.js",
-    "output": "[WILDCARD]"
+    "output": "compile.out"
   }, {
     "if": "windows",
     "commandName": "./main.exe",

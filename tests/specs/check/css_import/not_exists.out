@@ -1,2 +1,5 @@
-error: Module not found "file:///[WILDLINE]/not_exists.css".
+Check [WILDLINE]exists.ts
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/not_exists.css'.
     at file:///[WILDLINE]/not_exists.ts:1:8
+
+error: Type checking failed.
