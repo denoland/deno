@@ -1,0 +1,8 @@
+WARNING: Nested deno-coverage-ignore-start comment at file:///[WILDLINE]/main.ts:4:5. A previous deno-coverage-ignore-start comment at file:///[WILDLINE]/main.ts:2:3 is unterminated.
+--------------------------------
+File       | Branch % | Line % |
+--------------------------------
+ main.ts   |    100.0 |  100.0 |
+--------------------------------
+ All files |    100.0 |  100.0 |
+--------------------------------
