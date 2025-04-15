@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -182,6 +182,8 @@ async function clippy() {
       "clippy::print_stderr",
       "--deny",
       "clippy::print_stdout",
+      "--deny",
+      "clippy::large_futures",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -216,7 +218,7 @@ async function ensureNoNewITests() {
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,
     "flags_tests.rs": 0,
-    "fmt_tests.rs": 16,
+    "fmt_tests.rs": 14,
     "init_tests.rs": 0,
     "inspector_tests.rs": 0,
     "install_tests.rs": 0,

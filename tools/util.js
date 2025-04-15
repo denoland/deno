@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -19,7 +19,7 @@ export { parse as parseJSONC } from "@std/jsonc/parse";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.68.0",
+  "dlint": "dlint 0.73.0",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -186,7 +186,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "7a3a6fee951b3381c59aa4c907274957f324ce8c";
+const commitId = "aa25a37b0f2bdadc83e99e625e8a074d56d1febd";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 

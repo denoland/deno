@@ -1,6 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::*;
+// Copyright 2018-2025 the Deno authors. MIT license.
 use libc::INT_MAX;
+
+use crate::*;
 
 #[repr(transparent)]
 pub(crate) struct SendPtr<T>(pub *const T);
@@ -209,7 +210,7 @@ impl<T> Nullable for Option<T> {
   }
 }
 
-impl<'s> Nullable for napi_value<'s> {
+impl Nullable for napi_value<'_> {
   fn is_null(&self) -> bool {
     self.is_none()
   }

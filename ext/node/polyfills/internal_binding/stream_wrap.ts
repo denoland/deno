@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -129,7 +129,7 @@ export class LibuvStreamWrap extends HandleWrap {
     provider: providerType,
     stream?: Reader & Writer & Closer & Ref,
   ) {
-    super(provider);
+    super(provider, stream?.[internalRidSymbol]);
     this.#attachToObject(stream);
   }
 

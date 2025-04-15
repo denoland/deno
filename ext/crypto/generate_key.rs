@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -15,10 +15,16 @@ use serde::Deserialize;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class("DOMExceptionOperationError")]
 pub enum GenerateKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[error("Bad public exponent")]
   BadPublicExponent,
   #[error("Invalid HMAC key length")]

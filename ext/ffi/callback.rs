@@ -1,19 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::symbol::NativeType;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::v8::TryCatch;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use deno_core::V8CrossThreadTaskSpawner;
-use libffi::middle::Cif;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -27,20 +13,39 @@ use std::sync::atomic;
 use std::sync::atomic::AtomicU32;
 use std::task::Poll;
 
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::TryCatch;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::V8CrossThreadTaskSpawner;
+use libffi::middle::Cif;
+use serde::Deserialize;
+
+use crate::symbol::NativeType;
+use crate::FfiPermissions;
+use crate::ForeignFunction;
+
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 thread_local! {
   static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallbackError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[from] deno_error::JsErrorBox),
 }
 
 #[derive(Clone)]
@@ -61,13 +66,8 @@ impl PtrSymbol {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::try_from)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CallbackError::Other)?,
-      def
-        .result
-        .clone()
-        .try_into()
-        .map_err(CallbackError::Other)?,
+        .collect::<Result<Vec<_>, _>>()?,
+      def.result.clone().try_into()?,
     );
 
     Ok(Self { cif, ptr })
@@ -538,10 +538,8 @@ pub fn op_ffi_unsafe_callback_ref(
   #[smi] rid: ResourceId,
 ) -> Result<impl Future<Output = ()>, CallbackError> {
   let state = state.borrow();
-  let callback_resource = state
-    .resource_table
-    .get::<UnsafeCallbackResource>(rid)
-    .map_err(CallbackError::Resource)?;
+  let callback_resource =
+    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
 
   Ok(async move {
     let info: &mut CallbackInfo =
@@ -608,10 +606,8 @@ where
       .parameters
       .into_iter()
       .map(libffi::middle::Type::try_from)
-      .collect::<Result<Vec<_>, _>>()
-      .map_err(CallbackError::Other)?,
-    libffi::middle::Type::try_from(args.result)
-      .map_err(CallbackError::Other)?,
+      .collect::<Result<Vec<_>, _>>()?,
+    libffi::middle::Type::try_from(args.result)?,
   );
 
   // SAFETY: CallbackInfo is leaked, is not null and stays valid as long as the callback exists.
@@ -647,10 +643,8 @@ pub fn op_ffi_unsafe_callback_close(
   // It is up to the user to know that it is safe to call the `close()` on the
   // UnsafeCallback instance.
   unsafe {
-    let callback_resource = state
-      .resource_table
-      .take::<UnsafeCallbackResource>(rid)
-      .map_err(CallbackError::Resource)?;
+    let callback_resource =
+      state.resource_table.take::<UnsafeCallbackResource>(rid)?;
     let info = Box::from_raw(callback_resource.info);
     let _ = v8::Global::from_raw(scope, info.callback);
     let _ = v8::Global::from_raw(scope, info.context);

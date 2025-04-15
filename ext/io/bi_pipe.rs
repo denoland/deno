@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
@@ -338,6 +338,11 @@ pub fn bi_pipe_pair_raw(
     // TODO(nathanwhit): more granular unsafe blocks
     // SAFETY: win32 calls
     unsafe {
+      use std::io;
+      use std::os::windows::ffi::OsStrExt;
+      use std::path::Path;
+      use std::ptr;
+
       use windows_sys::Win32::Foundation::CloseHandle;
       use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
       use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
@@ -354,11 +359,6 @@ pub fn bi_pipe_pair_raw(
       use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
       use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
       use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-
-      use std::io;
-      use std::os::windows::ffi::OsStrExt;
-      use std::path::Path;
-      use std::ptr;
 
       let (path, hd1) = loop {
         let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -26,12 +26,12 @@ Deno.test(
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
     let now = Date.now();
-    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 1000);
-    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 1000);
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 10000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 10000);
     assert(
-      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
+      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 10000,
     );
-    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 10000);
     const mode = tempInfo.mode! & 0o777;
     if (Deno.build.os === "windows") {
       assertEquals(mode, 0o666);

@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
+  op_runtime_cpu_usage,
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
@@ -13,7 +14,6 @@ import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
-import * as quic from "ext:deno_net/03_quic.js";
 import * as serve from "ext:deno_http/00_serve.ts";
 import * as http from "ext:deno_http/01_http.js";
 import * as websocket from "ext:deno_http/02_websocket.ts";
@@ -22,15 +22,20 @@ import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
-import * as process from "ext:runtime/40_process.js";
-import * as signals from "ext:runtime/40_signals.js";
+import * as process from "ext:deno_process/40_process.js";
+import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+
+const { ObjectDefineProperties } = primordials;
+
+const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 const denoNs = {
   Process: process.Process,
@@ -55,7 +60,15 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => op_runtime_memory_usage(),
+  cpuUsage: () => {
+    const { 0: system, 1: user } = op_runtime_cpu_usage();
+    return { system, user };
+  },
+  memoryUsage: () => {
+    const { 0: rss, 1: heapTotal, 2: heapUsed, 3: external } =
+      op_runtime_memory_usage();
+    return { rss, heapTotal, heapUsed, external };
+  },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,
@@ -145,13 +158,15 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  nodeGlobals: 8,
-  otel: 9,
-  process: 10,
-  temporal: 11,
-  unsafeProto: 12,
-  webgpu: 13,
-  workerOptions: 14,
+  noLegacyAbort: 8,
+  nodeGlobals: 9,
+  otel: 10,
+  process: 11,
+  temporal: 12,
+  unsafeProto: 13,
+  vsock: 14,
+  webgpu: 15,
+  workerOptions: 16,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -175,16 +190,31 @@ denoNsUnstableById[unstableIds.net] = {
     op_net_listen_udp,
     op_net_listen_unixpacket,
   ),
-
-  connectQuic: quic.connectQuic,
-  listenQuic: quic.listenQuic,
-  QuicBidirectionalStream: quic.QuicBidirectionalStream,
-  QuicConn: quic.QuicConn,
-  QuicListener: quic.QuicListener,
-  QuicReceiveStream: quic.QuicReceiveStream,
-  QuicSendStream: quic.QuicSendStream,
-  QuicIncoming: quic.QuicIncoming,
 };
+
+ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
+  connectQuic: core.propWritableLazyLoaded((q) => q.connectQuic, loadQuic),
+  QuicEndpoint: core.propWritableLazyLoaded((q) => q.QuicEndpoint, loadQuic),
+  QuicBidirectionalStream: core.propWritableLazyLoaded(
+    (q) => q.QuicBidirectionalStream,
+    loadQuic,
+  ),
+  QuicConn: core.propWritableLazyLoaded((q) => q.QuicConn, loadQuic),
+  QuicListener: core.propWritableLazyLoaded((q) => q.QuicListener, loadQuic),
+  QuicReceiveStream: core.propWritableLazyLoaded(
+    (q) => q.QuicReceiveStream,
+    loadQuic,
+  ),
+  QuicSendStream: core.propWritableLazyLoaded(
+    (q) => q.QuicSendStream,
+    loadQuic,
+  ),
+  QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+  upgradeWebTransport: core.propWritableLazyLoaded(
+    (wt) => wt.upgradeWebTransport,
+    loadWebTransport,
+  ),
+});
 
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 

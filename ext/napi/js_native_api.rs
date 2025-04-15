@@ -1,12 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(non_upper_case_globals)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 const NAPI_VERSION: u32 = 9;
 
-use crate::*;
+use std::ptr::NonNull;
+
 use libc::INT_MAX;
+use napi_sym::napi_sym;
 
 use super::util::check_new_from_utf8;
 use super::util::check_new_from_utf8_len;
@@ -20,8 +22,7 @@ use crate::check_env;
 use crate::function::create_function;
 use crate::function::create_function_template;
 use crate::function::CallbackInfo;
-use napi_sym::napi_sym;
-use std::ptr::NonNull;
+use crate::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ReferenceOwnership {
@@ -2072,6 +2073,7 @@ fn napi_get_value_bool(
   return napi_clear_last_error(env_ptr);
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
@@ -2120,6 +2122,7 @@ fn napi_get_value_string_latin1(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
@@ -2169,6 +2172,7 @@ fn napi_get_value_string_utf8(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,

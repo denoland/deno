@@ -1,16 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::is_standalone;
-use deno_core::error::JsStackFrame;
-use deno_core::parking_lot::Mutex;
-use deno_terminal::colors;
-use once_cell::sync::Lazy;
 use std::fmt::Write;
 use std::io::BufRead;
 use std::io::IsTerminal;
 use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
+
+use deno_core::error::JsStackFrame;
+use deno_core::parking_lot::Mutex;
+use deno_terminal::colors;
+use once_cell::sync::Lazy;
+
+use crate::is_standalone;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
@@ -489,9 +491,10 @@ impl PermissionPrompter for TtyPrompter {
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
   use std::sync::atomic::AtomicBool;
   use std::sync::atomic::Ordering;
+
+  use super::*;
 
   pub struct TestPrompter;
 

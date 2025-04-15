@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -13,9 +13,11 @@ import {
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
+  op_http_metric_handle_otel_error,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -30,10 +32,13 @@ import {
   op_http_wait,
 } from "ext:core/ops";
 const {
+  ArrayPrototypeFind,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
@@ -42,11 +47,8 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  Number,
 } = primordials;
-const {
-  getAsyncContext,
-  setAsyncContext,
-} = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -90,9 +92,13 @@ import {
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
-  endSpan,
+  builtinTracer,
+  ContextManager,
+  currentSnapshot,
   enterSpan,
-  Span,
+  METRICS_ENABLED,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -175,12 +181,17 @@ class InnerRequest {
       if (success) {
         this.#completed.resolve(undefined);
       } else {
+        if (!this.#context.legacyAbort) {
+          abortRequest(this.request);
+        }
         this.#completed.reject(
           new Interrupted("HTTP response was not sent successfully"),
         );
       }
     }
-    abortRequest(this.request);
+    if (this.#context.legacyAbort) {
+      abortRequest(this.request);
+    }
     this.#external = null;
   }
 
@@ -288,28 +299,28 @@ class InnerRequest {
 
     // * is valid for OPTIONS
     if (path === "*") {
-      return this.#urlValue = "*";
+      return (this.#urlValue = "*");
     }
 
     // If the path is empty, return the authority (valid for CONNECT)
     if (path == "") {
-      return this.#urlValue = this.#methodAndUri[1];
+      return (this.#urlValue = this.#methodAndUri[1]);
     }
 
     // CONNECT requires an authority
     if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#urlValue = this.#methodAndUri[1];
+      return (this.#urlValue = this.#methodAndUri[1]);
     }
 
     const hostname = this.#methodAndUri[1];
     if (hostname) {
       // Construct a URL from the scheme, the hostname, and the path
-      return this.#urlValue = this.#context.scheme + hostname + path;
+      return (this.#urlValue = this.#context.scheme + hostname + path);
     }
 
     // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path;
+    return (this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
+      path);
   }
 
   get completed() {
@@ -338,6 +349,13 @@ class InnerRequest {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    }
+    if (transport === "vsock") {
+      return {
+        transport,
+        cid: Number(this.#methodAndUri[3]),
+        port: this.#methodAndUri[4],
+      };
     }
     return {
       transport: "tcp",
@@ -370,7 +388,25 @@ class InnerRequest {
       return null;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
-    this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
+    this.#body = new InnerBody(
+      readableStreamForRid(
+        this.#streamRid,
+        false,
+        undefined,
+        (controller, error) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+            // TODO(kt3k): We would like to pass `error` as `cause` when BadResource supports it.
+            controller.error(
+              new error.constructor(
+                `Cannot read request body as underlying resource unavailable`,
+              ),
+            );
+          } else {
+            controller.error(error);
+          }
+        },
+      ),
+    );
     return this.#body;
   }
 
@@ -392,13 +428,15 @@ class InnerRequest {
 
   onCancel(callback) {
     if (this.#external === null) {
-      callback();
+      if (this.#context.legacyAbort) callback();
       return;
     }
 
     PromisePrototypeThen(
       op_http_request_on_cancel(this.#external),
-      callback,
+      (r) => {
+        return !this.#context.legacyAbort ? r && callback() : callback();
+      },
     );
   }
 }
@@ -412,10 +450,11 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
-  asyncContext;
+  asyncContextSnapshot;
+  legacyAbort;
 
   constructor(signal, args, listener) {
-    this.asyncContext = getAsyncContext();
+    this.asyncContextSnapshot = currentSnapshot();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -428,6 +467,7 @@ class CallbackContext {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
+    this.legacyAbort = args[3] == false;
     this.closed = false;
     this.listener = listener;
   }
@@ -503,12 +543,7 @@ function fastSyncResponseOrStream(
     autoClose = true;
   }
   PromisePrototypeThen(
-    op_http_set_response_body_resource(
-      req,
-      rid,
-      autoClose,
-      status,
-    ),
+    op_http_set_response_body_resource(req, rid, autoClose, status),
     (success) => {
       innerRequest?.close(success);
       op_http_close_after_finish(req);
@@ -538,10 +573,7 @@ function mapToCallback(context, callback, onError) {
         updateSpanFromRequest(span, request);
       }
 
-      response = await callback(
-        request,
-        new ServeHandlerInfo(innerRequest),
-      );
+      response = await callback(request, new ServeHandlerInfo(innerRequest));
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
@@ -570,8 +602,14 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
-        // deno-lint-ignore no-console
-        console.error("Exception in onError while handling exception", error);
+        if (METRICS_ENABLED) {
+          op_http_metric_handle_otel_error(req);
+        }
+        import.meta.log(
+          "error",
+          "Exception in onError while handling exception",
+          error,
+        );
         response = internalServerError();
       }
     }
@@ -584,8 +622,10 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        // deno-lint-ignore no-console
-        console.error("Upgrade response was not returned from callback");
+        import.meta.log(
+          "error",
+          "Upgrade response was not returned from callback",
+        );
         context.close();
       }
       innerRequest?.[_upgraded]();
@@ -616,29 +656,56 @@ function mapToCallback(context, callback, onError) {
   if (TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
-      const span = new Span("deno.serve", { kind: 1 });
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
+
+      const reqHeaders = op_http_get_request_headers(req);
+      const headers: [key: string, value: string][] = [];
+      for (let i = 0; i < reqHeaders.length; i += 2) {
+        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+      }
+      let activeContext = ContextManager.active();
+      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        activeContext = propagator.extract(activeContext, headers, {
+          get(carrier: [key: string, value: string][], key: string) {
+            return ArrayPrototypeFind(
+              carrier,
+              (carrierEntry) => carrierEntry[0] === key,
+            )?.[1];
+          },
+          keys(carrier: [key: string, value: string][]) {
+            return ArrayPrototypeMap(
+              carrier,
+              (carrierEntry) => carrierEntry[0],
+            );
+          },
+        });
+      }
+
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
+      enterSpan(span);
       try {
-        enterSpan(span);
         return SafePromisePrototypeFinally(
           origMapped(req, span),
-          () => endSpan(span),
+          () => span.end(),
         );
       } finally {
-        // equiv to exitSpan.
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   } else {
     const origMapped = mapped;
     mapped = function (req, span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
       try {
         return origMapped(req, span);
       } finally {
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   }
@@ -670,7 +737,7 @@ function formatHostName(hostname: string): string {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
-    (Deno.build.os === "windows") &&
+    Deno.build.os === "windows" &&
     (hostname == "0.0.0.0" || hostname == "::")
   ) {
     return "localhost";
@@ -709,14 +776,32 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  const { 0: overrideUnixPath, 1: overrideHost, 2: overridePort } =
+    op_http_serve_address_override();
+  if (overrideUnixPath) {
+    options.path = overrideUnixPath;
+    delete options.port;
+    delete options.host;
+  } else {
+    if (overrideHost) {
+      options.hostname = overrideHost;
+      delete options.path;
+    }
+    if (overridePort) {
+      options.port = overridePort;
+      delete options.path;
+    }
+  }
+
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+  const wantsVsock = ObjectHasOwn(options, "cid");
   const signal = options.signal;
-  const onError = options.onError ?? function (error) {
-    // deno-lint-ignore no-console
-    console.error(error);
-    return internalServerError();
-  };
+  const onError = options.onError ??
+    function (error) {
+      import.meta.log("error", error);
+      return internalServerError();
+    };
 
   if (wantsUnix) {
     const listener = listen({
@@ -729,8 +814,24 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        // deno-lint-ignore no-console
-        console.error(`Listening on ${path}`);
+        import.meta.log("info", `Listening on ${path}`);
+      }
+    });
+  }
+
+  if (wantsVsock) {
+    const listener = listen({
+      transport: "vsock",
+      cid: options.cid,
+      port: options.port,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const { cid, port } = listener.addr;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
@@ -778,8 +879,7 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      import.meta.log("info", `Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -824,8 +924,8 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    // deno-lint-ignore no-console
-    console.error(
+    import.meta.log(
+      "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
     );
@@ -946,7 +1046,7 @@ function registerDeclarativeServer(exports) {
         port: servePort,
         hostname: serveHost,
         [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-          (serveWorkerCount !== null),
+          serveWorkerCount !== null,
         onListen: ({ port, hostname }) => {
           if (serveIsMain) {
             const nThreads = serveWorkerCount > 1
@@ -954,8 +1054,8 @@ function registerDeclarativeServer(exports) {
               : "";
             const host = formatHostName(hostname);
 
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "info",
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",

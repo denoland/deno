@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
+
 use test_util as util;
 
 util::unit_test_factory!(
@@ -127,6 +128,7 @@ fn js_unit_test(test: String) {
     // flag to particular files, but there's many of them that rely on unstable
     // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
     .arg("--unstable-net")
+    .arg("--unstable-vsock")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
@@ -164,10 +166,14 @@ fn js_unit_test(test: String) {
 
   let mut deno = deno
     .arg("-A")
-    .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
-    .piped_output()
-    .spawn()
-    .expect("failed to spawn script");
+    .arg(util::tests_path().join("unit").join(format!("{test}.ts")));
+
+  // update the snapshots if when `UPDATE=1`
+  if std::env::var_os("UPDATE") == Some("1".into()) {
+    deno = deno.arg("--").arg("--update");
+  }
+
+  let mut deno = deno.piped_output().spawn().expect("failed to spawn script");
 
   let now = Instant::now();
   let stdout = deno.stdout.take().unwrap();

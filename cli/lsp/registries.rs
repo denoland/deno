@@ -1,24 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::completions::IMPORT_COMMIT_CHARS;
-use super::logging::lsp_log;
-use super::path_to_regex::parse;
-use super::path_to_regex::string_to_regex;
-use super::path_to_regex::Compiler;
-use super::path_to_regex::Key;
-use super::path_to_regex::MatchResult;
-use super::path_to_regex::Matcher;
-use super::path_to_regex::StringOrNumber;
-use super::path_to_regex::StringOrVec;
-use super::path_to_regex::Token;
-
-use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
-use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::TextDecodedFile;
-use crate::http_util::HttpClientProvider;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::anyhow;
@@ -34,11 +19,27 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use log::error;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
+
+use super::completions::IMPORT_COMMIT_CHARS;
+use super::logging::lsp_log;
+use super::path_to_regex::parse;
+use super::path_to_regex::string_to_regex;
+use super::path_to_regex::Compiler;
+use super::path_to_regex::Key;
+use super::path_to_regex::MatchResult;
+use super::path_to_regex::Matcher;
+use super::path_to_regex::StringOrNumber;
+use super::path_to_regex::StringOrVec;
+use super::path_to_regex::Token;
+use crate::cache::GlobalHttpCache;
+use crate::cache::HttpCache;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::file_fetcher::TextDecodedFile;
+use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -429,13 +430,12 @@ impl ModuleRegistry {
     http_client_provider: Arc<HttpClientProvider>,
   ) -> Self {
     // the http cache should always be the global one for registry completions
-    let http_cache = Arc::new(GlobalHttpCache::new(
-      location.clone(),
-      crate::cache::RealDenoCacheEnv,
-    ));
+    let http_cache =
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_fetcher = CliFileFetcher::new(
       http_cache.clone(),
       http_client_provider,
+      CliSys::default(),
       Default::default(),
       None,
       true,
@@ -474,24 +474,17 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    // spawn due to the lsp's `Send` requirement
-    let fetch_result = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        file_fetcher
-        .fetch_with_options(
-          &specifier,
-FetchPermissionsOptionRef::AllowAll,
-          FetchOptions {
-            maybe_auth: None,
-            maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-            maybe_cache_setting: None,
-          }
-        )
-        .await
-      }
-    }).await?;
+    let fetch_result = self.file_fetcher
+      .fetch_with_options(
+        specifier,
+        FetchPermissionsOptionRef::AllowAll,
+        FetchOptions {
+          maybe_auth: None,
+          maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+          maybe_cache_setting: None,
+        }
+      )
+      .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
@@ -584,18 +577,13 @@ FetchPermissionsOptionRef::AllowAll,
         )
         .ok()?;
         let file_fetcher = self.file_fetcher.clone();
-        // spawn due to the lsp's `Send` requirement
-        let file = deno_core::unsync::spawn({
-          async move {
-            let file = file_fetcher
-              .fetch_bypass_permissions(&endpoint)
-              .await
-              .ok()?;
-            TextDecodedFile::decode(file).ok()
-          }
-        })
-        .await
-        .ok()??;
+        let file = {
+          let file = file_fetcher
+            .fetch_bypass_permissions(&endpoint)
+            .await
+            .ok()?;
+          TextDecodedFile::decode(file).ok()?
+        };
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
@@ -613,6 +601,7 @@ FetchPermissionsOptionRef::AllowAll,
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
     text: &str,
@@ -983,16 +972,13 @@ FetchPermissionsOptionRef::AllowAll,
   ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
     let file_fetcher = self.file_fetcher.clone();
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn(async move {
+    let file = {
       let file = file_fetcher
         .fetch_bypass_permissions(&specifier)
         .await
         .ok()?;
-      TextDecodedFile::decode(file).ok()
-    })
-    .await
-    .ok()??;
+      TextDecodedFile::decode(file).ok()?
+    };
     serde_json::from_str(&file.source).ok()
   }
 
@@ -1045,26 +1031,20 @@ FetchPermissionsOptionRef::AllowAll,
 
   async fn get_items(&self, url: &str) -> Option<VariableItems> {
     let specifier = ModuleSpecifier::parse(url).ok()?;
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        let file = file_fetcher
-          .fetch_bypass_permissions(&specifier)
-          .await
-          .map_err(|err| {
-            error!(
-              "Internal error fetching endpoint \"{}\". {}",
-              specifier, err
-            );
-          })
-          .ok()?;
-        TextDecodedFile::decode(file).ok()
-      }
-    })
-    .await
-    .ok()??;
+    let file = {
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions(&specifier)
+        .await
+        .map_err(|err| {
+          error!(
+            "Internal error fetching endpoint \"{}\". {}",
+            specifier, err
+          );
+        })
+        .ok()?;
+      TextDecodedFile::decode(file).ok()?
+    };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1090,26 +1070,20 @@ FetchPermissionsOptionRef::AllowAll,
           error!("Internal error mapping endpoint \"{}\". {}", url, err);
         })
         .ok()?;
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        let file = file_fetcher
-          .fetch_bypass_permissions(&specifier)
-          .await
-          .map_err(|err| {
-            error!(
-              "Internal error fetching endpoint \"{}\". {}",
-              specifier, err
-            );
-          })
-          .ok()?;
-        TextDecodedFile::decode(file).ok()
-      }
-    })
-    .await
-    .ok()??;
+    let file = {
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions(&specifier)
+        .await
+        .map_err(|err| {
+          error!(
+            "Internal error fetching endpoint \"{}\". {}",
+            specifier, err
+          );
+        })
+        .ok()?;
+      TextDecodedFile::decode(file).ok()?
+    };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1128,8 +1102,9 @@ FetchPermissionsOptionRef::AllowAll,
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_validate_registry_configuration() {

@@ -1,29 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
-use crate::args::Flags;
-use crate::args::UpgradeFlags;
-use crate::args::UPGRADE_USAGE;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::http_util::HttpClient;
-use crate::http_util::HttpClientProvider;
-use crate::shared::ReleaseChannel;
-use crate::util::archive;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
-use crate::version;
-
-use async_trait::async_trait;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
-use deno_semver::SmallStackString;
-use deno_semver::Version;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
@@ -34,6 +12,29 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
+
+use async_trait::async_trait;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::version;
+use deno_semver::SmallStackString;
+use deno_semver::Version;
+use once_cell::sync::Lazy;
+
+use crate::args::Flags;
+use crate::args::UpgradeFlags;
+use crate::args::UPGRADE_USAGE;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
+use crate::util::archive;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";

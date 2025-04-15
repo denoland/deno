@@ -1,7 +1,9 @@
 Download http://localhost:4260/@denotest%2fcjs-default-export
 Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz
 Check file:///[WILDCARD]/main.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 export const Test: string = cjsDefault.default();
              ~~~~
     at file:///[WILDCARD]/main.ts:4:14
+
+error: Type checking failed.

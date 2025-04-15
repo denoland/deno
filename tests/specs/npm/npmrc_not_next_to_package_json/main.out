@@ -1,9 +1,6 @@
 [# This test is still downloading code, because we have a private registry]
 [# that serves the same packages. The important bit is the message below.]
-[WILDCARD] No .npmrc file found
-[WILDCARD]
-Download http://localhost:4260/@denotest%2fesm-basic
-[WILDCARD]
-Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
-[WILDCARD]
-Initialize @denotest/esm-basic@1.0.0
+[WILDCARD]No .npmrc file found
+[WILDCARD]Download http://localhost:4260/@denotest%2fesm-basic
+[WILDCARD]Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+[WILDCARD]Initialize @denotest/esm-basic@1.0.0

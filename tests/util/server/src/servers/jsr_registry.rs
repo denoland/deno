@@ -1,10 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::tests_path;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Mutex;
 
-use super::run_server;
-use super::ServerKind;
-use super::ServerOptions;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine as _;
 use bytes::Bytes;
@@ -17,12 +19,11 @@ use hyper::Response;
 use hyper::StatusCode;
 use once_cell::sync::Lazy;
 use serde_json::json;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::path::Path;
-use std::sync::Mutex;
+
+use super::run_server;
+use super::ServerKind;
+use super::ServerOptions;
+use crate::tests_path;
 
 pub async fn registry_server(port: u16) {
   let registry_server_addr = SocketAddr::from(([127, 0, 0, 1], port));

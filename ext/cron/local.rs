@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -94,7 +94,7 @@ impl LocalCronHandler {
         if let Some(delta) = earliest_deadline.checked_sub(now) {
           tokio::time::sleep(std::time::Duration::from_millis(delta)).boxed()
         } else {
-          futures::future::ready(()).boxed()
+          std::future::ready(()).boxed()
         }
       } else {
         futures::future::pending().boxed()

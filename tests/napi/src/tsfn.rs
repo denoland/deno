@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This test performs initialization similar to napi-rs.
 // https://github.com/napi-rs/napi-rs/commit/a5a04a4e545f268769cc78e2bd6c45af4336aac3
 
-use napi_sys as sys;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ptr;
+
+use napi_sys as sys;
 
 macro_rules! check_status_or_panic {
   ($code:expr, $msg:expr) => {{

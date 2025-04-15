@@ -1,25 +1,24 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::BTreeSet;
+use std::fmt::Write as _;
+use std::sync::Arc;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::collections::AHashSet;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitMut;
+use deno_ast::swc::ecma_visit::VisitWith as _;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::swc::visit::as_folder;
-use deno_ast::swc::visit::FoldWith as _;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitMut;
-use deno_ast::swc::visit::VisitWith as _;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use std::collections::BTreeSet;
-use std::fmt::Write as _;
-use std::sync::Arc;
 
 use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -250,7 +249,7 @@ struct ExportCollector {
 impl ExportCollector {
   fn to_import_specifiers(
     &self,
-    symbols_to_exclude: &AHashSet<Atom>,
+    symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
   ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
 
@@ -579,7 +578,7 @@ fn generate_pseudo_file(
     parsed
       .program_ref()
       .to_owned()
-      .fold_with(&mut as_folder(Transform {
+      .apply(&mut visit_mut_pass(Transform {
         specifier: &file.specifier,
         base_file_specifier,
         exports_from_base: exports,
@@ -605,11 +604,11 @@ struct Transform<'a> {
   specifier: &'a ModuleSpecifier,
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
-  atoms_to_be_excluded_from_import: AHashSet<Atom>,
+  atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
 }
 
-impl<'a> VisitMut for Transform<'a> {
+impl VisitMut for Transform<'_> {
   fn visit_mut_program(&mut self, node: &mut ast::Program) {
     let new_module_items = match node {
       ast::Program::Module(module) => {
@@ -808,10 +807,11 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::file_fetcher::TextDecodedFile;
   use deno_ast::swc::atoms::Atom;
   use pretty_assertions::assert_eq;
+
+  use super::*;
+  use crate::file_fetcher::TextDecodedFile;
 
   #[test]
   fn test_extract_doc_tests() {
