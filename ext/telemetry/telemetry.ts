@@ -2,6 +2,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_otel_collect_isolate_metrics,
+  op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
   op_otel_metric_attribute3,
@@ -75,6 +77,7 @@ const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
+let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -169,6 +172,25 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
+function isTimeInput(input: unknown): input is TimeInput {
+  return typeof input === "number" ||
+    (input && (ArrayIsArray(input) || isDate(input)));
+}
+
+function timeInputToMs(input?: TimeInput): number | undefined {
+  if (input === undefined) return;
+  if (ArrayIsArray(input)) {
+    return hrToMs(input);
+  } else if (isDate(input)) {
+    return DatePrototypeGetTime(input);
+  }
+  return input;
+}
+
+function countAttributes(attributes?: Attributes): number {
+  return attributes ? ObjectKeys(attributes).length : 0;
+}
+
 interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
@@ -183,7 +205,7 @@ export const currentSnapshot = getAsyncContext;
 export const restoreSnapshot = setAsyncContext;
 
 function isDate(value: unknown): value is Date {
-  return ObjectPrototypeIsPrototypeOf(value, DatePrototype);
+  return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
 }
 
 interface OtelTracer {
@@ -215,6 +237,11 @@ interface OtelSpan {
 
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
+  addEvent(
+    name: string,
+    startTime: number,
+    droppedAttributeCount: number,
+  ): void;
   dropEvent(): void;
   end(endTime: number): void;
 }
@@ -303,20 +330,13 @@ class Tracer {
       context = context ?? CURRENT.get();
     }
 
-    let startTime = options?.startTime;
-    if (startTime && ArrayIsArray(startTime)) {
-      startTime = hrToMs(startTime);
-    } else if (startTime && isDate(startTime)) {
-      startTime = DatePrototypeGetTime(startTime);
-    }
+    const startTime = timeInputToMs(options?.startTime);
 
     const parentSpan = context?.getValue(SPAN_KEY) as
       | Span
       | { spanContext(): SpanContext }
       | undefined;
-    const attributesCount = options?.attributes
-      ? ObjectKeys(options.attributes).length
-      : 0;
+    const attributesCount = countAttributes(options?.attributes);
     const parentOtelSpan: OtelSpan | null | undefined = parentSpan !== undefined
       ? getOtelSpan(parentSpan) ?? undefined
       : undefined;
@@ -380,17 +400,27 @@ class Span {
   }
 
   addEvent(
-    _name: string,
-    _attributesOrStartTime?: Attributes | TimeInput,
-    _startTime?: TimeInput,
+    name: string,
+    attributesOrStartTime?: Attributes | TimeInput,
+    startTime?: TimeInput,
   ): this {
-    this.#otelSpan?.dropEvent();
+    if (isTimeInput(attributesOrStartTime)) {
+      startTime = attributesOrStartTime;
+      attributesOrStartTime = undefined;
+    }
+    const startTimeMs = timeInputToMs(startTime);
+
+    this.#otelSpan?.addEvent(
+      name,
+      startTimeMs ?? NaN,
+      countAttributes(attributesOrStartTime),
+    );
     return this;
   }
 
   addLink(link: Link): this {
     const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
-      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+      countAttributes(link.attributes);
     const valid = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
@@ -411,12 +441,7 @@ class Span {
   }
 
   end(endTime?: TimeInput): void {
-    if (endTime && ArrayIsArray(endTime)) {
-      endTime = hrToMs(endTime);
-    } else if (endTime && isDate(endTime)) {
-      endTime = DatePrototypeGetTime(endTime);
-    }
-    this.#otelSpan?.end(endTime || NaN);
+    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
   }
 
   isRecording(): boolean {
@@ -1039,6 +1064,10 @@ class ObservableResult {
 }
 
 async function observe(): Promise<void> {
+  if (ISOLATE_METRICS) {
+    op_otel_collect_isolate_metrics();
+  }
+
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
   // deno-lint-ignore prefer-primordials
@@ -1646,6 +1675,12 @@ export function builtinTracer(): Tracer {
   return builtinTracerCache;
 }
 
+function enableIsolateMetrics() {
+  op_otel_enable_isolate_metrics();
+  ISOLATE_METRICS = true;
+  startObserving();
+}
+
 // We specify a very high version number, to allow any `@opentelemetry/api`
 // version to load this module. This does cause @opentelemetry/api to not be
 // able to register anything itself with the global registration methods.
@@ -1656,7 +1691,6 @@ export function bootstrap(
     0 | 1,
     0 | 1,
     (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
-    0 | 1,
     ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
 ): void {
@@ -1710,6 +1744,7 @@ export function bootstrap(
     }
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
+      enableIsolateMetrics();
     }
   }
 }

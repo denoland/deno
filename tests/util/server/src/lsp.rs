@@ -14,7 +14,6 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +33,7 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
+use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
@@ -291,13 +291,12 @@ impl InitializeParamsBuilder {
   }
 
   #[allow(deprecated)]
-  pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri =
-      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
+  pub fn set_maybe_root_uri(&mut self, value: Option<Uri>) -> &mut Self {
+    self.params.root_uri = value;
     self
   }
 
-  pub fn set_root_uri(&mut self, value: Url) -> &mut Self {
+  pub fn set_root_uri(&mut self, value: Uri) -> &mut Self {
     self.set_maybe_root_uri(Some(value))
   }
 
@@ -854,7 +853,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.url_dir());
+    builder.set_root_uri(self.root_dir.uri_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
@@ -1228,11 +1227,11 @@ impl CollectedDiagnostics {
       .collect()
   }
 
-  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+  pub fn for_file(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .filter(|p| p.uri.as_str() == uri.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()

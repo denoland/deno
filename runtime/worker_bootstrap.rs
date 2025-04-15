@@ -107,11 +107,14 @@ pub struct BootstrapOptions {
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
+  /// If this is a `deno compile`-ed executable.
+  pub is_standalone: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub mode: WorkerExecutionMode,
+  pub no_legacy_abort: bool,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
@@ -135,19 +138,21 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       color_level: colors::get_color_level(),
-      enable_op_summary_metrics: Default::default(),
-      enable_testing_features: Default::default(),
+      enable_op_summary_metrics: false,
+      enable_testing_features: false,
       log_level: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
       unstable_features: Default::default(),
-      inspect: Default::default(),
+      inspect: false,
       args: Default::default(),
-      has_node_modules_dir: Default::default(),
+      is_standalone: false,
+      has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
       mode: WorkerExecutionMode::None,
+      no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
       otel_config: Default::default(),
@@ -197,6 +202,8 @@ struct BootstrapV8<'a>(
   Box<[u8]>,
   // close on idle
   bool,
+  // is_standalone
+  bool,
 );
 
 impl BootstrapOptions {
@@ -225,6 +232,7 @@ impl BootstrapOptions {
       serve_worker_count,
       self.otel_config.as_v8(),
       self.close_on_idle,
+      self.is_standalone,
     );
 
     bootstrap.serialize(ser).unwrap()
