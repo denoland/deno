@@ -817,6 +817,7 @@ pub struct WriteDescriptor(pub PathBuf);
 pub enum Host {
   Fqdn(FQDN),
   Ip(IpAddr),
+  Vsock(u32),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -881,7 +882,7 @@ impl Host {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct NetDescriptor(pub Host, pub Option<u16>);
+pub struct NetDescriptor(pub Host, pub Option<u32>);
 
 impl QueryDescriptor for NetDescriptor {
   type AllowDesc = NetDescriptor;
@@ -953,6 +954,8 @@ pub enum NetDescriptorParseError {
   Ipv6MissingSquareBrackets(String),
   #[error("{0}")]
   Host(#[from] HostParseError),
+  #[error("invalid vsock: '{0}'")]
+  InvalidVsock(String),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -967,6 +970,24 @@ pub enum NetDescriptorFromUrlParseError {
 
 impl NetDescriptor {
   pub fn parse(hostname: &str) -> Result<Self, NetDescriptorParseError> {
+    #[cfg(unix)]
+    if let Some(vsock) = hostname.strip_prefix("vsock:") {
+      let mut split = vsock.split(':');
+      let Some(cid) = split.next().and_then(|c| {
+        if c == "-1" {
+          Some(u32::MAX)
+        } else {
+          c.parse().ok()
+        }
+      }) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      let Some(port) = split.next().and_then(|p| p.parse().ok()) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      return Ok(NetDescriptor(Host::Vsock(cid), Some(port)));
+    }
+
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
       return Err(NetDescriptorParseError::Url(hostname.to_string()));
     }
@@ -995,7 +1016,10 @@ impl NetDescriptor {
             hostname.to_string(),
           ));
         };
-        return Ok(NetDescriptor(Host::Ip(IpAddr::V6(ip)), port));
+        return Ok(NetDescriptor(
+          Host::Ip(IpAddr::V6(ip)),
+          port.map(Into::into),
+        ));
       } else {
         return Err(NetDescriptorParseError::InvalidHost(hostname.to_string()));
       }
@@ -1032,7 +1056,7 @@ impl NetDescriptor {
       Some(port)
     };
 
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -1041,7 +1065,14 @@ impl NetDescriptor {
     })?;
     let host = Host::parse(host)?;
     let port = url.port_or_known_default();
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
+  }
+
+  pub fn from_vsock(
+    cid: u32,
+    port: u32,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Ok(NetDescriptor(Host::Vsock(cid), Some(port)))
   }
 }
 
@@ -1051,6 +1082,7 @@ impl fmt::Display for NetDescriptor {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
+      Host::Vsock(cid) => write!(f, "vsock:{cid}"),
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -2933,8 +2965,24 @@ impl PermissionsContainer {
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
     let hostname = Host::parse(host.0.as_ref())?;
-    let descriptor = NetDescriptor(hostname, host.1);
+    let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
     inner.check(&descriptor, Some(api_name))?;
+    Ok(())
+  }
+
+  #[inline(always)]
+  pub fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if inner.net.is_allow_all() {
+      return Ok(());
+    }
+    let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+    inner.net.check(&desc, Some(api_name))?;
     Ok(())
   }
 

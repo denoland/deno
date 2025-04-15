@@ -152,6 +152,9 @@ pub enum NetError {
   #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
+  #[class(generic)]
+  #[error("VSOCK is not supported on this platform")]
+  VsockUnsupported,
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -606,6 +609,145 @@ where
   NP: NetPermissions + 'static,
 {
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+}
+
+#[cfg(unix)]
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_net_connect_vsock<NP>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockStream;
+
+  state
+    .borrow()
+    .feature_checker
+    .check_or_exit("vsock", "Deno.connect");
+
+  state.borrow_mut().borrow_mut::<NP>().check_vsock(
+    cid,
+    port,
+    "Deno.connect()",
+  )?;
+
+  let addr = VsockAddr::new(cid, port);
+  let vsock_stream = VsockStream::connect(addr).await?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(crate::io::VsockStreamResource::new(
+        vsock_stream.into_split(),
+      ));
+
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(stack_trace)]
+#[serde]
+pub fn op_net_listen_vsock<NP>(
+  state: &mut OpState,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, u32, u32), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockListener;
+
+  state.feature_checker.check_or_exit("vsock", "Deno.listen");
+
+  state
+    .borrow_mut::<NP>()
+    .check_vsock(cid, port, "Deno.listen()")?;
+
+  let addr = VsockAddr::new(cid, port);
+  let listener = VsockListener::bind(addr)?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = NetworkListenerResource::new(listener);
+  let rid = state.resource_table.add(listener_resource);
+  Ok((rid, local_addr.cid(), local_addr.port()))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_vsock(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError> {
+  use tokio_vsock::VsockListener;
+
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<VsockListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (vsock_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add(crate::io::VsockStreamResource::new(
+      vsock_stream.into_split(),
+    ));
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_accept_vsock() -> Result<(), NetError> {
+  Err(NetError::VsockUnsupported)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -1147,6 +1289,15 @@ mod tests {
       _api_name: &str,
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(p)
+    }
+
+    fn check_vsock(
+      &mut self,
+      _cid: u32,
+      _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
     }
   }
 

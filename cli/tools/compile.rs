@@ -104,10 +104,15 @@ pub async fn compile(
       graph: &graph,
       entrypoint,
       include_paths: &include_paths,
-      exclude_paths: vec![
-        cli_options.initial_cwd().join(&output_path),
-        cli_options.initial_cwd().join(&temp_path),
-      ],
+      exclude_paths: compile_flags
+        .exclude
+        .iter()
+        .map(|p| cli_options.initial_cwd().join(p))
+        .chain(std::iter::once(
+          cli_options.initial_cwd().join(&output_path),
+        ))
+        .chain(std::iter::once(cli_options.initial_cwd().join(&temp_path)))
+        .collect(),
       compile_flags: &compile_flags,
     })
     .await
@@ -324,7 +329,10 @@ fn get_module_roots_and_include_paths(
     if url.scheme() != "file" {
       return true;
     }
-    let media_type = MediaType::from_specifier(url);
+    is_module_graph_media_type(MediaType::from_specifier(url))
+  }
+
+  fn is_module_graph_media_type(media_type: MediaType) -> bool {
     match media_type {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -349,8 +357,9 @@ fn get_module_roots_and_include_paths(
 
   fn analyze_path(
     url: &ModuleSpecifier,
+    excluded_paths: &HashSet<PathBuf>,
     searched_paths: &mut HashSet<PathBuf>,
-    mut add_url: impl FnMut(ModuleSpecifier),
+    mut add_path: impl FnMut(&Path),
   ) -> Result<(), AnyError> {
     let Ok(path) = url_to_file_path(url) else {
       return Ok(());
@@ -360,9 +369,11 @@ fn get_module_roots_and_include_paths(
       if !searched_paths.insert(path.clone()) {
         continue;
       }
+      if excluded_paths.contains(&path) {
+        continue;
+      }
       if !path.is_dir() {
-        let url = url_from_file_path(&path)?;
-        add_url(url);
+        add_path(&path);
         continue;
       }
       for entry in std::fs::read_dir(&path).with_context(|| {
@@ -380,15 +391,23 @@ fn get_module_roots_and_include_paths(
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
   let mut include_paths = Vec::new();
+  let exclude_set = compile_flags
+    .exclude
+    .iter()
+    .map(|path| initial_cwd.join(path))
+    .collect::<HashSet<_>>();
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
       module_roots.push(url.clone());
     } else {
-      analyze_path(&url, &mut searched_paths, |file_url| {
-        if is_module_graph_module(&file_url) {
-          module_roots.push(file_url);
+      analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
+        let media_type = MediaType::from_path(file_path);
+        if is_module_graph_media_type(media_type) {
+          if let Ok(file_url) = url_from_file_path(file_path) {
+            module_roots.push(file_url);
+          }
         }
       })?;
     }
@@ -475,7 +494,8 @@ mod test {
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
         icon: None,
-        include: vec![],
+        include: Default::default(),
+        exclude: Default::default(),
         eszip: true,
       },
       &std::env::current_dir().unwrap(),
@@ -499,7 +519,8 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
-        include: vec![],
+        include: Default::default(),
+        exclude: Default::default(),
         icon: None,
         no_terminal: false,
         eszip: true,
