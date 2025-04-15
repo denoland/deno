@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 50;
+const cacheVersion = 52;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -828,7 +828,7 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "strip ./denort",
+            "strip -x -S ./denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]

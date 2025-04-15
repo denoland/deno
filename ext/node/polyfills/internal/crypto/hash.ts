@@ -41,7 +41,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
-import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
+import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import {
   getDefaultEncoding,
   toBuf,
