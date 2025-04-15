@@ -66,7 +66,15 @@ function debuglogImpl(
       emitWarningIfNeeded(set);
       debugImpls[set] = function debug(msg, ...args: unknown[]) {
         // deno-lint-ignore no-console
-        console.error("%s %s: " + msg, set, String(Deno.pid), ...args);
+        console.error(
+          "%s %s: " + msg,
+          set,
+          String(Deno.pid),
+          ArrayPrototypeJoin(
+            ArrayPrototypeMap(args, (arg) => inspect(arg)),
+            " ",
+          ),
+        );
       };
     } else {
       debugImpls[set] = noop;
