@@ -1,0 +1,12 @@
+Download http://localhost:4260/@denotest%2fadd
+Download http://localhost:4260/@denotest%2fpeer-dep-specific-constraint
+Warning The following peer dependency issues were found:
+└─┬ @denotest/peer-dep-specific-constraint@1.0.0
+  └── peer @denotest/add@0.5: resolved to 1.0.0
+
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/peer-dep-specific-constraint/1.0.0.tgz
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+Initialize @denotest/peer-dep-specific-constraint@1.0.0
+Initialize @denotest/add@1.0.0
+[UNORDERED_END]

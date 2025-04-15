@@ -86,10 +86,17 @@ impl FileFlags {
   }
 }
 
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub enum DefaultRegistry {
+  Npm,
+  Jsr,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub default_registry: Option<DefaultRegistry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -205,6 +212,7 @@ pub struct EvalFlags {
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
+  pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
   pub indent_width: Option<NonZeroU8>,
@@ -297,6 +305,7 @@ pub struct LintFlags {
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
+  pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
@@ -924,6 +933,13 @@ impl Flags {
     args
   }
 
+  pub fn no_legacy_abort(&self) -> bool {
+    self
+      .unstable_config
+      .features
+      .contains(&String::from("no-legacy-abort"))
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     let has_unstable_flag = self
       .unstable_config
@@ -1177,6 +1193,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
+  <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
                          Possible values: "system", "mozilla".
@@ -1728,7 +1745,23 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .args(default_registry_args())
   })
+}
+
+fn default_registry_args() -> [Arg; 2] {
+  [
+    Arg::new("npm")
+      .long("npm")
+      .help("assume unprefixed package names are npm packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("jsr"),
+    Arg::new("jsr")
+      .long("jsr")
+      .help("assume unprefixed package names are jsr packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("npm"),
+  ]
 }
 
 fn remove_subcommand() -> Command {
@@ -1806,12 +1839,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .help("Cache bench modules, but don't run benchmarks")
           .action(ArgAction::SetTrue),
       )
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no bench files were found")
-          .action(ArgAction::SetTrue)
-      )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -1911,7 +1939,6 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(
           Arg::new("file")
             .num_args(1..)
-            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
@@ -2351,6 +2378,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -2632,6 +2660,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
     })
 }
 
@@ -2918,6 +2947,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -3166,13 +3196,7 @@ or <c>**/__tests__/**</>:
           .value_name("N")
           .value_parser(value_parser!(NonZeroUsize))
           .help_heading(TEST_HEADING))
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no test files were found")
-          .action(ArgAction::SetTrue)
-          .help_heading(TEST_HEADING),
-      )
+      .arg(permit_no_files_arg().help_heading(TEST_HEADING))
       .arg(
         Arg::new("filter")
           .allow_hyphen_values(true)
@@ -4159,6 +4183,13 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn permit_no_files_arg() -> Arg {
+  Arg::new("permit-no-files")
+    .long("permit-no-files")
+    .help("Don't return an error code if no files were found")
+    .action(ArgAction::SetTrue)
+}
+
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .long("watch-exclude")
@@ -4413,6 +4444,20 @@ impl CommandExt for Command {
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
     ).arg(
+      Arg::new("unstable-lazy-dynamic-imports")
+      .long("unstable-lazy-dynamic-imports")
+      .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
+      .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+      .hide(true)
+      .long_help(match cfg {
+        UnstableArgsConfig::None => None,
+        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+      })
+      .help_heading(UNSTABLE_HEADING)
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4435,6 +4480,16 @@ impl CommandExt for Command {
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-lockfile-v5")
+        .long("unstable-lockfile-v5")
+        .help("Enable unstable lockfile v5")
+        .env("DENO_UNSTABLE_LOCKFILE_V5")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(UNSTABLE_HEADING)
+        .hide(true)
         .display_order(next_display_order()),
     );
 
@@ -4501,7 +4556,18 @@ fn add_parse_inner(
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
   let dev = matches.get_flag("dev");
-  AddFlags { packages, dev }
+  let default_registry = if matches.get_flag("npm") {
+    Some(DefaultRegistry::Npm)
+  } else if matches.get_flag("jsr") {
+    Some(DefaultRegistry::Jsr)
+  } else {
+    None
+  };
+  AddFlags {
+    packages,
+    dev,
+    default_registry,
+  }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4553,8 +4619,6 @@ fn bench_parse(
   flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
-  let permit_no_files = matches.get_flag("permit-no-files");
-
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f
       .flat_map(flat_escape_split_commas)
@@ -4583,7 +4647,7 @@ fn bench_parse(
     filter,
     json,
     no_run,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     watch: watch_arg_parse(matches)?,
   });
 
@@ -4616,7 +4680,10 @@ fn check_parse(
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   frozen_lockfile_arg_parse(flags, matches);
-  let files = matches.remove_many::<String>("file").unwrap().collect();
+  let files = match matches.remove_many::<String>("file") {
+    Some(f) => f.collect(),
+    None => vec![".".to_string()], // default
+  };
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
@@ -4863,6 +4930,7 @@ fn fmt_parse(
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
     files: FileFlags { include, ignore },
+    permit_no_files: permit_no_files_parse(matches),
     use_tabs,
     line_width,
     indent_width,
@@ -5157,6 +5225,7 @@ fn lint_parse(
     maybe_rules_tags,
     maybe_rules_include,
     maybe_rules_exclude,
+    permit_no_files: permit_no_files_parse(matches),
     json,
     compact,
     watch: watch_arg_parse(matches)?,
@@ -5388,8 +5457,6 @@ fn test_parse(
   let no_run = matches.get_flag("no-run");
   let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
-  #[allow(clippy::print_stderr)]
-  let permit_no_files = matches.get_flag("permit-no-files");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -5455,7 +5522,7 @@ fn test_parse(
     files: FileFlags { include, ignore },
     filter,
     shuffle,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     concurrent_jobs,
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches)?,
@@ -5957,6 +6024,10 @@ fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   }
 }
 
+fn permit_no_files_parse(matches: &mut ArgMatches) -> bool {
+  matches.get_flag("permit-no-files")
+}
+
 fn watch_arg_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<Option<WatchFlags>> {
@@ -6038,10 +6109,13 @@ fn unstable_args_parse(
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
+  flags.unstable_config.lazy_dynamic_imports =
+    matches.get_flag("unstable-lazy-dynamic-imports");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.lockfile_v5 = matches.get_flag("unstable-lockfile-v5");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -6854,6 +6928,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6868,7 +6943,8 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "fmt", "--check"]);
+    let r =
+      flags_from_vec(svec!["deno", "fmt", "--permit-no-files", "--check"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6878,6 +6954,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: true,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6902,6 +6979,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6926,6 +7004,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6960,6 +7039,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6995,6 +7075,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7019,6 +7100,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7051,6 +7133,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7088,6 +7171,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(true),
           line_width: Some(NonZeroU32::new(60).unwrap()),
           indent_width: Some(NonZeroU8::new(4).unwrap()),
@@ -7119,6 +7203,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(false),
           line_width: None,
           indent_width: None,
@@ -7145,6 +7230,7 @@ mod tests {
             include: vec!["./**".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7177,6 +7263,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7188,6 +7275,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--permit-no-files",
       "--allow-import",
       "--watch",
       "script_1.ts",
@@ -7206,6 +7294,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: true,
           json: false,
           compact: false,
           watch: Some(Default::default()),
@@ -7239,6 +7328,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Some(WatchFlags {
@@ -7270,6 +7360,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7292,6 +7383,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7319,6 +7411,7 @@ mod tests {
           maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7347,6 +7440,7 @@ mod tests {
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7369,6 +7463,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7398,6 +7493,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7428,6 +7524,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: true,
           watch: Default::default(),
@@ -7472,6 +7569,21 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["."],
           doc: false,
           doc_only: false,
         }),
@@ -11306,6 +11418,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which"],
           dev: false,
+          default_registry: None,
         }) // default is false
       );
 
@@ -11315,6 +11428,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          default_registry: None,
         })
       );
 
@@ -11324,8 +11438,29 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["npm:chalk"],
           dev: true,
+          default_registry: None,
         }),
       );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--npm", "chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["chalk"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Npm),
+        }),
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--jsr", "@std/fs"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["@std/fs"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Jsr),
+        })
+      )
     }
   }
 

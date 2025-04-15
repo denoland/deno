@@ -12,19 +12,23 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
+use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_runtime::colors;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::WorkspaceNpmPatchPackages;
+use crate::util::display::DisplayTreeNode;
 use crate::util::sync::TaskQueue;
 
 pub struct AddPkgReqsResult {
@@ -159,6 +163,7 @@ async fn add_package_reqs_to_snapshot(
         .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
         .collect(),
       dep_graph_result: Ok(snapshot),
+      unmet_peer_diagnostics: Default::default(),
     };
   }
   log::debug!(
@@ -201,6 +206,40 @@ async fn add_package_reqs_to_snapshot(
 
   registry_info_provider.clear_memory_cache();
 
+  if !result.unmet_peer_diagnostics.is_empty()
+    && log::log_enabled!(log::Level::Warn)
+  {
+    let root_node = DisplayTreeNode {
+      text: format!(
+        "{} The following peer dependency issues were found:",
+        colors::yellow("Warning")
+      ),
+      children: result
+        .unmet_peer_diagnostics
+        .iter()
+        .map(|diagnostic| {
+          let mut node = DisplayTreeNode {
+            text: format!(
+              "peer {}: resolved to {}",
+              diagnostic.dependency, diagnostic.resolved
+            ),
+            children: Vec::new(),
+          };
+          for ancestor in &diagnostic.ancestors {
+            node = DisplayTreeNode {
+              text: ancestor.to_string(),
+              children: vec![node],
+            };
+          }
+          node
+        })
+        .collect(),
+    };
+    let mut text = String::new();
+    _ = root_node.print(&mut text);
+    log::warn!("{}", text);
+  }
+
   if let Ok(snapshot) = &result.dep_graph_result {
     if let Some(lockfile) = maybe_lockfile {
       populate_lockfile_from_snapshot(&lockfile, snapshot);
@@ -220,16 +259,67 @@ fn populate_lockfile_from_snapshot(
     let dependencies = pkg
       .dependencies
       .iter()
-      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-        name: name.clone(),
-        id: id.as_serialized(),
+      .filter_map(|(name, id)| {
+        if pkg.optional_dependencies.contains(name) {
+          None
+        } else {
+          Some(NpmPackageDependencyLockfileInfo {
+            name: name.clone(),
+            id: id.as_serialized(),
+          })
+        }
       })
       .collect();
 
+    let optional_dependencies = pkg
+      .optional_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
+      })
+      .collect();
+
+    let optional_peers = pkg
+      .optional_peer_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
+      })
+      .collect();
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg.dist.as_ref().map(|d| d.integrity().for_lockfile()),
+      integrity: pkg.dist.as_ref().and_then(|dist| {
+        dist.integrity().for_lockfile().map(|s| s.into_owned())
+      }),
       dependencies,
+      optional_dependencies,
+      os: pkg.system.os.clone(),
+      cpu: pkg.system.cpu.clone(),
+      tarball: pkg.dist.as_ref().and_then(|dist| {
+        // Omit the tarball URL if it's the standard NPM registry URL
+        if dist.tarball
+          == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
+            &crate::npm::managed::DefaultTarballUrl,
+            &pkg.id,
+          )
+        {
+          None
+        } else {
+          Some(StackString::from_str(&dist.tarball))
+        }
+      }),
+      deprecated: pkg.is_deprecated,
+      has_bin: pkg.has_bin,
+      has_scripts: pkg.has_scripts,
+      optional_peers,
     }
   }
 

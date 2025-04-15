@@ -386,6 +386,7 @@ fn should_run_step(step: &StepMetaData) -> bool {
       "unix" => cfg!(unix),
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
+      "notCI" => std::env::var_os("CI").is_none(),
       value => panic!("Unknown if condition: {}", value),
     }
   } else {
