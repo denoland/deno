@@ -9,6 +9,7 @@ import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
+import { RUN_ARGS, TEST_ARGS, usesNodeTestModule } from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
@@ -230,14 +231,14 @@ type ErrorUnexpected = {
  */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
   let cmd: Deno.ChildProcess | undefined;
+  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
+    const usesNodeTest = await Deno.readTextFile(testPath_)
+      .then(usesNodeTestModule).catch(() => false);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
-        "-A",
-        "--quiet",
-        "--unstable-bare-node-builtins",
-        "--unstable-node-globals",
-        "tests/node_compat/runner/suite/test/" + testPath,
+        ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
+        testPath_,
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
