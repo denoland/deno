@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -53,6 +53,11 @@ export interface LookupOptions {
   hints?: number | undefined;
   all?: boolean | undefined;
   verbatim?: boolean | undefined;
+  /**
+   * Deno specific extension. If port is specified, the required net permission
+   * for the lookup call will be reduced to single port.
+   */
+  port?: number | undefined;
 }
 
 export interface LookupOneOptions extends LookupOptions {
@@ -416,10 +421,20 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "verbatim";
+let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
 
 export function getDefaultVerbatim() {
-  return dnsOrder !== "ipv4first";
+  switch (dnsOrder) {
+    case "verbatim": {
+      return true;
+    }
+    case "ipv4first": {
+      return false;
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 /**

@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --quiet error_015_dynamic_import_permissions.js",
+  "output": "error_015_dynamic_import_permissions.out",
+  "exitCode": 1
+}

@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_fs"
-version = "0.84.0"
+version = "0.111.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,14 +19,16 @@ sync_fs = []
 [dependencies]
 async-trait.workspace = true
 base32.workspace = true
+boxed_error.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_io.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 filetime.workspace = true
 libc.workspace = true
 rand.workspace = true
-rayon = "1.8.0"
+rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

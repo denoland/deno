@@ -20,6 +20,11 @@
       "exitCode": 1,
       "output": "kv.out"
     },
+    "node_globals": {
+      "args": "run --unstable-node-globals node_globals.ts",
+      "exitCode": 0,
+      "output": "node_globals.out"
+    },
     "temporal": {
       "args": "run temporal.ts",
       "exitCode": 1,

@@ -1,0 +1,7 @@
+{
+  "name": "@foo/bar",
+  "exports": {},
+  "tasks": {
+    "dev": "echo '@foo/bar'"
+  }
+}

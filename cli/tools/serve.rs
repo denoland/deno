@@ -1,8 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
 
@@ -43,19 +44,23 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
-
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let hmr = serve_flags
+    .watch
+    .map(|watch_flags| watch_flags.hmr)
+    .unwrap_or(false);
   do_serve(
     worker_factory,
     main_module.clone(),
     serve_flags.worker_count,
-    false,
+    hmr,
   )
   .await
 }
 
 async fn do_serve(
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   worker_count: Option<usize>,
   hmr: bool,
@@ -70,7 +75,7 @@ async fn do_serve(
     )
     .await?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await,
+    None | Some(1) => return worker.run().await.map_err(Into::into),
     Some(c) => c,
   };
 
@@ -109,17 +114,15 @@ async fn do_serve(
     }
   }
   Ok(exit_code)
-
-  // main.await?
 }
 
 async fn run_worker(
   worker_count: usize,
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
+  let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,
@@ -132,7 +135,7 @@ async fn run_worker(
     worker.run_for_watcher().await?;
     Ok(0)
   } else {
-    worker.run().await
+    worker.run().await.map_err(Into::into)
   }
 }
 
@@ -150,7 +153,8 @@ async fn serve_with_watch(
       !watch_flags.no_clear_screen,
     ),
     WatcherRestartMode::Automatic,
-    move |flags, watcher_communicator, _changed_paths| {
+    move |flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
@@ -162,7 +166,8 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let worker_factory = factory.create_cli_main_worker_factory().await?;
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         do_serve(worker_factory, main_module.clone(), worker_count, hmr)
           .await?;
@@ -171,6 +176,7 @@ async fn serve_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
   Ok(0)
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -62,6 +62,8 @@ export function processTicksAndRejections() {
               callback(...args);
           }
         }
+      } catch (e) {
+        reportError(e);
       } finally {
         // FIXME(bartlomieju): Deno currently doesn't support async hooks
         // if (destroyHooksExist())

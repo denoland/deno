@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod config;
 pub mod dynamic;
@@ -14,9 +14,9 @@ use std::time::Duration;
 
 use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
+use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::get_custom_error_class;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -31,6 +31,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
 use denokv_proto::AtomicWrite;
@@ -114,67 +116,98 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum KvError {
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct KvError(pub Box<KvErrorKind>);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum KvErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler(deno_core::error::AnyError),
+  DatabaseHandler(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(type)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
+  #[class(type)]
   #[error("Too many entries (max {0})")]
   TooManyEntries(usize),
+  #[class(type)]
   #[error("Too many checks (max {0})")]
   TooManyChecks(usize),
+  #[class(type)]
   #[error("Too many mutations (max {0})")]
   TooManyMutations(usize),
+  #[class(type)]
   #[error("Too many keys (max {0})")]
   TooManyKeys(usize),
+  #[class(type)]
   #[error("limit must be greater than 0")]
   InvalidLimit,
+  #[class(type)]
   #[error("Invalid boundary key")]
   InvalidBoundaryKey,
+  #[class(type)]
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
+  #[class(type)]
   #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
+  #[class(type)]
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
+  #[class(type)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
+  #[class(inherit)]
   #[error(transparent)]
-  Kv(deno_core::error::AnyError),
+  Kv(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(type)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
+  #[class(type)]
   #[error("Start key is not in the keyspace defined by prefix")]
   StartKeyNotInKeyspace,
+  #[class(type)]
   #[error("End key is not in the keyspace defined by prefix")]
   EndKeyNotInKeyspace,
+  #[class(type)]
   #[error("Start key is greater than end key")]
   StartKeyGreaterThanEndKey,
+  #[class(inherit)]
   #[error("Invalid check")]
   InvalidCheck(#[source] KvCheckError),
+  #[class(inherit)]
   #[error("Invalid mutation")]
   InvalidMutation(#[source] KvMutationError),
+  #[class(inherit)]
   #[error("Invalid enqueue")]
   InvalidEnqueue(#[source] std::io::Error),
+  #[class(type)]
   #[error("key cannot be empty")]
-  EmptyKey, // TypeError
+  EmptyKey,
+  #[class(type)]
   #[error("Value too large (max {0} bytes)")]
-  ValueTooLarge(usize), // TypeError
+  ValueTooLarge(usize),
+  #[class(type)]
   #[error("enqueue payload too large (max {0} bytes)")]
-  EnqueuePayloadTooLarge(usize), // TypeError
+  EnqueuePayloadTooLarge(usize),
+  #[class(type)]
   #[error("invalid cursor")]
   InvalidCursor,
+  #[class(type)]
   #[error("cursor out of bounds")]
   CursorOutOfBounds,
+  #[class(type)]
   #[error("Invalid range")]
   InvalidRange,
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -193,7 +226,7 @@ where
   let db = handler
     .open(state.clone(), path)
     .await
-    .map_err(KvError::DatabaseHandler)?;
+    .map_err(KvErrorKind::DatabaseHandler)?;
   let rid = state.borrow_mut().resource_table.add(DatabaseResource {
     db,
     cancel_handle: CancelHandle::new_rc(),
@@ -329,7 +362,7 @@ where
     let resource = state
       .resource_table
       .get::<DatabaseResource<DBH::DB>>(rid)
-      .map_err(KvError::Resource)?;
+      .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };
 
@@ -339,7 +372,7 @@ where
   };
 
   if ranges.len() > config.max_read_ranges {
-    return Err(KvError::TooManyRanges(config.max_read_ranges));
+    return Err(KvErrorKind::TooManyRanges(config.max_read_ranges).into_box());
   }
 
   let mut total_entries = 0usize;
@@ -358,14 +391,16 @@ where
       Ok(ReadRange {
         start,
         end,
-        limit: NonZeroU32::new(limit).ok_or(KvError::InvalidLimit)?,
+        limit: NonZeroU32::new(limit).ok_or(KvErrorKind::InvalidLimit)?,
         reverse,
       })
     })
     .collect::<Result<Vec<_>, KvError>>()?;
 
   if total_entries > config.max_read_entries {
-    return Err(KvError::TooManyEntries(config.max_read_entries));
+    return Err(
+      KvErrorKind::TooManyEntries(config.max_read_entries).into_box(),
+    );
   }
 
   let opts = SnapshotReadOptions {
@@ -374,7 +409,7 @@ where
   let output_ranges = db
     .snapshot_read(read_ranges, opts)
     .await
-    .map_err(KvError::Kv)?;
+    .map_err(KvErrorKind::Kv)?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -412,10 +447,10 @@ where
       match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
         Ok(resource) => resource,
         Err(err) => {
-          if get_custom_error_class(&err) == Some("BadResource") {
+          if err.get_class() == "BadResource" {
             return Ok(None);
           } else {
-            return Err(KvError::Resource(err));
+            return Err(KvErrorKind::Resource(err).into_box());
           }
         }
       };
@@ -423,11 +458,11 @@ where
   };
 
   let Some(mut handle) =
-    db.dequeue_next_message().await.map_err(KvError::Kv)?
+    db.dequeue_next_message().await.map_err(KvErrorKind::Kv)?
   else {
     return Ok(None);
   };
-  let payload = handle.take_payload().await.map_err(KvError::Kv)?.into();
+  let payload = handle.take_payload().await.map_err(KvErrorKind::Kv)?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
     state.resource_table.add(QueueMessageResource { handle })
@@ -448,11 +483,11 @@ where
   let resource = state
     .resource_table
     .get::<DatabaseResource<DBH::DB>>(rid)
-    .map_err(KvError::Resource)?;
+    .map_err(KvErrorKind::Resource)?;
   let config = state.borrow::<Rc<KvConfig>>().clone();
 
   if keys.len() > config.max_watched_keys {
-    return Err(KvError::TooManyKeys(config.max_watched_keys));
+    return Err(KvErrorKind::TooManyKeys(config.max_watched_keys).into_box());
   }
 
   let keys: Vec<Vec<u8>> = keys
@@ -493,7 +528,7 @@ async fn op_kv_watch_next(
     let resource = state
       .resource_table
       .get::<DatabaseWatcherResource>(rid)
-      .map_err(KvError::Resource)?;
+      .map_err(KvErrorKind::Resource)?;
     resource.clone()
   };
 
@@ -519,7 +554,7 @@ async fn op_kv_watch_next(
     return Ok(None);
   };
 
-  let entries = res.map_err(KvError::Kv)?;
+  let entries = res.map_err(KvErrorKind::Kv)?;
   let entries = entries
     .into_iter()
     .map(|entry| {
@@ -549,9 +584,9 @@ where
     let handle = state
       .resource_table
       .take::<QueueMessageResource<<<DBH>::DB as Database>::QMH>>(handle_rid)
-      .map_err(|_| KvError::QueueMessageNotFound)?;
+      .map_err(|_| KvErrorKind::QueueMessageNotFound)?;
     Rc::try_unwrap(handle)
-      .map_err(|_| KvError::QueueMessageNotFound)?
+      .map_err(|_| KvErrorKind::QueueMessageNotFound)?
       .handle
   };
   // if we fail to finish the message, there is not much we can do and the
@@ -562,10 +597,12 @@ where
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvCheckError {
+  #[class(type)]
   #[error("invalid versionstamp")]
   InvalidVersionstamp,
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
 }
@@ -591,14 +628,22 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, KvCheckError> {
   })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvMutationError {
+  #[class(generic)]
   #[error(transparent)]
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(type)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),
+  #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
 }
@@ -692,7 +737,7 @@ impl RawSelector {
       }),
       (Some(prefix), Some(start), None) => {
         if !start.starts_with(&prefix) || start.len() == prefix.len() {
-          return Err(KvError::StartKeyNotInKeyspace);
+          return Err(KvErrorKind::StartKeyNotInKeyspace.into_box());
         }
         Ok(Self::Prefixed {
           prefix,
@@ -702,7 +747,7 @@ impl RawSelector {
       }
       (Some(prefix), None, Some(end)) => {
         if !end.starts_with(&prefix) || end.len() == prefix.len() {
-          return Err(KvError::EndKeyNotInKeyspace);
+          return Err(KvErrorKind::EndKeyNotInKeyspace.into_box());
         }
         Ok(Self::Prefixed {
           prefix,
@@ -712,7 +757,7 @@ impl RawSelector {
       }
       (None, Some(start), Some(end)) => {
         if start > end {
-          return Err(KvError::StartKeyGreaterThanEndKey);
+          return Err(KvErrorKind::StartKeyGreaterThanEndKey.into_box());
         }
         Ok(Self::Range { start, end })
       }
@@ -720,7 +765,7 @@ impl RawSelector {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })
       }
-      _ => Err(KvError::InvalidRange),
+      _ => Err(KvErrorKind::InvalidRange.into_box()),
     }
   }
 
@@ -782,7 +827,7 @@ fn encode_cursor(
 ) -> Result<String, KvError> {
   let common_prefix = selector.common_prefix();
   if !boundary_key.starts_with(common_prefix) {
-    return Err(KvError::InvalidBoundaryKey);
+    return Err(KvErrorKind::InvalidBoundaryKey.into_box());
   }
   Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
@@ -799,7 +844,7 @@ fn decode_selector_and_cursor(
   let common_prefix = selector.common_prefix();
   let cursor = BASE64_URL_SAFE
     .decode(cursor)
-    .map_err(|_| KvError::InvalidCursor)?;
+    .map_err(|_| KvErrorKind::InvalidCursor)?;
 
   let first_key: Vec<u8>;
   let last_key: Vec<u8>;
@@ -824,13 +869,13 @@ fn decode_selector_and_cursor(
   // Defend against out-of-bounds reading
   if let Some(start) = selector.start() {
     if &first_key[..] < start {
-      return Err(KvError::CursorOutOfBounds);
+      return Err(KvErrorKind::CursorOutOfBounds.into_box());
     }
   }
 
   if let Some(end) = selector.end() {
     if &last_key[..] > end {
-      return Err(KvError::CursorOutOfBounds);
+      return Err(KvErrorKind::CursorOutOfBounds.into_box());
     }
   }
 
@@ -855,7 +900,7 @@ where
     let resource = state
       .resource_table
       .get::<DatabaseResource<DBH::DB>>(rid)
-      .map_err(KvError::Resource)?;
+      .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };
 
@@ -865,28 +910,28 @@ where
   };
 
   if checks.len() > config.max_checks {
-    return Err(KvError::TooManyChecks(config.max_checks));
+    return Err(KvErrorKind::TooManyChecks(config.max_checks).into_box());
   }
 
   if mutations.len() + enqueues.len() > config.max_mutations {
-    return Err(KvError::TooManyMutations(config.max_mutations));
+    return Err(KvErrorKind::TooManyMutations(config.max_mutations).into_box());
   }
 
   let checks = checks
     .into_iter()
     .map(check_from_v8)
     .collect::<Result<Vec<Check>, KvCheckError>>()
-    .map_err(KvError::InvalidCheck)?;
+    .map_err(KvErrorKind::InvalidCheck)?;
   let mutations = mutations
     .into_iter()
     .map(|mutation| mutation_from_v8((mutation, current_timestamp)))
     .collect::<Result<Vec<Mutation>, KvMutationError>>()
-    .map_err(KvError::InvalidMutation)?;
+    .map_err(KvErrorKind::InvalidMutation)?;
   let enqueues = enqueues
     .into_iter()
     .map(|e| enqueue_from_v8(e, current_timestamp))
     .collect::<Result<Vec<Enqueue>, std::io::Error>>()
-    .map_err(KvError::InvalidEnqueue)?;
+    .map_err(KvErrorKind::InvalidEnqueue)?;
 
   let mut total_payload_size = 0usize;
   let mut total_key_size = 0usize;
@@ -897,7 +942,7 @@ where
     .chain(mutations.iter().map(|m| &m.key))
   {
     if key.is_empty() {
-      return Err(KvError::EmptyKey);
+      return Err(KvErrorKind::EmptyKey.into_box());
     }
 
     total_payload_size += check_write_key_size(key, &config)?;
@@ -921,13 +966,16 @@ where
   }
 
   if total_payload_size > config.max_total_mutation_size_bytes {
-    return Err(KvError::TotalMutationTooLarge(
-      config.max_total_mutation_size_bytes,
-    ));
+    return Err(
+      KvErrorKind::TotalMutationTooLarge(config.max_total_mutation_size_bytes)
+        .into_box(),
+    );
   }
 
   if total_key_size > config.max_total_key_size_bytes {
-    return Err(KvError::TotalKeyTooLarge(config.max_total_key_size_bytes));
+    return Err(
+      KvErrorKind::TotalKeyTooLarge(config.max_total_key_size_bytes).into_box(),
+    );
   }
 
   let atomic_write = AtomicWrite {
@@ -936,7 +984,10 @@ where
     enqueues,
   };
 
-  let result = db.atomic_write(atomic_write).await.map_err(KvError::Kv)?;
+  let result = db
+    .atomic_write(atomic_write)
+    .await
+    .map_err(KvErrorKind::Kv)?;
 
   Ok(result.map(|res| faster_hex::hex_string(&res.versionstamp)))
 }
@@ -958,7 +1009,9 @@ fn op_kv_encode_cursor(
 
 fn check_read_key_size(key: &[u8], config: &KvConfig) -> Result<(), KvError> {
   if key.len() > config.max_read_key_size_bytes {
-    Err(KvError::KeyTooLargeToRead(config.max_read_key_size_bytes))
+    Err(
+      KvErrorKind::KeyTooLargeToRead(config.max_read_key_size_bytes).into_box(),
+    )
   } else {
     Ok(())
   }
@@ -969,7 +1022,10 @@ fn check_write_key_size(
   config: &KvConfig,
 ) -> Result<usize, KvError> {
   if key.len() > config.max_write_key_size_bytes {
-    Err(KvError::KeyTooLargeToWrite(config.max_write_key_size_bytes))
+    Err(
+      KvErrorKind::KeyTooLargeToWrite(config.max_write_key_size_bytes)
+        .into_box(),
+    )
   } else {
     Ok(key.len())
   }
@@ -986,7 +1042,7 @@ fn check_value_size(
   };
 
   if payload.len() > config.max_value_size_bytes {
-    Err(KvError::ValueTooLarge(config.max_value_size_bytes))
+    Err(KvErrorKind::ValueTooLarge(config.max_value_size_bytes).into_box())
   } else {
     Ok(payload.len())
   }
@@ -997,7 +1053,10 @@ fn check_enqueue_payload_size(
   config: &KvConfig,
 ) -> Result<usize, KvError> {
   if payload.len() > config.max_value_size_bytes {
-    Err(KvError::EnqueuePayloadTooLarge(config.max_value_size_bytes))
+    Err(
+      KvErrorKind::EnqueuePayloadTooLarge(config.max_value_size_bytes)
+        .into_box(),
+    )
   } else {
     Ok(payload.len())
   }

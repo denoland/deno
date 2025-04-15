@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -26,11 +26,18 @@ Deno.test(
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
     let now = Date.now();
-    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 1000);
-    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 1000);
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 10000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 10000);
     assert(
-      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
+      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 10000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 10000);
+    const mode = tempInfo.mode! & 0o777;
+    if (Deno.build.os === "windows") {
+      assertEquals(mode, 0o666);
+    } else {
+      assertEquals(mode, 0o600);
+    }
 
     const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
     assert(readmeInfoByUrl.isFile);
@@ -64,6 +71,10 @@ Deno.test(
     assert(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
+    );
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
     );
 
     Deno.removeSync(tempFile, { recursive: true });
@@ -171,6 +182,7 @@ Deno.test(
     assert(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
 
     const tempFileForUrl = await Deno.makeTempFile();
     const tempInfoByUrl = await Deno.stat(
@@ -191,7 +203,10 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
-
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
+    );
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
   },
@@ -271,7 +286,6 @@ Deno.test(
     const s = Deno.statSync(filename);
     assert(s.dev !== 0);
     assert(s.ino === null);
-    assert(s.mode === null);
     assert(s.nlink === null);
     assert(s.uid === null);
     assert(s.gid === null);

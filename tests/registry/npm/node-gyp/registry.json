@@ -83,6 +83,5 @@
   "bugs": {
     "url": "https://github.com/nodejs/node-gyp/issues"
   },
-  "readmeFilename": "README.md",
   "license": "MIT"
 }

@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_syntax.js",
+  "output": "error_syntax.js.out",
+  "exitCode": 1
+}

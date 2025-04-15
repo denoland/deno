@@ -1,7 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::env;
+use std::net::SocketAddr;
+use std::result::Result;
+use std::time::Duration;
+
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
@@ -27,18 +34,13 @@ use http_body_util::Empty;
 use http_body_util::Full;
 use pretty_assertions::assert_eq;
 use prost::Message;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::env;
-use std::net::SocketAddr;
-use std::result::Result;
-use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 mod grpc;
 mod hyper_utils;
 mod jsr_registry;
+mod nodejs_org_mirror;
 mod npm_registry;
 mod ws;
 
@@ -47,12 +49,11 @@ use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
 
-use crate::TEST_SERVERS_COUNT;
-
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
 use super::std_path;
 use super::testdata_path;
+use crate::TEST_SERVERS_COUNT;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -83,11 +84,13 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
-const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
-const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
+pub(crate) const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const NODEJS_ORG_MIRROR_SERVER_PORT: u16 = 4252;
 pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
@@ -118,6 +121,7 @@ pub async fn run_all_servers() {
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
   let wss_server_fut = ws::run_wss_server(WSS_PORT);
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
@@ -147,6 +151,10 @@ pub async fn run_all_servers() {
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
 
+  // for serving node header files to node-gyp in tests
+  let node_js_mirror_server_fut =
+    nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
+
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
     ws_server_fut.boxed_local(),
@@ -156,6 +164,7 @@ pub async fn run_all_servers() {
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
+    ws_hang_server_fut.boxed_local(),
     another_redirect_server_fut.boxed_local(),
     auth_redirect_server_fut.boxed_local(),
     basic_auth_redirect_server_fut.boxed_local(),
@@ -172,6 +181,7 @@ pub async fn run_all_servers() {
     h2_grpc_server_fut.boxed_local(),
     registry_server_fut.boxed_local(),
     provenance_mock_server_fut.boxed_local(),
+    node_js_mirror_server_fut.boxed_local(),
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
@@ -443,7 +453,7 @@ async fn absolute_redirect(
 async fn main_server(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  return match (req.method(), req.uri().path()) {
+  match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
@@ -568,11 +578,6 @@ async fn main_server(
         "content-type",
         HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
       );
-      Ok(res)
-    }
-    (_, "/bad_redirect") => {
-      let mut res = Response::new(empty_body());
-      *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
     (_, "/server_error") => {
@@ -800,17 +805,17 @@ async fn main_server(
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
       let mut res = Response::new(string_body(
         r#"export function jsx(
-          _type,
-          _props,
-          _key,
-          _source,
-          _self,
-        ) {}
-        export const jsxs = jsx;
-        export const jsxDEV = jsx;
-        export const Fragment = Symbol("Fragment");
-        console.log("imported", import.meta.url);
-        "#,
+  _type,
+  _props,
+  _key,
+  _source,
+  _self,
+) {}
+export const jsxs = jsx;
+export const jsxDEV = jsx;
+export const Fragment = Symbol("Fragment");
+console.log("imported", import.meta.url);
+"#,
       ));
       res.headers_mut().insert(
         "Content-type",
@@ -1096,30 +1101,30 @@ async fn main_server(
     }
     (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/upgrade/sleep/canary-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/release-latest.txt") => {
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           // use a deno version that will never happen
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (
       &Method::GET,
@@ -1131,14 +1136,12 @@ async fn main_server(
       | "/canary-x86_64-unknown-linux-musl-latest.txt"
       | "/canary-aarch64-unknown-linux-musl-latest.txt"
       | "/canary-x86_64-pc-windows-msvc-latest.txt",
-    ) => {
-      return Ok(
-        Response::builder()
-          .status(StatusCode::OK)
-          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
-          .unwrap(),
-      );
-    }
+    ) => Ok(
+      Response::builder()
+        .status(StatusCode::OK)
+        .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+        .unwrap(),
+    ),
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1169,7 +1172,7 @@ async fn main_server(
         .body(empty_body())
         .map_err(|e| e.into())
     }
-  };
+  }
 }
 
 async fn wrap_redirect_server(port: u16) {

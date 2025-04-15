@@ -1,0 +1,5 @@
+{
+  "args": "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
+  "output": "error_import_map_unable_to_load.out",
+  "exitCode": 1
+}

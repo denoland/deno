@@ -41,6 +41,29 @@
           "output": "good\n"
         }
       ]
+    },
+    "only_prefers_package_json_if_closer": {
+      "steps": [
+        {
+          "cwd": "./subdir",
+          "args": "add npm:@denotest/esm-basic jsr:@denotest/add npm:@denotest/say-hello",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "{}\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./subdir/deno.json').trim())"
+          ],
+          "output": "subdir/prefer_if_closer_deno.json.out"
+        }
+      ]
     }
   }
 }

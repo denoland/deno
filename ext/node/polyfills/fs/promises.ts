@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { promises as fsPromises } from "node:fs";
 
 export const access = fsPromises.access;
@@ -16,6 +16,7 @@ export const readlink = fsPromises.readlink;
 export const symlink = fsPromises.symlink;
 export const lstat = fsPromises.lstat;
 export const stat = fsPromises.stat;
+export const fstat = fsPromises.fstat;
 export const link = fsPromises.link;
 export const unlink = fsPromises.unlink;
 export const chmod = fsPromises.chmod;

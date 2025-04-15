@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -126,6 +126,7 @@ ObjectSetPrototypeOf(HTTPParser.prototype, AsyncWrap.prototype);
 function defineProps(obj: object, props: Record<string, unknown>) {
   for (const entry of new SafeArrayIterator(ObjectEntries(props))) {
     ObjectDefineProperty(obj, entry[0], {
+      __proto__: null,
       value: entry[1],
       enumerable: true,
       writable: true,

@@ -1,5 +1,5 @@
 // Copyright 2018 Yoshua Wuyts. All rights reserved. MIT license.
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Forked from https://github.com/superfly/accept-encoding/blob/1cded757ec7ff3916e5bfe7441db76cdc48170dc/
 // Forked to support both http 0.3 and http 1.0 crates.
 
@@ -124,10 +124,11 @@ fn encodings_iter_inner<'s>(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use http_v02::header::ACCEPT_ENCODING;
   use http_v02::HeaderMap;
   use http_v02::HeaderValue;
+
+  use super::*;
 
   fn encodings(
     headers: &HeaderMap,

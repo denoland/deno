@@ -1,5 +1,5 @@
 try {
-  new Deno.Command("echo", {
+  new Deno.Command("curl", {
     env: {
       "LD_PRELOAD": "./libpreload.so",
     },
@@ -10,7 +10,7 @@ try {
 
 try {
   Deno.run({
-    cmd: ["echo"],
+    cmd: ["curl"],
     env: {
       "LD_PRELOAD": "./libpreload.so",
     },

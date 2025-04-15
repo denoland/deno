@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload import_extensionless.ts",
+  "output": "import_extensionless.ts.out"
+}

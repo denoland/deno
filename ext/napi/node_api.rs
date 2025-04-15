@@ -1,6 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![deny(unsafe_op_in_unsafe_fn)]
+
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
+use deno_core::parking_lot::Condvar;
+use deno_core::parking_lot::Mutex;
+use deno_core::V8CrossThreadTaskSpawner;
+use napi_sym::napi_sym;
 
 use super::util::get_array_buffer_ptr;
 use super::util::make_external_backing_store;
@@ -10,15 +21,6 @@ use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
 use crate::*;
-use deno_core::parking_lot::Condvar;
-use deno_core::parking_lot::Mutex;
-use deno_core::V8CrossThreadTaskSpawner;
-use napi_sym::napi_sym;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU8;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 #[napi_sym]
 fn napi_module_register(module: *const NapiModule) -> napi_status {
@@ -140,7 +142,6 @@ fn napi_fatal_exception(env: &mut Env, err: napi_value) -> napi_status {
 }
 
 #[napi_sym]
-#[allow(clippy::print_stderr)]
 fn napi_fatal_error(
   location: *const c_char,
   location_len: usize,
@@ -173,9 +174,9 @@ fn napi_fatal_error(
   };
 
   if let Some(location) = location {
-    eprintln!("NODE API FATAL ERROR: {} {}", location, message);
+    log::error!("NODE API FATAL ERROR: {} {}", location, message);
   } else {
-    eprintln!("NODE API FATAL ERROR: {}", message);
+    log::error!("NODE API FATAL ERROR: {}", message);
   }
 
   std::process::abort();
@@ -399,18 +400,8 @@ fn napi_is_buffer(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-
-  let Some(is_buffer) = value
-    .unwrap()
-    .instance_of(&mut env.scope(), buffer_constructor.into())
-  else {
-    return napi_set_last_error(env, napi_generic_failure);
-  };
-
   unsafe {
-    *result = is_buffer;
+    *result = value.unwrap().is_array_buffer_view();
   }
 
   napi_clear_last_error(env)

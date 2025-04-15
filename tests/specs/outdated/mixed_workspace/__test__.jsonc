@@ -1,0 +1,163 @@
+{
+  "tempDir": true,
+  "tests": {
+    // just to make sure install doesn't change the lockfile
+    "sanity_lockfile_up_to_date": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "const now = Deno.readTextFileSync('./deno.lock'); console.log(now.trim());"
+          ],
+          "output": "deno.lock.orig.out"
+        }
+      ]
+    },
+    "print_outdated_root": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated",
+          "output": "print_outdated/root.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
+        }
+      ]
+    },
+    "print_outdated_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --recursive",
+          "output": "print_outdated/recursive.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
+        }
+      ]
+    },
+    "print_outdated_subdir": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "cwd": "member-a",
+          "args": "outdated",
+          "output": "print_outdated/member_a.out"
+        },
+        {
+          "cwd": "member-b",
+          "args": "outdated",
+          "output": "print_outdated/member_b.out"
+        }
+      ]
+    },
+    "update_latest_root": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest",
+          "output": "update_latest/root/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_latest/root/deno.json.out"
+        }
+      ]
+    },
+    "update_latest_subdir": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "cwd": "member-a",
+          "args": "outdated --update --latest",
+          "output": "update_latest/subdir/member_a.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-a/deno.json",
+          "output": "update_latest/subdir/member_a_deno.json.out"
+        },
+        {
+          "cwd": "member-b",
+          "args": "outdated --update --latest",
+          "output": "update_latest/subdir/member_b.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-b/package.json",
+          "output": "update_latest/subdir/member_b_package.json.out"
+        }
+      ]
+    },
+    "update_latest_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --recursive",
+          "output": "update_latest/recursive/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "update_latest/root/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-a/deno.json",
+          "output": "update_latest/subdir/member_a_deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-b/package.json",
+          "output": "update_latest/subdir/member_b_package.json.out"
+        }
+      ]
+    },
+    "update_filtered": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --recursive @denotest/add @denotest/sub* !@denotest/breaking* aliased @denotest/with-subpath@0.5.0",
+          "output": "filtered/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_latest/root/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-a/deno.json",
+          "output": "./filtered/member_a_deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./member-b/package.json",
+          "output": "./filtered/member_b_package.json.out"
+        }
+      ]
+    }
+  }
+}

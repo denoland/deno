@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use std::env::current_exe;
 use std::io::Write;
 use std::path::Path;
 
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use jupyter_runtime::dirs::user_data_dir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");

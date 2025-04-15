@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -26,6 +26,7 @@ const {
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -37,6 +38,7 @@ const {
   MathRound,
   MathTrunc,
   Number,
+  SymbolFor,
   NumberIsFinite,
   NumberIsNaN,
   NumberMAX_SAFE_INTEGER,
@@ -77,6 +79,7 @@ const {
   StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
+  SymbolAsyncIterator,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -322,9 +325,15 @@ converters.short = createIntegerConversion(16, { unsigned: false });
 converters["unsigned short"] = createIntegerConversion(16, {
   unsigned: true,
 });
+converters["unsigned short?"] = createNullableConverter(
+  converters["unsigned short"],
+);
 
 converters.long = createIntegerConversion(32, { unsigned: false });
 converters["unsigned long"] = createIntegerConversion(32, { unsigned: true });
+converters["unsigned long?"] = createNullableConverter(
+  converters["unsigned long"],
+);
 
 converters["long long"] = createLongLongConversion(64, { unsigned: false });
 converters["unsigned long long"] = createLongLongConversion(64, {
@@ -395,6 +404,10 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
 
   return x;
 };
+
+converters["unrestricted double?"] = createNullableConverter(
+  converters["unrestricted double"],
+);
 
 converters.DOMString = function (
   V,
@@ -920,6 +933,127 @@ function createSequenceConverter(converter) {
   };
 }
 
+function isAsyncIterable(obj) {
+  if (obj[SymbolAsyncIterator] === undefined) {
+    if (obj[SymbolIterator] === undefined) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const AsyncIterable = Symbol("[[asyncIterable]]");
+
+function createAsyncIterableConverter(converter) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
+    if (type(V) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    let isAsync = true;
+    let method = V[SymbolAsyncIterator];
+    if (method === undefined) {
+      method = V[SymbolIterator];
+
+      if (method === undefined) {
+        throw makeException(
+          TypeError,
+          "is not iterable.",
+          prefix,
+          context,
+        );
+      }
+
+      isAsync = false;
+    }
+
+    return {
+      value: V,
+      [AsyncIterable]: AsyncIterable,
+      open(context) {
+        const iter = FunctionPrototypeCall(method, V);
+        if (type(iter) !== "Object") {
+          throw new TypeError(
+            `${context} could not be iterated because iterator method did not return object, but ${
+              type(iter)
+            }.`,
+          );
+        }
+
+        let asyncIterator = iter;
+
+        if (!isAsync) {
+          asyncIterator = {
+            // deno-lint-ignore require-await
+            async next() {
+              // deno-lint-ignore prefer-primordials
+              return iter.next();
+            },
+          };
+        }
+
+        return {
+          async next() {
+            // deno-lint-ignore prefer-primordials
+            const iterResult = await asyncIterator.next();
+            if (type(iterResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to iterate next value because the next() method did not return an object, but ${
+                  type(iterResult)
+                }.`,
+              );
+            }
+
+            if (iterResult.done) {
+              return { done: true };
+            }
+
+            const iterValue = converter(
+              iterResult.value,
+              `${context} failed to iterate next value`,
+              `The value returned from the next() method`,
+              opts,
+            );
+
+            return { done: false, value: iterValue };
+          },
+          async return(reason) {
+            if (asyncIterator.return === undefined) {
+              return undefined;
+            }
+
+            // deno-lint-ignore prefer-primordials
+            const returnPromiseResult = await asyncIterator.return(reason);
+            if (type(returnPromiseResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to close iterator because the return() method did not return an object, but ${
+                  type(returnPromiseResult)
+                }.`,
+              );
+            }
+
+            return undefined;
+          },
+          [SymbolAsyncIterator]() {
+            return this;
+          },
+        };
+      },
+    };
+  };
+}
+
 function createRecordConverter(keyConverter, valueConverter) {
   return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
@@ -1188,18 +1322,17 @@ function configureProperties(obj) {
   }
 }
 
-const setlikeInner = Symbol("[[set]]");
+const setlikeInner = SymbolFor("setlike_set");
 
 // Ref: https://webidl.spec.whatwg.org/#es-setlike
-function setlike(obj, objPrototype, readonly) {
-  ObjectDefineProperties(obj, {
+function setlikeObjectWrap(objPrototype, readonly) {
+  ObjectDefineProperties(objPrototype, {
     size: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       get() {
-        assertBranded(this, objPrototype);
-        return obj[setlikeInner].size;
+        return this[setlikeInner]().size;
       },
     },
     [SymbolIterator]: {
@@ -1208,8 +1341,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: false,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return obj[setlikeInner][SymbolIterator]();
+        return this[setlikeInner]()[SymbolIterator]();
       },
     },
     entries: {
@@ -1218,8 +1350,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeEntries(obj[setlikeInner]);
+        return SetPrototypeEntries(this[setlikeInner]());
       },
     },
     keys: {
@@ -1228,8 +1359,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeKeys(obj[setlikeInner]);
+        return SetPrototypeKeys(this[setlikeInner]());
       },
     },
     values: {
@@ -1238,8 +1368,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeValues(obj[setlikeInner]);
+        return SetPrototypeValues(this[setlikeInner]());
       },
     },
     forEach: {
@@ -1248,8 +1377,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(callbackfn, thisArg) {
-        assertBranded(this, objPrototype);
-        return SetPrototypeForEach(obj[setlikeInner], callbackfn, thisArg);
+        return SetPrototypeForEach(this[setlikeInner](), callbackfn, thisArg);
       },
     },
     has: {
@@ -1258,22 +1386,20 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(value) {
-        assertBranded(this, objPrototype);
-        return SetPrototypeHas(obj[setlikeInner], value);
+        return SetPrototypeHas(this[setlikeInner](), value);
       },
     },
   });
 
   if (!readonly) {
-    ObjectDefineProperties(obj, {
+    ObjectDefineProperties(objPrototype, {
       add: {
         __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
         value(value) {
-          assertBranded(this, objPrototype);
-          return SetPrototypeAdd(obj[setlikeInner], value);
+          return SetPrototypeAdd(this[setlikeInner](), value);
         },
       },
       delete: {
@@ -1282,8 +1408,7 @@ function setlike(obj, objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value(value) {
-          assertBranded(this, objPrototype);
-          return SetPrototypeDelete(obj[setlikeInner], value);
+          return SetPrototypeDelete(this[setlikeInner](), value);
         },
       },
       clear: {
@@ -1292,8 +1417,7 @@ function setlike(obj, objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value() {
-          assertBranded(this, objPrototype);
-          return SetPrototypeClear(obj[setlikeInner]);
+          return SetPrototypeClear(this[setlikeInner]());
         },
       },
     });
@@ -1302,9 +1426,11 @@ function setlike(obj, objPrototype, readonly) {
 
 export {
   assertBranded,
+  AsyncIterable,
   brand,
   configureInterface,
   converters,
+  createAsyncIterableConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1315,10 +1441,11 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
+  isAsyncIterable,
   makeException,
   mixinPairIterable,
   requiredArguments,
-  setlike,
   setlikeInner,
+  setlikeObjectWrap,
   type,
 };

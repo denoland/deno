@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/has-pre-release",
+  "version": "1.0.0",
+  "publishConfig": {
+    "tag": "latest"
+  }
+}

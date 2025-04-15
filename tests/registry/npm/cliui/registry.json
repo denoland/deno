@@ -83,7 +83,6 @@
     "email": "ben@npmjs.com"
   },
   "license": "ISC",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/yargs/cliui#readme",
   "repository": {
     "type": "git",

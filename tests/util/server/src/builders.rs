@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -28,6 +28,7 @@ use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
+use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
@@ -324,6 +325,15 @@ impl TestContext {
     builder
   }
 
+  pub fn run_deno(&self, args: impl AsRef<str>) {
+    self
+      .new_command()
+      .name("deno")
+      .args(args)
+      .run()
+      .skip_output_check();
+  }
+
   pub fn run_npm(&self, args: impl AsRef<str>) {
     self
       .new_command()
@@ -349,16 +359,22 @@ impl TestContext {
 }
 
 fn sync_fetch(url: url::Url) -> bytes::Bytes {
-  let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_io()
-    .enable_time()
-    .build()
-    .unwrap();
-  runtime.block_on(async move {
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await.unwrap();
-    assert!(response.status().is_success());
-    response.bytes().await.unwrap()
+  std::thread::scope(move |s| {
+    s.spawn(move || {
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
+      runtime.block_on(async move {
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await.unwrap();
+        assert!(response.status().is_success());
+        response.bytes().await.unwrap()
+      })
+    })
+    .join()
+    .unwrap()
   })
 }
 
@@ -842,6 +858,12 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("JSR_URL") {
       envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
+    }
+    if !envs.contains_key("NODEJS_ORG_MIRROR") {
+      envs.insert(
+        "NODEJS_ORG_MIRROR".to_string(),
+        nodejs_org_mirror_unset_url(),
+      );
     }
     for key in &self.envs_remove {
       envs.remove(key);

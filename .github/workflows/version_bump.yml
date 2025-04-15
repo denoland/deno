@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     name: version bump
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     env:
@@ -41,7 +41,7 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
 
       - name: Run version bump
         run: |

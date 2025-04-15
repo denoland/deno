@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -147,13 +147,13 @@ export function open(
 
 export function openPromise(
   path: string | Buffer | URL,
-  flags?: openFlags = "r",
-  mode? = 0o666,
+  flags: openFlags = "r",
+  mode = 0o666,
 ): Promise<FileHandle> {
   return new Promise((resolve, reject) => {
     open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
-      else resolve(new FileHandle(fd));
+      else resolve(new FileHandle(fd, path));
     });
   });
 }

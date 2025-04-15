@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::net::IpAddr;
+use std::str::FromStr;
 
 use deno_core::url::Url;
 use deno_runtime::deno_permissions::NetDescriptor;
-use std::net::IpAddr;
-use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);
@@ -31,6 +32,7 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
   if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()
+    || NetDescriptor::parse(host_and_port).is_ok()
   {
     Ok(host_and_port.to_string())
   } else {
@@ -51,7 +53,7 @@ pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
       }
     } else {
       NetDescriptor::parse(&host_and_port).map_err(|e| {
-        clap::Error::raw(clap::error::ErrorKind::InvalidValue, format!("{e:?}"))
+        clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
       })?;
       out.push(host_and_port)
     }

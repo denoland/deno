@@ -1,0 +1,6 @@
+[Module: null prototype] {
+  func: [Function: 0],
+  global: Global [WebAssembly.Global] {},
+  memory: Memory [WebAssembly.Memory] {},
+  table: Table [WebAssembly.Table] {}
+}

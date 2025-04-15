@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-import --no-lock no_lock_flag/main.ts",
+  "output": "no_lock_flag/main.out",
+  "exitCode": 0
+}

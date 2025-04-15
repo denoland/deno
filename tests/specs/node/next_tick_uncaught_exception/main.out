@@ -1,0 +1,2 @@
+caught Error: thrown from next tick
+    at file:///[WILDCARD]/specs/node/next_tick_uncaught_exception/main.ts:4:15

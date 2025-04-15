@@ -95,7 +95,6 @@
     "type": "git",
     "url": "git+https://github.com/yargs/yargs.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://yargs.js.org/",
   "bugs": {
     "url": "https://github.com/yargs/yargs/issues"

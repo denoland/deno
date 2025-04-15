@@ -1,4 +1,4 @@
 {
-  "args": "run --allow-read --quiet cjs-invalid-name-exports/main.ts",
-  "output": "cjs-invalid-name-exports/main.out"
+  "args": "run --allow-read --quiet main.ts",
+  "output": "main.out"
 }

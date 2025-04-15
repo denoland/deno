@@ -1,0 +1,5 @@
+{
+  "args": "run --unstable-detect-cjs --quiet --allow-read=. main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

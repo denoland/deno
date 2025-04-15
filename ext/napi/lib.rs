@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -22,47 +22,50 @@ pub mod util;
 pub mod uv;
 
 use core::ptr::NonNull;
-use deno_core::op2;
-use deno_core::parking_lot::RwLock;
-use deno_core::url::Url;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::thread_local;
-
-#[derive(Debug, thiserror::Error)]
-pub enum NApiError {
-  #[error("Invalid path")]
-  InvalidPath,
-  #[error(transparent)]
-  LibLoading(#[from] libloading::Error),
-  #[error("Unable to find register Node-API module at {}", .0.display())]
-  ModuleNotFound(PathBuf),
-  #[error(transparent)]
-  Permission(deno_core::error::AnyError),
-}
-
-#[cfg(unix)]
-use libloading::os::unix::*;
-
-#[cfg(windows)]
-use libloading::os::windows::*;
-
-// Expose common stuff for ease of use.
-// `use deno_napi::*`
-pub use deno_core::v8;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::PathBuf;
 pub use std::ptr;
+use std::rc::Rc;
+use std::thread_local;
+
+use deno_core::op2;
+use deno_core::parking_lot::RwLock;
+use deno_core::url::Url;
+// Expose common stuff for ease of use.
+// `use deno_napi::*`
+pub use deno_core::v8;
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
+use deno_permissions::PermissionCheckError;
+#[cfg(unix)]
+use libloading::os::unix::*;
+#[cfg(windows)]
+use libloading::os::windows::*;
 pub use value::napi_value;
 
 pub mod function;
 mod value;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum NApiError {
+  #[class(type)]
+  #[error("Invalid path")]
+  InvalidPath,
+  #[class(type)]
+  #[error(transparent)]
+  LibLoading(#[from] libloading::Error),
+  #[class(type)]
+  #[error("Unable to find register Node-API module at {}", .0.display())]
+  ModuleNotFound(PathBuf),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+}
 
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;
@@ -313,7 +316,7 @@ impl Drop for NapiState {
         .env_cleanup_hooks
         .borrow()
         .iter()
-        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+        .any(|pair| std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
       {
         continue;
       }
@@ -323,10 +326,9 @@ impl Drop for NapiState {
       }
 
       {
-        self
-          .env_cleanup_hooks
-          .borrow_mut()
-          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+        self.env_cleanup_hooks.borrow_mut().retain(|pair| {
+          !(std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
+        });
       }
     }
   }
@@ -470,7 +472,10 @@ impl Env {
     data: *mut c_void,
   ) {
     let mut hooks = self.cleanup_hooks.borrow_mut();
-    if hooks.iter().any(|pair| pair.0 == hook && pair.1 == data) {
+    if hooks
+      .iter()
+      .any(|pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
+    {
       panic!("Cannot register cleanup hook with same data twice");
     }
     hooks.push((hook, data));
@@ -484,7 +489,7 @@ impl Env {
     let mut hooks = self.cleanup_hooks.borrow_mut();
     match hooks
       .iter()
-      .rposition(|&pair| pair.0 == hook && pair.1 == data)
+      .rposition(|&pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
     {
       Some(index) => {
         hooks.remove(index);
@@ -508,20 +513,14 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError>;
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, deno_core::error::AnyError> {
+  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -535,7 +534,7 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,
@@ -553,7 +552,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path).map_err(NApiError::Permission)?;
+    let path = permissions.check(&path)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -662,7 +661,11 @@ pub fn print_linker_flags(name: &str) {
     symbols_path,
   );
 
-  #[cfg(target_os = "linux")]
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
   println!(
     "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
     symbols_path,

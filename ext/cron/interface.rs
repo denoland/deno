@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use async_trait::async_trait;
 
 use crate::CronError;
-use async_trait::async_trait;
 
 pub trait CronHandler {
   type EH: CronHandle + 'static;
