@@ -3,7 +3,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import { finished, pipeline } from "node:stream/promises";
-import { getDefaultHighWaterMark, Stream } from "node:stream";
+import { getDefaultHighWaterMark, Stream, Writable } from "node:stream";
+import { TextEncoderStream } from "node:stream/web";
 import { createReadStream, createWriteStream } from "node:fs";
 import { EventEmitter } from "node:events";
 
@@ -51,4 +52,30 @@ Deno.test("finished on web streams", async () => {
     assertEquals(chunk, "asd");
   }
   await promise;
+});
+
+// https://github.com/denoland/deno/issues/28905
+Deno.test("Writable toWeb", async () => {
+  const nodeWritable = new Writable({
+    write(chunk, encoding, callback) {
+      console.log("Received chunk:", chunk.toString());
+
+      // Simulate the issue by delaying the callback slightly
+      setTimeout(() => {
+        callback();
+      }, 10);
+    },
+  });
+
+  const webWritable = Writable.toWeb(nodeWritable);
+
+  const source = ["line1", "line2", "line3"];
+  const readable = ReadableStream.from(source);
+
+  await readable
+    // @ts-ignore wrong types
+    .pipeThrough(new TextEncoderStream())
+    .pipeTo(webWritable);
+
+  await finished(nodeWritable);
 });
