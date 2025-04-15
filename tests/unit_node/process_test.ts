@@ -341,6 +341,8 @@ Deno.test({
     assert(Array.isArray(process.argv.slice(2)));
     assertEquals(process.argv.indexOf(Deno.execPath()), 0);
     assertEquals(process.argv.indexOf(path.fromFileUrl(Deno.mainModule)), 1);
+    // argv[0] should be the executable path (same as process.execPath), this is Node.js behavior
+    assertEquals(process.argv[0], Deno.execPath());
   },
 });
 
@@ -374,6 +376,32 @@ Deno.test({
       process.argv0.match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]",
     );
+  },
+});
+
+// Skip on Windows as exec isn't available
+Deno.test({
+  name: "process.argv0 with exec -a",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const shell = "/bin/sh";
+    const cmd =
+      `exec -a customArgv0 "${Deno.execPath()}" eval "import process from 'node:process'; console.log(JSON.stringify({argv0: process.argv0, argv: process.argv[0]}))"`;
+    const args = ["-c", cmd];
+
+    const command = new Deno.Command(shell, {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+    });
+
+    const { stdout } = await command.output();
+    const { argv0, argv } = JSON.parse(new TextDecoder().decode(stdout).trim());
+
+    // argv0 should preserve the custom name
+    assertEquals(argv0, "customArgv0");
+    // argv[0] should still be the executable path
+    assertEquals(argv, Deno.execPath());
   },
 });
 

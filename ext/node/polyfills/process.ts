@@ -958,7 +958,9 @@ function synchronizeListeners() {
 }
 
 // Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
+// process.argv[0] should return the executable path (same as process.execPath)
+// to match Node.js behavior, not the custom argument (argv0)
+Object.defineProperty(argv, "0", { get: () => String(execPath) });
 Object.defineProperty(argv, "1", {
   get: () => {
     if (Deno.mainModule?.startsWith("file:")) {
