@@ -950,6 +950,7 @@ pub async fn run(
     inspect_wait: false,
     strace_ops: None,
     is_inspecting: false,
+    is_standalone: true,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)

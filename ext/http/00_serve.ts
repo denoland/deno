@@ -17,6 +17,7 @@ import {
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -773,6 +774,23 @@ function serve(arg1, arg2) {
   }
   if (options === undefined) {
     options = { __proto__: null };
+  }
+
+  const { 0: overrideUnixPath, 1: overrideHost, 2: overridePort } =
+    op_http_serve_address_override();
+  if (overrideUnixPath) {
+    options.path = overrideUnixPath;
+    delete options.port;
+    delete options.host;
+  } else {
+    if (overrideHost) {
+      options.hostname = overrideHost;
+      delete options.path;
+    }
+    if (overridePort) {
+      options.port = overridePort;
+      delete options.path;
+    }
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);
