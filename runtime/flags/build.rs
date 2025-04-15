@@ -37,8 +37,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
   );
 
   let mut js_list = String::from(
-    "
-// Copyright 2018-2025 the Deno authors. MIT license.
+    "// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Don't modify this file manually.
 //
@@ -64,7 +63,7 @@ export const unstableIds = {
   }
 
   rust_list += "];";
-  js_list += "};";
+  js_list += "};\n";
 
   let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
