@@ -29,7 +29,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
     help_text: "Enable unstable bare node builtins feature",
     show_in_help: true,
     kind: UnstableFlagKind::Cli,
-    env_var: None,
+    env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
   },
   UnstableFlagDefinition {
     id: 1,
@@ -110,7 +110,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
     help_text: "Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.",
     show_in_help: true,
     kind: UnstableFlagKind::Cli,
-    env_var: None,
+    env_var: Some("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS"),
   },
   UnstableFlagDefinition {
     id: 10,
@@ -119,7 +119,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
     help_text: "Enable unstable lockfile v5",
     show_in_help: true,
     kind: UnstableFlagKind::Cli,
-    env_var: None,
+    env_var: Some("DENO_UNSTABLE_LOCKFILE_V5"),
   },
   UnstableFlagDefinition {
     id: 11,
@@ -155,7 +155,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
     help_text: "Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed",
     show_in_help: true,
     kind: UnstableFlagKind::Cli,
-    env_var: None,
+    env_var: Some("DENO_UNSTABLE_NPM_LAZY_CACHING"),
   },
   UnstableFlagDefinition {
     id: 15,
@@ -182,7 +182,7 @@ pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
     help_text: "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
     show_in_help: true,
     kind: UnstableFlagKind::Cli,
-    env_var: None,
+    env_var: Some("DENO_UNSTABLE_SLOPPY_IMPORTS"),
   },
   UnstableFlagDefinition {
     id: 18,

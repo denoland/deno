@@ -16,7 +16,7 @@ struct JsonEntry {
   text: String,
   show_in_help: bool,
   #[serde(default)]
-  env_var: Option<String>,
+  env: Option<String>,
   kind: JsonEntryKind,
 }
 
@@ -93,7 +93,7 @@ export const unstableIds = {
         JsonEntryKind::Cli => "UnstableFlagKind::Cli",
         JsonEntryKind::Runtime => "UnstableFlagKind::Runtime",
       },
-      if let Some(var_name) = &entry.env_var {
+      if let Some(var_name) = &entry.env {
         format!(r#"Some("{}")"#, var_name)
       } else {
         "None".to_string()
