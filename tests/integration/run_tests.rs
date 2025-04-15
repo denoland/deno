@@ -327,7 +327,7 @@ fn permissions_prompt_allow_all() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -1658,7 +1658,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1695,7 +1695,7 @@ mod permissions {
   }
 }
 
-#[test]
+#[flaky_test::flaky_test]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()
