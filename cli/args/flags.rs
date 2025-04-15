@@ -213,6 +213,7 @@ pub struct EvalFlags {
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
+  pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
   pub indent_width: Option<NonZeroU8>,
@@ -305,6 +306,7 @@ pub struct LintFlags {
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
+  pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
@@ -1192,6 +1194,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
+  <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
                          Possible values: "system", "mozilla".
@@ -1837,12 +1840,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .help("Cache bench modules, but don't run benchmarks")
           .action(ArgAction::SetTrue),
       )
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no bench files were found")
-          .action(ArgAction::SetTrue)
-      )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -2394,6 +2392,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -2962,6 +2961,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -3210,13 +3210,7 @@ or <c>**/__tests__/**</>:
           .value_name("N")
           .value_parser(value_parser!(NonZeroUsize))
           .help_heading(TEST_HEADING))
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no test files were found")
-          .action(ArgAction::SetTrue)
-          .help_heading(TEST_HEADING),
-      )
+      .arg(permit_no_files_arg().help_heading(TEST_HEADING))
       .arg(
         Arg::new("filter")
           .allow_hyphen_values(true)
@@ -4203,6 +4197,13 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn permit_no_files_arg() -> Arg {
+  Arg::new("permit-no-files")
+    .long("permit-no-files")
+    .help("Don't return an error code if no files were found")
+    .action(ArgAction::SetTrue)
+}
+
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .long("watch-exclude")
@@ -4632,8 +4633,6 @@ fn bench_parse(
   flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
-  let permit_no_files = matches.get_flag("permit-no-files");
-
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f
       .flat_map(flat_escape_split_commas)
@@ -4662,7 +4661,7 @@ fn bench_parse(
     filter,
     json,
     no_run,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     watch: watch_arg_parse(matches)?,
   });
 
@@ -4947,6 +4946,7 @@ fn fmt_parse(
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
     files: FileFlags { include, ignore },
+    permit_no_files: permit_no_files_parse(matches),
     use_tabs,
     line_width,
     indent_width,
@@ -5241,6 +5241,7 @@ fn lint_parse(
     maybe_rules_tags,
     maybe_rules_include,
     maybe_rules_exclude,
+    permit_no_files: permit_no_files_parse(matches),
     json,
     compact,
     watch: watch_arg_parse(matches)?,
@@ -5472,8 +5473,6 @@ fn test_parse(
   let no_run = matches.get_flag("no-run");
   let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
-  #[allow(clippy::print_stderr)]
-  let permit_no_files = matches.get_flag("permit-no-files");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -5539,7 +5538,7 @@ fn test_parse(
     files: FileFlags { include, ignore },
     filter,
     shuffle,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     concurrent_jobs,
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches)?,
@@ -6039,6 +6038,10 @@ fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
       Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
     }
   }
+}
+
+fn permit_no_files_parse(matches: &mut ArgMatches) -> bool {
+  matches.get_flag("permit-no-files")
 }
 
 fn watch_arg_parse(
@@ -6941,6 +6944,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6955,7 +6959,8 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "fmt", "--check"]);
+    let r =
+      flags_from_vec(svec!["deno", "fmt", "--permit-no-files", "--check"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6965,6 +6970,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: true,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6989,6 +6995,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7013,6 +7020,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7047,6 +7055,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7082,6 +7091,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7106,6 +7116,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7138,6 +7149,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7175,6 +7187,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(true),
           line_width: Some(NonZeroU32::new(60).unwrap()),
           indent_width: Some(NonZeroU8::new(4).unwrap()),
@@ -7206,6 +7219,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(false),
           line_width: None,
           indent_width: None,
@@ -7232,6 +7246,7 @@ mod tests {
             include: vec!["./**".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7264,6 +7279,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7275,6 +7291,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--permit-no-files",
       "--allow-import",
       "--watch",
       "script_1.ts",
@@ -7293,6 +7310,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: true,
           json: false,
           compact: false,
           watch: Some(Default::default()),
@@ -7326,6 +7344,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Some(WatchFlags {
@@ -7357,6 +7376,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7379,6 +7399,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7406,6 +7427,7 @@ mod tests {
           maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7434,6 +7456,7 @@ mod tests {
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7456,6 +7479,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7485,6 +7509,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7515,6 +7540,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: true,
           watch: Default::default(),

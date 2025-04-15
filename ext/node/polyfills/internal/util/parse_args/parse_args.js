@@ -332,8 +332,15 @@ export const parseArgs = (config = { __proto__: null }) => {
   const allowPositionals = objectGetOwn(config, "allowPositionals") ?? !strict;
   const returnTokens = objectGetOwn(config, "tokens") ?? false;
   const options = objectGetOwn(config, "options") ?? { __proto__: null };
+  const allowNegative = objectGetOwn(config, "allowNegative") ?? false;
   // Bundle these up for passing to strict-mode checks.
-  const parseConfig = { args, strict, options, allowPositionals };
+  const parseConfig = {
+    args,
+    strict,
+    options,
+    allowPositionals,
+    allowNegative,
+  };
 
   // Validate input configuration.
   validateArray(args, "args");
@@ -400,11 +407,39 @@ export const parseArgs = (config = { __proto__: null }) => {
   }
   ArrayPrototypeForEach(tokens, (token) => {
     if (token.kind === "option") {
-      if (strict) {
-        checkOptionUsage(parseConfig, token);
-        checkOptionLikeValue(token);
+      let name = token.name;
+      let value = token.value;
+
+      if (allowNegative && StringPrototypeStartsWith(token.rawName, "--no-")) {
+        name = StringPrototypeSlice(token.rawName, 5);
+        if (!ObjectHasOwn(options, name)) {
+          if (strict) {
+            throw new ERR_PARSE_ARGS_UNKNOWN_OPTION(
+              token.rawName,
+              allowPositionals,
+            );
+          }
+          value = false;
+        } else if (optionsGetOwn(options, name, "type") !== "boolean") {
+          throw new ERR_PARSE_ARGS_UNKNOWN_OPTION(
+            token.rawName,
+            allowPositionals,
+          );
+        } else {
+          value = false;
+        }
       }
-      storeOption(token.name, token.value, options, result.values);
+
+      const checkToken = {
+        ...token,
+        name: name, // Use the processed name (without --no- prefix if applicable)
+      };
+
+      if (strict) {
+        checkOptionUsage(parseConfig, checkToken);
+        checkOptionLikeValue(checkToken);
+      }
+      storeOption(name, value, options, result.values);
     } else if (token.kind === "positional") {
       if (!allowPositionals) {
         throw new ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL(token.value);

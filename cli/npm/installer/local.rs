@@ -414,12 +414,17 @@ async fn sync_resolution_with_fs(
                 Ok::<_, SyncResolutionWithFsError>(())
               }
             });
-            let extra_fut = if package.has_bin
+            let extra_fut = if (package.has_bin
               || package.has_scripts
-              || package.is_deprecated && package.extra.is_none()
+              || package.is_deprecated)
+              && package.extra.is_none()
             {
               extra_info_provider
-                .get_package_extra_info(&package.id.nv, package.is_deprecated)
+                .get_package_extra_info(
+                  &package.id.nv,
+                  &package_path,
+                  super::common::ExpectedExtraInfo::from_package(package),
+                )
                 .boxed_local()
             } else {
               std::future::ready(Ok(package.extra.clone().unwrap_or_default()))
@@ -465,7 +470,11 @@ async fn sync_resolution_with_fs(
         cache_futures.push(
           async move {
             let extra = extra_info_provider
-              .get_package_extra_info(&package.id.nv, package.is_deprecated)
+              .get_package_extra_info(
+                &package.id.nv,
+                &package_path,
+                super::common::ExpectedExtraInfo::from_package(package),
+              )
               .await
               .map_err(JsErrorBox::from_err)?;
 

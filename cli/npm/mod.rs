@@ -19,6 +19,8 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::DefaultTarballUrlProvider;
+use deno_npm::NpmPackageId;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -38,6 +40,7 @@ pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolveSnapshotError;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
+use crate::npm::managed::DefaultTarballUrl;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -73,7 +76,21 @@ impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
         })?;
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
           deno_lockfile::Lockfile5NpmInfo {
-            tarball_url: version_info.dist.as_ref().map(|d| d.tarball.clone()),
+            tarball_url: version_info.dist.as_ref().and_then(|d| {
+              if d.tarball
+                == DefaultTarballUrl.default_tarball_url(&NpmPackageId {
+                  nv: v.clone(),
+                  // TODO(nathanwhit): this function takes an `NpmPackageId`
+                  // but it should take a `PackageNv`. For now just
+                  // use default here.
+                  peer_dependencies: Default::default(),
+                })
+              {
+                None
+              } else {
+                Some(d.tarball.clone())
+              }
+            }),
             optional_dependencies: version_info
               .optional_dependencies
               .iter()
