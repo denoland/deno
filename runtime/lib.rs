@@ -62,7 +62,7 @@ pub struct UnstableGranularFlag {
   pub id: i32,
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
+// NOTE(bartlomieju): keep IDs in sync with `runtime/js/90_deno_ns.js` (search for `unstableFeatures`)
 pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
@@ -146,16 +146,22 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     id: 13,
   },
   UnstableGranularFlag {
+    name: "vsock",
+    help_text: "Enable unstable VSOCK APIs",
+    show_in_help: false,
+    id: 14,
+  },
+  UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable `WebGPU` APIs",
     show_in_help: true,
-    id: 14,
+    id: 15,
   },
   UnstableGranularFlag {
     name: ops::worker_host::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 15,
+    id: 16,
   },
 ];
 

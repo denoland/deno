@@ -88,7 +88,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
-struct LspScopeResolver {
+pub struct LspScopedResolver {
   resolver: Arc<CliResolver>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
@@ -108,7 +108,7 @@ struct LspScopeResolver {
   config_data: Option<Arc<ConfigData>>,
 }
 
-impl Default for LspScopeResolver {
+impl Default for LspScopedResolver {
   fn default() -> Self {
     let factory = ResolverFactory::new(None);
     Self {
@@ -133,7 +133,7 @@ impl Default for LspScopeResolver {
   }
 }
 
-impl LspScopeResolver {
+impl LspScopedResolver {
   async fn from_config_data(
     config_data: Option<&Arc<ConfigData>>,
     cache: &LspCache,
@@ -294,12 +294,170 @@ impl LspScopeResolver {
       config_data: self.config_data.clone(),
     })
   }
+
+  pub fn as_in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
+    &self.in_npm_pkg_checker
+  }
+
+  pub fn as_cli_resolver(&self) -> &CliResolver {
+    self.resolver.as_ref()
+  }
+
+  pub fn as_graph_npm_resolver(&self) -> &Arc<CliNpmGraphResolver> {
+    &self.npm_graph_resolver
+  }
+
+  pub fn as_is_cjs_resolver(&self) -> &CliIsCjsResolver {
+    self.is_cjs_resolver.as_ref()
+  }
+
+  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
+    self.config_data.as_ref()
+  }
+
+  pub fn as_maybe_managed_npm_resolver(
+    &self,
+  ) -> Option<&CliManagedNpmResolver> {
+    self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+  }
+
+  pub fn as_pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {
+    &self.pkg_json_resolver
+  }
+
+  pub fn graph_imports_by_referrer(
+    &self,
+  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
+    self
+      .graph_imports
+      .iter()
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
+      })
+      .collect()
+  }
+
+  pub fn jsr_to_resource_url(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Option<ModuleSpecifier> {
+    self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
+  }
+
+  pub fn jsr_lookup_export_for_path(
+    &self,
+    nv: &PackageNv,
+    path: &str,
+  ) -> Option<String> {
+    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
+  }
+
+  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
+  }
+
+  pub fn npm_to_file_url(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    let npm_pkg_req_resolver = self.npm_pkg_req_resolver.as_ref()?;
+    Some(into_specifier_and_media_type(Some(
+      npm_pkg_req_resolver
+        .resolve_req_reference(
+          req_ref,
+          referrer,
+          resolution_mode,
+          NodeResolutionKind::Types,
+        )
+        .ok()?
+        .into_url()
+        .ok()?,
+    )))
+  }
+
+  pub fn file_url_to_package_json_dep(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self
+      .package_json_dep_resolutions
+      .package_ref_from_resolution(specifier)
+      .or_else(|| {
+        self
+          .node_resolver
+          .as_ref()?
+          .lookup_package_specifier_for_resolution(specifier)
+      })
+  }
+
+  pub fn deno_types_to_code_resolution(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let dep_info = self.dep_info.lock();
+    dep_info
+      .deno_types_to_code_resolutions
+      .get(specifier)
+      .cloned()
+  }
+
+  pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
+    fn has_node_modules_dir(specifier: &ModuleSpecifier) -> bool {
+      // consider any /node_modules/ directory as being in the node_modules
+      // folder for the LSP because it's pretty complicated to deal with multiple scopes
+      specifier.scheme() == "file"
+        && specifier
+          .path()
+          .to_ascii_lowercase()
+          .contains("/node_modules/")
+    }
+
+    if let Some(node_resolver) = &self.node_resolver {
+      if node_resolver.in_npm_package(specifier) {
+        return true;
+      }
+    }
+
+    has_node_modules_dir(specifier)
+  }
+
+  pub fn resolve_redirects(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return Some(specifier.clone());
+    };
+    redirect_resolver.resolve(specifier)
+  }
+
+  pub fn redirect_chain_headers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return vec![];
+    };
+    redirect_resolver
+      .chain(specifier)
+      .into_iter()
+      .map(|(s, e)| (s, e.headers.clone()))
+      .collect()
+  }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct LspResolver {
-  unscoped: Arc<LspScopeResolver>,
-  by_scope: BTreeMap<Arc<Url>, Arc<LspScopeResolver>>,
+  unscoped: Arc<LspScopedResolver>,
+  by_scope: BTreeMap<Arc<Url>, Arc<LspScopedResolver>>,
 }
 
 impl LspResolver {
@@ -313,7 +471,7 @@ impl LspResolver {
       by_scope.insert(
         scope.clone(),
         Arc::new(
-          LspScopeResolver::from_config_data(
+          LspScopedResolver::from_config_data(
             Some(config_data),
             cache,
             http_client_provider,
@@ -324,7 +482,7 @@ impl LspResolver {
     }
     Self {
       unscoped: Arc::new(
-        LspScopeResolver::from_config_data(None, cache, http_client_provider)
+        LspScopedResolver::from_config_data(None, cache, http_client_provider)
           .await,
       ),
       by_scope,
@@ -388,220 +546,16 @@ impl LspResolver {
     }
   }
 
-  pub fn as_cli_resolver(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> &CliResolver {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.resolver.as_ref()
-  }
-
-  pub fn as_graph_npm_resolver(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> &Arc<CliNpmGraphResolver> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    &resolver.npm_graph_resolver
-  }
-
-  pub fn as_is_cjs_resolver(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> &CliIsCjsResolver {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.is_cjs_resolver.as_ref()
-  }
-
-  pub fn as_config_data(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<&Arc<ConfigData>> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.config_data.as_ref()
-  }
-
-  pub fn in_npm_pkg_checker(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> &DenoInNpmPackageChecker {
-    let resolver = self.get_scope_resolver(file_referrer);
-    &resolver.in_npm_pkg_checker
-  }
-
-  pub fn maybe_managed_npm_resolver(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<&CliManagedNpmResolver> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.npm_resolver.as_ref().and_then(|r| r.as_managed())
-  }
-
-  pub fn pkg_json_resolver(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> &Arc<CliPackageJsonResolver> {
-    let resolver = self.get_scope_resolver(Some(referrer));
-    &resolver.pkg_json_resolver
-  }
-
-  pub fn graph_imports_by_referrer(
-    &self,
-    file_referrer: &ModuleSpecifier,
-  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
-    let resolver = self.get_scope_resolver(Some(file_referrer));
-    resolver
-      .graph_imports
-      .iter()
-      .map(|(s, i)| {
-        (
-          s,
-          i.dependencies
-            .values()
-            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
-            .collect(),
-        )
-      })
-      .collect()
-  }
-
-  pub fn jsr_to_resource_url(
-    &self,
-    req_ref: &JsrPackageReqReference,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<ModuleSpecifier> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
-  }
-
-  pub fn jsr_lookup_export_for_path(
-    &self,
-    nv: &PackageNv,
-    path: &str,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<String> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver
-      .jsr_resolver
-      .as_ref()?
-      .lookup_export_for_path(nv, path)
-  }
-
-  pub fn jsr_lookup_req_for_nv(
-    &self,
-    nv: &PackageNv,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<PackageReq> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
-  }
-
-  pub fn npm_to_file_url(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<(ModuleSpecifier, MediaType)> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    let npm_pkg_req_resolver = resolver.npm_pkg_req_resolver.as_ref()?;
-    Some(into_specifier_and_media_type(Some(
-      npm_pkg_req_resolver
-        .resolve_req_reference(
-          req_ref,
-          referrer,
-          resolution_mode,
-          NodeResolutionKind::Types,
-        )
-        .ok()?
-        .into_url()
-        .ok()?,
-    )))
-  }
-
-  pub fn file_url_to_package_json_dep(
-    &self,
-    specifier: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<String> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    resolver
-      .package_json_dep_resolutions
-      .package_ref_from_resolution(specifier)
-      .or_else(|| {
-        resolver
-          .node_resolver
-          .as_ref()?
-          .lookup_package_specifier_for_resolution(specifier)
-      })
-  }
-
-  pub fn deno_types_to_code_resolution(
-    &self,
-    specifier: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<ModuleSpecifier> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    let dep_info = resolver.dep_info.lock().clone();
-    dep_info
-      .deno_types_to_code_resolutions
-      .get(specifier)
-      .cloned()
-  }
-
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
-    fn has_node_modules_dir(specifier: &ModuleSpecifier) -> bool {
-      // consider any /node_modules/ directory as being in the node_modules
-      // folder for the LSP because it's pretty complicated to deal with multiple scopes
-      specifier.scheme() == "file"
-        && specifier
-          .path()
-          .to_ascii_lowercase()
-          .contains("/node_modules/")
-    }
-
-    if let Some(node_resolver) =
-      &self.get_scope_resolver(Some(specifier)).node_resolver
-    {
-      if node_resolver.in_npm_package(specifier) {
-        return true;
-      }
-    }
-
-    has_node_modules_dir(specifier)
+    self
+      .get_scoped_resolver(Some(specifier))
+      .in_node_modules(specifier)
   }
 
-  pub fn resolve_redirects(
-    &self,
-    specifier: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<ModuleSpecifier> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    let Some(redirect_resolver) = resolver.redirect_resolver.as_ref() else {
-      return Some(specifier.clone());
-    };
-    redirect_resolver.resolve(specifier)
-  }
-
-  pub fn redirect_chain_headers(
-    &self,
-    specifier: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
-    let resolver = self.get_scope_resolver(file_referrer);
-    let Some(redirect_resolver) = resolver.redirect_resolver.as_ref() else {
-      return vec![];
-    };
-    redirect_resolver
-      .chain(specifier)
-      .into_iter()
-      .map(|(s, e)| (s, e.headers.clone()))
-      .collect()
-  }
-
-  fn get_scope_resolver(
+  pub fn get_scoped_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> &LspScopeResolver {
+  ) -> &LspScopedResolver {
     let Some(file_referrer) = file_referrer else {
       return self.unscoped.as_ref();
     };
@@ -855,7 +809,7 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
       ));
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
-        registry_info_provider,
+        registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
         patch_packages,
@@ -863,6 +817,7 @@ impl<'a> ResolverFactory<'a> {
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
+        Arc::new(registry_info_provider.as_npm_registry_api()),
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,

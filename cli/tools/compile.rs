@@ -44,9 +44,8 @@ pub async fn compile(
     cli_options.initial_cwd(),
   )
   .await?;
-  let (module_roots, include_files) = get_module_roots_and_include_files(
+  let (module_roots, include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
     &compile_flags,
     cli_options.initial_cwd(),
   )?;
@@ -104,7 +103,11 @@ pub async fn compile(
         .to_string_lossy(),
       graph: &graph,
       entrypoint,
-      include_files: &include_files,
+      include_paths: &include_paths,
+      exclude_paths: vec![
+        cli_options.initial_cwd().join(&output_path),
+        cli_options.initial_cwd().join(&temp_path),
+      ],
       compile_flags: &compile_flags,
     })
     .await
@@ -168,9 +171,8 @@ pub async fn compile_eszip(
 
   let maybe_import_map_specifier =
     cli_options.resolve_specified_import_map_specifier()?;
-  let (module_roots, _include_files) = get_module_roots_and_include_files(
+  let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
     &compile_flags,
     cli_options.initial_cwd(),
   )?;
@@ -313,9 +315,8 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-fn get_module_roots_and_include_files(
+fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
-  output_url: &ModuleSpecifier,
   compile_flags: &CompileFlags,
   initial_cwd: &Path,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
@@ -378,27 +379,24 @@ fn get_module_roots_and_include_files(
 
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
-  let mut include_files = Vec::new();
+  let mut include_paths = Vec::new();
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
       module_roots.push(url.clone());
-      if url.scheme() == "file" {
-        include_files.push(url);
-      }
     } else {
       analyze_path(&url, &mut searched_paths, |file_url| {
-        if file_url != *output_url {
-          include_files.push(file_url.clone());
-          if is_module_graph_module(&file_url) {
-            module_roots.push(file_url);
-          }
+        if is_module_graph_module(&file_url) {
+          module_roots.push(file_url);
         }
       })?;
     }
+    if url.scheme() == "file" {
+      include_paths.push(url);
+    }
   }
-  Ok((module_roots, include_files))
+  Ok((module_roots, include_paths))
 }
 
 async fn resolve_compile_executable_output_path(
