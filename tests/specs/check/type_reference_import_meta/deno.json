@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/augments-global": "npm:@denotest/augments-global@1"
+  },
+  "compilerOptions": { "types": ["./types.d.ts"] }
+}

@@ -1,5 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
+use std::path::Path;
+use std::path::PathBuf;
+use std::string::ToString;
+use std::sync::Arc;
+
+use capacity_builder::StringBuilder;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -14,34 +28,22 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fmt;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::net::IpAddr;
-use std::net::Ipv6Addr;
-use std::path::Path;
-use std::path::PathBuf;
-use std::string::ToString;
-use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PERMISSION_EMOJI;
-
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
+use prompter::PERMISSION_EMOJI;
 
 #[derive(Debug, thiserror::Error)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
-pub struct PermissionDeniedError {
-  pub access: String,
-  pub name: &'static str,
+pub enum PermissionDeniedError {
+  #[error("Requires {access}, {}", format_permission_error(.name))]
+  Retryable { access: String, name: &'static str },
+  #[error("Requires {access}, which cannot be granted in this environment")]
+  Fatal { access: String },
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -143,11 +145,11 @@ impl PermissionState {
     )
   }
 
-  fn error(
+  fn retryable_error(
     name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
-    PermissionDeniedError {
+    PermissionDeniedError::Retryable {
       access: Self::fmt_access(name, info),
       name,
     }
@@ -179,13 +181,18 @@ impl PermissionState {
         (Ok(()), false, false)
       }
       PermissionState::Prompt if prompt => {
-        let msg = format!(
-          "{} access{}",
-          name,
-          info()
-            .map(|info| { format!(" to {info}") })
-            .unwrap_or_default(),
-        );
+        let msg = {
+          let info = info();
+          StringBuilder::<String>::build(|builder| {
+            builder.append(name);
+            builder.append(" access");
+            if let Some(info) = &info {
+              builder.append(" to ");
+              builder.append(info);
+            }
+          })
+          .unwrap()
+        };
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
             Self::log_perm_access(name, info);
@@ -195,10 +202,12 @@ impl PermissionState {
             Self::log_perm_access(name, info);
             (Ok(()), true, true)
           }
-          PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
+          PromptResponse::Deny => {
+            (Err(Self::retryable_error(name, info)), true, false)
+          }
         }
       }
-      _ => (Err(Self::error(name, info)), false, false),
+      _ => (Err(Self::retryable_error(name, info)), false, false),
     }
   }
 }
@@ -344,11 +353,11 @@ pub trait QueryDescriptor: Debug {
   fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
-fn format_display_name(display_name: Cow<str>) -> String {
+fn format_display_name(display_name: Cow<str>) -> Cow<str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
-    display_name.into_owned()
+    display_name
   } else {
-    format!("\"{}\"", display_name)
+    Cow::Owned(format!("\"{}\"", display_name))
   }
 }
 
@@ -424,7 +433,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       .check2(
         TQuery::flag_name(),
         api_name,
-        || desc.map(|d| format_display_name(d.display_name())),
+        || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
     if prompted {
@@ -487,12 +496,17 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     if !self.prompt {
       return PermissionState::Denied;
     }
-    let mut message = String::with_capacity(40);
-    message.push_str(&format!("{} access", TQuery::flag_name()));
-    if let Some(desc) = desc {
-      message
-        .push_str(&format!(" to {}", format_display_name(desc.display_name())));
-    }
+    let maybe_formatted_display_name =
+      desc.map(|d| format_display_name(d.display_name()));
+    let message = StringBuilder::<String>::build(|builder| {
+      builder.append(TQuery::flag_name());
+      builder.append(" access");
+      if let Some(display_name) = &maybe_formatted_display_name {
+        builder.append(" to ");
+        builder.append(display_name)
+      }
+    })
+    .unwrap();
     match permission_prompt(
       &message,
       TQuery::flag_name(),
@@ -803,9 +817,11 @@ pub struct WriteDescriptor(pub PathBuf);
 pub enum Host {
   Fqdn(FQDN),
   Ip(IpAddr),
+  Vsock(u32),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(uri)]
 pub enum HostParseError {
   #[error("invalid IPv6 address: '{0}'")]
   InvalidIpv6(String),
@@ -866,7 +882,7 @@ impl Host {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct NetDescriptor(pub Host, pub Option<u16>);
+pub struct NetDescriptor(pub Host, pub Option<u32>);
 
 impl QueryDescriptor for NetDescriptor {
   type AllowDesc = NetDescriptor;
@@ -938,18 +954,40 @@ pub enum NetDescriptorParseError {
   Ipv6MissingSquareBrackets(String),
   #[error("{0}")]
   Host(#[from] HostParseError),
+  #[error("invalid vsock: '{0}'")]
+  InvalidVsock(String),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetDescriptorFromUrlParseError {
+  #[class(type)]
   #[error("Missing host in url: '{0}'")]
   MissingHost(Url),
+  #[class(inherit)]
   #[error("{0}")]
   Host(#[from] HostParseError),
 }
 
 impl NetDescriptor {
   pub fn parse(hostname: &str) -> Result<Self, NetDescriptorParseError> {
+    #[cfg(unix)]
+    if let Some(vsock) = hostname.strip_prefix("vsock:") {
+      let mut split = vsock.split(':');
+      let Some(cid) = split.next().and_then(|c| {
+        if c == "-1" {
+          Some(u32::MAX)
+        } else {
+          c.parse().ok()
+        }
+      }) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      let Some(port) = split.next().and_then(|p| p.parse().ok()) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      return Ok(NetDescriptor(Host::Vsock(cid), Some(port)));
+    }
+
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
       return Err(NetDescriptorParseError::Url(hostname.to_string()));
     }
@@ -978,7 +1016,10 @@ impl NetDescriptor {
             hostname.to_string(),
           ));
         };
-        return Ok(NetDescriptor(Host::Ip(IpAddr::V6(ip)), port));
+        return Ok(NetDescriptor(
+          Host::Ip(IpAddr::V6(ip)),
+          port.map(Into::into),
+        ));
       } else {
         return Err(NetDescriptorParseError::InvalidHost(hostname.to_string()));
       }
@@ -1015,7 +1056,7 @@ impl NetDescriptor {
       Some(port)
     };
 
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -1024,7 +1065,14 @@ impl NetDescriptor {
     })?;
     let host = Host::parse(host)?;
     let port = url.port_or_known_default();
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
+  }
+
+  pub fn from_vsock(
+    cid: u32,
+    port: u32,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Ok(NetDescriptor(Host::Vsock(cid), Some(port)))
   }
 }
 
@@ -1034,6 +1082,7 @@ impl fmt::Display for NetDescriptor {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
+      Host::Vsock(cid) => write!(f, "vsock:{cid}"),
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -1310,10 +1359,12 @@ pub enum RunQueryDescriptor {
   Name(String),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PathResolveError {
+  #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
   CwdResolve(#[source] std::io::Error),
+  #[class(generic)]
   #[error("Empty path is not allowed")]
   EmptyPath,
 }
@@ -1470,12 +1521,15 @@ pub enum AllowRunDescriptorParseResult {
   Descriptor(AllowRunDescriptor),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RunDescriptorParseError {
+  #[class(generic)]
   #[error("{0}")]
   Which(#[from] which::Error),
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] PathResolveError),
+  #[class(generic)]
   #[error("Empty run query is not allowed")]
   EmptyRunQuery,
 }
@@ -1496,11 +1550,10 @@ impl AllowRunDescriptor {
       match which::which_in(text, std::env::var_os("PATH"), cwd) {
         Ok(path) => path,
         Err(err) => match err {
-          which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
+          which::Error::CannotGetCurrentDirAndPathListEmpty => {
             return Err(err);
           }
           which::Error::CannotFindBinaryPath
-          | which::Error::CannotGetCurrentDir
           | which::Error::CannotCanonicalize => {
             return Ok(AllowRunDescriptorParseResult::Unresolved(Box::new(err)))
           }
@@ -1560,10 +1613,12 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
   suffix.is_empty() || suffix.starts_with('.')
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SysDescriptorParseError {
+  #[class(type)]
   #[error("unknown system info kind \"{0}\"")]
-  InvalidKind(String), // TypeError
+  InvalidKind(String),
+  #[class(generic)]
   #[error("Empty sys not allowed")]
   Empty, // Error
 }
@@ -2288,36 +2343,51 @@ pub enum CheckSpecifierKind {
   Dynamic,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ChildPermissionError {
+  #[class("NotCapable")]
   #[error("Can't escalate parent thread permissions")]
   Escalation,
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
   NetDescriptorParse(#[from] NetDescriptorParseError),
+  #[class(generic)]
   #[error("{0}")]
   EnvDescriptorParse(#[from] EnvDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   SysDescriptorParse(#[from] SysDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   RunDescriptorParse(#[from] RunDescriptorParseError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionCheckError {
+  #[class("NotCapable")]
   #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
+  #[class(uri)]
   #[error("Invalid file path.\n  Specifier: {0}")]
   InvalidFilePath(Url),
+  #[class(inherit)]
   #[error(transparent)]
   NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
+  #[class(inherit)]
   #[error(transparent)]
   SysDescriptorParse(#[from] SysDescriptorParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
+  #[class("NotCapable")]
+  #[error("Permission denied {0}")]
+  NotCapable(&'static str),
 }
 
 /// Wrapper struct for `Permissions` that can be shared across threads.
@@ -2554,6 +2624,7 @@ impl PermissionsContainer {
       }
       .into_read();
       inner.check(&desc, api_name)?;
+
       Ok(Cow::Owned(desc.0.resolved))
     }
   }
@@ -2562,7 +2633,7 @@ impl PermissionsContainer {
   /// by replacing it with the given `display`.
   #[inline(always)]
   pub fn check_read_blind(
-    &mut self,
+    &self,
     path: &Path,
     display: &str,
     api_name: &str,
@@ -2679,7 +2750,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_write_partial(
-    &mut self,
+    &self,
     path: &str,
     api_name: &str,
   ) -> Result<PathBuf, PermissionCheckError> {
@@ -2696,7 +2767,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_run(
-    &mut self,
+    &self,
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -2732,25 +2803,25 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
+  pub fn check_env(&self, var: &str) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check(var, None)?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_env_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_sys_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_sys_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().sys.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_ffi_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_ffi_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().ffi.check_all()?;
     Ok(())
   }
@@ -2759,7 +2830,7 @@ impl PermissionsContainer {
   /// permissions are enabled!
   #[inline(always)]
   pub fn check_was_allow_all_flag_passed(
-    &mut self,
+    &self,
   ) -> Result<(), PermissionCheckError> {
     self.inner.lock().all.check()?;
     Ok(())
@@ -2768,7 +2839,7 @@ impl PermissionsContainer {
   /// Checks special file access, returning the failed permission type if
   /// not successful.
   pub fn check_special_file(
-    &mut self,
+    &self,
     path: &Path,
     _api_name: &str,
   ) -> Result<(), &'static str> {
@@ -2894,8 +2965,24 @@ impl PermissionsContainer {
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
     let hostname = Host::parse(host.0.as_ref())?;
-    let descriptor = NetDescriptor(hostname, host.1);
+    let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
     inner.check(&descriptor, Some(api_name))?;
+    Ok(())
+  }
+
+  #[inline(always)]
+  pub fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if inner.net.is_allow_all() {
+      return Ok(());
+    }
+    let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+    inner.net.check(&desc, Some(api_name))?;
     Ok(())
   }
 
@@ -3349,7 +3436,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
     D: Deserializer<'de>,
   {
     struct ChildUnitPermissionArgVisitor;
-    impl<'de> de::Visitor<'de> for ChildUnitPermissionArgVisitor {
+    impl de::Visitor<'_> for ChildUnitPermissionArgVisitor {
       type Value = ChildUnitPermissionArg;
 
       fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -3677,11 +3764,13 @@ pub fn is_standalone() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+
   use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
-  use std::net::Ipv4Addr;
+
+  use super::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

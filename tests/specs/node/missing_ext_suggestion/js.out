@@ -1,0 +1,3 @@
+error: [ERR_MODULE_NOT_FOUND] Cannot find module 'file:///[WILDLINE]/node_modules/package/module' imported from 'file:///[WILDLINE]/js.ts'
+Did you mean to import with the ".js" extension?
+    at file:///[WILDLINE]/js.ts:1:8

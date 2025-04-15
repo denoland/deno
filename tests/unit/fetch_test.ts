@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -440,6 +440,58 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { authorization: "Bearer foo" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("authorization"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithCookieHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { Cookie: "sessionToken=verySecret" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("cookie"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithProxyAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: {
+        "proxy-authorization": "Basic ZXNwZW46a29rb3M=",
+        "accept": "application/json",
+      },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("proxy-authorization"), null);
+    assertEquals(response.headers.get("accept"), "application/json");
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -501,7 +553,7 @@ Deno.test(
     const data = "Hello World";
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
-      body: new TextEncoder().encode(data).buffer,
+      body: new TextEncoder().encode(data).buffer as ArrayBuffer,
     });
     const text = await response.text();
     assertEquals(text, data);
@@ -1639,6 +1691,15 @@ Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
   }, Deno.errors.NotCapable);
 });
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function fetchSpecialFilePerm() {
+    await assertRejects(async () => {
+      await fetch("file:///proc/self/environ");
+    }, Deno.errors.NotCapable);
+  },
+);
 
 Deno.test(
   { permissions: { read: false } },

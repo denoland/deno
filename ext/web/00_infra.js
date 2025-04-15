@@ -1,10 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { op_base64_decode, op_base64_encode } from "ext:core/ops";
@@ -225,7 +225,8 @@ function collectHttpQuotedString(input, position, extractValue) {
       value += input[position];
       // 5.5.3.
       position++;
-    } else { // 5.6.
+    } else {
+      // 5.6.
       // 5.6.1
       if (quoteOrBackslash !== "\u0022") throw new TypeError('must be "');
       // 5.6.2
@@ -271,7 +272,7 @@ function addPaddingToBase64url(base64url) {
   if (base64url.length % 4 === 2) return base64url + "==";
   if (base64url.length % 4 === 3) return base64url + "=";
   if (base64url.length % 4 === 1) {
-    throw new TypeError("Illegal base64url string!");
+    throw new TypeError("Illegal base64url string");
   }
   return base64url;
 }
@@ -288,11 +289,7 @@ function convertBase64urlToBase64(base64url) {
     throw new TypeError("Failed to decode base64url: invalid character");
   }
   return StringPrototypeReplaceAll(
-    StringPrototypeReplaceAll(
-      addPaddingToBase64url(base64url),
-      "-",
-      "+",
-    ),
+    StringPrototypeReplaceAll(addPaddingToBase64url(base64url), "-", "+"),
     "_",
     "/",
   );
@@ -382,7 +379,7 @@ function assert(cond, msg = "Assertion failed.") {
 function serializeJSValueToJSONString(value) {
   const result = JSONStringify(value);
   if (result === undefined) {
-    throw new TypeError("Value is not JSON serializable.");
+    throw new TypeError("Value is not JSON serializable");
   }
   return result;
 }
@@ -397,21 +394,9 @@ const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
  * @returns {string}
  */
 function pathFromURLWin32(url) {
-  let p = StringPrototypeReplace(
-    url.pathname,
-    PATHNAME_WIN_RE,
-    "$1/",
-  );
-  p = StringPrototypeReplace(
-    p,
-    SLASH_WIN_RE,
-    "\\",
-  );
-  p = StringPrototypeReplace(
-    p,
-    PERCENT_RE,
-    "%25",
-  );
+  let p = StringPrototypeReplace(url.pathname, PATHNAME_WIN_RE, "$1/");
+  p = StringPrototypeReplace(p, SLASH_WIN_RE, "\\");
+  p = StringPrototypeReplace(p, PERCENT_RE, "%25");
   let path = decodeURIComponent(p);
   if (url.hostname != "") {
     // Note: The `URL` implementation guarantees that the drive letter and
@@ -429,22 +414,18 @@ function pathFromURLWin32(url) {
  */
 function pathFromURLPosix(url) {
   if (url.hostname !== "") {
-    throw new TypeError(`Host must be empty.`);
+    throw new TypeError("Host must be empty");
   }
 
   return decodeURIComponent(
-    StringPrototypeReplace(
-      url.pathname,
-      PERCENT_RE,
-      "%25",
-    ),
+    StringPrototypeReplace(url.pathname, PERCENT_RE, "%25"),
   );
 }
 
 function pathFromURL(pathOrUrl) {
   if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
     if (pathOrUrl.protocol != "file:") {
-      throw new TypeError("Must be a file URL.");
+      throw new TypeError("Must be a file URL");
     }
 
     return core.build.os == "windows"
@@ -459,13 +440,11 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
-export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+export const SymbolDispose = Symbol.dispose;
 // deno-lint-ignore prefer-primordials
-export const SymbolAsyncDispose = Symbol.asyncDispose ??
-  Symbol("Symbol.asyncDispose");
+export const SymbolAsyncDispose = Symbol.asyncDispose;
 // deno-lint-ignore prefer-primordials
-export const SymbolMetadata = Symbol.metadata ??
-  Symbol("Symbol.metadata");
+export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
 export {
   ASCII_ALPHA,

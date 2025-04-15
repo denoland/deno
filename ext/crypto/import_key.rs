@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use base64::Engine;
 use deno_core::op2;
@@ -14,10 +14,16 @@ use spki::der::Decode;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class("DOMExceptionDataError")]
 pub enum ImportKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[error("invalid modulus")]
   InvalidModulus,
   #[error("invalid public exponent")]

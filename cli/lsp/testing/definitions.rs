@@ -1,21 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+use deno_core::error::AnyError;
+use deno_core::ModuleSpecifier;
+use deno_lib::util::checksum;
+use lsp::Range;
+use tower_lsp::lsp_types as lsp;
 
 use super::lsp_custom;
 use super::lsp_custom::TestData;
-
 use crate::lsp::client::TestingNotification;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestStepDescription;
-use crate::util::checksum;
-
-use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
-use lsp::Range;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use tower_lsp::lsp_types as lsp;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDefinition {

@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "args": "lint a.ts",
+      "output": "lint.out"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "args": "run -A unsafe_proto/main.js",
-  "output": "unsafe_proto/main.out",
+  "args": "run -A main.js",
+  "output": "main.out",
   "exitCode": 0
 }

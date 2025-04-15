@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -175,9 +175,11 @@ export const initStdin = (warmup = false) => {
       break;
     }
     case "TTY": {
-      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
-      // just return null to re-use it.
-      if (!warmup) {
+      // FIXME: We should be able to create stdin handle during warmup and re-use it but
+      // cppgc object wraps crash in snapshot mode.
+      //
+      // To reproduce crash, change the condition to `if (!warmup)` below:
+      if (warmup) {
         return null;
       }
       stdin = new readStream(fd);

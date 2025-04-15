@@ -1,23 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::process::Output;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use bytes::Bytes;
+use chrono::DateTime;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::json;
+use serde_json::Value;
 use test_util::assertions::assert_json_subset;
 use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
-
-use chrono::DateTime;
-use chrono::Utc;
-use deno_core::anyhow::Result;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;

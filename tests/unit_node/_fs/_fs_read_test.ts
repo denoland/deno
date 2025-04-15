@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 /// <reference types="npm:@types/node" />
 import {
   assert,
@@ -348,10 +348,11 @@ Deno.test({
         for (const offset of offsets) {
           // test read
           resetBuffer();
-          const buf = new constr(
+          // deno-lint-ignore no-explicit-any
+          const buf = new (constr as any)(
             buffer,
             innerOffset,
-          );
+          ) as Int8Array | Uint8Array;
           await readTest(
             testData,
             buf,

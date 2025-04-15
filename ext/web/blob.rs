@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,14 +17,18 @@ use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BlobError {
+  #[class(type)]
   #[error("Blob part not found")]
   BlobPartNotFound,
+  #[class(type)]
   #[error("start + len can not be larger than blob part size")]
   SizeLargerThanBlobPart,
+  #[class(type)]
   #[error("Blob URLs are not supported in this context")]
   BlobURLsNotSupported,
+  #[class(generic)]
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
 }
@@ -132,7 +136,7 @@ impl Blob {
 #[async_trait]
 pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
-  async fn read(&self) -> &[u8];
+  async fn read<'a>(&'a self) -> &'a [u8];
   fn size(&self) -> usize;
 }
 
@@ -147,7 +151,7 @@ impl From<Vec<u8>> for InMemoryBlobPart {
 
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read(&self) -> &[u8] {
+  async fn read<'a>(&'a self) -> &'a [u8] {
     &self.0
   }
 
@@ -165,7 +169,7 @@ pub struct SlicedBlobPart {
 
 #[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read(&self) -> &[u8] {
+  async fn read<'a>(&'a self) -> &'a [u8] {
     let original = self.part.read().await;
     &original[self.start..self.start + self.len]
   }

@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "dep_and_workspace_dep": {
       "steps": [{
