@@ -760,7 +760,7 @@ function checkOpenOptions(options) {
   }
 
   if (options.mode === 0) {
-    throw new TypeError("OpenOptions 'mode' can not be 0");
+    throw new TypeError("'mode' option cannot be 0");
   }
 }
 
