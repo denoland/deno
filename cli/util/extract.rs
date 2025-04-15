@@ -103,8 +103,7 @@ fn extract_files_from_fenced_blocks(
   // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
     lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex =
-    lazy_regex::regex!(r"^(?:\* ?((#!+).*)|(?:\* ?(?:# ?)?(.*)))$");
+  let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
   extract_files_from_regex_blocks(
     specifier,
