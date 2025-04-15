@@ -1,0 +1,76 @@
+{
+  "tempDir": true,
+  "envs": {
+    "RUST_BACKTRACE": "0"
+  },
+  "tests": {
+    "node_modules_dir_auto": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "node_modules_dir_none": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts none",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "node_modules_dir_manual": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts manual",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "respects_ts_types": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ts_types.ts",
+          "output": "ts_types_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

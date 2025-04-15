@@ -7,8 +7,7 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
-use deno_core::anyhow::Context;
-use deno_core::serde_json;
+use anyhow::Context;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
@@ -387,6 +386,7 @@ fn should_run_step(step: &StepMetaData) -> bool {
       "unix" => cfg!(unix),
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
+      "notCI" => std::env::var_os("CI").is_none(),
       value => panic!("Unknown if condition: {}", value),
     }
   } else {

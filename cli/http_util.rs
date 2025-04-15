@@ -14,6 +14,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -28,7 +29,6 @@ use http_body_util::BodyExt;
 use thiserror::Error;
 
 use crate::util::progress_bar::UpdateGuard;
-use crate::version;
 
 #[derive(Debug, Error)]
 pub enum SendError {
@@ -70,7 +70,7 @@ impl HttpClientProvider {
     }
   }
 
-  pub fn get_or_create(&self) -> Result<HttpClient, AnyError> {
+  pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
     use std::collections::hash_map::Entry;
     let thread_id = std::thread::current().id();
     let mut clients = self.clients_by_thread_id.lock();
@@ -79,7 +79,7 @@ impl HttpClientProvider {
       Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
       Entry::Vacant(entry) => {
         let client = create_http_client(
-          version::DENO_VERSION_INFO.user_agent,
+          DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions {
             root_cert_store: match &self.root_cert_store_provider {
               Some(provider) => Some(provider.get_or_try_init()?.clone()),
@@ -87,7 +87,8 @@ impl HttpClientProvider {
             },
             ..self.options.clone()
           },
-        )?;
+        )
+        .map_err(JsErrorBox::from_err)?;
         entry.insert(client.clone());
         Ok(HttpClient::new(client))
       }
@@ -480,7 +481,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -524,7 +525,7 @@ mod test {
 
       let client = HttpClient::new(
         create_http_client(
-          version::DENO_VERSION_INFO.user_agent,
+          DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -565,7 +566,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -586,7 +587,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -619,7 +620,7 @@ mod test {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -660,7 +661,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()

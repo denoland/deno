@@ -3,13 +3,12 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::CoreError;
@@ -35,23 +34,24 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
+use deno_os::ExitCode;
 use deno_permissions::PermissionsContainer;
+use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
 use log::debug;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::process::NpmProcessStateProviderRc;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -95,19 +95,6 @@ pub fn validate_import_attributes_callback(
   }
 }
 
-#[derive(Clone, Default)]
-pub struct ExitCode(Arc<AtomicI32>);
-
-impl ExitCode {
-  pub fn get(&self) -> i32 {
-    self.0.load(Relaxed)
-  }
-
-  pub fn set(&mut self, code: i32) {
-    self.0.store(code, Relaxed);
-  }
-}
-
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -128,7 +115,11 @@ pub struct MainWorker {
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
-pub struct WorkerServiceOptions<TExtNodeSys: ExtNodeSys> {
+pub struct WorkerServiceOptions<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TExtNodeSys: ExtNodeSys,
+> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub feature_checker: Arc<FeatureChecker>,
@@ -139,7 +130,13 @@ pub struct WorkerServiceOptions<TExtNodeSys: ExtNodeSys> {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
+  pub node_services: Option<
+    NodeExtInitServices<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
+  >,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -300,9 +297,17 @@ pub fn create_op_metrics(
 }
 
 impl MainWorker {
-  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    main_module: ModuleSpecifier,
-    services: WorkerServiceOptions<TExtNodeSys>,
+  pub fn bootstrap_from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    main_module: &ModuleSpecifier,
+    services: WorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     options: WorkerOptions,
   ) -> Self {
     let (mut worker, bootstrap_options) =
@@ -311,9 +316,17 @@ impl MainWorker {
     worker
   }
 
-  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    main_module: ModuleSpecifier,
-    services: WorkerServiceOptions<TExtNodeSys>,
+  fn from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    main_module: &ModuleSpecifier,
+    services: WorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     mut options: WorkerOptions,
   ) -> (Self, BootstrapOptions) {
     deno_core::extension!(deno_permissions_worker,
@@ -327,6 +340,40 @@ impl MainWorker {
       },
     );
 
+    fn create_cache_inner(options: &WorkerOptions) -> Option<CreateCache> {
+      if let Ok(var) = std::env::var("DENO_CACHE_LSC_ENDPOINT") {
+        let elems: Vec<_> = var.split(",").collect();
+        if elems.len() == 2 {
+          let endpoint = elems[0];
+          let token = elems[1];
+          use deno_cache::CacheShard;
+
+          let shard =
+            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+          let create_cache_fn = move || {
+            let x = deno_cache::LscBackend::default();
+            x.set_shard(shard.clone());
+
+            Ok(CacheImpl::Lsc(x))
+          };
+          #[allow(clippy::arc_with_non_send_sync)]
+          return Some(CreateCache(Arc::new(create_cache_fn)));
+        }
+      }
+
+      if let Some(storage_dir) = &options.cache_storage_dir {
+        let storage_dir = storage_dir.clone();
+        let create_cache_fn = move || {
+          let s = SqliteBackedCache::new(storage_dir.clone())?;
+          Ok(CacheImpl::Sqlite(s))
+        };
+        return Some(CreateCache(Arc::new(create_cache_fn)));
+      }
+
+      None
+    }
+    let create_cache = create_cache_inner(&options);
+
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
@@ -335,14 +382,11 @@ impl MainWorker {
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
-    let create_cache = options.cache_storage_dir.map(|storage_dir| {
-      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(create_cache_fn))
-    });
+    let exit_code = ExitCode::default();
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+    // and `runtime/snapshot.rs`!
     let mut extensions = vec![
       deno_telemetry::deno_telemetry::init_ops_and_esm(),
       // Web APIs
@@ -367,9 +411,7 @@ impl MainWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
-        create_cache,
-      ),
+      deno_cache::deno_cache::init_ops_and_esm(create_cache),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         services.root_cert_store_provider.clone(),
@@ -406,17 +448,24 @@ impl MainWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-        deno_http::Options::default(),
-      ),
+      deno_http::deno_http::init_ops_and_esm(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
-        services.node_services,
-        services.fs,
+      deno_os::deno_os::init_ops_and_esm(exit_code.clone()),
+      deno_process::deno_process::init_ops_and_esm(
+        services.npm_process_state_provider,
       ),
+      deno_node::deno_node::init_ops_and_esm::<
+        PermissionsContainer,
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TExtNodeSys,
+      >(services.node_services, services.fs),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
@@ -424,12 +473,7 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
       ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
-      ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
       ops::bootstrap::deno_bootstrap::init_ops_and_esm(
@@ -487,9 +531,12 @@ impl MainWorker {
       shared_array_buffer_store: services.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: services.compiled_wasm_module_store.clone(),
       extensions,
+      #[cfg(feature = "transpile")]
       extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
+        crate::transpile::maybe_transpile_source(specifier, source)
       })),
+      #[cfg(not(feature = "transpile"))]
+      extension_transpiler: None,
       inspector: true,
       is_main: true,
       feature_checker: Some(services.feature_checker.clone()),
@@ -516,12 +563,12 @@ impl MainWorker {
               hasher.finish()
             };
             let data = cache
-              .get_sync(specifier, CodeCacheType::Script, source_hash)
-              .inspect(|_| {
-                // This log line is also used by tests.
-                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
-              })
-              .map(Cow::Owned);
+            .get_sync(specifier, CodeCacheType::Script, source_hash)
+            .inspect(|_| {
+              // This log line is also used by tests.
+              log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+            })
+            .map(Cow::Owned);
             Ok(SourceCodeCacheInfo {
               data,
               hash: source_hash,

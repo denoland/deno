@@ -3,11 +3,8 @@
 pub mod bootstrap;
 pub mod fs_events;
 pub mod http;
-pub mod os;
 pub mod permissions;
-pub mod process;
 pub mod runtime;
-pub mod signal;
 pub mod tty;
 pub mod web_worker;
 pub mod worker_host;

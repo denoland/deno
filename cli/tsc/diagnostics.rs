@@ -152,7 +152,7 @@ pub struct Diagnostic {
 
 impl Diagnostic {
   pub fn from_missing_error(
-    specifier: &ModuleSpecifier,
+    specifier: &str,
     maybe_range: Option<&deno_graph::Range>,
     additional_message: Option<String>,
   ) -> Self {
@@ -351,16 +351,17 @@ impl Diagnostics {
 
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(self, predicate: P) -> Self
-  where
-    P: FnMut(&Diagnostic) -> bool,
-  {
+  pub fn filter(self, predicate: impl FnMut(&Diagnostic) -> bool) -> Self {
     let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
   }
 
-  pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
+  pub fn retain(&mut self, predicate: impl FnMut(&Diagnostic) -> bool) {
+    self.0.retain(predicate);
+  }
+
+  pub fn has_diagnostic(&self) -> bool {
+    !self.0.is_empty()
   }
 
   /// Modifies all the diagnostics to have their display positions
@@ -430,21 +431,25 @@ impl Serialize for Diagnostics {
 
 impl fmt::Display for Diagnostics {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut i = 0;
-    for item in &self.0 {
-      if i > 0 {
-        write!(f, "\n\n")?;
-      }
-      write!(f, "{item}")?;
-      i += 1;
+    display_diagnostics(f, self)?;
+    if self.0.len() > 1 {
+      write!(f, "\n\nFound {} errors.", self.0.len())?;
     }
-
-    if i > 1 {
-      write!(f, "\n\nFound {i} errors.")?;
-    }
-
     Ok(())
   }
+}
+
+fn display_diagnostics(
+  f: &mut fmt::Formatter,
+  diagnostics: &Diagnostics,
+) -> fmt::Result {
+  for (i, item) in diagnostics.0.iter().enumerate() {
+    if i > 0 {
+      write!(f, "\n\n")?;
+    }
+    write!(f, "{item}")?;
+  }
+  Ok(())
 }
 
 impl Error for Diagnostics {}

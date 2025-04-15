@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_lib::util::v8::construct_v8_flags;
+
 pub mod convert;
 
 #[inline(always)]
@@ -8,19 +10,6 @@ pub fn get_v8_flags_from_env() -> Vec<String> {
     .ok()
     .map(|flags| flags.split(',').map(String::from).collect::<Vec<String>>())
     .unwrap_or_default()
-}
-
-#[inline(always)]
-pub fn construct_v8_flags(
-  default_v8_flags: &[String],
-  v8_flags: &[String],
-  env_v8_flags: Vec<String>,
-) -> Vec<String> {
-  std::iter::once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-    .chain(default_v8_flags.iter().cloned())
-    .chain(env_v8_flags)
-    .chain(v8_flags.iter().cloned())
-    .collect::<Vec<_>>()
 }
 
 pub fn init_v8_flags(

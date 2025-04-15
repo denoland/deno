@@ -1,3 +1,4 @@
 {
+  "imports": {},
   "unstable": ["bare-node-builtins"]
 }

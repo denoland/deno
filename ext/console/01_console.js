@@ -216,7 +216,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
-  temporal: "magenta",
+  temporal: "cyan",
 };
 
 const defaultFG = 39;
@@ -3546,6 +3546,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   getStdoutNoColor,

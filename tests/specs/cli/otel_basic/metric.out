@@ -18,8 +18,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -27,180 +27,6 @@
         ],
         "aggregationTemporality": 2,
         "isMonotonic": true
-      }
-    },
-    {
-      "name": "up_down_counter",
-      "description": "Example of a UpDownCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [
-              {
-                "key": "attribute",
-                "value": {
-                  "doubleValue": 1
-                }
-              }
-            ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": -1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": false
-      }
-    },
-    {
-      "name": "gauge",
-      "description": "Example of a Gauge",
-      "unit": "",
-      "metadata": [],
-      "gauge": {
-        "dataPoints": [
-          {
-            "attributes": [
-              {
-                "key": "attribute",
-                "value": {
-                  "doubleValue": 1
-                }
-              }
-            ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ]
-      }
-    },
-    {
-      "name": "histogram",
-      "description": "Example of a Histogram",
-      "unit": "",
-      "metadata": [],
-      "histogram": {
-        "dataPoints": [
-          {
-            "attributes": [
-              {
-                "key": "attribute",
-                "value": {
-                  "doubleValue": 1
-                }
-              }
-            ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "count": 1,
-            "sum": 1,
-            "bucketCounts": [
-              0,
-              1,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
-            ],
-            "explicitBounds": [
-              0,
-              5,
-              10,
-              25,
-              50,
-              75,
-              100,
-              250,
-              500,
-              750,
-              1000,
-              2500,
-              5000,
-              7500,
-              10000
-            ],
-            "exemplars": [],
-            "flags": 0,
-            "min": 1,
-            "max": 1
-          }
-        ],
-        "aggregationTemporality": 2
-      }
-    },
-    {
-      "name": "observable_counter",
-      "description": "Example of a ObservableCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": true
-      }
-    },
-    {
-      "name": "observable_up_down_counter",
-      "description": "Example of a ObservableUpDownCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": false
-      }
-    },
-    {
-      "name": "observable_gauge",
-      "description": "Example of a ObservableGauge",
-      "unit": "",
-      "metadata": [],
-      "gauge": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ]
       }
     },
     {
@@ -219,8 +45,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -228,33 +54,6 @@
         ],
         "aggregationTemporality": 2,
         "isMonotonic": true
-      }
-    },
-    {
-      "name": "up_down_counter",
-      "description": "Example of a UpDownCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [
-              {
-                "key": "attribute",
-                "value": {
-                  "doubleValue": 1
-                }
-              }
-            ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": -1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": false
       }
     },
     {
@@ -273,8 +72,33 @@
                 }
               }
             ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "gauge",
+      "description": "Example of a Gauge",
+      "unit": "",
+      "metadata": [],
+      "gauge": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "attribute",
+                "value": {
+                  "doubleValue": 1
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -298,27 +122,91 @@
                 }
               }
             ],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "count": 1,
             "sum": 1,
             "bucketCounts": [
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
+            ],
+            "explicitBounds": [
               0,
-              1,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              5,
+              10,
+              25,
+              50,
+              75,
+              100,
+              250,
+              500,
+              750,
+              1000,
+              2500,
+              5000,
+              7500,
+              10000
+            ],
+            "exemplars": [],
+            "flags": 0,
+            "min": 1,
+            "max": 1
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    },
+    {
+      "name": "histogram",
+      "description": "Example of a Histogram",
+      "unit": "",
+      "metadata": [],
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "attribute",
+                "value": {
+                  "doubleValue": 1
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "count": 1,
+            "sum": 1,
+            "bucketCounts": [
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0,
@@ -355,8 +243,8 @@
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -367,23 +255,23 @@
       }
     },
     {
-      "name": "observable_up_down_counter",
-      "description": "Example of a ObservableUpDownCounter",
+      "name": "observable_counter",
+      "description": "Example of a ObservableCounter",
       "unit": "",
       "metadata": [],
       "sum": {
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
           }
         ],
         "aggregationTemporality": 2,
-        "isMonotonic": false
+        "isMonotonic": true
       }
     },
     {
@@ -395,13 +283,125 @@
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": "[WILDCARD]",
-            "timeUnixNano": "[WILDCARD]",
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
           }
         ]
+      }
+    },
+    {
+      "name": "observable_gauge",
+      "description": "Example of a ObservableGauge",
+      "unit": "",
+      "metadata": [],
+      "gauge": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "observable_up_down_counter",
+      "description": "Example of a ObservableUpDownCounter",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": false
+      }
+    },
+    {
+      "name": "observable_up_down_counter",
+      "description": "Example of a ObservableUpDownCounter",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": false
+      }
+    },
+    {
+      "name": "up_down_counter",
+      "description": "Example of a UpDownCounter",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "attribute",
+                "value": {
+                  "doubleValue": 1
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": -1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": false
+      }
+    },
+    {
+      "name": "up_down_counter",
+      "description": "Example of a UpDownCounter",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "attribute",
+                "value": {
+                  "doubleValue": 1
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": -1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": false
       }
     }
   ]

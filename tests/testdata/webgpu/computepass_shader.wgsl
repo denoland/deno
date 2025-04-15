@@ -1,38 +1,27 @@
-@group(0)
-@binding(0)
-var<storage, read_write> v_indices: array<u32>; // this is used as both input and output for convenience
+// Input to the shader. The length of the array is determined by what buffer is bound.
+//
+// Out of bounds accesses
+@group(0) @binding(0)
+var<storage, read> input: array<f32>;
+// Output of the shader.
+@group(0) @binding(1)
+var<storage, read_write> output: array<f32>;
 
-// The Collatz Conjecture states that for any integer n:
-// If n is even, n = n/2
-// If n is odd, n = 3n+1
-// And repeat this process for each new n, you will always eventually reach 1.
-// Though the conjecture has not been proven, no counterexample has ever been found.
-// This function returns how many times this recurrence needs to be applied to reach 1.
-fn collatz_iterations(n_base: u32) -> u32{
-    var n: u32 = n_base;
-    var i: u32 = 0u;
-    loop {
-        if (n <= 1u) {
-            break;
-        }
-        if (n % 2u == 0u) {
-            n = n / 2u;
-        }
-        else {
-            // Overflow? (i.e. 3*n + 1 > 0xffffffffu?)
-            if (n >= 1431655765u) {   // 0x55555555u
-                return 4294967295u;   // 0xffffffffu
-            }
+// Ideal workgroup size depends on the hardware, the workload, and other factors. However, it should
+// _generally_ be a multiple of 64. Common sizes are 64x1x1, 256x1x1; or 8x8x1, 16x16x1 for 2D workloads.
+@compute @workgroup_size(64)
+fn doubleMe(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // While compute invocations are 3d, we're only using one dimension.
+    let index = global_id.x;
 
-            n = 3u * n + 1u;
-        }
-        i = i + 1u;
+    // Because we're using a workgroup size of 64, if the input size isn't a multiple of 64,
+    // we will have some "extra" invocations. This is fine, but we should tell them to stop
+    // to avoid out-of-bounds accesses.
+    let array_length = arrayLength(&input);
+    if (global_id.x >= array_length) {
+        return;
     }
-    return i;
-}
 
-@compute
-@workgroup_size(1)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    v_indices[global_id.x] = collatz_iterations(v_indices[global_id.x]);
+    // Do the multiply by two and write to the output.
+    output[global_id.x] = input[global_id.x] * 2.0;
 }

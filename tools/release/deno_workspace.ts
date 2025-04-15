@@ -42,6 +42,14 @@ export class DenoWorkspace {
     return this.getCrate("deno");
   }
 
+  getDenoRtCrate() {
+    return this.getCrate("denort");
+  }
+
+  getDenoLibCrate() {
+    return this.getCrate("deno_lib");
+  }
+
   getCrate(name: string) {
     return this.#repo.getCrate(name);
   }

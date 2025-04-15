@@ -1,0 +1,12 @@
+Check file:///[WILDLINE]/main.bench.ts
+    CPU | [WILDLINE]
+Runtime | [WILDLINE]
+
+file:///[WILDLINE]main.bench.ts
+
+benchmark                     time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------------------------- ----------------------------- --------------------- --------------------------
+above 10,000,000 iterations          [WILDLINE]
+below 10,000,000 iterations          [WILDLINE]
+negative iterations                  [WILDLINE]
+

@@ -26,7 +26,7 @@ const {
   TypeError,
 } = primordials;
 
-import { setExitHandler } from "ext:runtime/30_os.js";
+import { setExitHandler } from "ext:deno_os/30_os.js";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -75,17 +75,6 @@ const DenoNs = globalThis.Deno;
  *   completed: boolean,
  *   failed: boolean,
  * }} TestStepState
- *
- * @typedef {{
- *   id: number,
- *   name: string,
- *   fn: BenchFunction
- *   origin: string,
- *   ignore: boolean,
- *   only: boolean.
- *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
- * }} BenchDescription
  */
 
 /** @type {Map<number, TestState | TestStepState>} */

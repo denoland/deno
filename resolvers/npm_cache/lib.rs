@@ -6,7 +6,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Error as AnyError;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
@@ -39,6 +38,9 @@ mod tarball;
 mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
+pub use fs_util::hard_link_file;
+pub use fs_util::HardLinkDirRecursiveError;
+pub use fs_util::HardLinkFileError;
 // todo(#27198): make both of these private and get the rest of the code
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
@@ -51,7 +53,7 @@ pub use tarball::TarballCache;
 #[class(generic)]
 pub struct DownloadError {
   pub status_code: Option<StatusCode>,
-  pub error: AnyError,
+  pub error: JsErrorBox,
 }
 
 impl std::error::Error for DownloadError {
@@ -312,15 +314,17 @@ impl<
     &self,
     name: &str,
     package_info: &NpmPackageInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
-    let file_text = serde_json::to_string(&package_info)?;
+    let file_text =
+      serde_json::to_string(&package_info).map_err(JsErrorBox::from_err)?;
     atomic_write_file_with_retries(
       &self.sys,
       &file_cache_path,
       file_text.as_bytes(),
       0o644,
-    )?;
+    )
+    .map_err(JsErrorBox::from_err)?;
     Ok(())
   }
 
