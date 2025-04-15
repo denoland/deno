@@ -74,7 +74,6 @@ const {
   ArrayPrototypeFilter,
   Date,
   DatePrototypeGetTime,
-  Error,
   Function,
   MathTrunc,
   Number,
