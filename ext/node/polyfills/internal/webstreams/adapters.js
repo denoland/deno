@@ -627,7 +627,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
 
     async write(chunk) {
       if (streamWritable.writableNeedDrain || !streamWritable.write(chunk)) {
-        backpressurePromise = createDeferredPromise();
+        backpressurePromise = Promise.withResolvers();
         return backpressurePromise.promise.finally(() => {
           backpressurePromise = undefined;
         });
@@ -640,7 +640,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
 
     close() {
       if (closed === undefined && !isWritableEnded(streamWritable)) {
-        closed = createDeferredPromise();
+        closed = Promise.withResolvers();
         streamWritable.end();
         return closed.promise;
       }
