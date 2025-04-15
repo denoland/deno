@@ -33,8 +33,7 @@ fn main() {
   entries.sort_by(|a, b| a.name.cmp(&b.name));
 
   let mut rust_list = String::from(
-    "
-// Copyright 2018-2025 the Deno authors. MIT license.
+    "// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// Don't modify this file manually.
 ///
