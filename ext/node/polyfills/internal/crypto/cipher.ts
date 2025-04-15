@@ -26,7 +26,7 @@ import {
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import { Transform } from "ext:deno_node/_stream.mjs";
+import { Transform } from "node:stream";
 import {
   getArrayBufferOrView,
   KeyObject,
@@ -438,7 +438,7 @@ export function privateEncrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
 }
 
 export function privateDecrypt(
@@ -449,7 +449,7 @@ export function privateDecrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_decrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
 }
 
 export function publicEncrypt(
@@ -460,7 +460,7 @@ export function publicEncrypt(
   const padding = publicKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_public_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
 }
 
 export function prepareKey(key) {

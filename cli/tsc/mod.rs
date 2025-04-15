@@ -604,6 +604,8 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     MediaType::Json => 6,
     MediaType::SourceMap
     | MediaType::Css
+    | MediaType::Html
+    | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
   }

@@ -1,4 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::future::poll_fn;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -6,7 +8,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::BufMutView;

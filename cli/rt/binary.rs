@@ -357,7 +357,11 @@ impl<'a> DenoCompileModuleData<'a> {
         (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }
       // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+      MediaType::Css
+      | MediaType::Html
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => {
         (ModuleType::JavaScript, DenoCompileModuleSource::Bytes(data))
       }
     };
@@ -549,9 +553,11 @@ fn deserialize_npm_snapshot(
         dist: Default::default(),
         dependencies,
         optional_dependencies: Default::default(),
-        bin: None,
-        scripts: Default::default(),
-        deprecated: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        has_bin: false,
+        has_scripts: false,
+        is_deprecated: false,
+        extra: Default::default(),
       },
     ))
   }

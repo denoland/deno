@@ -3546,6 +3546,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   getStdoutNoColor,

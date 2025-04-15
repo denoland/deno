@@ -5,11 +5,18 @@ use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::resolve_url_or_path;
+use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_runtime::WorkerExecutionMode;
+use eszip::EszipV2;
+use jsonc_parser::ParseOptions;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
+use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::npm::installer::PackageCaching;
@@ -49,7 +56,7 @@ pub async fn run_script(
   check_permission_before_script(&flags);
 
   if let Some(watch_flags) = watch {
-    return run_with_watch(mode, flags, watch_flags).await;
+    return run_with_watch(mode, flags, watch_flags).boxed_local().await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -159,6 +166,7 @@ async fn run_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
 
   Ok(0)
@@ -202,8 +210,9 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   let cli_options = factory.cli_options()?;
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
-  if cli_options.node_modules_dir()? == Some(NodeModulesDirMode::Auto) {
-    if let Some(npm_installer) = factory.npm_installer_if_managed()? {
+  if cli_options.specified_node_modules_dir()? == Some(NodeModulesDirMode::Auto)
+  {
+    if let Some(npm_installer) = factory.npm_installer_if_managed().await? {
       let already_done = npm_installer
         .ensure_top_level_package_json_install()
         .await?;
@@ -218,4 +227,66 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
     }
   }
   Ok(())
+}
+
+pub async fn run_eszip(
+  flags: Arc<Flags>,
+  run_flags: RunFlags,
+) -> Result<i32, AnyError> {
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+
+  // entrypoint#path1,path2,...
+  let (entrypoint, _files) = run_flags
+    .script
+    .split_once("#")
+    .with_context(|| "eszip: invalid script string")?;
+
+  let mode = WorkerExecutionMode::Run;
+  let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let mut worker = worker_factory
+    .create_main_worker(mode, main_module.clone())
+    .await?;
+
+  let exit_code = worker.run().await?;
+  Ok(exit_code)
+}
+
+#[allow(unused)]
+async fn load_import_map(
+  eszips: &[EszipV2],
+  specifier: &str,
+) -> Result<SerializedWorkspaceResolverImportMap, AnyError> {
+  let maybe_module = eszips
+    .iter()
+    .rev()
+    .find_map(|eszip| eszip.get_import_map(specifier));
+  let Some(module) = maybe_module else {
+    return Err(AnyError::msg(format!("import map not found '{specifier}'")));
+  };
+  let base_url = deno_core::url::Url::parse(specifier).map_err(|err| {
+    AnyError::msg(format!(
+      "import map specifier '{specifier}' is not a valid url: {err}"
+    ))
+  })?;
+  let bytes = module
+    .source()
+    .await
+    .ok_or_else(|| AnyError::msg("import map not found '{specifier}'"))?;
+  let text = String::from_utf8_lossy(&bytes);
+  let json_value =
+    jsonc_parser::parse_to_serde_value(&text, &ParseOptions::default())
+      .map_err(|err| {
+        AnyError::msg(format!("import map failed to parse: {err}"))
+      })?
+      .ok_or_else(|| AnyError::msg("import map is not valid JSON"))?;
+  let import_map = import_map::parse_from_value(base_url, json_value)?;
+
+  Ok(SerializedWorkspaceResolverImportMap {
+    specifier: specifier.to_string(),
+    json: import_map.import_map.to_json(),
+  })
 }

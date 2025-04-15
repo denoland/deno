@@ -1,0 +1,6 @@
+Error formatting: [WILDCARD]parse_error.ts
+   Expected '{', got '<eof>' at [WILDCARD]parse_error.ts:2:7
+
+  class Test
+        ~~~~
+error: Failed to format 1 of 1 checked file
