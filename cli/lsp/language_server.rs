@@ -29,6 +29,7 @@ use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::registry::NpmRegistryApi;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -221,9 +222,8 @@ impl LanguageServerTaskQueue {
   }
 }
 
-#[derive(Debug)]
 pub struct Inner {
-  cache: LspCache,
+  pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   /// Configuration information.
@@ -253,18 +253,54 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-
+  registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
+impl std::fmt::Debug for Inner {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Inner")
+      .field("cache", &self.cache)
+      .field("client", &self.client)
+      .field("config", &self.config)
+      .field("diagnostics_state", &self.diagnostics_state)
+      .field("diagnostics_server", &self.diagnostics_server)
+      .field("document_modules", &self.document_modules)
+      .field("http_client_provider", &self.http_client_provider)
+      .field("initial_cwd", &self.initial_cwd)
+      .field("jsr_search_api", &self.jsr_search_api)
+      .field("module_registry", &self.module_registry)
+      .field("maybe_testing_server", &self.maybe_testing_server)
+      .field("npm_search_api", &self.npm_search_api)
+      .field("project_version", &self.project_version)
+      .field("performance", &self.performance)
+      .field(
+        "registered_semantic_tokens_capabilities",
+        &self.registered_semantic_tokens_capabilities,
+      )
+      .field("resolver", &self.resolver)
+      .field("task_queue", &self.task_queue)
+      .field("ts_fixable_diagnostics", &self.ts_fixable_diagnostics)
+      .field("ts_server", &self.ts_server)
+      .field("workspace_files", &self.workspace_files)
+      .field("workspace_files_hash", &self.workspace_files_hash)
+      .field("_tracing", &self._tracing)
+      .finish()
+  }
+}
+
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
+  pub fn new(
+    client: Client,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  ) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
       inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
+        registry_provider,
       ))),
       init_flag: Default::default(),
       performance,
@@ -318,11 +354,9 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(cli_options) = factory.cli_options() {
-        if let Some(lockfile) = cli_options.maybe_lockfile() {
-          if let Err(err) = &lockfile.write_if_changed() {
-            lsp_warn!("{:#}", err);
-          }
+      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await {
+        if let Err(err) = &lockfile.write_if_changed() {
+          lsp_warn!("{:#}", err);
         }
       }
 
@@ -503,7 +537,11 @@ impl LanguageServer {
 }
 
 impl Inner {
-  fn new(client: Client, performance: Arc<Performance>) -> Self {
+  fn new(
+    client: Client,
+    performance: Arc<Performance>,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  ) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
@@ -550,6 +588,7 @@ impl Inner {
       workspace_files: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
+      registry_provider,
     }
   }
 
@@ -1117,6 +1156,7 @@ impl Inner {
         &self.workspace_files,
         &file_fetcher,
         self.cache.deno_dir(),
+        &self.registry_provider,
       )
       .await;
     self
@@ -1135,7 +1175,9 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
+              let scoped_resolver =
+                inner.resolver.get_scoped_resolver(Some(&referrer));
+              let resolver = scoped_resolver.as_cli_resolver();
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &referrer,
@@ -1783,8 +1825,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
+              let scoped_resolver = self.resolver.get_scoped_resolver(scope);
               if let Some(url) =
-                self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)
+                scoped_resolver.jsr_to_resource_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }

@@ -1041,14 +1041,15 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
+    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
     let specifier = if let Ok(jsr_req_ref) =
       JsrPackageReqReference::from_specifier(specifier)
     {
-      Cow::Owned(self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)?)
+      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
     } else {
       Cow::Borrowed(specifier)
     };
-    let specifier = self.resolver.resolve_redirects(&specifier, scope)?;
+    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let document =
       self
         .documents
@@ -1137,14 +1138,15 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
+    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
     let specifier = if let Ok(jsr_req_ref) =
       JsrPackageReqReference::from_specifier(specifier)
     {
-      Cow::Owned(self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)?)
+      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
     } else {
       Cow::Borrowed(specifier)
     };
-    let specifier = self.resolver.resolve_redirects(&specifier, scope)?;
+    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let modules = self.modules_for_scope(scope)?;
     modules.get_for_specifier(&specifier)
   }
@@ -1332,8 +1334,9 @@ impl DocumentModules {
             member_dir.to_maybe_jsx_import_source_config().ok()??;
           let import_source_types = jsx_config.import_source_types.as_ref()?;
           let import_source = jsx_config.import_source.as_ref()?;
-          let cli_resolver =
-            self.resolver.as_cli_resolver(scope.map(|s| s.as_ref()));
+          let scoped_resolver =
+            self.resolver.get_scoped_resolver(scope.map(|s| s.as_ref()));
+          let cli_resolver = scoped_resolver.as_cli_resolver();
           let type_specifier = cli_resolver
             .resolve(
               &import_source_types.specifier,
@@ -1417,6 +1420,7 @@ impl DocumentModules {
     let referrer_module = self.module_for_specifier(referrer, scope);
     let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
     let mut results = Vec::new();
+    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
     for (is_cjs, raw_specifier) in raw_specifiers {
       let resolution_mode = match is_cjs {
         true => ResolutionMode::Require,
@@ -1449,15 +1453,13 @@ impl DocumentModules {
         } else {
           results.push(None);
         }
-      } else if let Ok(specifier) =
-        self.resolver.as_cli_resolver(scope).resolve(
-          raw_specifier,
-          referrer,
-          deno_graph::Position::zeroed(),
-          resolution_mode,
-          NodeResolutionKind::Types,
-        )
-      {
+      } else if let Ok(specifier) = scoped_resolver.as_cli_resolver().resolve(
+        raw_specifier,
+        referrer,
+        deno_graph::Position::zeroed(),
+        resolution_mode,
+        NodeResolutionKind::Types,
+      ) {
         results.push(self.resolve_dependency(
           &specifier,
           referrer,
@@ -1490,12 +1492,9 @@ impl DocumentModules {
     let mut specifier = specifier.clone();
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let (s, mt) = self.resolver.npm_to_file_url(
-        &npm_ref,
-        referrer,
-        resolution_mode,
-        scope,
-      )?;
+      let scoped_resolver = self.resolver.get_scoped_resolver(scope);
+      let (s, mt) =
+        scoped_resolver.npm_to_file_url(&npm_ref, referrer, resolution_mode)?;
       specifier = s;
       media_type = Some(mt);
     }
@@ -1823,10 +1822,11 @@ fn analyze_module(
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let npm_resolver = resolver.as_graph_npm_resolver(file_referrer);
-      let cli_resolver = resolver.as_cli_resolver(file_referrer);
-      let is_cjs_resolver = resolver.as_is_cjs_resolver(file_referrer);
-      let config_data = resolver.as_config_data(file_referrer);
+      let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
+      let npm_resolver = scoped_resolver.as_graph_npm_resolver();
+      let cli_resolver = scoped_resolver.as_cli_resolver();
+      let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
+      let config_data = scoped_resolver.as_config_data();
       let valid_referrer = specifier.clone();
       let jsx_import_source_config =
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
@@ -1891,11 +1891,30 @@ mod tests {
   use deno_config::deno_json::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   use super::*;
   use crate::lsp::cache::LspCache;
+
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
 
   async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -2041,6 +2060,7 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          &default_registry(),
         )
         .await;
 
@@ -2083,6 +2103,7 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          &default_registry(),
         )
         .await;
 
