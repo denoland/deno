@@ -4406,99 +4406,102 @@ impl CommandExt for Command {
       .action(ArgAction::SetTrue)
       .hide(matches!(cfg, UnstableArgsConfig::None))
       .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-bare-node-builtins")
-        .long("unstable-bare-node-builtins")
-        .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .long_help(match cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-detect-cjs")
-        .long("unstable-detect-cjs")
-        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .long_help(match cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-byonm")
-        .long("unstable-byonm")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-lazy-dynamic-imports")
-      .long("unstable-lazy-dynamic-imports")
-      .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
-      .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-      .hide(true)
-      .long_help(match cfg {
-        UnstableArgsConfig::None => None,
-        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
-      })
-      .help_heading(UNSTABLE_HEADING)
-      .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-sloppy-imports")
-      .long("unstable-sloppy-imports")
-      .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
-      .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-      .hide(true)
-      .long_help(match cfg {
-        UnstableArgsConfig::None => None,
-        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
-      })
-      .help_heading(UNSTABLE_HEADING)
-      .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-npm-lazy-caching")
-        .long("unstable-npm-lazy-caching")
-        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed")
-        .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-lockfile-v5")
-        .long("unstable-lockfile-v5")
-        .help("Enable unstable lockfile v5")
-        .env("DENO_UNSTABLE_LOCKFILE_V5")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .help_heading(UNSTABLE_HEADING)
-        .hide(true)
-        .display_order(next_display_order()),
     );
+
+    // .arg(
+    //   Arg::new("unstable-bare-node-builtins")
+    //     .long("unstable-bare-node-builtins")
+    //     .help("Enable unstable bare node builtins feature")
+    //     .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+    //     .value_parser(FalseyValueParser::new())
+    //     .action(ArgAction::SetTrue)
+    //     .hide(true)
+    //     .long_help(match cfg {
+    //       UnstableArgsConfig::None => None,
+    //       UnstableArgsConfig::ResolutionOnly
+    //       | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+    //     })
+    //     .help_heading(UNSTABLE_HEADING)
+    //     .display_order(next_display_order()),
+    // ).arg(
+    //   Arg::new("unstable-detect-cjs")
+    //     .long("unstable-detect-cjs")
+    //     .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
+    //     .value_parser(FalseyValueParser::new())
+    //     .action(ArgAction::SetTrue)
+    //     .hide(true)
+    //     .long_help(match cfg {
+    //       UnstableArgsConfig::None => None,
+    //       UnstableArgsConfig::ResolutionOnly
+    //       | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+    //     })
+    //     .help_heading(UNSTABLE_HEADING)
+    //     .display_order(next_display_order())
+    // ).arg(
+    //   Arg::new("unstable-byonm")
+    //     .long("unstable-byonm")
+    //     .value_parser(FalseyValueParser::new())
+    //     .action(ArgAction::SetTrue)
+    //     .hide(true)
+    //     .help_heading(UNSTABLE_HEADING)
+    //     .display_order(next_display_order()),
+    // ).arg(
+    //   Arg::new("unstable-lazy-dynamic-imports")
+    //   .long("unstable-lazy-dynamic-imports")
+    //   .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
+    //   .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
+    //   .value_parser(FalseyValueParser::new())
+    //   .action(ArgAction::SetTrue)
+    //   .hide(true)
+    //   .long_help(match cfg {
+    //     UnstableArgsConfig::None => None,
+    //     UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+    //   })
+    //   .help_heading(UNSTABLE_HEADING)
+    //   .display_order(next_display_order())
+    // ).arg(
+    //   Arg::new("unstable-sloppy-imports")
+    //   .long("unstable-sloppy-imports")
+    //   .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
+    //   .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
+    //   .value_parser(FalseyValueParser::new())
+    //   .action(ArgAction::SetTrue)
+    //   .hide(true)
+    //   .long_help(match cfg {
+    //     UnstableArgsConfig::None => None,
+    //     UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+    //   })
+    //   .help_heading(UNSTABLE_HEADING)
+    //   .display_order(next_display_order())
+    // ).arg(
+    //   Arg::new("unstable-npm-lazy-caching")
+    //     .long("unstable-npm-lazy-caching")
+    //     .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed")
+    //     .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
+    //     .value_parser(FalseyValueParser::new())
+    //     .action(ArgAction::SetTrue)
+    //     .hide(true)
+    //     .help_heading(UNSTABLE_HEADING)
+    //     .display_order(next_display_order()),
+    // ).arg(
+    //   Arg::new("unstable-lockfile-v5")
+    //     .long("unstable-lockfile-v5")
+    //     .help("Enable unstable lockfile v5")
+    //     .env("DENO_UNSTABLE_LOCKFILE_V5")
+    //     .value_parser(FalseyValueParser::new())
+    //     .action(ArgAction::SetTrue)
+    //     .help_heading(UNSTABLE_HEADING)
+    //     .hide(true)
+    //     .display_order(next_display_order()),
+    // );
 
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
       cmd = cmd.arg(
-        Arg::new(format!("unstable-{}", granular_flag.name))
-          .long(format!("unstable-{}", granular_flag.name))
+        Arg::new(granular_flag.flag_name)
+          .long(granular_flag.flag_name)
           .help(granular_flag.help_text)
           .action(ArgAction::SetTrue)
+          .value_parser(FalseyValueParser::new())
           .hide(true)
           .help_heading(UNSTABLE_HEADING)
           // we don't render long help, so using it here as a sort of metadata

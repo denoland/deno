@@ -2,81 +2,144 @@
   {
     "name": "broadcast-channel",
     "text": "Enable unstable `BroadcastChannel` API",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "cron",
     "text": "Enable unstable `Deno.cron` API",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "ffi",
     "text": "Enable unstable FFI APIs",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "fs",
     "text": "Enable unstable file system APIs",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "http",
     "text": "Enable unstable HTTP APIs",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "kv",
     "text": "Enable unstable KV APIs",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "net",
     "text": "enable unstable net APIs",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "no-legacy-abort",
     "text": "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "node-globals",
     "text": "Expose Node globals everywhere",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "otel",
     "text": "Enable unstable OpenTelemetry features",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "process",
     "text": "Enable unstable process APIs",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "temporal",
     "text": "Enable unstable Temporal API",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "unsafe-proto",
     "text": "Enable unsafe __proto__ support. This is a security risk.",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "vsock",
     "text": "Enable unstable VSOCK APIs",
-    "showInHelp": false
+    "showInHelp": false,
+    "kind": "runtime"
   },
   {
     "name": "webgpu",
     "text": "Enable unstable WebGPU APIs",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
   },
   {
     "name": "worker-options",
     "text": "Enable unstable Web Worker APIs",
-    "showInHelp": true
+    "showInHelp": true,
+    "kind": "runtime"
+  },
+  {
+    "name": "lockfile-v5",
+    "text": "Enable unstable lockfile v5",
+    "showInHelp": true,
+    "kind": "cli",
+    "env_var": "DENO_UNSTABLE_LOCKFILE_V5"
+  },
+  {
+    "name": "npm-lazy-caching",
+    "text": "Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed",
+    "showInHelp": true,
+    "kind": "cli",
+    "env_var": "DENO_UNSTABLE_NPM_LAZY_CACHING"
+  },
+  {
+    "name": "sloppy-imports",
+    "text": "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
+    "showInHelp": true,
+    "kind": "cli",
+    "env_var": "DENO_UNSTABLE_SLOPPY_IMPORTS"
+  },
+  {
+    "name": "lazy-dynamic-imports",
+    "text": "Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.",
+    "showInHelp": true,
+    "kind": "cli",
+    "env_var": "DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS"
+  },
+  {
+    "name": "byonm",
+    "text": "",
+    "showInHelp": false,
+    "kind": "cli"
+  },
+  {
+    "name": "detect-cjs",
+    "text": "Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases",
+    "showInHelp": true,
+    "kind": "cli"
+  },
+  {
+    "name": "bare-node-builtins",
+    "text": "Enable unstable bare node builtins feature",
+    "showInHelp": true,
+    "kind": "cli",
+    "env_var": "DENO_UNSTABLE_BARE_NODE_BUILTINS"
   }
 ]
