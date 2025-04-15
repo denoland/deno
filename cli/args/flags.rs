@@ -3069,7 +3069,12 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .long("host")
         .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces)")
         .value_parser(serve_host_validator),
-    ).arg(Arg::new("open_site").long("open").help("Open the browser on the address that the server is running on.").action(ArgAction::SetTrue))
+    ).arg(
+      Arg::new("open-site")
+      .long("open")
+      .help("Open the browser on the address that the server is running on.")
+      .action(ArgAction::SetTrue)
+    )
     .arg(
       parallel_arg("multiple server workers")
     )
@@ -5320,7 +5325,7 @@ fn serve_parse(
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
-  let open_site = matches.remove_one::<bool>("open_site").unwrap_or(false);
+  let open_site = matches.remove_one::<bool>("open-site").unwrap_or(false);
 
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 

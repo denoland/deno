@@ -64,7 +64,6 @@ pub async fn serve(
     .watch
     .map(|watch_flags| watch_flags.hmr)
     .unwrap_or(false);
-
   do_serve(
     worker_factory,
     main_module.clone(),
