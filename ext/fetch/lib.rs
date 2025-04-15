@@ -448,7 +448,11 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
       .check_special_file(&path, api_name)
       .map_err(FsError::NotCapable)?;
 
-    Ok(CheckedPath::Resolved(path))
+    if needs_canonicalize {
+      Ok(CheckedPath::Resolved(path))
+    } else {
+      Ok(CheckedPath::Unresolved(path))
+    }
   }
 }
 

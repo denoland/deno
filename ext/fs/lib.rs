@@ -148,7 +148,12 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     self
       .check_special_file(&resolved_path, api_name)
       .map_err(FsError::NotCapable)?;
-    Ok(CheckedPath::Resolved(resolved_path))
+
+    if needs_canonicalize {
+      Ok(CheckedPath::Resolved(resolved_path))
+    } else {
+      Ok(CheckedPath::Unresolved(resolved_path))
+    }
   }
 
   fn check_read(
