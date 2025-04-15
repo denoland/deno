@@ -11,6 +11,12 @@ struct JsonEntry {
 }
 
 fn main() {
+  let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  println!(
+    "cargo:rerun-if-changed={}",
+    crate_dir.join("flags.json").display()
+  );
+
   let mut entries: Vec<JsonEntry> =
     serde_json::from_str(include_str!("./flags.json")).unwrap();
 
@@ -64,8 +70,6 @@ export const unstableIds = {
 
   rust_list += "];";
   js_list += "};\n";
-
-  let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
   std::fs::write(crate_dir.join("rust_list.rs"), rust_list).unwrap();
   std::fs::write(crate_dir.join("js_list.js"), js_list).unwrap();

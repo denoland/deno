@@ -111,8 +111,5 @@ nix.workspace = true
 # Used in benchmark
 test_util.workspace = true
 
-[build-dependencies]
-deno_flags.workspace = true
-
 [package.metadata.docs.rs]
 features = ["docsrs"]
