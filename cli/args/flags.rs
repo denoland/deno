@@ -1939,7 +1939,6 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(
           Arg::new("file")
             .num_args(1..)
-            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
@@ -4681,7 +4680,10 @@ fn check_parse(
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   frozen_lockfile_arg_parse(flags, matches);
-  let files = matches.remove_many::<String>("file").unwrap().collect();
+  let files = match matches.remove_many::<String>("file") {
+    Some(f) => f.collect(),
+    None => vec![".".to_string()], // default
+  };
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
@@ -7567,6 +7569,21 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["."],
           doc: false,
           doc_only: false,
         }),
