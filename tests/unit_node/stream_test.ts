@@ -57,9 +57,7 @@ Deno.test("finished on web streams", async () => {
 // https://github.com/denoland/deno/issues/28905
 Deno.test("Writable toWeb", async () => {
   const nodeWritable = new Writable({
-    write(chunk, encoding, callback) {
-      console.log("Received chunk:", chunk.toString());
-
+    write(_chunk, _encoding, callback) {
       // Simulate the issue by delaying the callback slightly
       setTimeout(() => {
         callback();
