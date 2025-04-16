@@ -701,13 +701,13 @@ const ci = {
           name: "Check tracing build",
           if:
             "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing ",
+          run: "cargo check -p deno --features=lsp-tracing",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: "cargo build --locked --all-targets --features=panic-hook",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -730,7 +730,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --all-targets --features=panic-hook",
             "df -h",
           ].join("\n"),
         },

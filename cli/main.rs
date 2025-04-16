@@ -349,6 +349,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   handle.await?
 }
 
+#[cfg(feature = "panic-hook")]
 #[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
@@ -433,6 +434,7 @@ pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
+  #[cfg(feature = "panic-hook")]
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
