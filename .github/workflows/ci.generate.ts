@@ -707,7 +707,7 @@ const ci = {
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets --features=panic-hook",
+          run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -730,7 +730,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets --features=panic-hook",
+            "cargo build --release --locked --all-targets --features=panic-trace",
             "df -h",
           ].join("\n"),
         },
