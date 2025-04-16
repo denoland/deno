@@ -31,6 +31,7 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+import { unstableIds } from "ext:deno_flags/flags.js";
 
 const { ObjectDefineProperties } = primordials;
 
@@ -147,26 +148,6 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-};
-
-// NOTE(bartlomieju): keep IDs in sync with `runtime/lib.rs`
-const unstableIds = {
-  broadcastChannel: 1,
-  cron: 2,
-  ffi: 3,
-  fs: 4,
-  http: 5,
-  kv: 6,
-  net: 7,
-  noLegacyAbort: 8,
-  nodeGlobals: 9,
-  otel: 10,
-  process: 11,
-  temporal: 12,
-  unsafeProto: 13,
-  vsock: 14,
-  webgpu: 15,
-  workerOptions: 16,
 };
 
 const denoNsUnstableById = { __proto__: null };
