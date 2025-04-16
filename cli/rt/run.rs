@@ -660,6 +660,7 @@ pub async fn run(
     root_path,
     vfs,
   } = data;
+
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -949,6 +950,7 @@ pub async fn run(
     inspect_wait: false,
     strace_ops: None,
     is_inspecting: false,
+    is_standalone: true,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)

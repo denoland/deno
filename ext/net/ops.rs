@@ -152,6 +152,9 @@ pub enum NetError {
   #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
+  #[class(generic)]
+  #[error("VSOCK is not supported on this platform")]
+  VsockUnsupported,
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -387,31 +390,65 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+/// If this token is present in op_net_connect_tcp call and
+/// the hostname matches with one of the resolved IPs, then
+/// the permission check is performed against the original hostname.
+pub struct NetPermToken {
+  pub hostname: String,
+  pub port: Option<u16>,
+  pub resolved_ips: Vec<String>,
+}
+
+impl deno_core::GarbageCollected for NetPermToken {}
+
+impl NetPermToken {
+  /// Checks if the given address is included in the resolved IPs.
+  pub fn includes(&self, addr: &str) -> bool {
+    self.resolved_ips.iter().any(|ip| ip == addr)
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_net_get_ips_from_perm_token(
+  #[cppgc] token: &NetPermToken,
+) -> Vec<String> {
+  token.resolved_ips.clone()
+}
+
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[cppgc] net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
+    // If token exists and the address matches to its resolved ips,
+    // then we can check net permission against token.hostname, instead of addr.hostname
+    let hostname_to_check = match net_perm_token {
+      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
+      _ => addr.hostname.clone(),
+    };
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -572,6 +609,145 @@ where
   NP: NetPermissions + 'static,
 {
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+}
+
+#[cfg(unix)]
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_net_connect_vsock<NP>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockStream;
+
+  state
+    .borrow()
+    .feature_checker
+    .check_or_exit("vsock", "Deno.connect");
+
+  state.borrow_mut().borrow_mut::<NP>().check_vsock(
+    cid,
+    port,
+    "Deno.connect()",
+  )?;
+
+  let addr = VsockAddr::new(cid, port);
+  let vsock_stream = VsockStream::connect(addr).await?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(crate::io::VsockStreamResource::new(
+        vsock_stream.into_split(),
+      ));
+
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(stack_trace)]
+#[serde]
+pub fn op_net_listen_vsock<NP>(
+  state: &mut OpState,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, u32, u32), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  use tokio_vsock::VsockAddr;
+  use tokio_vsock::VsockListener;
+
+  state.feature_checker.check_or_exit("vsock", "Deno.listen");
+
+  state
+    .borrow_mut::<NP>()
+    .check_vsock(cid, port, "Deno.listen()")?;
+
+  let addr = VsockAddr::new(cid, port);
+  let listener = VsockListener::bind(addr)?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = NetworkListenerResource::new(listener);
+  let rid = state.resource_table.add(listener_resource);
+  Ok((rid, local_addr.cid(), local_addr.port()))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  Err(NetError::VsockUnsupported)
+}
+
+#[cfg(unix)]
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_vsock(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError> {
+  use tokio_vsock::VsockListener;
+
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<VsockListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (vsock_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add(crate::io::VsockStreamResource::new(
+      vsock_stream.into_split(),
+    ));
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[serde]
+pub fn op_net_accept_vsock() -> Result<(), NetError> {
+  Err(NetError::VsockUnsupported)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -1114,6 +1290,15 @@ mod tests {
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
+
+    fn check_vsock(
+      &mut self,
+      _cid: u32,
+      _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1164,7 +1349,7 @@ mod tests {
       }
     );
 
-    let mut runtime = JsRuntime::new(RuntimeOptions {
+    let runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
       feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
@@ -1179,7 +1364,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 

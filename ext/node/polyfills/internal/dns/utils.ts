@@ -53,6 +53,11 @@ export interface LookupOptions {
   hints?: number | undefined;
   all?: boolean | undefined;
   verbatim?: boolean | undefined;
+  /**
+   * Deno specific extension. If port is specified, the required net permission
+   * for the lookup call will be reduced to single port.
+   */
+  port?: number | undefined;
 }
 
 export interface LookupOneOptions extends LookupOptions {

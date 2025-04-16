@@ -115,6 +115,23 @@ exec deno {} "$@"
   Ok(())
 }
 
+fn get_installer_bin_dir(
+  cwd: &Path,
+  root_flag: Option<&str>,
+) -> Result<PathBuf, AnyError> {
+  let root = if let Some(root) = root_flag {
+    canonicalize_path_maybe_not_exists(&cwd.join(root))?
+  } else {
+    get_installer_root()?
+  };
+
+  Ok(if !root.ends_with("bin") {
+    root.join("bin")
+  } else {
+    root
+  })
+}
+
 fn get_installer_root() -> Result<PathBuf, AnyError> {
   if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
@@ -217,12 +234,8 @@ pub async fn uninstall(
   };
 
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let root = if let Some(root) = uninstall_flags.root {
-    canonicalize_path_maybe_not_exists(&cwd.join(root))?
-  } else {
-    get_installer_root()?
-  };
-  let installation_dir = root.join("bin");
+  let installation_dir =
+    get_installer_bin_dir(&cwd, uninstall_flags.root.as_deref())?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
@@ -233,21 +246,11 @@ pub async fn uninstall(
 
   let file_path = installation_dir.join(&uninstall_flags.name);
 
-  let mut removed = false;
-
-  if file_path.exists() {
-    fs::remove_file(&file_path)?;
-    log::info!("deleted {}", file_path.to_string_lossy());
-    removed = true
-  };
+  let mut removed = remove_file_if_exists(&file_path)?;
 
   if cfg!(windows) {
     let file_path = file_path.with_extension("cmd");
-    if file_path.exists() {
-      fs::remove_file(&file_path)?;
-      log::info!("deleted {}", file_path.to_string_lossy());
-      removed = true
-    }
+    removed |= remove_file_if_exists(&file_path)?;
   }
 
   if !removed {
@@ -262,14 +265,22 @@ pub async fn uninstall(
   // Remove cleaning it up after January 2024
   for ext in ["tsconfig.json", "deno.json", "lock.json"] {
     let file_path = file_path.with_extension(ext);
-    if file_path.exists() {
-      fs::remove_file(&file_path)?;
-      log::info!("deleted {}", file_path.to_string_lossy());
-    }
+    remove_file_if_exists(&file_path)?;
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
   Ok(())
+}
+
+fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
+  if !file_path.exists() {
+    return Ok(false);
+  }
+
+  fs::remove_file(file_path)
+    .with_context(|| format!("Failed removing: {}", file_path.display()))?;
+  log::info!("deleted {}", file_path.display());
+  Ok(true)
 }
 
 pub(crate) async fn install_from_entrypoints(
@@ -308,10 +319,13 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
+      factory
+        .npm_installer()
+        .await?
+        .ensure_no_pkg_json_dep_errors()?;
       crate::tools::pm::cache_top_level_deps(&factory, None).await?;
 
-      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+      if let Some(lockfile) = factory.maybe_lockfile().await? {
         lockfile.write_if_changed()?;
       }
 
@@ -388,7 +402,8 @@ async fn install_global(
   let entry_text = install_flags_global.module_url.as_str();
   if !cli_options.initial_cwd().join(entry_text).exists() {
     // check for package requirement missing prefix
-    if let Ok(Err(package_req)) = super::pm::AddRmPackageReq::parse(entry_text)
+    if let Ok(Err(package_req)) =
+      super::pm::AddRmPackageReq::parse(entry_text, None)
     {
       if jsr_resolver.req_to_nv(&package_req).await.is_some() {
         bail!(
@@ -483,12 +498,8 @@ async fn resolve_shim_data(
   install_flags_global: &InstallFlagsGlobal,
 ) -> Result<ShimData, AnyError> {
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let root = if let Some(root) = &install_flags_global.root {
-    canonicalize_path_maybe_not_exists(&cwd.join(root))?
-  } else {
-    get_installer_root()?
-  };
-  let installation_dir = root.join("bin");
+  let installation_dir =
+    get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
 
   // Check if module_url is remote
   let module_url = resolve_url_or_path(&install_flags_global.module_url, &cwd)?;

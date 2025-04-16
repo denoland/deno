@@ -49,7 +49,7 @@ pub async fn info(
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = cli_options.maybe_lockfile();
+    let maybe_lockfile = factory.maybe_lockfile().await?;
     let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
