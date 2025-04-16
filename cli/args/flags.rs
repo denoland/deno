@@ -3033,7 +3033,7 @@ fn task_subcommand() -> Command {
       "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks (from `deno.json(c)` files in the current and parent directories):
+List all available tasks (from config files in the current and ancestor directories):
   <p(245)>deno task</>
 
 Evaluate a task from string:
