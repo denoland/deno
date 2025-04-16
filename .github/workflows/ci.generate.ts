@@ -887,7 +887,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -900,8 +900,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -914,7 +914,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked",
+          run: "cargo test --release --locked --features=panic-trace",
         },
         {
           name: "Configure hosts file for WPT",
