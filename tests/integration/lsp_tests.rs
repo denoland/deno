@@ -11433,6 +11433,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
   temp_dir.write("./exports.ts", "export const someExport = 1;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+
   let diagnostics = client.notebook_did_open(
     url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
     1,
@@ -11461,6 +11462,17 @@ fn lsp_jupyter_import_map_and_diagnostics() {
           // Local variables conflicting with globals.
           const name = "Hello";
           console.log(name);
+
+          // This should transfer to the next cell.
+          const someNumber = 123;
+        "#,
+      }),
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"
+          console.log(someNumber);
         "#,
       }),
     ],
@@ -11468,6 +11480,11 @@ fn lsp_jupyter_import_map_and_diagnostics() {
   assert_eq!(
     json!(diagnostics.all_messages()),
     json!([
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
       {
         "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
         "diagnostics": [
@@ -11515,6 +11532,64 @@ fn lsp_jupyter_import_map_and_diagnostics() {
       },
     ]),
   );
+
+  client.write_notification(
+    "notebookDocument/didChange",
+    json!({
+      "notebookDocument": {
+        "version": 2,
+        "uri": url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+      },
+      "change": {
+        "cells": {
+          "structure": {
+            "array": { "start": 1, "deleteCount": 1 },
+            "didOpen": [],
+            "didClose": [
+              { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()) },
+            ],
+          },
+        },
+      },
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        // TODO(nayeemrmn): There should be an undefined indentifier diagnostic!
+        "diagnostics": [],
+        "version": 1,
+      },
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+    ]),
+  );
+
+  client.write_notification(
+    "notebookDocument/didClose",
+    json!({
+      "notebookDocument": {
+        "uri": url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+      },
+      "cellTextDocuments": [
+        { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()) },
+        { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()) },
+      ],
+    }),
+  );
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
   client.shutdown();
 }
 

@@ -485,7 +485,7 @@ impl Document {
 pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
-  cells_by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<Arc<Uri>>>,
+  cells_by_notebook_uri: BTreeMap<Arc<Uri>, Vec<Arc<Uri>>>,
   file_like_uris_by_url: Arc<DashMap<Url, Arc<Uri>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
   /// maps. We want to be able to discard old documents from here but keep these
@@ -601,6 +601,18 @@ impl Documents {
     let uri = Arc::new(uri.clone());
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
+      if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
+        cells.splice(
+          structure.array.start as usize
+            ..(structure.array.start + structure.array.delete_count) as usize,
+          structure
+            .array
+            .cells
+            .into_iter()
+            .flatten()
+            .map(|c| Arc::new(c.document)),
+        );
+      }
       for closed in structure.did_close.into_iter().flatten() {
         let document = match self.close(&closed.uri) {
           Ok(d) => d,
@@ -757,7 +769,7 @@ impl Documents {
 
   pub fn cells_by_notebook_uri(
     &self,
-  ) -> &BTreeMap<Arc<Uri>, IndexSet<Arc<Uri>>> {
+  ) -> &BTreeMap<Arc<Uri>, Vec<Arc<Uri>>> {
     &self.cells_by_notebook_uri
   }
 
