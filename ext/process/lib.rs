@@ -20,6 +20,7 @@ use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -192,6 +193,8 @@ pub struct SpawnArgs {
 
   #[serde(flatten)]
   stdio: ChildStdio,
+
+  input: Option<JsBuffer>,
 
   extra_stdio: Vec<Stdio>,
   detached: bool,
@@ -437,6 +440,8 @@ fn create_command(
 
   if args.stdio.stdin.is_ipc() {
     args.ipc = Some(0);
+  } else if args.input.is_some() {
+    command.stdin(std::process::Stdio::piped());
   } else {
     command.stdin(args.stdio.stdin.as_stdio(state)?);
   }
@@ -936,13 +941,31 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, ProcessError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
+  let input = args.input.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
-  let output = command.output().map_err(|e| ProcessError::SpawnFailed {
+
+  let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().to_string(),
     error: Box::new(e.into()),
   })?;
-
+  if let Some(input) = input {
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+      ProcessError::Io(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "stdin is not available",
+      ))
+    })?;
+    stdin.write_all(&input)?;
+    stdin.flush()?;
+  }
+  let output =
+    child
+      .wait_with_output()
+      .map_err(|e| ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().to_string(),
+        error: Box::new(e.into()),
+      })?;
   Ok(SpawnOutput {
     status: output.status.try_into()?,
     stdout: if stdout {

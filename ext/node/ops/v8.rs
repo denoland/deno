@@ -21,8 +21,7 @@ pub fn op_v8_get_heap_statistics(
   scope: &mut v8::HandleScope,
   #[buffer] buffer: &mut [f64],
 ) {
-  let mut stats = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut stats);
+  let stats = scope.get_heap_statistics();
 
   buffer[0] = stats.total_heap_size() as f64;
   buffer[1] = stats.total_heap_size_executable() as f64;
@@ -32,7 +31,7 @@ pub fn op_v8_get_heap_statistics(
   buffer[5] = stats.heap_size_limit() as f64;
   buffer[6] = stats.malloced_memory() as f64;
   buffer[7] = stats.peak_malloced_memory() as f64;
-  buffer[8] = stats.does_zap_garbage() as f64;
+  buffer[8] = if stats.does_zap_garbage() { 1.0 } else { 0.0 };
   buffer[9] = stats.number_of_native_contexts() as f64;
   buffer[10] = stats.number_of_detached_contexts() as f64;
   buffer[11] = stats.total_global_handles_size() as f64;
@@ -48,7 +47,7 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
-impl<'a> v8::cppgc::GarbageCollected for Serializer<'a> {
+impl v8::cppgc::GarbageCollected for Serializer<'_> {
   fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
 }
 
@@ -226,7 +225,7 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl<'a> deno_core::GarbageCollected for Deserializer<'a> {}
+impl deno_core::GarbageCollected for Deserializer<'_> {}
 
 pub struct DeserializerDelegate {
   obj: v8::Global<v8::Object>,

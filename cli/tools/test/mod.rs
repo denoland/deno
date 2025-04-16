@@ -77,6 +77,7 @@ use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -346,28 +347,28 @@ impl TestFailure {
       }
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
-        write!(f, "Leaks detected:").unwrap();
+        write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).unwrap();
+          write!(f, "\n  - {}", detail).ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).unwrap();
+          write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
+        write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
+        write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
@@ -646,7 +647,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {
@@ -1604,7 +1605,10 @@ pub async fn run_tests(
   main_graph_container
     .check_specifiers(
       &specifiers_for_typecheck_and_test,
-      cli_options.ext_flag().as_ref(),
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
     )
     .await?;
 
@@ -1787,7 +1791,10 @@ pub async fn run_tests_with_watch(
         main_graph_container
           .check_specifiers(
             &specifiers_for_typecheck_and_test,
-            cli_options.ext_flag().as_ref(),
+            crate::graph_container::CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              ..Default::default()
+            },
           )
           .await?;
 

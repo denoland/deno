@@ -196,6 +196,47 @@ fn install_custom_dir_env_var() {
 }
 
 #[test]
+fn installer_test_custom_dir_with_bin() {
+  let context = TestContext::with_http_server();
+  let temp_dir = context.temp_dir();
+  let temp_dir_str = temp_dir.path().to_string();
+  let temp_dir_with_bin = temp_dir.path().join("bin").to_string();
+
+  context
+    .new_command()
+    .current_dir(util::root_path()) // different cwd
+    .args("install --check --name echo_test -g http://localhost:4545/echo.ts")
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", temp_dir_with_bin.as_str()),
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let mut file_path = temp_dir.path().join("bin/echo_test");
+  assert!(file_path.exists());
+
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+
+  let content = file_path.read_to_string();
+  if cfg!(windows) {
+    assert_contains!(
+      content,
+      r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
+    );
+  } else {
+    assert_contains!(
+      content,
+      r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
+    );
+  }
+}
+
+#[test]
 fn installer_test_local_module_run() {
   let context = TestContext::with_http_server();
   let temp_dir = context.temp_dir();

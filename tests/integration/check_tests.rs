@@ -183,8 +183,8 @@ fn json_module_check_then_error() {
     .assert_exit_code(1);
 }
 
-#[test]
-fn npm_module_check_then_error() {
+#[tokio::test]
+async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()
     .add_npm_env_vars()
@@ -205,12 +205,14 @@ fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
-  .unwrap();
+  let mut lockfile =
+    deno_lockfile::Lockfile::new_current_version(NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+      next_version: false,
+    })
+    .unwrap();
 
   // make the specifier resolve to version 1
   lockfile.content.packages.specifiers.insert(

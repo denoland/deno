@@ -67,6 +67,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
 
 #[derive(Clone)]
 pub struct Symbol {
+  pub name: String,
   pub cif: libffi::middle::Cif,
   pub ptr: libffi::middle::CodePtr,
   pub parameter_types: Vec<NativeType>,
