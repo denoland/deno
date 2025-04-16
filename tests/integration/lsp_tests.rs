@@ -11564,8 +11564,18 @@ fn lsp_jupyter_import_map_and_diagnostics() {
       },
       {
         "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
-        // TODO(nayeemrmn): There should be an undefined indentifier diagnostic!
-        "diagnostics": [],
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 22 },
+              "end": { "line": 1, "character": 32 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'someNumber'.",
+          },
+        ],
         "version": 1,
       },
       {
@@ -11575,20 +11585,6 @@ fn lsp_jupyter_import_map_and_diagnostics() {
       },
     ]),
   );
-
-  client.write_notification(
-    "notebookDocument/didClose",
-    json!({
-      "notebookDocument": {
-        "uri": url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
-      },
-      "cellTextDocuments": [
-        { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()) },
-        { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()) },
-      ],
-    }),
-  );
-  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }

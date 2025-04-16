@@ -1261,7 +1261,10 @@ impl Inner {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
       self.project_changed(
-        [(document.uri.as_ref(), ChangeKind::Opened)],
+        self
+          .document_modules
+          .primary_specifier(&Document::Open(document.clone()))
+          .map(|s| (s, ChangeKind::Opened)),
         ProjectScopesChange::None,
       );
       self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
@@ -1308,7 +1311,10 @@ impl Inner {
         config_changed = true;
       }
       self.project_changed(
-        [(document.uri.as_ref(), ChangeKind::Modified)],
+        self
+          .document_modules
+          .primary_specifier(&Document::Open(document.clone()))
+          .map(|s| (s, ChangeKind::Modified)),
         if config_changed {
           ProjectScopesChange::Config
         } else {
@@ -1412,11 +1418,14 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info().await;
+      let changed_specifier = self
+        .document_modules
+        .primary_specifier(&Document::Open(document.clone()))
+        .map(|s| (s, ChangeKind::Closed));
+      // Invalidate the weak references of `document` before calling
+      // `self.project_changed()` so its module entries will be dropped.
       drop(document);
-      self.project_changed(
-        [(&params.text_document.uri, ChangeKind::Closed)],
-        ProjectScopesChange::None,
-      );
+      self.project_changed(changed_specifier, ProjectScopesChange::None);
       self
         .diagnostics_server
         .invalidate(&[&params.text_document.uri]);
@@ -1432,18 +1441,31 @@ impl Inner {
       params.notebook_document.uri,
       params.cell_text_documents,
     );
-    let diagnosable_uris = documents
+    let diagnosable_documents = documents
       .iter()
-      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .filter(|d| d.is_diagnosable())
       .collect::<Vec<_>>();
-    if !diagnosable_uris.is_empty() {
+    if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
       self.project_changed(
-        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Opened)),
+        diagnosable_documents
+          .iter()
+          .flat_map(|d| {
+            let specifier = self
+              .document_modules
+              .primary_specifier(&Document::Open((*d).clone()))?;
+            Some((specifier, ChangeKind::Closed))
+          })
+          .collect::<Vec<_>>(),
         ProjectScopesChange::OpenNotebooks,
       );
-      self.diagnostics_server.invalidate(&diagnosable_uris);
+      self.diagnostics_server.invalidate(
+        &diagnosable_documents
+          .iter()
+          .map(|d| d.uri.as_ref())
+          .collect::<Vec<_>>(),
+      );
       self.send_diagnostics_update();
     }
   }
@@ -1456,17 +1478,16 @@ impl Inner {
     let Some(cells) = params.change.cells else {
       return;
     };
-    let documents_with_change_kinds =
-      self.document_modules.change_notebook_document(
-        &params.notebook_document.uri,
-        cells.structure,
-        cells.text_content,
-      );
-    let diagnosable_uris_with_change_kinds = documents_with_change_kinds
+    let documents = self.document_modules.change_notebook_document(
+      &params.notebook_document.uri,
+      cells.structure,
+      cells.text_content,
+    );
+    let diagnosable_documents = documents
       .iter()
-      .filter_map(|(d, k)| d.is_diagnosable().then_some((d.uri.as_ref(), *k)))
+      .filter(|(d, _)| d.is_diagnosable())
       .collect::<Vec<_>>();
-    if !diagnosable_uris_with_change_kinds.is_empty() {
+    if !diagnosable_documents.is_empty() {
       let old_scopes_with_node_specifier =
         self.document_modules.scopes_with_node_specifier();
       self.refresh_dep_info().await;
@@ -1479,7 +1500,15 @@ impl Inner {
         config_changed = true;
       }
       self.project_changed(
-        diagnosable_uris_with_change_kinds.iter().cloned(),
+        diagnosable_documents
+          .iter()
+          .flat_map(|(d, k)| {
+            let specifier = self
+              .document_modules
+              .primary_specifier(&Document::Open(d.clone()))?;
+            Some((specifier, *k))
+          })
+          .collect::<Vec<_>>(),
         if config_changed {
           ProjectScopesChange::Config
         } else {
@@ -1487,9 +1516,9 @@ impl Inner {
         },
       );
       self.diagnostics_server.invalidate(
-        &diagnosable_uris_with_change_kinds
+        &diagnosable_documents
           .iter()
-          .map(|(u, _)| *u)
+          .map(|(d, _)| d.uri.as_ref())
           .collect::<Vec<_>>(),
       );
       self.send_diagnostics_update();
@@ -1529,17 +1558,30 @@ impl Inner {
     let documents = self
       .document_modules
       .close_notebook_document(&params.notebook_document.uri);
-    let diagnosable_uris = documents
+    let diagnosable_documents = documents
       .iter()
-      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .filter(|d| d.is_diagnosable())
       .collect::<Vec<_>>();
-    if !diagnosable_uris.is_empty() {
+    if !diagnosable_documents.is_empty() {
       self.refresh_dep_info().await;
       self.project_changed(
-        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Closed)),
+        diagnosable_documents
+          .iter()
+          .flat_map(|d| {
+            let specifier = self
+              .document_modules
+              .primary_specifier(&Document::Open((*d).clone()))?;
+            Some((specifier, ChangeKind::Closed))
+          })
+          .collect::<Vec<_>>(),
         ProjectScopesChange::OpenNotebooks,
       );
-      self.diagnostics_server.invalidate(&diagnosable_uris);
+      self.diagnostics_server.invalidate(
+        &diagnosable_documents
+          .iter()
+          .map(|d| d.uri.as_ref())
+          .collect::<Vec<_>>(),
+      );
       self.send_diagnostics_update();
     }
   }
@@ -1625,7 +1667,18 @@ impl Inner {
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
       self.project_changed(
-        changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
+        changes
+          .iter()
+          .filter_map(|(_, e)| {
+            let document = self.document_modules.documents.inspect(&e.uri)?;
+            if !document.is_diagnosable() {
+              return None;
+            }
+            let specifier =
+              self.document_modules.primary_specifier(&document)?;
+            Some((specifier, ChangeKind::Modified))
+          })
+          .collect::<Vec<_>>(),
         ProjectScopesChange::None,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -3866,21 +3919,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn project_changed<'a>(
     &mut self,
-    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
+    changed_specifiers: impl IntoIterator<Item = (Arc<Url>, ChangeKind)>,
     scopes_change: ProjectScopesChange,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    let modified_scripts = changed_docs
-      .into_iter()
-      .filter_map(|(u, k)| {
-        let document = self.document_modules.documents.inspect(u)?;
-        let specifier = self.document_modules.primary_specifier(&document)?;
-        Some((specifier, k))
-      })
-      .collect::<IndexMap<_, _>>();
+    let changed_specifiers = changed_specifiers.into_iter().collect::<Vec<_>>();
     self.ts_server.project_changed(
       self.snapshot(),
-      modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
+      changed_specifiers.iter().map(|(u, k)| (u.as_ref(), *k)),
       matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .config

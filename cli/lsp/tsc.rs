@@ -4898,7 +4898,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     script_names.extend(global_script_names.iter().cloned());
 
     // Add the cells as roots.
-    script_names.extend(cell_uris.into_iter().flat_map(|u| {
+    script_names.extend(cell_uris.iter().flat_map(|u| {
       let document = state.state_snapshot.document_modules.documents.get(u)?;
       let module = state
         .state_snapshot

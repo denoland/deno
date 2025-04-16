@@ -767,9 +767,7 @@ impl Documents {
     }
   }
 
-  pub fn cells_by_notebook_uri(
-    &self,
-  ) -> &BTreeMap<Arc<Uri>, Vec<Arc<Uri>>> {
+  pub fn cells_by_notebook_uri(&self) -> &BTreeMap<Arc<Uri>, Vec<Arc<Uri>>> {
     &self.cells_by_notebook_uri
   }
 
