@@ -9,11 +9,11 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -187,6 +187,7 @@ pub(crate) async fn handle_request(
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  legacy_abort: bool,
 ) -> Result<Response, hyper_v014::Error> {
   let otel_info = if let Some(otel) = deno_telemetry::OTEL_GLOBALS
     .get()
@@ -223,7 +224,13 @@ pub(crate) async fn handle_request(
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state, otel_info),
+    HttpRecord::new(
+      request,
+      request_info,
+      server_state,
+      otel_info,
+      legacy_abort,
+    ),
     HttpRecord::cancel,
   );
 
@@ -262,6 +269,7 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
+  legacy_abort: bool,
   otel_info: Option<OtelInfo>,
 }
 
@@ -284,6 +292,7 @@ impl HttpRecord {
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
     otel_info: Option<OtelInfo>,
+    legacy_abort: bool,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
@@ -319,6 +328,7 @@ impl HttpRecord {
       closed_channel: None,
       been_dropped: false,
       finished: false,
+      legacy_abort,
       needs_close_after_finish: false,
       otel_info,
     });
@@ -436,8 +446,11 @@ impl HttpRecord {
     inner.been_dropped = true;
     // The request body might include actual resources.
     inner.request_body.take();
-    if let Some(closed_channel) = inner.closed_channel.take() {
-      let _ = closed_channel.send(());
+
+    if inner.legacy_abort || !inner.response_body_finished {
+      if let Some(closed_channel) = inner.closed_channel.take() {
+        let _ = closed_channel.send(());
+      }
     }
   }
 
@@ -737,6 +750,7 @@ mod tests {
         request_info.clone(),
         server_state.clone(),
         tx.clone(),
+        true,
       )
     });
 

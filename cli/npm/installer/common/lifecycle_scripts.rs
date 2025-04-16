@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,13 +9,16 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
+use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_task_shell::KillSignal;
 
 use super::bin_entries::BinEntries;
+use super::NpmPackageExtraInfoProvider;
 use crate::args::LifecycleScriptsConfig;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
@@ -41,7 +45,11 @@ pub trait LifecycleScriptsStrategy {
 }
 
 pub struct LifecycleScripts<'a> {
-  packages_with_scripts: Vec<(&'a NpmResolutionPackage, PathBuf)>,
+  packages_with_scripts: Vec<(
+    &'a NpmResolutionPackage,
+    HashMap<SmallStackString, String>,
+    PathBuf,
+  )>,
   packages_with_scripts_not_run: Vec<(&'a NpmResolutionPackage, PathBuf)>,
 
   config: &'a LifecycleScriptsConfig,
@@ -63,17 +71,19 @@ impl<'a> LifecycleScripts<'a> {
 }
 
 pub fn has_lifecycle_scripts(
-  package: &NpmResolutionPackage,
+  extra: &NpmPackageExtraInfo,
   package_path: &Path,
 ) -> bool {
-  if let Some(install) = package.scripts.get("install") {
-    // default script
-    if !is_broken_default_install_script(install, package_path) {
-      return true;
+  if let Some(install) = extra.scripts.get("install") {
+    {
+      // default script
+      if !is_broken_default_install_script(install, package_path) {
+        return true;
+      }
     }
   }
-  package.scripts.contains_key("preinstall")
-    || package.scripts.contains_key("postinstall")
+  extra.scripts.contains_key("preinstall")
+    || extra.scripts.contains_key("postinstall")
 }
 
 // npm defaults to running `node-gyp rebuild` if there is a `binding.gyp` file
@@ -131,14 +141,17 @@ impl<'a> LifecycleScripts<'a> {
   pub fn add(
     &mut self,
     package: &'a NpmResolutionPackage,
+    extra: &NpmPackageExtraInfo,
     package_path: Cow<Path>,
   ) {
-    if has_lifecycle_scripts(package, &package_path) {
+    if has_lifecycle_scripts(extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
         if !self.has_run_scripts(package) {
-          self
-            .packages_with_scripts
-            .push((package, package_path.into_owned()));
+          self.packages_with_scripts.push((
+            package,
+            extra.scripts.clone(),
+            package_path.into_owned(),
+          ));
         }
       } else if !self.has_run_scripts(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
@@ -176,6 +189,7 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
+    provider: impl NpmPackageExtraInfoProvider + Clone,
   ) -> Result<(), LifecycleScriptsError> {
     let kill_signal = KillSignal::default();
     let _drop_signal = kill_signal.clone().drop_guard();
@@ -188,6 +202,7 @@ impl<'a> LifecycleScripts<'a> {
         root_node_modules_dir_path,
         progress_bar,
         kill_signal,
+        provider,
       )
       .await
   }
@@ -199,6 +214,7 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
     kill_signal: KillSignal,
+    provider: impl NpmPackageExtraInfoProvider + Clone,
   ) -> Result<(), LifecycleScriptsError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
@@ -209,7 +225,7 @@ impl<'a> LifecycleScripts<'a> {
       let package_ids = self
         .packages_with_scripts
         .iter()
-        .map(|(p, _)| &p.id)
+        .map(|(p, _, _)| &p.id)
         .collect::<HashSet<_>>();
       // get custom commands for each bin available in the node_modules dir (essentially
       // the scripts that are in `node_modules/.bin`)
@@ -218,7 +234,9 @@ impl<'a> LifecycleScripts<'a> {
         snapshot,
         packages,
         get_package_path,
-      );
+        provider.clone(),
+      )
+      .await;
       let init_cwd = &self.config.initial_cwd;
       let process_state = deno_lib::npm::npm_process_state(
         snapshot.as_valid_serialized(),
@@ -228,10 +246,7 @@ impl<'a> LifecycleScripts<'a> {
       let mut env_vars = crate::task_runner::real_env_vars();
       // so the subprocess can detect that it is running as part of a lifecycle script,
       // and avoid trying to set up node_modules again
-      env_vars.insert(
-        LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.to_string(),
-        "1".to_string(),
-      );
+      env_vars.insert(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.into(), "1".into());
       // we want to pass the current state of npm resolution down to the deno subprocess
       // (that may be running as part of the script). we do this with an inherited temp file
       //
@@ -248,11 +263,10 @@ impl<'a> LifecycleScripts<'a> {
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
       env_vars.insert(
-        deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
-          .to_string(),
-        (temp_file_fd as usize).to_string(),
+        deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.into(),
+        (temp_file_fd as usize).to_string().into(),
       );
-      for (package, package_path) in self.packages_with_scripts {
+      for (package, scripts, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the
         // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
         // correct bin will be used.
@@ -261,9 +275,11 @@ impl<'a> LifecycleScripts<'a> {
           package,
           snapshot,
           get_package_path,
-        );
+          provider.clone(),
+        )
+        .await;
         for script_name in ["preinstall", "install", "postinstall"] {
-          if let Some(script) = package.scripts.get(script_name) {
+          if let Some(script) = scripts.get(script_name) {
             if script_name == "install"
               && is_broken_default_install_script(script, &package_path)
             {
@@ -281,7 +297,7 @@ impl<'a> LifecycleScripts<'a> {
               crate::task_runner::RunTaskOptions {
                 task_name: script_name,
                 script,
-                cwd: &package_path,
+                cwd: package_path.clone(),
                 env_vars: env_vars.clone(),
                 custom_commands: custom_commands.clone(),
                 init_cwd,
@@ -354,7 +370,7 @@ impl<'a> LifecycleScripts<'a> {
   }
 }
 
-const LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
+static LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
   "DENO_INTERNAL_IS_LIFECYCLE_SCRIPT";
 
 pub fn is_running_lifecycle_script() -> bool {
@@ -364,11 +380,12 @@ pub fn is_running_lifecycle_script() -> bool {
 // take in all (non copy) packages from snapshot,
 // and resolve the set of available binaries to create
 // custom commands available to the task runner
-fn resolve_baseline_custom_commands<'a>(
+async fn resolve_baseline_custom_commands<'a>(
   bin_entries: &mut BinEntries<'a>,
   snapshot: &'a NpmResolutionSnapshot,
   packages: &'a [NpmResolutionPackage],
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
   custom_commands
@@ -395,13 +412,15 @@ fn resolve_baseline_custom_commands<'a>(
     snapshot,
     packages,
     get_package_path,
+    provider,
   )
+  .await
 }
 
 // resolves the custom commands from an iterator of packages
 // and adds them to the existing custom commands.
 // note that this will overwrite any existing custom commands
-fn resolve_custom_commands_from_packages<
+async fn resolve_custom_commands_from_packages<
   'a,
   P: IntoIterator<Item = &'a NpmResolutionPackage>,
 >(
@@ -410,12 +429,27 @@ fn resolve_custom_commands_from_packages<
   snapshot: &'a NpmResolutionSnapshot,
   packages: P,
   get_package_path: impl Fn(&'a NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   for package in packages {
     let package_path = get_package_path(package);
-
-    if package.bin.is_some() {
-      bin_entries.add(package, package_path);
+    let extra = if let Some(extra) = &package.extra {
+      extra.clone()
+    } else {
+      let Ok(extra) = provider
+        .get_package_extra_info(
+          &package.id.nv,
+          &package_path,
+          super::ExpectedExtraInfo::from_package(package),
+        )
+        .await
+      else {
+        continue;
+      };
+      extra
+    };
+    if extra.bin.is_some() {
+      bin_entries.add(package, &extra, package_path);
     }
   }
   let bins: Vec<(String, PathBuf)> = bin_entries.collect_bin_files(snapshot);
@@ -435,11 +469,12 @@ fn resolve_custom_commands_from_packages<
 // resolves the custom commands from the dependencies of a package
 // and adds them to the existing custom commands.
 // note that this will overwrite any existing custom commands.
-fn resolve_custom_commands_from_deps(
+async fn resolve_custom_commands_from_deps(
   baseline: crate::task_runner::TaskCustomCommands,
   package: &NpmResolutionPackage,
   snapshot: &NpmResolutionSnapshot,
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   let mut bin_entries = BinEntries::new();
   resolve_custom_commands_from_packages(
@@ -451,5 +486,7 @@ fn resolve_custom_commands_from_deps(
       .values()
       .map(|id| snapshot.package_from_id(id).unwrap()),
     get_package_path,
+    provider,
   )
+  .await
 }

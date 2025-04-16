@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
+use std::future::poll_fn;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -10,7 +11,6 @@ use std::rc::Rc;
 
 use cache_control::CacheControl;
 use deno_core::external;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
@@ -385,7 +385,7 @@ where
   .into();
 
   let port: v8::Local<v8::Value> = match request_info.peer_port {
-    Some(port) => v8::Integer::new(scope, port.into()).into(),
+    Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
@@ -741,7 +741,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
 }
 
 #[op2(async)]
-pub async fn op_http_request_on_cancel(external: *const c_void) {
+pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_request_on_cancel") };
@@ -750,7 +750,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) {
   http.on_cancel(tx);
   drop(http);
 
-  rx.await.ok();
+  rx.await.is_ok()
 }
 
 /// Returned promise resolves when body streaming finishes.
@@ -928,8 +928,15 @@ fn serve_https(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     async move {
@@ -976,8 +983,15 @@ fn serve_http(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     serve_http2_autodetect(io, svc, listen_cancel_handle, options)
@@ -1009,6 +1023,10 @@ where
     }
     #[cfg(unix)]
     NetworkStream::Unix(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    #[cfg(unix)]
+    NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
   }
@@ -1082,7 +1100,7 @@ impl Drop for HttpJoinHandle {
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1129,6 +1147,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 
@@ -1137,7 +1156,7 @@ where
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1171,6 +1190,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 

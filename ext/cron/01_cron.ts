@@ -165,8 +165,7 @@ function cron(
         const _res = isPromise(result) ? (await result) : result;
         success = true;
       } catch (error) {
-        // deno-lint-ignore no-console
-        console.error(`Exception in cron handler ${name}`, error);
+        import.meta.log("error", `Exception in cron handler ${name}`, error);
         success = false;
       }
     }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.2.2"
+version = "2.2.10"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -67,7 +67,7 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -81,6 +81,7 @@ deno_media_type = { workspace = true, features = ["data_url", "decoding", "modul
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
+deno_panic = "0.1.0"
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -89,6 +90,7 @@ deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+eszip.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
 
@@ -133,7 +135,7 @@ log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
-memmem.workspace = true
+memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open.workspace = true
@@ -176,6 +178,7 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
+weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 

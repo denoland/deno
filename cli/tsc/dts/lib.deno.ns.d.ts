@@ -1242,9 +1242,16 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
-    /** Number of iterations to perform. */
+    /** Number of iterations to perform.
+     * @remarks When the benchmark is very fast, this will only be used as a
+     * suggestion in order to get a more accurate measurement.
+     */
     n?: number;
-    /** Number of warmups to do before running the benchmark. */
+    /** Number of warmups to do before running the benchmark.
+     * @remarks A warmup will always be performed even if this is `0` in order to
+     * determine the speed of the benchmark in order to improve the measurement. When
+     * the benchmark is very fast, this will be used as a suggestion.
+     */
     warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
@@ -2114,8 +2121,7 @@ declare namespace Deno {
      * @category File System
      */
     utimeSync(atime: number | Date, mtime: number | Date): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Checks if the file resource is a TTY (terminal).
      *
      * ```ts
@@ -2125,8 +2131,7 @@ declare namespace Deno {
      * ```
      */
     isTerminal(): boolean;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input
@@ -4362,6 +4367,7 @@ declare namespace Deno {
       | "aix"
       | "solaris"
       | "illumos";
+    standalone: boolean;
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
@@ -5154,6 +5160,25 @@ declare namespace Deno {
   }
 
   /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a VSOCK socket.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeVsockOptions extends ServeOptions<Deno.VsockAddr> {
+    /** The transport to use. */
+    transport?: "vsock";
+
+    /** The context identifier to use. */
+    cid: number;
+
+    /** The port to use. */
+    port: number;
+  }
+
+  /**
    * @category HTTP Server
    */
   export interface ServeInit<Addr extends Deno.Addr = Deno.Addr> {
@@ -5256,6 +5281,60 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
+   *
+   * ```ts
+   * Deno.serve(
+   *   { cid: -1, port: 3000 },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve(
+   *    { signal: ac.signal, cid: -1, port: 3000 },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message `Listening on cid:port`.
+   * If you want to change this behavior, you can specify a custom `onListen`
+   * callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ cid, port }) {
+   *     console.log(`Server started at ${cid}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   cid: -1,
+   *   port: 3000,
+   * }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeVsockOptions,
+    handler: ServeHandler<Deno.VsockAddr>,
+  ): HttpServer<Deno.VsockAddr>;
+  /** Serves HTTP requests with the given option bag and handler.
+   *
    * You can specify an object with a port and hostname option, which is the
    * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *
@@ -5341,6 +5420,37 @@ declare namespace Deno {
   export function serve(
     options: ServeUnixOptions & ServeInit<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
+  /** Serves HTTP requests with the given option bag.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve({
+   *   cid: -1,
+   *   port: 3000,
+   *   handler: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal,
+   *   onListen({ cid, port }) {
+   *     console.log(`Server started at ${cid}:${port}`);
+   *   },
+   * });
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeVsockOptions & ServeInit<Deno.VsockAddr>,
+  ): HttpServer<Deno.VsockAddr>;
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the

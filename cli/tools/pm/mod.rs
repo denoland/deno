@@ -434,8 +434,11 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
-    let req = AddRmPackageReq::parse(entry_text)
-      .with_context(|| format!("Failed to parse package: {}", entry_text))?;
+    let req = AddRmPackageReq::parse(
+      entry_text,
+      add_flags.default_registry.map(|r| r.into()),
+    )
+    .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -711,13 +714,25 @@ pub struct AddRmPackageReq {
   value: AddRmPackageReqValue,
 }
 
-impl AddRmPackageReq {
-  pub fn parse(entry_text: &str) -> Result<Result<Self, PackageReq>, AnyError> {
-    enum Prefix {
-      Jsr,
-      Npm,
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum Prefix {
+  Jsr,
+  Npm,
+}
 
+impl From<crate::args::DefaultRegistry> for Prefix {
+  fn from(registry: crate::args::DefaultRegistry) -> Self {
+    match registry {
+      crate::args::DefaultRegistry::Npm => Prefix::Npm,
+      crate::args::DefaultRegistry::Jsr => Prefix::Jsr,
+    }
+  }
+}
+impl AddRmPackageReq {
+  pub fn parse(
+    entry_text: &str,
+    default_prefix: Option<Prefix>,
+  ) -> Result<Result<Self, PackageReq>, AnyError> {
     fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
       if let Some(text) = text.strip_prefix("jsr:") {
         (Some(Prefix::Jsr), text)
@@ -746,11 +761,13 @@ impl AddRmPackageReq {
     }
 
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
+    let maybe_prefix = maybe_prefix.or(default_prefix);
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
       None => match parse_alias(entry_text) {
         Some((alias, text)) => {
           let (maybe_prefix, entry_text) = parse_prefix(text);
+          let maybe_prefix = maybe_prefix.or(default_prefix);
           if maybe_prefix.is_none() {
             return Ok(Err(PackageReq::from_str(entry_text)?));
           }
@@ -810,7 +827,7 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let req = AddRmPackageReq::parse(package)
+    let req = AddRmPackageReq::parse(package, None)
       .with_context(|| format!("Failed to parse package: {}", package))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
@@ -861,12 +878,12 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
-  let npm_installer = cli_factory.npm_installer()?;
+  let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
-  if let Some(lockfile) = cli_factory.cli_options()?.maybe_lockfile() {
+  if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
 
@@ -877,55 +894,64 @@ async fn npm_install_after_modification(
 mod test {
   use super::*;
 
+  fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
+    AddRmPackageReq {
+      alias: alias.into(),
+      value: AddRmPackageReqValue::Jsr(PackageReq::from_str(req).unwrap()),
+    }
+  }
+
+  fn npm_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
+    AddRmPackageReq {
+      alias: alias.into(),
+      value: AddRmPackageReqValue::Npm(PackageReq::from_str(req).unwrap()),
+    }
+  }
+
   #[test]
   fn test_parse_add_package_req() {
+    let cases = [
+      (("jsr:foo", None), jsr_pkg_req("foo", "foo")),
+      (("alias@jsr:foo", None), jsr_pkg_req("alias", "foo")),
+      (
+        ("@alias/pkg@npm:foo", None),
+        npm_pkg_req("@alias/pkg", "foo@latest"),
+      ),
+      (
+        ("@alias/pkg@jsr:foo", None),
+        jsr_pkg_req("@alias/pkg", "foo"),
+      ),
+      (
+        ("alias@jsr:foo@^1.5.0", None),
+        jsr_pkg_req("alias", "foo@^1.5.0"),
+      ),
+      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@latest")),
+      (("foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
+      (
+        ("npm:foo", Some(Prefix::Npm)),
+        npm_pkg_req("foo", "foo@latest"),
+      ),
+      (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
+      (
+        ("npm:foo", Some(Prefix::Jsr)),
+        npm_pkg_req("foo", "foo@latest"),
+      ),
+      (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
+    ];
+
+    for ((input, maybe_prefix), expected) in cases {
+      let s = format!("on input: {input}, maybe_prefix: {maybe_prefix:?}");
+      assert_eq!(
+        AddRmPackageReq::parse(input, maybe_prefix)
+          .expect(&s)
+          .expect(&s),
+        expected,
+        "{s}",
+      );
+    }
+
     assert_eq!(
-      AddRmPackageReq::parse("jsr:foo").unwrap().unwrap(),
-      AddRmPackageReq {
-        alias: "foo".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
-      AddRmPackageReq {
-        alias: "alias".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("@alias/pkg@npm:foo")
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "@alias/pkg".into(),
-        value: AddRmPackageReqValue::Npm(
-          PackageReq::from_str("foo@latest").unwrap()
-        )
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("@alias/pkg@jsr:foo")
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "@alias/pkg".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("alias@jsr:foo@^1.5.0")
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "alias".into(),
-        value: AddRmPackageReqValue::Jsr(
-          PackageReq::from_str("foo@^1.5.0").unwrap()
-        )
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("@scope/pkg@tag")
+      AddRmPackageReq::parse("@scope/pkg@tag", None)
         .unwrap()
         .unwrap_err()
         .to_string(),
