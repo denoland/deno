@@ -38,8 +38,7 @@ function prompt(message = "Prompt", defaultValue) {
     return null;
   }
 
-  const formattedMessage = message === "" ? "" : `${message} `;
-
+  const formattedMessage = message.length === 0 ? "" : `${message} `;
   return op_read_line_prompt(formattedMessage, `${defaultValue}`);
 }
 
