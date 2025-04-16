@@ -11649,7 +11649,7 @@ mod tests {
         unstable_config: UnstableConfig {
           bare_node_builtins: true,
           sloppy_imports: false,
-          features: svec!["ffi", "worker-options"],
+          features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()
         },
         ..Flags::default()
