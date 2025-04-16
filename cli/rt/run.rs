@@ -972,7 +972,7 @@ pub async fn run(
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     code_cache.map(|c| c.for_deno_core()),
-    Some(sys.as_deno_rt_napi_loader()),
+    Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
     None,

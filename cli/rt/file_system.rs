@@ -33,8 +33,8 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
-use deno_runtime::deno_napi::DenoRtNapiLoader;
-use deno_runtime::deno_napi::DenoRtNapiLoaderRc;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
@@ -50,7 +50,7 @@ impl DenoRtSys {
     Self(vfs)
   }
 
-  pub fn as_deno_rt_napi_loader(&self) -> DenoRtNapiLoaderRc {
+  pub fn as_deno_rt_native_addon_loader(&self) -> DenoRtNativeAddonLoaderRc {
     self.0.clone()
   }
 
@@ -1471,7 +1471,7 @@ impl FileBackedVfs {
   }
 }
 
-impl DenoRtNapiLoader for FileBackedVfs {
+impl DenoRtNativeAddonLoader for FileBackedVfs {
   fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>> {
     if !self.is_path_within(path) {
       return None;

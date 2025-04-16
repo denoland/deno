@@ -497,7 +497,7 @@ mod tests {
     >(
       &main_module,
       WorkerServiceOptions {
-        deno_rt_napi_loader: None,
+        deno_rt_native_addon_loader: None,
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(
           permission_desc_parser,

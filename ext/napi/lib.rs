@@ -28,11 +28,9 @@ use std::collections::HashMap;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
-use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::thread_local;
 
 use deno_core::op2;
@@ -45,6 +43,8 @@ use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
 use deno_permissions::PermissionCheckError;
+pub use denort_helpers::DenoRtNativeAddonLoader;
+pub use denort_helpers::DenoRtNativeAddonLoaderRc;
 #[cfg(unix)]
 use libloading::os::unix::*;
 #[cfg(windows)]
@@ -508,13 +508,13 @@ deno_core::extension!(deno_napi,
     op_napi_open<P>
   ],
   options = {
-    deno_rt_loader: Option<DenoRtNapiLoaderRc>,
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   },
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
     });
-    if let Some(loader) = options.deno_rt_loader {
+    if let Some(loader) = options.deno_rt_native_addon_loader {
       state.put(loader);
     }
   },
@@ -532,12 +532,6 @@ impl NapiPermissions for deno_permissions::PermissionsContainer {
   fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
-}
-
-pub type DenoRtNapiLoaderRc = Arc<dyn DenoRtNapiLoader>;
-
-pub trait DenoRtNapiLoader: Send + Sync {
-  fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>>;
 }
 
 unsafe impl Sync for NapiModuleHandle {}
@@ -569,7 +563,7 @@ where
     async_work_sender,
     cleanup_hooks,
     external_ops_tracker,
-    deno_rt_napi_loader,
+    deno_rt_native_addon_loader,
     path,
   ) = {
     let mut op_state = op_state.borrow_mut();
@@ -580,7 +574,7 @@ where
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
-      op_state.try_borrow::<DenoRtNapiLoaderRc>().cloned(),
+      op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
       path,
     )
   };
@@ -617,19 +611,10 @@ where
   #[cfg(not(unix))]
   let flags = 0x00000008;
 
-  let real_path = match deno_rt_napi_loader
-    .as_ref()
-    .and_then(|l| l.load_if_in_vfs(&path))
-  {
-    Some(bytes) => {
-      // todo(THIS PR): cache this between calls, error on
-      // write, and use a hash of the file name instead
-      let path =
-        std::env::temp_dir().join(format!("deno_rt_napi_{}.node", bytes.len()));
-      std::fs::write(&path, bytes).unwrap();
-      Cow::Owned(path)
-    }
-    None => Cow::Borrowed(&path),
+  let real_path = match deno_rt_native_addon_loader {
+    // todo(THIS PR): don't unwrap
+    Some(loader) => loader.load_and_resolve_path(&path).unwrap(),
+    None => Cow::Borrowed(path.as_ref()),
   };
 
   // SAFETY: opening a DLL calls dlopen

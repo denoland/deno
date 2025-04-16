@@ -49,7 +49,7 @@ pub fn create_runtime_snapshot(
     deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
-    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(None),
     deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops_and_esm(),
     deno_kv::deno_kv::init_ops_and_esm(
