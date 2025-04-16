@@ -9,6 +9,7 @@ const {
   SafePromisePrototypeFinally,
 } = primordials;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import assert from "node:assert";
 
 const methodsToCopy = [
   "deepEqual",
@@ -34,7 +35,6 @@ const methodsToCopy = [
 let assertObject = undefined;
 function getAssertObject() {
   if (assertObject === undefined) {
-    const assert = process.getBuiltinModule("node:assert");
     assertObject = { __proto__: null };
     ArrayPrototypeForEach(methodsToCopy, (method) => {
       assertObject[method] = assert[method];
