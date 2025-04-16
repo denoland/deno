@@ -1,0 +1,21 @@
+Check [WILDCARD]/main.ts
+running 2 tests from ./main.ts
+only ... FAILED ([WILDCARD])
+only2 ... ok ([WILDCARD])
+
+ ERRORS 
+
+only => ./main.ts:8:6
+error: AssertionError
+    throw new AssertionError(msg);
+          ^
+    at assert ([WILDCARD])
+    at fn ([WILDCARD])
+
+ FAILURES 
+
+only => ./main.ts:8:6
+
+FAILED | 1 passed | 1 failed | 2 filtered out ([WILDCARD])
+
+error: Test failed
