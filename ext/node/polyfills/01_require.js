@@ -932,6 +932,11 @@ Module.prototype.require = function (id) {
     // ("ERR_INVALID_ARG_VALUE")
     throw new TypeError("id must be non empty");
   }
+
+  if (id.endsWith(".node")) {
+    throwIfInStandalone();
+  }
+
   requireDepth++;
   try {
     return Module._load(id, this, /* isMain */ false);
@@ -1127,13 +1132,17 @@ Module._extensions[".json"] = function (module, filename) {
   }
 };
 
-// Native extension for .node
-Module._extensions[".node"] = function (module, filename) {
+function throwIfInStandalone() {
   if (core.build.standalone) {
     throw new Error(
-      "Using native addons in `deno compile`d programs is currently not supported.\n\nFollow https://github.com/denoland/deno/issues/23266 for progress.",
+      "Using native addons in programs crated with `deno compile` is currently not supported. Follow https://github.com/denoland/deno/issues/23266 for progress.",
     );
   }
+}
+
+// Native extension for .node
+Module._extensions[".node"] = function (module, filename) {
+  throwIfInStandalone();
   if (filename.endsWith("cpufeatures.node")) {
     throw new Error("Using cpu-features module is currently not supported");
   }
