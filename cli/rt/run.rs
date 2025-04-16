@@ -1004,11 +1004,11 @@ pub async fn run(
 
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,
+    Some(&main_module),
     permissions,
-    main_module,
   )?;
 
-  let exit_code = worker.run().await?;
+  let exit_code = worker.run(&main_module).await?;
   Ok(exit_code)
 }
 

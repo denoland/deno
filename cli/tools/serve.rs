@@ -65,21 +65,25 @@ async fn do_serve(
   worker_count: Option<usize>,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
-    .create_main_worker(
-      deno_runtime::WorkerExecutionMode::Serve {
-        is_main: true,
-        worker_count,
-      },
-      main_module.clone(),
-    )
-    .await?;
+  let main_module = worker_factory.main_module_specifier(main_module).await?;
+  let mut worker = worker_factory.create_main_worker(
+    deno_runtime::WorkerExecutionMode::Serve {
+      is_main: true,
+      worker_count,
+    },
+    Some(&main_module),
+  )?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await.map_err(Into::into),
+    None | Some(1) => {
+      return worker.run(&main_module).await.map_err(Into::into)
+    }
     Some(c) => c,
   };
 
-  let main = deno_core::unsync::spawn(async move { worker.run().await });
+  let main = {
+    let main_module = main_module.clone();
+    deno_core::unsync::spawn(async move { worker.run(&main_module).await })
+  };
 
   let extra_workers = worker_count.saturating_sub(1);
 
@@ -122,20 +126,20 @@ async fn run_worker(
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
+  let main_module = worker_factory.main_module_specifier(main_module).await?;
   let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,
         worker_count: Some(worker_count),
       },
-      main_module,
-    )
-    .await?;
+      Some(&main_module),
+    )?;
   if hmr {
-    worker.run_for_watcher().await?;
+    worker.run_for_watcher(&main_module).await?;
     Ok(0)
   } else {
-    worker.run().await.map_err(Into::into)
+    worker.run(&main_module).await.map_err(Into::into)
   }
 }
 

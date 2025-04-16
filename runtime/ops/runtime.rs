@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -7,17 +10,22 @@ use deno_core::OpState;
 deno_core::extension!(
   deno_runtime,
   ops = [op_main_module, op_ppid, op_internal_log],
-  options = { main_module: ModuleSpecifier },
-  state = |state, options| {
-    state.put::<ModuleSpecifier>(options.main_module);
-  },
 );
+
+struct MainModule(ModuleSpecifier);
+
+pub fn set_main_module(
+  state: Rc<RefCell<OpState>>,
+  specifier: &ModuleSpecifier,
+) {
+  state.borrow_mut().put(MainModule(specifier.to_owned()));
+}
 
 #[op2]
 #[string]
 fn op_main_module(state: &mut OpState) -> String {
-  let main_url = state.borrow::<ModuleSpecifier>();
-  main_url.to_string()
+  let main_url = state.borrow::<MainModule>();
+  main_url.0.to_string()
 }
 
 /// This is an op instead of being done at initialization time because

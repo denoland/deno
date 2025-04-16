@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::error::JsError;
+use deno_core::ModuleSpecifier;
 use deno_node::NodeRequireLoaderRc;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -107,12 +108,15 @@ impl StorageKeyResolver {
   }
 
   /// Resolves the storage key to use based on the current flags, config, or main module.
-  pub fn resolve_storage_key(&self, main_module: &Url) -> Option<String> {
+  pub fn resolve_storage_key(
+    &self,
+    main_module: Option<&Url>,
+  ) -> Option<String> {
     // use the stored value or fall back to using the path of the main module.
     match &self.0 {
       StorageKeyResolverStrategy::Specified(value) => value.clone(),
       StorageKeyResolverStrategy::UseMainModule => {
-        Some(main_module.to_string())
+        Some(main_module?.to_string())
       }
     }
   }
@@ -256,7 +260,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
 
       let maybe_storage_key = shared
         .storage_key_resolver
-        .resolve_storage_key(&args.main_module);
+        .resolve_storage_key(Some(&args.main_module));
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
         get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
@@ -393,8 +397,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
+    main_module: Option<&ModuleSpecifier>,
     permissions: PermissionsContainer,
-    main_module: Url,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
@@ -408,7 +412,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
-    main_module: Url,
+    main_module: Option<&ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -426,9 +430,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let feature_checker = shared.feature_checker.clone();
     let unstable_features =
       shared.resolve_unstable_features(feature_checker.as_ref());
-    let maybe_storage_key = shared
-      .storage_key_resolver
-      .resolve_storage_key(&main_module);
+    let maybe_storage_key =
+      shared.storage_key_resolver.resolve_storage_key(main_module);
     let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
       shared
         .options
@@ -513,13 +516,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
     };
 
-    let worker =
-      MainWorker::bootstrap_from_options(&main_module, services, options);
+    let worker = MainWorker::bootstrap_from_options(services, options);
 
-    Ok(LibMainWorker {
-      main_module,
-      worker,
-    })
+    Ok(LibMainWorker { worker })
   }
 
   pub fn resolve_npm_binary_entrypoint(
@@ -602,17 +601,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 }
 
 pub struct LibMainWorker {
-  main_module: Url,
   worker: MainWorker,
 }
 
 impl LibMainWorker {
   pub fn into_main_worker(self) -> MainWorker {
     self.worker
-  }
-
-  pub fn main_module(&self) -> &Url {
-    &self.main_module
   }
 
   pub fn js_runtime(&mut self) -> &mut JsRuntime {
@@ -649,20 +643,29 @@ impl LibMainWorker {
     self.worker.dispatch_process_exit_event()
   }
 
-  pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
-    let id = self.worker.preload_main_module(&self.main_module).await?;
+  pub async fn execute_main_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), CoreError> {
+    let id = self.worker.preload_main_module(specifier).await?;
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
-    let id = self.worker.preload_side_module(&self.main_module).await?;
+  pub async fn execute_side_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), CoreError> {
+    let id = self.worker.preload_side_module(specifier).await?;
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn run(&mut self) -> Result<i32, CoreError> {
-    log::debug!("main_module {}", self.main_module);
+  pub async fn run(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", specifier);
 
-    self.execute_main_module().await?;
+    self.execute_main_module(specifier).await?;
     self.worker.dispatch_load_event()?;
 
     loop {
@@ -710,22 +713,26 @@ mod test {
       StorageKeyResolver(StorageKeyResolverStrategy::UseMainModule);
     let specifier = Url::parse("file:///a.ts").unwrap();
     assert_eq!(
-      resolver.resolve_storage_key(&specifier),
+      resolver.resolve_storage_key(Some(&specifier)),
       Some(specifier.to_string())
     );
     let resolver =
       StorageKeyResolver(StorageKeyResolverStrategy::Specified(None));
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
+    assert_eq!(resolver.resolve_storage_key(Some(&specifier)), None);
     let resolver = StorageKeyResolver(StorageKeyResolverStrategy::Specified(
       Some("value".to_string()),
     ));
     assert_eq!(
-      resolver.resolve_storage_key(&specifier),
+      resolver.resolve_storage_key(Some(&specifier)),
       Some("value".to_string())
     );
 
     // test empty
     let resolver = StorageKeyResolver::empty();
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
+    assert_eq!(resolver.resolve_storage_key(Some(&specifier)), None);
+
+    let resolver =
+      StorageKeyResolver(StorageKeyResolverStrategy::UseMainModule);
+    assert_eq!(resolver.resolve_storage_key(None), None);
   }
 }

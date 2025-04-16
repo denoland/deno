@@ -567,7 +567,7 @@ impl WebWorker {
         TExtNodeSys,
       >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
-      ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
+      ops::runtime::deno_runtime::init_ops_and_esm(),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb,
         options.format_js_error_fn,

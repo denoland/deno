@@ -81,16 +81,19 @@ impl CliMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, CoreError> {
+  pub async fn run(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<i32, CoreError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
 
-    log::debug!("main_module {}", self.worker.main_module());
+    log::debug!("main_module {}", specifier);
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
-    self.execute_main_module().await?;
+    self.execute_main_module(specifier).await?;
     self.worker.dispatch_load_event()?;
 
     loop {
@@ -159,7 +162,10 @@ impl CliMainWorker {
     Ok(self.worker.exit_code())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
+  pub async fn run_for_watcher(
+    self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), CoreError> {
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -178,8 +184,11 @@ impl CliMainWorker {
 
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
-      pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
+      pub async fn execute(
+        &mut self,
+        specifier: &ModuleSpecifier,
+      ) -> Result<(), CoreError> {
+        self.inner.execute_main_module(specifier).await?;
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 
@@ -217,17 +226,23 @@ impl CliMainWorker {
     }
 
     let mut executor = FileWatcherModuleExecutor::new(self);
-    executor.execute().await
+    executor.execute(specifier).await
   }
 
   #[inline]
-  pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
-    self.worker.execute_main_module().await
+  pub async fn execute_main_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), CoreError> {
+    self.worker.execute_main_module(specifier).await
   }
 
   #[inline]
-  pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
-    self.worker.execute_side_module().await
+  pub async fn execute_side_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), CoreError> {
+    self.worker.execute_side_module(specifier).await
   }
 
   pub async fn maybe_setup_hmr_runner(
@@ -353,31 +368,11 @@ impl CliMainWorkerFactory {
     }
   }
 
-  pub async fn create_main_worker(
+  pub async fn main_module_specifier(
     &self,
-    mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    self
-      .create_custom_worker(
-        mode,
-        main_module,
-        self.root_permissions.clone(),
-        vec![],
-        Default::default(),
-      )
-      .await
-  }
-
-  pub async fn create_custom_worker(
-    &self,
-    mode: WorkerExecutionMode,
-    main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
-    custom_extensions: Vec<Extension>,
-    stdio: deno_runtime::deno_io::Stdio,
-  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = if let Ok(package_ref) =
+  ) -> Result<ModuleSpecifier, CreateCustomWorkerError> {
+    if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
       if let Some(npm_installer) = &self.npm_installer {
@@ -421,11 +416,34 @@ impl CliMainWorkerFactory {
         lockfile.write_if_changed()?;
       }
 
-      main_module
+      Ok(main_module)
     } else {
-      main_module
-    };
+      Ok(main_module)
+    }
+  }
 
+  pub fn create_main_worker(
+    &self,
+    mode: WorkerExecutionMode,
+    main_module: Option<&ModuleSpecifier>,
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    self.create_custom_worker(
+      mode,
+      main_module,
+      self.root_permissions.clone(),
+      vec![],
+      Default::default(),
+    )
+  }
+
+  pub fn create_custom_worker(
+    &self,
+    mode: WorkerExecutionMode,
+    main_module: Option<&ModuleSpecifier>,
+    permissions: PermissionsContainer,
+    custom_extensions: Vec<Extension>,
+    stdio: deno_runtime::deno_io::Stdio,
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,
       main_module,
@@ -479,8 +497,6 @@ mod tests {
   use super::*;
 
   fn create_test_worker() -> MainWorker {
-    let main_module =
-      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
     let permission_desc_parser = Arc::new(
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
@@ -495,7 +511,6 @@ mod tests {
       CliNpmResolver,
       CliSys,
     >(
-      &main_module,
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(

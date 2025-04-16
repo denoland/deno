@@ -157,17 +157,17 @@ async fn create_plugin_runner_inner(
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-
-  let worker = worker_factory
-    .create_custom_worker(
-      // TODO(bartlomieju): add "lint" execution mode
-      WorkerExecutionMode::Run,
-      main_module.clone(),
-      permissions,
-      vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
-      Default::default(),
-    )
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
+  let worker = worker_factory.create_custom_worker(
+    // TODO(bartlomieju): add "lint" execution mode
+    WorkerExecutionMode::Run,
+    Some(&main_module),
+    permissions,
+    vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
+    Default::default(),
+  )?;
 
   let mut worker = worker.into_main_worker();
   let runtime = &mut worker.js_runtime;

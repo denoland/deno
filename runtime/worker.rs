@@ -106,6 +106,7 @@ pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
   should_wait_for_inspector_session: bool,
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
   exit_code: ExitCode,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   dispatch_load_event_fn_global: v8::Global<v8::Function>,
@@ -302,7 +303,6 @@ impl MainWorker {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    main_module: &ModuleSpecifier,
     services: WorkerServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -310,8 +310,7 @@ impl MainWorker {
     >,
     options: WorkerOptions,
   ) -> Self {
-    let (mut worker, bootstrap_options) =
-      Self::from_options(main_module, services, options);
+    let (mut worker, bootstrap_options) = Self::from_options(services, options);
     worker.bootstrap(bootstrap_options);
     worker
   }
@@ -321,7 +320,6 @@ impl MainWorker {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    main_module: &ModuleSpecifier,
     services: WorkerServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -467,7 +465,7 @@ impl MainWorker {
         TExtNodeSys,
       >(services.node_services, services.fs),
       // Ops from this crate
-      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
+      ops::runtime::deno_runtime::init_ops_and_esm(),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
         options.format_js_error_fn.clone(),
@@ -606,15 +604,6 @@ impl MainWorker {
     let inspector = js_runtime.inspector();
     op_state.borrow_mut().put(inspector);
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
-        main_module.to_string(),
-        &mut js_runtime,
-        options.should_break_on_first_statement
-          || options.should_wait_for_inspector_session,
-      );
-    }
-
     let (
       bootstrap_fn_global,
       dispatch_load_event_fn_global,
@@ -709,6 +698,7 @@ impl MainWorker {
       should_break_on_first_statement: options.should_break_on_first_statement,
       should_wait_for_inspector_session: options
         .should_wait_for_inspector_session,
+      maybe_inspector_server: options.maybe_inspector_server,
       exit_code,
       bootstrap_fn_global: Some(bootstrap_fn_global),
       dispatch_load_event_fn_global,
@@ -813,11 +803,25 @@ impl MainWorker {
     }
   }
 
+  fn initialize_main_module(&mut self, module_specifier: &ModuleSpecifier) {
+    ops::runtime::set_main_module(self.js_runtime.op_state(), module_specifier);
+
+    if let Some(server) = self.maybe_inspector_server.clone() {
+      server.register_inspector(
+        module_specifier.to_string(),
+        &mut self.js_runtime,
+        self.should_break_on_first_statement
+          || self.should_wait_for_inspector_session,
+      );
+    }
+  }
+
   /// Loads, instantiates and executes specified JavaScript module.
   pub async fn execute_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), CoreError> {
+    self.initialize_main_module(module_specifier);
     let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
@@ -829,6 +833,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), CoreError> {
+    self.initialize_main_module(module_specifier);
     let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
