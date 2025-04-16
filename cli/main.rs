@@ -436,7 +436,6 @@ pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
-  #[cfg(feature = "panic-hook")]
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
