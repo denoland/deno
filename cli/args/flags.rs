@@ -1196,9 +1196,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+                         Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
-                         Possible values: "system", "mozilla".
-                          <p(245)>(defaults to "mozilla")</>
   <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
                           <p(245)>(module downloads, fetch)</>
@@ -3103,13 +3102,13 @@ fn task_subcommand() -> Command {
   command(
     "task",
     cstr!(
-      "Run a task defined in the configuration file.
+      "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks:
+List all available tasks (from config files in the current and ancestor directories):
   <p(245)>deno task</>
 
-Evaluate a task from string
+Evaluate a task from string:
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
