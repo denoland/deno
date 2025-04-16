@@ -6058,7 +6058,7 @@ fn unstable_args_parse(
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-      if matches.get_flag(&format!("unstable-{}", granular_flag.name)) {
+      if matches.get_flag(granular_flag.flag_name) {
         flags
           .unstable_config
           .features
