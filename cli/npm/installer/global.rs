@@ -23,13 +23,24 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug)]
 pub struct GlobalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
+}
+
+impl std::fmt::Debug for GlobalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("GlobalNpmPackageInstaller")
+      .field("cache", &self.cache)
+      .field("tarball_cache", &self.tarball_cache)
+      .field("resolution", &self.resolution)
+      .field("lifecycle_scripts", &self.lifecycle_scripts)
+      .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl GlobalNpmPackageInstaller {
@@ -82,9 +93,20 @@ impl NpmPackageFsInstaller for GlobalNpmPackageInstaller {
         &self.lifecycle_scripts,
         GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.root_dir),
       );
+
+    // For the global cache, we don't run scripts so we just care that there _are_
+    // scripts. Kind of hacky, but avoids fetching the "extra" info from the registry.
+    let extra = deno_npm::NpmPackageExtraInfo {
+      deprecated: None,
+      bin: None,
+      scripts: [("postinstall".into(), "".into())].into_iter().collect(),
+    };
+
     for package in &package_partitions.packages {
-      let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
+      if package.has_scripts {
+        let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
+        lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
+      }
     }
 
     lifecycle_scripts
@@ -101,11 +123,11 @@ async fn cache_packages(
 ) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
+    if let Some(dist) = &package.dist {
+      futures_unordered.push(async move {
+        tarball_cache.ensure_package(&package.id.nv, dist).await
+      });
+    }
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error

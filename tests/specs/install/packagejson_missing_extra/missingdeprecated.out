@@ -1,0 +1,6 @@
+Add npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated
+Download http://localhost:4260/denotest-packagejson-missing-info
+Download http://localhost:4260/denotest-packagejson-missing-info/denotest-packagejson-missing-info-0.2.5-missingdeprecated.tgz
+Initialize denotest-packagejson-missing-info@0.2.5-missingdeprecated
+Warning The following packages are deprecated:
+┖─ npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated (Use 0.5.0 or later)

@@ -172,7 +172,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async {
+    DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
@@ -183,7 +183,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      lsp::start().await
+      let factory = CliFactory::from_flags(flags.clone());
+      lsp::start(Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api())).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -227,7 +228,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();
@@ -368,6 +369,24 @@ fn setup_panic_hook() {
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
+
+    let info = &deno_lib::version::DENO_VERSION_INFO;
+    let version =
+      if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+        format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+      } else {
+        info.deno.to_string()
+      };
+
+    let trace = deno_panic::trace();
+    eprintln!("View stack trace at:");
+    eprintln!(
+      "https://panic.deno.com/v{}/{}/{}",
+      version,
+      env!("TARGET"),
+      trace
+    );
+
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));
@@ -484,6 +503,7 @@ fn resolve_flags_and_init(
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
+      "--js-explicit-resource-management".to_string(),
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
@@ -491,6 +511,7 @@ fn resolve_flags_and_init(
     _ => {
       vec![
         "--stack-size=1024".to_string(),
+        "--js-explicit-resource-management".to_string(),
         // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
         // and its settings.
         // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript

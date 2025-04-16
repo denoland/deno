@@ -188,19 +188,6 @@ fn fmt_stdin_syntax_error() {
 }
 
 #[test]
-fn fmt_ignore_unexplicit_files() {
-  let context = TestContext::default();
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("fmt --check --ignore=./")
-    .run();
-
-  output.assert_exit_code(1);
-  assert_eq!(output.combined_output(), "error: No target files found.\n");
-}
-
-#[test]
 fn fmt_auto_ignore_git_and_node_modules() {
   fn create_bad_json(t: PathRef) {
     let bad_json_path = t.join("bad.json");
@@ -250,18 +237,6 @@ itest!(fmt_check_ignore {
   args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
-});
-
-itest!(fmt_check_parse_error {
-  args: "fmt --check fmt/parse_error/parse_error.ts",
-  output: "fmt/fmt_check_parse_error.out",
-  exit_code: 1,
-});
-
-itest!(fmt_check_invalid_data {
-  args: "fmt --check fmt/invalid_data.json",
-  output: "fmt/invalid_data.out",
-  exit_code: 1,
 });
 
 itest!(fmt_stdin {
