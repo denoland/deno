@@ -1272,6 +1272,7 @@ impl CliFactory {
       } else {
         None
       },
+      None, // DenoRtNapiLoader
       self.feature_checker()?.clone(),
       fs.clone(),
       self.maybe_inspector_server()?.clone(),

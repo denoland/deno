@@ -300,7 +300,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       deno_kv::KvConfig::builder().build(),
     ),
     deno_cron::deno_cron::init_ops(deno_cron::local::LocalCronHandler::new()),
-    deno_napi::deno_napi::init_ops::<Permissions>(),
+    deno_napi::deno_napi::init_ops::<Permissions>(None),
     deno_http::deno_http::init_ops(deno_http::Options::default()),
     deno_io::deno_io::init_ops(Some(Default::default())),
     deno_fs::deno_fs::init_ops::<Permissions>(fs.clone()),

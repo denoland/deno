@@ -41,6 +41,7 @@ use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_napi::DenoRtNapiLoaderRc;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
@@ -342,6 +343,7 @@ pub struct WebWorkerServiceOptions<
 > {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub deno_rt_napi_loader: Option<DenoRtNapiLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
@@ -547,7 +549,9 @@ impl WebWorker {
         deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(
+        services.deno_rt_napi_loader.clone(),
+      ),
       deno_http::deno_http::init_ops_and_esm(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
         ..Default::default()

@@ -24,6 +24,7 @@ use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_napi::DenoRtNapiLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
@@ -194,6 +195,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
+  deno_rt_napi_loader: Option<DenoRtNapiLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -269,6 +271,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         shared.resolve_unstable_features(feature_checker.as_ref());
 
       let services = WebWorkerServiceOptions {
+        deno_rt_napi_loader: shared.deno_rt_napi_loader.clone(),
         root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
         module_loader,
         fs: shared.fs.clone(),
@@ -354,6 +357,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   pub fn new(
     blob_store: Arc<BlobStore>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
+    deno_rt_napi_loader: Option<DenoRtNapiLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -374,6 +378,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         broadcast_channel: Default::default(),
         code_cache,
         compiled_wasm_module_store: Default::default(),
+        deno_rt_napi_loader,
         feature_checker,
         fs,
         maybe_inspector_server,
@@ -443,6 +448,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     });
 
     let services = WorkerServiceOptions {
+      deno_rt_napi_loader: shared.deno_rt_napi_loader.clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       module_loader,
       fs: shared.fs.clone(),

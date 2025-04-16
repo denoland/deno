@@ -22,14 +22,17 @@ pub mod util;
 pub mod uv;
 
 use core::ptr::NonNull;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread_local;
 
 use deno_core::op2;
@@ -504,10 +507,16 @@ deno_core::extension!(deno_napi,
   ops = [
     op_napi_open<P>
   ],
-  state = |state| {
+  options = {
+    deno_rt_loader: Option<DenoRtNapiLoaderRc>,
+  },
+  state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
     });
+    if let Some(loader) = options.deno_rt_loader {
+      state.put(loader);
+    }
   },
 );
 
@@ -525,8 +534,15 @@ impl NapiPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
+pub type DenoRtNapiLoaderRc = Arc<dyn DenoRtNapiLoader>;
+
+pub trait DenoRtNapiLoader: Send + Sync {
+  fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>>;
+}
+
 unsafe impl Sync for NapiModuleHandle {}
 unsafe impl Send for NapiModuleHandle {}
+
 #[derive(Clone, Copy)]
 struct NapiModuleHandle(*const NapiModule);
 
@@ -549,7 +565,13 @@ where
 {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
+  let (
+    async_work_sender,
+    cleanup_hooks,
+    external_ops_tracker,
+    deno_rt_napi_loader,
+    path,
+  ) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
     let path = permissions.check(&path)?;
@@ -558,6 +580,7 @@ where
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
+      op_state.try_borrow::<DenoRtNapiLoaderRc>().cloned(),
       path,
     )
   };
@@ -594,13 +617,28 @@ where
   #[cfg(not(unix))]
   let flags = 0x00000008;
 
+  let real_path = match deno_rt_napi_loader
+    .as_ref()
+    .and_then(|l| l.load_if_in_vfs(&path))
+  {
+    Some(bytes) => {
+      // todo(THIS PR): cache this between calls, error on
+      // write, and use a hash of the file name instead
+      let path =
+        std::env::temp_dir().join(format!("deno_rt_napi_{}.node", bytes.len()));
+      std::fs::write(&path, bytes).unwrap();
+      Cow::Owned(path)
+    }
+    None => Cow::Borrowed(&path),
+  };
+
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = unsafe { Library::open(Some(&path), flags) }?;
+  let library = unsafe { Library::open(Some(real_path.as_ref()), flags) }?;
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = unsafe { Library::load_with_flags(&path, flags) }?;
+  let library = unsafe { Library::load_with_flags(real_path.as_ref(), flags) }?;
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();

@@ -36,6 +36,7 @@ use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_napi::DenoRtNapiLoaderRc;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_os::ExitCode;
@@ -122,6 +123,7 @@ pub struct WorkerServiceOptions<
 > {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub deno_rt_napi_loader: Option<DenoRtNapiLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
@@ -447,7 +449,9 @@ impl MainWorker {
         deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(
+        services.deno_rt_napi_loader.clone(),
+      ),
       deno_http::deno_http::init_ops_and_esm(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
         ..Default::default()
