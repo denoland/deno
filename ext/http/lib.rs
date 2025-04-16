@@ -4,7 +4,9 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::error::Error;
+use std::future::pending;
 use std::future::Future;
+use std::future::Pending;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
@@ -13,6 +15,7 @@ use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 
@@ -24,14 +27,11 @@ use base64::Engine;
 use cache_control::CacheControl;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::pending;
 use deno_core::futures::future::select;
 use deno_core::futures::future::Either;
-use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -131,8 +131,12 @@ pub struct Options {
   /// If `None`, the default configuration provided by hyper will be used. Note
   /// that the default configuration is subject to change in future versions.
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+
+  /// If `false`, the server will abort the request when the response is dropped.
+  pub no_legacy_abort: bool,
 }
 
+#[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -140,6 +144,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -155,6 +160,55 @@ deno_core::extension!(
     http_next::op_http_read_request_body,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
+    http_next::op_http_upgrade_websocket_next,
+    http_next::op_http_upgrade_raw,
+    http_next::op_raw_write_vectored,
+    http_next::op_can_write_vectored,
+    http_next::op_http_try_wait,
+    http_next::op_http_wait,
+    http_next::op_http_close,
+    http_next::op_http_cancel,
+    http_next::op_http_metric_handle_otel_error,
+  ],
+  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  }
+);
+
+#[cfg(feature = "default_property_extractor")]
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  ops = [
+    op_http_accept,
+    op_http_headers,
+    op_http_serve_address_override,
+    op_http_shutdown,
+    op_http_upgrade_websocket,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    http_next::op_http_close_after_finish,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_cancelled,
+    http_next::op_http_read_request_body,
+    http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
+    http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
     http_next::op_http_set_response_body_bytes,
     http_next::op_http_set_response_body_resource,
@@ -382,11 +436,11 @@ impl OtelInfoAttributes {
 
 impl OtelInfo {
   fn new(
+    otel: &deno_telemetry::OtelGlobals,
     instant: std::time::Instant,
     request_size: u64,
     attributes: OtelInfoAttributes,
   ) -> Self {
-    let otel = OTEL_GLOBALS.get().unwrap();
     let collectors = OTEL_COLLECTORS.get_or_init(|| {
       let meter = otel
         .meter_provider
@@ -596,7 +650,10 @@ impl HttpConnResource {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
-      let otel_instant = OTEL_GLOBALS.get().map(|_| std::time::Instant::now());
+      let otel_instant = OTEL_GLOBALS
+        .get()
+        .filter(|o| o.has_metrics())
+        .map(|_| std::time::Instant::now());
 
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
@@ -615,26 +672,28 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
-      let otel_info = OTEL_GLOBALS.get().map(|_| {
-        let size_hint = request.size_hint();
-        Rc::new(RefCell::new(Some(OtelInfo::new(
-          otel_instant.unwrap(),
-          size_hint.upper().unwrap_or(size_hint.lower()),
-          OtelInfoAttributes {
-            http_request_method: OtelInfoAttributes::method_v02(
-              request.method(),
-            ),
-            url_scheme: Cow::Borrowed(self.scheme),
-            network_protocol_version: OtelInfoAttributes::version_v02(
-              request.version(),
-            ),
-            server_address: request.uri().host().map(|host| host.to_string()),
-            server_port: request.uri().port_u16().map(|port| port as i64),
-            error_type: Default::default(),
-            http_response_status_code: Default::default(),
-          },
-        ))))
-      });
+      let otel_info =
+        OTEL_GLOBALS.get().filter(|o| o.has_metrics()).map(|otel| {
+          let size_hint = request.size_hint();
+          Rc::new(RefCell::new(Some(OtelInfo::new(
+            otel,
+            otel_instant.unwrap(),
+            size_hint.upper().unwrap_or(size_hint.lower()),
+            OtelInfoAttributes {
+              http_request_method: OtelInfoAttributes::method_v02(
+                request.method(),
+              ),
+              url_scheme: Cow::Borrowed(self.scheme),
+              network_protocol_version: OtelInfoAttributes::version_v02(
+                request.version(),
+              ),
+              server_address: request.uri().host().map(|host| host.to_string()),
+              server_port: request.uri().port_u16().map(|port| port as i64),
+              error_type: Default::default(),
+              http_response_status_code: Default::default(),
+            },
+          ))))
+        });
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
@@ -1629,4 +1688,64 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
   // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
   drop(upgraded);
   unreachable!("unexpected stream type");
+}
+
+#[op2]
+#[serde]
+pub fn op_http_serve_address_override(
+) -> (Option<String>, Option<String>, Option<u16>) {
+  match std::env::var("DENO_SERVE_ADDRESS") {
+    Ok(val) => parse_serve_address(&val),
+    Err(_) => (None, None, None),
+  }
+}
+
+fn parse_serve_address(
+  input: &str,
+) -> (Option<String>, Option<String>, Option<u16>) {
+  use std::net::SocketAddr;
+  if input.contains('/') {
+    // Likely a Unix socket path
+    (Some(input.to_string()), None, None)
+  } else {
+    // Try parsing as a TCP address
+    match input.parse::<SocketAddr>() {
+      Ok(addr) => {
+        let hostname = match addr {
+          SocketAddr::V4(v4) => v4.ip().to_string(),
+          SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+        };
+        (None, Some(hostname), Some(addr.port()))
+      }
+      Err(_) => {
+        log::error!("DENO_SERVE_ADDRESS: Invalid TCP address: {}", input);
+        (None, None, None)
+      }
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_serve_address() {
+    let input = "/var/run/socket.sock";
+    assert_eq!(
+      parse_serve_address(input),
+      (Some(input.to_string()), None, None)
+    );
+
+    assert_eq!(
+      parse_serve_address("127.0.0.1:8080"),
+      (None, Some("127.0.0.1".to_string()), Some(8080))
+    );
+    assert_eq!(
+      parse_serve_address("[::1]:9000"),
+      (None, Some("[::1]".to_string()), Some(9000))
+    );
+
+    assert_eq!(parse_serve_address("no_an_address"), (None, None, None));
+  }
 }

@@ -1,7 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const { PromisePrototypeThen } = primordials;
+const {
+  PromisePrototypeThen,
+  ArrayPrototypePush,
+  SafePromiseAll,
+  SafePromisePrototypeFinally,
+} = primordials;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
 export function run() {
@@ -87,6 +92,49 @@ class NodeTestContext {
   }
 }
 
+let currentSuite: TestSuite | null = null;
+
+class TestSuite {
+  #denoTestContext: Deno.TestContext;
+  steps: Promise<boolean>[] = [];
+
+  constructor(t: Deno.TestContext) {
+    this.#denoTestContext = t;
+  }
+
+  addTest(name, options, fn, overrides) {
+    const prepared = prepareOptions(name, options, fn, overrides);
+    const step = this.#denoTestContext.step({
+      name: prepared.name,
+      fn: (denoTestContext) => {
+        const newNodeTextContext = new NodeTestContext(denoTestContext);
+        return prepared.fn(newNodeTextContext);
+      },
+      ignore: prepared.options.todo || prepared.options.skip,
+      sanitizeExit: false,
+      sanitizeOps: false,
+      sanitizeResources: false,
+    });
+    ArrayPrototypePush(this.steps, step);
+  }
+
+  addSuite(name, options, fn, overrides) {
+    const prepared = prepareOptions(name, options, fn, overrides);
+    // deno-lint-ignore prefer-primordials
+    const { promise, resolve } = Promise.withResolvers();
+    const step = this.#denoTestContext.step({
+      name: prepared.name,
+      fn: wrapSuiteFn(prepared.fn, resolve),
+      ignore: prepared.options.todo || prepared.options.skip,
+      sanitizeExit: false,
+      sanitizeOps: false,
+      sanitizeResources: false,
+    });
+    ArrayPrototypePush(this.steps, step);
+    return promise;
+  }
+}
+
 function prepareOptions(name, options, fn, overrides) {
   if (typeof name === "function") {
     fn = name;
@@ -147,29 +195,103 @@ function prepareDenoTest(name, options, fn, overrides) {
   return promise;
 }
 
-export function test(name, options, fn) {
-  return prepareDenoTest(name, options, fn, {});
+function wrapSuiteFn(fn, resolve) {
+  return function (t) {
+    const prevSuite = currentSuite;
+    const suite = currentSuite = new TestSuite(t);
+    try {
+      fn();
+    } finally {
+      currentSuite = prevSuite;
+    }
+    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), resolve);
+  };
+}
+
+function prepareDenoTestForSuite(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+
+  // deno-lint-ignore prefer-primordials
+  const { promise, resolve } = Promise.withResolvers();
+
+  const denoTestOptions = {
+    name: prepared.name,
+    fn: wrapSuiteFn(prepared.fn, resolve),
+    only: prepared.options.only,
+    ignore: prepared.options.todo || prepared.options.skip,
+    sanitizeExit: false,
+    sanitizeOps: false,
+    sanitizeResources: false,
+  };
+  Deno.test(denoTestOptions);
+  return promise;
+}
+
+export function test(name, options, fn, overrides) {
+  if (currentSuite) {
+    return currentSuite.addTest(name, options, fn, overrides);
+  }
+  return prepareDenoTest(name, options, fn, overrides);
 }
 
 test.skip = function skip(name, options, fn) {
-  return prepareDenoTest(name, options, fn, { skip: true });
+  return test(name, options, fn, { skip: true });
 };
 
 test.todo = function todo(name, options, fn) {
-  return prepareDenoTest(name, options, fn, { todo: true });
+  return test(name, options, fn, { todo: true });
 };
 
 test.only = function only(name, options, fn) {
-  return prepareDenoTest(name, options, fn, { only: true });
+  return test(name, options, fn, { only: true });
 };
 
-export function describe() {
-  notImplemented("test.describe");
+export function describe(name, options, fn) {
+  return suite(name, options, fn, {});
 }
 
-export function it() {
-  notImplemented("test.it");
+describe.skip = function skip(name, options, fn) {
+  return suite.skip(name, options, fn);
+};
+describe.todo = function todo(name, options, fn) {
+  return suite.todo(name, options, fn);
+};
+describe.only = function only(name, options, fn) {
+  return suite.only(name, options, fn);
+};
+
+export function suite(name, options, fn, overrides) {
+  if (currentSuite) {
+    return currentSuite.addSuite(name, options, fn, overrides);
+  }
+  return prepareDenoTestForSuite(name, options, fn, overrides);
 }
+
+suite.skip = function skip(name, options, fn) {
+  return suite(name, options, fn, { skip: true });
+};
+suite.todo = function todo(name, options, fn) {
+  return suite(name, options, fn, { todo: true });
+};
+suite.only = function only(name, options, fn) {
+  return suite(name, options, fn, { only: true });
+};
+
+export function it(name, options, fn) {
+  return test(name, options, fn, {});
+}
+
+it.skip = function skip(name, options, fn) {
+  return test.skip(name, options, fn);
+};
+
+it.todo = function todo(name, options, fn) {
+  return test.todo(name, options, fn);
+};
+
+it.only = function only(name, options, fn) {
+  return test.only(name, options, fn);
+};
 
 export function before() {
   notImplemented("test.before");
@@ -186,6 +308,10 @@ export function beforeEach() {
 export function afterEach() {
   notImplemented("test.afterEach");
 }
+
+test.it = it;
+test.describe = describe;
+test.suite = suite;
 
 export const mock = {
   fn: () => {
@@ -221,5 +347,7 @@ export const mock = {
     },
   },
 };
+
+test.test = test;
 
 export default test;

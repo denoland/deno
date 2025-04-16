@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::LinkedList;
+use std::future::Future;
 use std::sync::Arc;
 
 use deno_core::futures::task::AtomicWaker;
-use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
 
 use super::AtomicFlag;
@@ -83,7 +83,7 @@ impl TaskQueue {
 /// A permit that when dropped will allow another task to proceed.
 pub struct TaskQueuePermit<'a>(&'a TaskQueue);
 
-impl<'a> Drop for TaskQueuePermit<'a> {
+impl Drop for TaskQueuePermit<'_> {
   fn drop(&mut self) {
     self.0.raise_next();
   }
@@ -116,7 +116,7 @@ impl<'a> TaskQueuePermitAcquireFuture<'a> {
   }
 }
 
-impl<'a> Drop for TaskQueuePermitAcquireFuture<'a> {
+impl Drop for TaskQueuePermitAcquireFuture<'_> {
   fn drop(&mut self) {
     if let Some(task_queue) = self.task_queue.take() {
       if self.item.is_ready.is_raised() {

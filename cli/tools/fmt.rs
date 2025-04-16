@@ -144,8 +144,13 @@ pub async fn format(
     let caches = factory.caches()?;
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
-    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)
-      .await?;
+    return format_files(
+      caches,
+      cli_options,
+      &fmt_flags,
+      paths_with_options_batches,
+    )
+    .await;
   }
 
   Ok(())
@@ -176,7 +181,7 @@ fn resolve_paths_with_options_batches(
       });
     }
   }
-  if paths_with_options_batches.is_empty() {
+  if paths_with_options_batches.is_empty() && !fmt_flags.permit_no_files {
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
@@ -742,6 +747,7 @@ impl Formatter for CheckFormatter {
 #[derive(Default)]
 struct RealFormatter {
   formatted_files_count: Arc<AtomicUsize>,
+  failed_files_count: Arc<AtomicUsize>,
   checked_files_count: Arc<AtomicUsize>,
 }
 
@@ -759,6 +765,7 @@ impl Formatter for RealFormatter {
 
     run_parallelized(paths, {
       let formatted_files_count = self.formatted_files_count.clone();
+      let failed_files_count = self.failed_files_count.clone();
       let checked_files_count = self.checked_files_count.clone();
       move |file_path| {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
@@ -799,6 +806,7 @@ impl Formatter for RealFormatter {
             incremental_cache.update_file(&file_path, &file_contents.text);
           }
           Err(e) => {
+            failed_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
             log::error!("Error formatting: {}", file_path.to_string_lossy());
             log::error!("   {e}");
@@ -820,13 +828,26 @@ impl Formatter for RealFormatter {
       files_str(formatted_files_count),
     );
 
+    let failed_files_count = self.failed_files_count.load(Ordering::Relaxed);
     let checked_files_count = self.checked_files_count.load(Ordering::Relaxed);
-    info!(
-      "Checked {} {}",
-      checked_files_count,
-      files_str(checked_files_count)
-    );
-    Ok(())
+
+    if failed_files_count == 0 {
+      info!(
+        "Checked {} {}",
+        checked_files_count,
+        files_str(checked_files_count)
+      );
+      Ok(())
+    } else {
+      let checked_files_str = format!(
+        "{} checked {}",
+        checked_files_count,
+        files_str(checked_files_count)
+      );
+      Err(anyhow!(
+        "Failed to format {failed_files_count} of {checked_files_str}",
+      ))
+    }
   }
 }
 
@@ -917,7 +938,7 @@ fn format_stdin(
 }
 
 fn files_str(len: usize) -> &'static str {
-  if len <= 1 {
+  if len == 1 {
     "file"
   } else {
     "files"

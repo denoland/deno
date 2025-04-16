@@ -161,17 +161,17 @@ impl FileSystem for RealFs {
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
-    stat(path).map(Into::into)
+    stat(path)
   }
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || stat(&path)).await?.map(Into::into)
+    spawn_blocking(move || stat(&path)).await?
   }
 
   fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
-    lstat(path).map(Into::into)
+    lstat(path)
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || lstat(&path)).await?.map(Into::into)
+    spawn_blocking(move || lstat(&path)).await?
   }
 
   fn exists_sync(&self, path: &Path) -> bool {
@@ -404,7 +404,6 @@ impl FileSystem for RealFs {
       Ok::<_, FsError>(Cow::Owned(buf))
     })
     .await?
-    .map_err(Into::into)
   }
 }
 

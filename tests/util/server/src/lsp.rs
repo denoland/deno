@@ -14,7 +14,6 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +33,7 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
+use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
@@ -291,13 +291,12 @@ impl InitializeParamsBuilder {
   }
 
   #[allow(deprecated)]
-  pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri =
-      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
+  pub fn set_maybe_root_uri(&mut self, value: Option<Uri>) -> &mut Self {
+    self.params.root_uri = value;
     self
   }
 
-  pub fn set_root_uri(&mut self, value: Url) -> &mut Self {
+  pub fn set_root_uri(&mut self, value: Uri) -> &mut Self {
     self.set_maybe_root_uri(Some(value))
   }
 
@@ -731,7 +730,7 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Ok(Some(_)) => {}
       Err(e) => panic!("pebble error: {e}"),
     }
   }
@@ -854,7 +853,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.url_dir());
+    builder.set_root_uri(self.root_dir.uri_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
@@ -1002,6 +1001,10 @@ impl LspClient {
     self.write_notification("exit", json!(null));
   }
 
+  pub fn wait_exit(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    self.child.wait()
+  }
+
   // it's flaky to assert for a notification because a notification
   // might arrive a little later, so only provide a method for asserting
   // that there is no notification
@@ -1090,11 +1093,8 @@ impl LspClient {
 
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
-    let msg = format!(
-      "Content-Length: {}\r\n\r\n{}",
-      value_str.as_bytes().len(),
-      value_str
-    );
+    let msg =
+      format!("Content-Length: {}\r\n\r\n{}", value_str.len(), value_str);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }
@@ -1227,11 +1227,11 @@ impl CollectedDiagnostics {
       .collect()
   }
 
-  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+  pub fn for_file(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .filter(|p| p.uri.as_str() == uri.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()

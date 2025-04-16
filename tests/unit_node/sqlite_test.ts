@@ -153,6 +153,17 @@ Deno.test({
       );
       db.close();
     }
+    {
+      const db = new DatabaseSync(":memory:");
+      assertThrows(
+        () => {
+          db.exec("ATTACH DATABASE 'test.db' AS test");
+        },
+        Error,
+        "too many attached databases - max 0",
+      );
+      db.close();
+    }
   },
 });
 
@@ -214,6 +225,20 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
     variable3: 2,
   }]);
 
+  const result2 = db.prepare(query).all({ var2: 1, var1: "test" });
+  assertEquals(result2, [{
+    __proto__: null,
+    variable1: "test",
+    variable2: 1,
+    variable3: 2,
+  }]);
+
+  const stmt = db.prepare(query);
+  stmt.setAllowBareNamedParameters(false);
+  assertThrows(() => {
+    stmt.all({ var1: "test", var2: 1 });
+  });
+
   db.close();
 });
 
@@ -233,6 +258,78 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const { done, value } = iter.next();
   assertEquals(done, true);
   assertEquals(value, undefined);
+
+  db.close();
+});
+
+// https://github.com/denoland/deno/issues/28187
+Deno.test("[node/sqlite] StatementSync for large integers", () => {
+  const db = new DatabaseSync(":memory:");
+  const result = db.prepare("SELECT 2147483648").get();
+  assertEquals(result, { "2147483648": 2147483648, __proto__: null });
+  db.close();
+});
+
+Deno.test("[node/sqlite] error message", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE foo (a text, b text NOT NULL, c text)");
+
+  assertThrows(
+    () => {
+      db.prepare("INSERT INTO foo(a, b, c) VALUES (NULL, NULL, NULL)")
+        .run();
+    },
+    Error,
+    "NOT NULL constraint failed: foo.b",
+  );
+});
+
+// https://github.com/denoland/deno/issues/28295
+Deno.test("[node/sqlite] StatementSync reset guards don't lock db", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a integer, b text)");
+  db.exec("CREATE TABLE bar(a integer, b text)");
+
+  const stmt = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ");
+
+  assertEquals(stmt.get(), { name: "foo", __proto__: null });
+
+  db.exec("DROP TABLE IF EXISTS foo");
+});
+
+// https://github.com/denoland/deno/issues/28492
+Deno.test("[node/sqlite] StatementSync reset step change metadata", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec(`CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  birthdate TEXT NOT NULL
+) STRICT`);
+
+  const insertPeople = db.prepare(`
+INSERT INTO people
+  (name, birthdate)
+VALUES
+  (:name, :birthdate)
+RETURNING id
+`);
+
+  const id1 = insertPeople.run({ name: "Flash", birthdate: "1956-07-16" });
+  assertEquals(id1, { lastInsertRowid: 1, changes: 1 });
+});
+
+Deno.test("[node/sqlite] StatementSync empty blob", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a BLOB NOT NULL)");
+
+  db.prepare("INSERT into foo (a) values (?)")
+    .all(new Uint8Array([]));
+
+  const result = db.prepare("SELECT * from foo").get();
+  assertEquals(result, { a: new Uint8Array([]), __proto__: null });
 
   db.close();
 });
