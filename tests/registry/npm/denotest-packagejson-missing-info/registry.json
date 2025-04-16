@@ -1,0 +1,36 @@
+{
+  "name": "denotest-packagejson-missing-info",
+  "dist-tags": {
+    "latest": "1.0.0-missingbin"
+  },
+  "versions": {
+    "1.0.0-missingbin": {
+      "name": "denotest-packagejson-missing-info",
+      "version": "1.0.0-missingbin",
+      "bin": {
+        "denotest": "./bin/denotest.js"
+      },
+      "dist": {
+        "tarball": "http://localhost:4260/denotest-packagejson-missing-info/denotest-packagejson-missing-info-1.0.0-missingbin.tgz"
+      }
+    },
+    "0.5.0-missingscripts": {
+      "name": "denotest-packagejson-missing-info",
+      "version": "0.5.0-missingscripts",
+      "scripts": {
+        "postinstall": "echo 'postinstall'"
+      },
+      "dist": {
+        "tarball": "http://localhost:4260/denotest-packagejson-missing-info/denotest-packagejson-missing-info-0.5.0-missingscripts.tgz"
+      }
+    },
+    "0.2.5-missingdeprecated": {
+      "name": "denotest-packagejson-missing-info",
+      "version": "0.2.5-missingdeprecated",
+      "deprecated": "Use 0.5.0 or later",
+      "dist": {
+        "tarball": "http://localhost:4260/denotest-packagejson-missing-info/denotest-packagejson-missing-info-0.2.5-missingdeprecated.tgz"
+      }
+    }
+  }
+}

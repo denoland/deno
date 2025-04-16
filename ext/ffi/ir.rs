@@ -350,39 +350,47 @@ pub fn ffi_parse_pointer_arg(
 }
 
 #[inline]
-pub fn ffi_parse_buffer_arg(
-  scope: &mut v8::HandleScope,
+pub fn parse_buffer_arg(
   arg: v8::Local<v8::Value>,
-) -> Result<NativeValue, IRError> {
+) -> Result<*mut c_void, IRError> {
   // Order of checking:
   // 1. ArrayBuffer: Fairly common and not supported by Fast API, optimise this case.
   // 2. ArrayBufferView: Common and supported by Fast API
   // 5. Null: Very uncommon / can be represented by a 0.
 
-  let pointer = if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    if let Some(non_null) = value.data() {
-      non_null.as_ptr()
-    } else {
-      ptr::null_mut()
-    }
+  if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    Ok(value.data().map(|p| p.as_ptr()).unwrap_or(ptr::null_mut()))
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
-    let byte_offset = value.byte_offset();
-    let pointer = value
-      .buffer(scope)
-      .ok_or(IRError::InvalidArrayBufferView)?
-      .data();
-    if let Some(non_null) = pointer {
-      // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
-      // is within the buffer backing store.
-      unsafe { non_null.as_ptr().add(byte_offset) }
+    const {
+      // We don't keep `buffer` around when this function returns,
+      // so assert that it will be unused.
+      assert!(deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP == 0);
+    }
+    let mut buffer = [0; deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+    // SAFETY: `buffer` is unused due to above, returned pointer is not
+    // dereferenced by rust code, and we keep it alive at least as long
+    // as the turbocall.
+    let (ptr, len) = unsafe { value.get_contents_raw_parts(&mut buffer) };
+    if ptr == buffer.as_mut_ptr() {
+      // Empty TypedArray instances can hit this path because their base pointer
+      // isn't cleared properly: https://issues.chromium.org/issues/40643872
+      debug_assert_eq!(len, 0);
+      Ok(ptr::null_mut())
     } else {
-      ptr::null_mut()
+      Ok(ptr as _)
     }
   } else if arg.is_null() {
-    ptr::null_mut()
+    Ok(ptr::null_mut())
   } else {
-    return Err(IRError::InvalidBufferType);
-  };
+    Err(IRError::InvalidBufferType)
+  }
+}
+
+#[inline]
+pub fn ffi_parse_buffer_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, IRError> {
+  let pointer = parse_buffer_arg(arg)?;
   Ok(NativeValue { pointer })
 }
 
@@ -493,7 +501,7 @@ where
         ffi_args.push(ffi_parse_f64_arg(value)?);
       }
       NativeType::Buffer => {
-        ffi_args.push(ffi_parse_buffer_arg(scope, value)?);
+        ffi_args.push(ffi_parse_buffer_arg(value)?);
       }
       NativeType::Struct(_) => {
         ffi_args.push(ffi_parse_struct_arg(scope, value)?);

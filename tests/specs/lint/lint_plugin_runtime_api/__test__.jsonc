@@ -8,6 +8,10 @@
     {
       "args": "test main.ts",
       "output": "test.out"
+    },
+    {
+      "args": "test main_test.ts",
+      "output": "main_test.out"
     }
   ]
 }

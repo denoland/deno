@@ -56,6 +56,9 @@ impl NpmInstaller {
   pub fn new(
     npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+    npm_registry_info_provider: Arc<
+      dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
+    >,
     npm_resolution: Arc<NpmResolutionCell>,
     npm_resolution_initializer: Arc<NpmResolutionInitializer>,
     npm_resolution_installer: Arc<NpmResolutionInstaller>,
@@ -79,6 +82,7 @@ impl NpmInstaller {
           node_modules_folder,
           lifecycle_scripts,
           system_info,
+          npm_registry_info_provider,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -137,10 +141,10 @@ impl NpmInstaller {
       .dependencies_result
   }
 
-  pub async fn add_package_reqs_raw<'a>(
+  pub async fn add_package_reqs_raw(
     &self,
     packages: &[PackageReq],
-    caching: Option<PackageCaching<'a>>,
+    caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
     if packages.is_empty() {
       return AddPkgReqsResult {

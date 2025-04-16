@@ -43,6 +43,7 @@ const kStop = Symbol("kStop");
 const kTarget = Symbol("kTarget");
 const kHandlers = Symbol("khandlers");
 const kWeakHandler = Symbol("kWeak");
+const kResistStopPropagation = Symbol("kResistStopPropagation");
 
 const kHybridDispatch = Symbol.for("nodejs.internal.kHybridDispatch");
 const kCreateEvent = Symbol("kCreateEvent");
@@ -1096,6 +1097,7 @@ export {
   kEvents,
   kNewListener,
   kRemoveListener,
+  kResistStopPropagation,
   kTrustEvent,
   kWeakHandler,
   NodeEventTarget,
@@ -1116,5 +1118,6 @@ export default {
   kRemoveListener,
   kEvents,
   kWeakHandler,
+  kResistStopPropagation,
   isEventTarget,
 };

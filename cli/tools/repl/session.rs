@@ -5,9 +5,9 @@ use std::sync::Arc;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -33,6 +33,7 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -200,6 +201,7 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,
@@ -208,8 +210,10 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker
