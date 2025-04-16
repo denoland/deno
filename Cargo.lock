@@ -1954,7 +1954,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
- "denort_helpers",
+ "denort_helper",
  "dlopen2",
  "libffi",
  "libffi-sys",
@@ -2203,7 +2203,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
- "denort_helpers",
+ "denort_helper",
  "libc",
  "libloading 0.7.4",
  "libuv-sys-lite",
@@ -2956,7 +2956,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "denort_helpers"
+name = "denort_helper"
 version = "0.1.0"
 
 [[package]]

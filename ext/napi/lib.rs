@@ -43,8 +43,8 @@ use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
 use deno_permissions::PermissionCheckError;
-pub use denort_helpers::DenoRtNativeAddonLoader;
-pub use denort_helpers::DenoRtNativeAddonLoaderRc;
+pub use denort_helper::DenoRtNativeAddonLoader;
+pub use denort_helper::DenoRtNativeAddonLoaderRc;
 #[cfg(unix)]
 use libloading::os::unix::*;
 #[cfg(windows)]

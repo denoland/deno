@@ -13,7 +13,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
-use denort_helpers::DenoRtNativeAddonLoaderRc;
+use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -152,7 +152,7 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  let (path, denort_helpers) = {
+  let (path, denort_helper) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     (
@@ -161,7 +161,7 @@ where
     )
   };
 
-  let real_path = match denort_helpers {
+  let real_path = match denort_helper {
     // todo(THIS PR): don't unwrap
     Some(loader) => loader.load_and_resolve_path(&path).unwrap(),
     None => Cow::Borrowed(path.as_ref()),

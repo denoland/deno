@@ -1,7 +1,7 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
-name = "denort_helpers"
+name = "denort_helper"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
