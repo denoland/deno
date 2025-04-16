@@ -1,0 +1,10 @@
+Compile file:///[WILDLINE]
+
+Embedded Files
+
+out.exe
+├── main.ts ([WILDLINE])
+├── setup.ts ([WILDLINE])
+└── test_ffi.[WILDLINE]
+
+[WILDCARD]

@@ -166,11 +166,10 @@ where
     Some(loader) => loader.load_and_resolve_path(&path).unwrap(),
     None => Cow::Borrowed(path.as_ref()),
   };
-
   let lib = Library::open(real_path.as_ref()).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
-      format_error(e, &path),
+      format_error(e, &real_path),
     ))
   })?;
   let mut resource = DynamicLibraryResource {

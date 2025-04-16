@@ -12,3 +12,8 @@ description = "Helpers for denort."
 
 [lib]
 path = "lib.rs"
+
+[dependencies]
+deno_path_util.workspace = true
+sys_traits = { features = ["getrandom", "real"], workspace = true }
+twox-hash.workspace = true
