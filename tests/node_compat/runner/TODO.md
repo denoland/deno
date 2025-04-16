@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1150 tests out of 3993 have been ported from Node 23.9.0 (28.80% ported, 71.73% remaining).
+1163 tests out of 3993 have been ported from Node 23.9.0 (29.13% ported, 71.40% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2080,32 +2080,20 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-stdout-close-unref.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-close-unref.js)
 - [parallel/test-stdout-to-file.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-to-file.js)
 - [parallel/test-strace-openat-openssl.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-strace-openat-openssl.js)
+- [parallel/test-stream-aliases-legacy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-aliases-legacy.js)
 - [parallel/test-stream-base-prototype-accessors-enumerability.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-prototype-accessors-enumerability.js)
 - [parallel/test-stream-base-typechecking.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-typechecking.js)
-- [parallel/test-stream-compose-operator.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-compose-operator.js)
-- [parallel/test-stream-compose.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-compose.js)
 - [parallel/test-stream-consumers.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-consumers.js)
 - [parallel/test-stream-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-destroy.js)
-- [parallel/test-stream-drop-take.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-drop-take.js)
-- [parallel/test-stream-duplexpair.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-duplexpair.js)
-- [parallel/test-stream-err-multiple-callback-construction.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-err-multiple-callback-construction.js)
-- [parallel/test-stream-event-names.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-event-names.js)
-- [parallel/test-stream-finished.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-finished.js)
-- [parallel/test-stream-map.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-map.js)
 - [parallel/test-stream-pipe-deadlock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipe-deadlock.js)
 - [parallel/test-stream-pipeline-http2.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline-http2.js)
 - [parallel/test-stream-pipeline-process.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline-process.js)
 - [parallel/test-stream-pipeline.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline.js)
 - [parallel/test-stream-preprocess.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-preprocess.js)
-- [parallel/test-stream-promises.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-promises.js)
 - [parallel/test-stream-readable-async-iterators.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-async-iterators.js)
-- [parallel/test-stream-readable-default-encoding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-default-encoding.js)
-- [parallel/test-stream-readable-dispose.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-dispose.js)
 - [parallel/test-stream-readable-from-web-termination.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-from-web-termination.js)
 - [parallel/test-stream-readable-to-web-termination.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-to-web-termination.js)
 - [parallel/test-stream-readable-to-web.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-readable-to-web.js)
-- [parallel/test-stream-set-default-hwm.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-set-default-hwm.js)
-- [parallel/test-stream-typedarray.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-typedarray.js)
 - [parallel/test-stream-wrap-drain.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-wrap-drain.js)
 - [parallel/test-stream-wrap-encoding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-wrap-encoding.js)
 - [parallel/test-stream-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-wrap.js)

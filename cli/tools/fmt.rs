@@ -181,7 +181,7 @@ fn resolve_paths_with_options_batches(
       });
     }
   }
-  if paths_with_options_batches.is_empty() {
+  if paths_with_options_batches.is_empty() && !fmt_flags.permit_no_files {
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
@@ -938,7 +938,7 @@ fn format_stdin(
 }
 
 fn files_str(len: usize) -> &'static str {
-  if len <= 1 {
+  if len == 1 {
     "file"
   } else {
     "files"

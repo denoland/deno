@@ -27,6 +27,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
