@@ -132,3 +132,13 @@ Deno.test("[node/crypto.hash] oneshot hash API", () => {
   const d = hash("sha1", "Node.js");
   assertEquals(d, "10b3493287f831e81a438811a1ffba01f8cec4b7");
 });
+
+Deno.test("[node/crypto.hash] shake-128 alias", () => {
+  const d = hash("shake-128", "Node.js", "base64url");
+  assertEquals(d, "Nkx9-EgHpFkeXY5OPsL0rg");
+});
+
+Deno.test("[node/crypto.hash] shake-256 alias", () => {
+  const d = hash("shake-256", "Node.js", "base64url");
+  assertEquals(d, "JdelDxiwp92tkk9jYjEFPMlHD0gC8bMbYtHRCIM6TTQ");
+});

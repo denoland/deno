@@ -7788,7 +7788,7 @@ fn lsp_completions() {
     json!({
       "label": "build",
       "kind": 6,
-      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string;\n}",
+      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    standalone: boolean;\n    vendor: string;\n    env?: string;\n}",
       "documentation": {
         "kind": "markdown",
         "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime"
@@ -8835,6 +8835,61 @@ fn lsp_npm_types_nested_js_dts() {
       },
     ])
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/28777.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_reexport_from_non_export() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import {} from "npm:@denotest/reexport-from-non-export";
+      getValue;
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  client.read_diagnostics();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (2, 14),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  // Get all matching entries, then assert that there's only one and it has the
+  // correct auto-import specifier.
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "getValue")
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items
+      .iter()
+      .map(|i| i
+        .label_details
+        .as_ref()
+        .and_then(|d| d.description.as_ref()))
+      .collect::<Vec<_>>()),
+    json!(["npm:@denotest/reexport-from-non-export"]),
+  );
+  client.shutdown();
 }
 
 #[test]

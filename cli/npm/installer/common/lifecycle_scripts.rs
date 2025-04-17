@@ -437,7 +437,11 @@ async fn resolve_custom_commands_from_packages<
       extra.clone()
     } else {
       let Ok(extra) = provider
-        .get_package_extra_info(&package.id.nv, package.is_deprecated)
+        .get_package_extra_info(
+          &package.id.nv,
+          &package_path,
+          super::ExpectedExtraInfo::from_package(package),
+        )
         .await
       else {
         continue;

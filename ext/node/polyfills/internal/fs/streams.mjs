@@ -14,7 +14,7 @@ import {
   validateFunction,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.mjs";
+import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
 import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
 import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";
 import { write as fsWrite } from "ext:deno_node/_fs/_fs_write.mjs";

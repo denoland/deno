@@ -821,6 +821,7 @@ impl TsEsTreeBuilder {
     super_class: Option<NodeRef>,
     implements: Vec<NodeRef>,
     body: NodeRef,
+    decorators: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ClassDeclaration, span);
     self.ctx.write_bool(AstProp::Declare, is_declare);
@@ -831,6 +832,7 @@ impl TsEsTreeBuilder {
       .write_maybe_ref(AstProp::SuperClass, &id, super_class);
     self.ctx.write_ref_vec(AstProp::Implements, &id, implements);
     self.ctx.write_ref(AstProp::Body, &id, body);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -966,6 +968,7 @@ impl TsEsTreeBuilder {
     accessibility: Option<String>,
     key: NodeRef,
     value: NodeRef,
+    decorators: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::MethodDefinition, span);
 
@@ -984,7 +987,7 @@ impl TsEsTreeBuilder {
     self.write_accessibility(accessibility);
     self.ctx.write_ref(AstProp::Key, &id, key);
     self.ctx.write_ref(AstProp::Value, &id, value);
-    self.ctx.write_ref_vec(AstProp::Decorators, &id, vec![]);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1582,6 +1585,7 @@ impl TsEsTreeBuilder {
     name: &str,
     optional: bool,
     type_annotation: Option<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Identifier, span);
 
@@ -1592,6 +1596,9 @@ impl TsEsTreeBuilder {
       &id,
       type_annotation,
     );
+    self
+      .ctx
+      .write_maybe_ref_vec_skip(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1611,11 +1618,15 @@ impl TsEsTreeBuilder {
     span: &Span,
     left: NodeRef,
     right: NodeRef,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::AssignmentPattern, span);
 
     self.ctx.write_ref(AstProp::Left, &id, left);
     self.ctx.write_ref(AstProp::Right, &id, right);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1626,6 +1637,7 @@ impl TsEsTreeBuilder {
     optional: bool,
     type_ann: Option<NodeRef>,
     elems: Vec<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ArrayPattern, span);
 
@@ -1634,6 +1646,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Elements, &id, elems);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1644,6 +1659,7 @@ impl TsEsTreeBuilder {
     optional: bool,
     type_ann: Option<NodeRef>,
     props: Vec<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ObjectPattern, span);
 
@@ -1652,6 +1668,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Properties, &id, props);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1661,6 +1680,7 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_ann: Option<NodeRef>,
     arg: NodeRef,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::RestElement, span);
 
@@ -1668,6 +1688,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
