@@ -4,11 +4,12 @@ changes:
  4 | -    "npm:@denotest/add@1": "1.0.0"
  4 | +    "npm:@denotest/add@1": "1.0.0",
  5 | +    "npm:@denotest/subtract@1": "1.0.0"
- 9 | -    }
-10 | +    },
-11 | +    "@denotest/subtract@1.0.0": {
-12 | +      "integrity": "[WILDCARD]"
-13 | +    }
+10 | -    }
+11 | +    },
+12 | +    "@denotest/subtract@1.0.0": {
+13 | +      "integrity": "[WILDCARD]",
+14 | +      "tarball": "http://localhost:4260/@denotest/subtract/1.0.0.tgz"
+15 | +    }
 const { subtract } = await import(scheme + "@denotest/subtract@1");
                      ^
     at [WILDCARD]

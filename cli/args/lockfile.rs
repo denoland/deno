@@ -33,7 +33,6 @@ pub struct CliLockfileReadFromPathOptions {
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
   pub skip_write: bool,
-  pub use_lockfile_v5: bool,
 }
 
 #[derive(Debug)]
@@ -43,7 +42,6 @@ pub struct CliLockfile {
   pub filename: PathBuf,
   frozen: bool,
   skip_write: bool,
-  use_lockfile_v5: bool,
 }
 
 pub struct Guard<'a, T> {
@@ -89,10 +87,6 @@ impl CliLockfile {
     self.lockfile.lock().set_workspace_config(options);
   }
 
-  pub fn use_lockfile_v5(&self) -> bool {
-    self.use_lockfile_v5
-  }
-
   pub fn overwrite(&self) -> bool {
     self.lockfile.lock().overwrite
   }
@@ -130,7 +124,6 @@ impl CliLockfile {
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
     api: &(dyn NpmPackageInfoProvider + Send + Sync),
-    use_lockfile_v5: bool,
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -194,7 +187,6 @@ impl CliLockfile {
         file_path,
         frozen,
         skip_write: flags.internal.lockfile_skip_write,
-        use_lockfile_v5,
       },
       api,
     )
@@ -310,14 +302,14 @@ impl CliLockfile {
             file_path: opts.file_path,
             content: &text,
             overwrite: false,
-            next_version: opts.use_lockfile_v5,
+            next_version: true,
           },
           api,
         )
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false, opts.use_lockfile_v5)
+        Lockfile::new_empty(opts.file_path, false, true)
       }
       Err(err) => {
         return Err(err).with_context(|| {
@@ -331,7 +323,6 @@ impl CliLockfile {
       lockfile: Mutex::new(lockfile),
       frozen: opts.frozen,
       skip_write: opts.skip_write,
-      use_lockfile_v5: opts.use_lockfile_v5,
     })
   }
 
