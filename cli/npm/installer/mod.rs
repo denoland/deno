@@ -182,8 +182,8 @@ impl NpmInstaller {
           packages
             .iter()
             .filter_map(|req| {
-              if cached_reqs.insert(req.clone()) {
-                Some(req.clone())
+              if !cached_reqs.contains(req) {
+                Some(req)
               } else {
                 None
               }
@@ -193,12 +193,9 @@ impl NpmInstaller {
 
         if !uncached.is_empty() {
           result.dependencies_result = self.cache_packages(caching).await;
-          if result.dependencies_result.is_err() {
-            // if we failed to cache, we need to remove the cached reqs.
-            // we don't really know which ones failed, so just be safe and remove all of them
-            let mut cached_reqs = self.cached_reqs.lock().await;
+          if result.dependencies_result.is_ok() {
             for req in uncached {
-              cached_reqs.remove(&req);
+              cached_reqs.insert(req.clone());
             }
           }
         }
