@@ -776,20 +776,40 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const { 0: overrideUnixPath, 1: overrideHost, 2: overridePort } =
+  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
     op_http_serve_address_override();
-  if (overrideUnixPath) {
-    options.path = overrideUnixPath;
-    delete options.port;
-    delete options.host;
-  } else {
-    if (overrideHost) {
-      options.hostname = overrideHost;
+  switch (overrideKind) {
+    case 1: {
+      // TCP
+      options = {
+        ...options,
+        hostname: overrideHost,
+        port: overridePort,
+      };
       delete options.path;
+      delete options.cid;
+      break;
     }
-    if (overridePort) {
-      options.port = overridePort;
+    case 2: {
+      // Unix
+      options = {
+        ...options,
+        path: overrideHost,
+      };
+      delete options.hostname;
+      delete options.port;
+      break;
+    }
+    case 3: {
+      // Vsock
+      options = {
+        ...options,
+        cid: Number(overrideHost),
+        port: overridePort,
+      };
+      delete options.hostname;
       delete options.path;
+      break;
     }
   }
 

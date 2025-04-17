@@ -1195,6 +1195,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
+                         Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
                          Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
