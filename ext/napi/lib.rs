@@ -61,6 +61,9 @@ pub enum NApiError {
   InvalidPath,
   #[class(type)]
   #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(type)]
+  #[error(transparent)]
   LibLoading(#[from] libloading::Error),
   #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
@@ -612,8 +615,7 @@ where
   let flags = 0x00000008;
 
   let real_path = match deno_rt_native_addon_loader {
-    // todo(THIS PR): don't unwrap
-    Some(loader) => loader.load_and_resolve_path(&path).unwrap(),
+    Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
 

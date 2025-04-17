@@ -52,6 +52,9 @@ pub enum DlfcnError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
   Other(#[from] JsErrorBox),
 }
 
@@ -162,8 +165,7 @@ where
   };
 
   let real_path = match denort_helper {
-    // todo(THIS PR): don't unwrap
-    Some(loader) => loader.load_and_resolve_path(&path).unwrap(),
+    Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
   let lib = Library::open(real_path.as_ref()).map_err(|e| {
