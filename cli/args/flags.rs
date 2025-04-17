@@ -1470,24 +1470,27 @@ fn enable_unstable(command: Command) -> Command {
     })
     .mut_args(|arg| {
       // long_help here is being used as a metadata, see unstable args definition
-      if arg.get_help_heading() == Some(UNSTABLE_HEADING)
-        && arg.get_long_help().is_some()
-      {
-        arg.hide(false)
-      } else {
-        arg
+      if arg.get_help_heading() == Some(UNSTABLE_HEADING) {
+        if let Some(metadata) = arg.get::<FlagMetadata>() {
+          if metadata.show_in_help {
+            return arg.hide(false);
+          }
+        }
       }
+
+      arg
     })
 }
 
 fn enable_full(command: Command) -> Command {
   command.mut_args(|arg| {
-    let long_help = arg.get_long_help();
-    if long_help.is_none_or(|s| s.to_string() != "false") {
-      arg.hide(false)
-    } else {
-      arg
+    if let Some(metadata) = arg.get::<FlagMetadata>() {
+      if !metadata.show_in_help {
+        return arg;
+      }
     }
+
+    arg.hide(false)
   })
 }
 
@@ -3551,7 +3554,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3568,7 +3573,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3586,7 +3593,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3603,7 +3612,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3621,7 +3632,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("IP_OR_HOSTNAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(flags_net::validator)
           .hide(true);
         if let Some(requires) = requires {
@@ -3638,7 +3651,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("IP_OR_HOSTNAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(flags_net::validator)
           .hide(true);
         if let Some(requires) = requires {
@@ -3656,7 +3671,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("VARIABLE_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(|key: &str| {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
               return Err(format!("invalid key \"{key}\""));
@@ -3683,7 +3700,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("VARIABLE_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(|key: &str| {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
               return Err(format!("invalid key \"{key}\""));
@@ -3711,7 +3730,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("API_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true);
         if let Some(requires) = requires {
@@ -3728,7 +3749,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("API_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true);
         if let Some(requires) = requires {
@@ -3745,7 +3768,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("PROGRAM_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3761,7 +3786,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("PROGRAM_NAME")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3778,7 +3805,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3795,7 +3824,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3809,7 +3840,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         let mut arg = Arg::new("allow-hrtime")
           .long("allow-hrtime")
           .action(ArgAction::SetTrue)
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3822,7 +3855,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         let mut arg = Arg::new("deny-hrtime")
           .long("deny-hrtime")
           .action(ArgAction::SetTrue)
-          .long_help("false")
+          .add(FlagMetadata {
+            show_in_help: false,
+          })
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3836,7 +3871,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .long("no-prompt")
           .action(ArgAction::SetTrue)
           .hide(true)
-          .long_help("false");
+          .add(FlagMetadata {
+            show_in_help: false,
+          });
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -4397,6 +4434,13 @@ enum UnstableArgsConfig {
   ResolutionAndRuntime,
 }
 
+#[derive(Clone, Debug)]
+struct FlagMetadata {
+  show_in_help: bool,
+}
+
+impl clap::builder::ArgExt for FlagMetadata {}
+
 trait CommandExt {
   fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self;
 }
@@ -4432,6 +4476,10 @@ impl CommandExt for Command {
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
         })
+        .add(FlagMetadata {
+          show_in_help: matches!(cfg, UnstableArgsConfig::ResolutionOnly
+            | UnstableArgsConfig::ResolutionAndRuntime),
+        })
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
     ).arg(
@@ -4445,6 +4493,10 @@ impl CommandExt for Command {
           UnstableArgsConfig::None => None,
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        })
+        .add(FlagMetadata {
+          show_in_help: matches!(cfg, UnstableArgsConfig::ResolutionOnly
+            | UnstableArgsConfig::ResolutionAndRuntime),
         })
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order())
@@ -4468,6 +4520,10 @@ impl CommandExt for Command {
         UnstableArgsConfig::None => None,
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
+      .add(FlagMetadata {
+        show_in_help: matches!(cfg, UnstableArgsConfig::ResolutionOnly
+          | UnstableArgsConfig::ResolutionAndRuntime),
+      })
       .help_heading(UNSTABLE_HEADING)
       .display_order(next_display_order())
     ).arg(
@@ -4481,6 +4537,10 @@ impl CommandExt for Command {
       .long_help(match cfg {
         UnstableArgsConfig::None => None,
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+      })
+      .add(FlagMetadata {
+        show_in_help: matches!(cfg, UnstableArgsConfig::ResolutionOnly
+          | UnstableArgsConfig::ResolutionAndRuntime),
       })
       .help_heading(UNSTABLE_HEADING)
       .display_order(next_display_order())
@@ -4524,6 +4584,14 @@ impl CommandExt for Command {
             }
           } else {
             None
+          })
+          .add(FlagMetadata {
+            show_in_help: granular_flag.show_in_help
+              && matches!(
+                cfg,
+                UnstableArgsConfig::ResolutionOnly
+                  | UnstableArgsConfig::ResolutionAndRuntime
+              ),
           })
           .display_order(next_display_order()),
       );

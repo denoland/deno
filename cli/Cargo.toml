@@ -102,7 +102,7 @@ boxed_error.workspace = true
 bytes.workspace = true
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
+clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context", "unstable-ext"] }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
