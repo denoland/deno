@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
@@ -51,7 +50,7 @@ pub struct NpmInstaller {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
-  cached_reqs: Arc<Mutex<FxHashSet<PackageReq>>>,
+  cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
 }
 
 impl NpmInstaller {
@@ -172,9 +171,14 @@ impl NpmInstaller {
     }
     if result.dependencies_result.is_ok() {
       if let Some(caching) = caching {
-        // there should never really be any contention on this mutex
+        // the async mutex is unfortunate, but needed to handle the edge case where two workers
+        // try to cache the same package at the same time. we need to hold the lock while we cache
+        // and since that crosses an await point, we need the async mutex.
+        //
+        // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+        // while caching typically takes micro or milli seconds.
+        let mut cached_reqs = self.cached_reqs.lock().await;
         let uncached = {
-          let mut cached_reqs = self.cached_reqs.lock();
           packages
             .iter()
             .filter_map(|req| {
@@ -192,7 +196,7 @@ impl NpmInstaller {
           if result.dependencies_result.is_err() {
             // if we failed to cache, we need to remove the cached reqs.
             // we don't really know which ones failed, so just be safe and remove all of them
-            let mut cached_reqs = self.cached_reqs.lock();
+            let mut cached_reqs = self.cached_reqs.lock().await;
             for req in uncached {
               cached_reqs.remove(&req);
             }
