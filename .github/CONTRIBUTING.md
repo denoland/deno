@@ -21,7 +21,7 @@ are not included in the binary but read at runtime, meaning the binary will not
 have to be rebuilt if they are changed.
 
 To use the commands below, you need to first install the necessary tools on your
-system as described [here](building_from_source).
+system as described [here](#building-from-source).
 
 ```sh
 # cargo build
