@@ -1729,11 +1729,15 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
       // Vsock address
       match addr.split_once(':') {
         Some((cid, port)) => {
-          let cid = match cid.parse::<u32>() {
-            Ok(cid) => cid,
-            Err(_) => {
-              log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
-              return (0, String::new(), 0);
+          let cid = if cid == "-1" {
+            "-1".to_string()
+          } else {
+            match cid.parse::<u32>() {
+              Ok(cid) => cid.to_string(),
+              Err(_) => {
+                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
+                return (0, String::new(), 0);
+              }
             }
           };
           let port = match port.parse::<u32>() {
@@ -1743,7 +1747,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
               return (0, String::new(), 0);
             }
           };
-          (3, cid.to_string(), port)
+          (3, cid, port)
         }
         None => (0, String::new(), 0),
       }
@@ -1778,6 +1782,10 @@ mod tests {
     assert_eq!(
       parse_serve_address("vsock:1234:5678"),
       (3, "1234".to_string(), 5678)
+    );
+    assert_eq!(
+      parse_serve_address("vsock:-1:5678"),
+      (3, "-1".to_string(), 5678)
     );
 
     assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0));
