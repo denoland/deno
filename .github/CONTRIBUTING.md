@@ -1,4 +1,4 @@
-### Contributing
+# Contributing Guidelines
 
 This is the main repository that provides the `deno` CLI.
 
