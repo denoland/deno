@@ -61,7 +61,7 @@ pub enum NApiError {
   InvalidPath,
   #[class(type)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(type)]
   #[error(transparent)]
   LibLoading(#[from] libloading::Error),

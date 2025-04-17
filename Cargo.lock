@@ -2959,9 +2959,11 @@ dependencies = [
 name = "denort_helper"
 version = "0.1.0"
 dependencies = [
+ "deno_error",
  "deno_path_util",
  "sys_traits",
  "tempfile",
+ "thiserror 2.0.12",
  "twox-hash",
 ]
 

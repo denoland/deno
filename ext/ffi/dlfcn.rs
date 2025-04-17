@@ -52,7 +52,7 @@ pub enum DlfcnError {
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),

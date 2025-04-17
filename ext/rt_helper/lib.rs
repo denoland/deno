@@ -10,16 +10,38 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadError {
+  #[class(generic)]
+  #[error("Failed to write native addon (Deno FFI/Node API) '{0}' to '{1}' because the file system was readonly. This is a limitation of native addons with deno compile.", executable_path.display(), real_path.display())]
+  ReadOnlyFilesystem {
+    real_path: PathBuf,
+    executable_path: PathBuf,
+  },
+  #[class(generic)]
+  #[error("Failed to write native addon (Deno FFI/Node API) '{0}' to '{1}'.", executable_path.display(), real_path.display())]
+  FailedWriting {
+    real_path: PathBuf,
+    executable_path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
+}
+
 pub type DenoRtNativeAddonLoaderRc = Arc<dyn DenoRtNativeAddonLoader>;
 
+/// Loads native addons in `deno compile`.
+///
+/// The implementation should provide the bytes from the binary
+/// of the native file.
 pub trait DenoRtNativeAddonLoader: Send + Sync {
   fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>>;
 
   fn load_and_resolve_path<'a>(
     &self,
     path: &'a Path,
-  ) -> std::io::Result<Cow<'a, Path>> {
-    match self.load_if_in_vfs(&path) {
+  ) -> Result<Cow<'a, Path>, LoadError> {
+    match self.load_if_in_vfs(path) {
       Some(bytes) => {
         let exe_name = std::env::current_exe().ok();
         let exe_name = exe_name
@@ -27,29 +49,33 @@ pub trait DenoRtNativeAddonLoader: Send + Sync {
           .and_then(|p| p.file_stem())
           .map(|s| s.to_string_lossy())
           .unwrap_or("denort".into());
-        let path = resolve_temp_file_name(&exe_name, path, &bytes);
+        let real_path = resolve_temp_file_name(&exe_name, path, &bytes);
         if let Err(err) = deno_path_util::fs::atomic_write_file(
           &sys_traits::impls::RealSys,
-          &path,
+          &real_path,
           &bytes,
           0o644,
         ) {
           if err.kind() == std::io::ErrorKind::ReadOnlyFilesystem {
-            return Err(std::io::Error::new(
-              err.kind(),
-              format!("Native addons (Deno FFI/Node API) are not supported with `deno compile` on readonly file systems.",
-            )));
+            return Err(LoadError::ReadOnlyFilesystem {
+              real_path,
+              executable_path: path.to_path_buf(),
+            });
           }
 
           // another process might be using it... so only surface
           // the error if the files aren't equivalent
-          if !file_matches_bytes(&path, &bytes) {
-            return Err(err);
+          if !file_matches_bytes(&real_path, &bytes) {
+            return Err(LoadError::FailedWriting {
+              executable_path: path.to_path_buf(),
+              real_path,
+              source: err,
+            });
           }
         }
-        Ok(Cow::Owned(path))
+        Ok(Cow::Owned(real_path))
       }
-      None => Ok(Cow::Borrowed(&path)),
+      None => Ok(Cow::Borrowed(path)),
     }
   }
 }
