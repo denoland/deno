@@ -74,7 +74,6 @@ const {
   ArrayPrototypeFilter,
   Date,
   DatePrototypeGetTime,
-  Error,
   Function,
   MathTrunc,
   Number,
@@ -520,16 +519,33 @@ async function symlink(
   );
 }
 
+const DEFAULT_READ_OPTIONS = {
+  __proto__: null,
+  read: true,
+  write: false,
+  create: false,
+  truncate: false,
+  append: false,
+  createNew: false,
+  mode: null,
+};
+
 function openSync(
   path,
   options,
 ) {
   if (options) checkOpenOptions(options);
+  options ??= DEFAULT_READ_OPTIONS;
   const rid = op_fs_open_sync(
     pathFromURL(path),
-    options,
+    options.read ?? false,
+    options.write ?? false,
+    options.create ?? false,
+    options.truncate ?? false,
+    options.append ?? false,
+    options.createNew ?? false,
+    options.mode ?? 0,
   );
-
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
@@ -538,9 +554,16 @@ async function open(
   options,
 ) {
   if (options) checkOpenOptions(options);
+  options ??= DEFAULT_READ_OPTIONS;
   const rid = await op_fs_open_async(
     pathFromURL(path),
-    options,
+    options.read ?? false,
+    options.write ?? false,
+    options.create ?? false,
+    options.truncate ?? false,
+    options.append ?? false,
+    options.createNew ?? false,
+    options.mode ?? 0,
   );
 
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
@@ -714,13 +737,13 @@ function checkOpenOptions(options) {
       (val) => val === true,
     ).length === 0
   ) {
-    throw new Error(
+    throw new TypeError(
       "'options' requires at least one option to be true",
     );
   }
 
   if (options.truncate && !options.write) {
-    throw new Error(
+    throw new TypeError(
       "'truncate' option requires 'write' to be true",
     );
   }
@@ -730,9 +753,13 @@ function checkOpenOptions(options) {
     !(options.write || options.append);
 
   if (createOrCreateNewWithoutWriteOrAppend) {
-    throw new Error(
+    throw new TypeError(
       "'create' or 'createNew' options require 'write' or 'append' to be true",
     );
+  }
+
+  if (options.mode === 0) {
+    throw new TypeError("'mode' option cannot be 0");
   }
 }
 
