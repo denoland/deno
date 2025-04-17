@@ -11,6 +11,7 @@ use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::net::SocketAddr;
 use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
