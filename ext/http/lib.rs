@@ -1704,7 +1704,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
   match input.split_once(':') {
     Some(("tcp", addr)) => {
       // TCP address
-      match input.parse::<SocketAddr>() {
+      match addr.parse::<SocketAddr>() {
         Ok(addr) => {
           let hostname = match addr {
             SocketAddr::V4(v4) => v4.ip().to_string(),
