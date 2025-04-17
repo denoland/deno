@@ -94,7 +94,7 @@ impl NpmResolutionInitializer {
       }
     };
 
-    match resolve_snapshot(snapshot_option, &self.patch_packages).await {
+    match resolve_snapshot(snapshot_option, &self.patch_packages) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -139,7 +139,7 @@ impl ResolveSnapshotError {
   }
 }
 
-async fn resolve_snapshot(
+fn resolve_snapshot(
   snapshot: CliNpmResolverManagedSnapshotOption,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
@@ -148,7 +148,6 @@ async fn resolve_snapshot(
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), patch_packages)
-          .await
           .map_err(|source| ResolveSnapshotError {
             lockfile_path: lockfile.filename.clone(),
             source,
@@ -190,7 +189,7 @@ impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
   }
 }
 
-async fn snapshot_from_lockfile(
+fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
