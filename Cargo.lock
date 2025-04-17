@@ -2961,6 +2961,7 @@ version = "0.1.0"
 dependencies = [
  "deno_path_util",
  "sys_traits",
+ "tempfile",
  "twox-hash",
 ]
 

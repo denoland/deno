@@ -17,3 +17,6 @@ path = "lib.rs"
 deno_path_util.workspace = true
 sys_traits = { features = ["getrandom", "real"], workspace = true }
 twox-hash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

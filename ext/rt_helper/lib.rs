@@ -21,7 +21,13 @@ pub trait DenoRtNativeAddonLoader: Send + Sync {
   ) -> std::io::Result<Cow<'a, Path>> {
     match self.load_if_in_vfs(&path) {
       Some(bytes) => {
-        let path = resolve_temp_file_name(path, &bytes);
+        let exe_name = std::env::current_exe().ok();
+        let exe_name = exe_name
+          .as_ref()
+          .and_then(|p| p.file_stem())
+          .map(|s| s.to_string_lossy())
+          .unwrap_or("denort".into());
+        let path = resolve_temp_file_name(&exe_name, path, &bytes);
         if let Err(err) = deno_path_util::fs::atomic_write_file(
           &sys_traits::impls::RealSys,
           &path,
@@ -84,7 +90,11 @@ fn file_matches_bytes(path: &Path, expected_bytes: &[u8]) -> bool {
   }
 }
 
-fn resolve_temp_file_name(path: &Path, bytes: &[u8]) -> PathBuf {
+fn resolve_temp_file_name(
+  current_exe_name: &str,
+  path: &Path,
+  bytes: &[u8],
+) -> PathBuf {
   // should be deterministic
   let path_hash = {
     let mut hasher = twox_hash::XxHash64::default();
@@ -96,10 +106,42 @@ fn resolve_temp_file_name(path: &Path, bytes: &[u8]) -> PathBuf {
     bytes.hash(&mut hasher);
     hasher.finish()
   };
-  let mut file_name = format!("deno_rt_{}_{}", path_hash, bytes_hash);
+  let mut file_name =
+    format!("{}{}{}", current_exe_name, path_hash, bytes_hash);
   if let Some(ext) = path.extension() {
     file_name.push('.');
     file_name.push_str(&ext.to_string_lossy());
   }
   std::env::temp_dir().join(&file_name)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_file_matches_bytes() {
+    let tempdir = tempfile::TempDir::new().unwrap();
+    let path = tempdir.path().join("file.txt");
+    let mut bytes = vec![0u8; 17892];
+    for (i, byte) in bytes.iter_mut().enumerate() {
+      *byte = i as u8;
+    }
+    std::fs::write(&path, &bytes).unwrap();
+    assert!(file_matches_bytes(&path, &bytes));
+    bytes[17192] = 9;
+    assert!(!file_matches_bytes(&path, &bytes));
+  }
+
+  #[test]
+  fn test_resolve_temp_file_name() {
+    let file_path = PathBuf::from("/test/test.node");
+    let bytes: [u8; 3] = [1, 2, 3];
+    let temp_file = resolve_temp_file_name("exe_name", &file_path, &bytes);
+    assert_eq!(
+      temp_file,
+      std::env::temp_dir()
+        .join("exe_name1805603793990095570513255480333703631005.node")
+    );
+  }
 }
