@@ -881,10 +881,10 @@ function serve(arg1, arg2) {
 
       const url = `${scheme}${host}:${addr.port}/`;
       const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
-        ? `(accessible via http://localhost:${addr.port})`
+        ? ` (accessible via ${scheme}://localhost:${addr.port})`
         : "";
 
-      import.meta.log("info", `Listening on ${url} ${helper}`);
+      import.meta.log("info", `Listening on ${url}${helper}`);
     }
   };
 
