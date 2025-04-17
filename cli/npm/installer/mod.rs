@@ -181,13 +181,7 @@ impl NpmInstaller {
         let uncached = {
           packages
             .iter()
-            .filter_map(|req| {
-              if !cached_reqs.contains(req) {
-                Some(req)
-              } else {
-                None
-              }
-            })
+            .filter(|req| !cached_reqs.contains(req))
             .collect::<Vec<_>>()
         };
 
