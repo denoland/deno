@@ -32,12 +32,10 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::interface::AccessCheckFn;
-use crate::interface::CheckedPath;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FsPermissions;
-use crate::GetPath;
 use crate::OpenOptions;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
@@ -117,41 +115,24 @@ fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
   }
 }
 
-// workaround for rustc incorrectly inferring closure type
-fn cast<T>(t: T) -> T
-where
-  T: for<'a> FnMut(
-    Cow<'a, Path>,
-    &'a OpenOptions,
-    &'a dyn GetPath,
-  ) -> deno_io::fs::FsResult<CheckedPath<'a>>,
-{
-  t
-}
-
 fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
-) -> Option<impl AccessCheckFn + 'a> {
-  Some(cast(move |path, options, resolve| {
+) -> impl AccessCheckFn + 'a {
+  move |path, options, resolve| {
     permissions.check(options, path, api_name, resolve)
-  }))
+  }
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   api_name: &'static str,
-) -> Option<impl AccessCheckFn> {
-  // let allows_all = {
-  //   let mut permissions = state.borrow_mut();
-  //   let permissions = permissions.borrow_mut::<P>();
-  //   permissions.allows_all()
-  // };
-  Some(cast(move |path, options, resolve| {
+) -> impl AccessCheckFn + 'static {
+  move |path, options, resolve| {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check(options, path, api_name, resolve)
-  }))
+  }
 }
 
 fn map_permission_error(
@@ -239,11 +220,7 @@ where
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.openSync()");
   let file = fs
-    .open_sync(
-      &path,
-      options,
-      access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-    )
+    .open_sync(&path, options, Some(&mut access_check))
     .map_err(|error| map_permission_error("open", error, &path))?;
   drop(access_check);
   let rid = state
@@ -269,11 +246,7 @@ where
     async_permission_check::<P>(state.clone(), "Deno.open()");
   let fs = state.borrow().borrow::<FileSystemRc>().clone();
   let file = fs
-    .open_async(
-      path.clone(),
-      options,
-      access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-    )
+    .open_async(path.clone(), options, Some(&mut access_check))
     .await
     .map_err(|error| map_permission_error("open", error, &path))?;
 
@@ -1296,13 +1269,8 @@ where
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.writeFileSync()");
 
-  fs.write_file_sync(
-    &path,
-    options,
-    access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-    &data,
-  )
-  .map_err(|error| map_permission_error("writefile", error, &path))?;
+  fs.write_file_sync(&path, options, Some(&mut access_check), &data)
+    .map_err(|error| map_permission_error("writefile", error, &path))?;
 
   Ok(())
 }
@@ -1338,7 +1306,7 @@ where
   let fut = fs.write_file_async(
     path.clone(),
     options,
-    access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
+    Some(&mut access_check),
     data.to_vec(),
   );
 
@@ -1376,10 +1344,7 @@ where
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
   let buf = fs
-    .read_file_sync(
-      &path,
-      access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-    )
+    .read_file_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
@@ -1407,10 +1372,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.read_file_async(
-    path.clone(),
-    access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-  );
+  let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1447,10 +1409,7 @@ where
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
   let str = fs
-    .read_text_file_lossy_sync(
-      &path,
-      access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-    )
+    .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
   Ok(match str {
     Cow::Borrowed(text) => FastString::from_static(text),
@@ -1479,10 +1438,8 @@ where
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.read_text_file_lossy_async(
-    path.clone(),
-    access_check.as_mut().map(|a| a as &mut dyn AccessCheckFn),
-  );
+  let fut =
+    fs.read_text_file_lossy_async(path.clone(), Some(&mut access_check));
 
   let str = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
