@@ -1,5 +1,7 @@
 Check file:///[WILDLINE]/resolution_mode_require_jsdoc.js
-error: TS2345 [ERROR]: Argument of type '"value"' is not assignable to parameter of type '"cjs"'.
+TS2345 [ERROR]: Argument of type '"value"' is not assignable to parameter of type '"cjs"'.
 log("value");
     ~~~~~~~
     at file:///[WILDLINE]/resolution_mode_require_jsdoc.js:12:5
+
+error: Type checking failed.

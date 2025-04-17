@@ -5,9 +5,9 @@ use std::sync::Arc;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -33,6 +33,7 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -42,6 +43,7 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::colors;
@@ -199,15 +201,19 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,
     resolver: Arc<CliResolver>,
+    tsconfig_resolver: &TsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker
@@ -258,13 +264,10 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_for_emit.ts_config,
-      )?;
-    let experimental_decorators = transpile_options.use_ts_decorators;
+    let experimental_decorators = tsconfig_resolver
+      .transpile_and_emit_options(&cwd_url)?
+      .transpile
+      .use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_installer,
       resolver,

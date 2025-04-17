@@ -13,8 +13,11 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use deno_core::OpState;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -25,23 +28,26 @@ extern crate libz_sys as zlib;
 
 mod global;
 pub mod ops;
-mod polyfill;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
+pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
+use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use polyfill::is_builtin_node_module;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
+pub use crate::global::GlobalsStorage;
+
+pub fn is_builtin_node_module(module_name: &str) -> bool {
+  DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
+}
 
 pub trait NodePermissions {
   fn check_net_url(
@@ -183,6 +189,35 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum DotEnvLoadErr {
+  #[class(generic)]
+  #[error(transparent)]
+  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+}
+
+#[op2(fast)]
+fn op_node_load_env_file(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> Result<(), DotEnvLoadErr> {
+  state
+    .borrow::<PermissionsContainer>()
+    .check_read_with_api_name(path, Some("process.loadEnvFile"))
+    .map_err(DotEnvLoadErr::Permission)?;
+
+  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+
+  Ok(())
+}
+
 #[derive(Clone)]
 pub struct NodeExtInitServices<
   TInNpmPackageChecker: InNpmPackageChecker,
@@ -299,6 +334,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
+    ops::crypto::x509::op_node_x509_check_host,
     ops::crypto::x509::op_node_x509_fingerprint,
     ops::crypto::x509::op_node_x509_fingerprint256,
     ops::crypto::x509::op_node_x509_fingerprint512,
@@ -309,6 +345,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::crypto::x509::op_node_x509_public_key,
+    ops::dns::op_node_getaddrinfo<P>,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
@@ -360,6 +397,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     ops::zlib::op_zlib_crc32,
+    ops::zlib::op_zlib_err_msg,
     ops::zlib::brotli::op_brotli_compress,
     ops::zlib::brotli::op_brotli_compress_async,
     ops::zlib::brotli::op_create_brotli_compress,
@@ -370,8 +408,10 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_create_brotli_decompress,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
+    ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn<P>,
+    ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
@@ -393,6 +433,7 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
+    op_node_load_env_file,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P, TSys>,
@@ -437,7 +478,12 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_enabled,
   ],
   objects = [
-    ops::perf_hooks::EldHistogram
+    ops::perf_hooks::EldHistogram,
+    ops::sqlite::DatabaseSync,
+    ops::sqlite::Session,
+    ops::handle_wrap::AsyncWrap,
+    ops::handle_wrap::HandleWrap,
+    ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -495,7 +541,6 @@ deno_core::extension!(deno_node,
     "_process/process.ts",
     "_process/streams.mjs",
     "_readline.mjs",
-    "_stream.mjs",
     "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
@@ -588,13 +633,24 @@ deno_core::extension!(deno_node,
     "internal/readline/symbols.mjs",
     "internal/readline/utils.mjs",
     "internal/stream_base_commons.ts",
-    "internal/streams/add-abort-signal.mjs",
-    "internal/streams/buffer_list.mjs",
-    "internal/streams/destroy.mjs",
-    "internal/streams/end-of-stream.mjs",
-    "internal/streams/lazy_transform.mjs",
-    "internal/streams/state.mjs",
-    "internal/streams/utils.mjs",
+    "internal/streams/add-abort-signal.js",
+    "internal/streams/compose.js",
+    "internal/streams/destroy.js",
+    "internal/streams/duplex.js",
+    "internal/streams/duplexify.js",
+    "internal/streams/duplexpair.js",
+    "internal/streams/end-of-stream.js",
+    "internal/streams/from.js",
+    "internal/streams/lazy_transform.js",
+    "internal/streams/legacy.js",
+    "internal/streams/operators.js",
+    "internal/streams/passthrough.js",
+    "internal/streams/pipeline.js",
+    "internal/streams/readable.js",
+    "internal/streams/state.js",
+    "internal/streams/transform.js",
+    "internal/streams/utils.js",
+    "internal/streams/writable.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -606,6 +662,7 @@ deno_core::extension!(deno_node,
     "internal/util/parse_args/utils.js",
     "internal/util/types.ts",
     "internal/validators.mjs",
+    "internal/webstreams/adapters.js",
     "path/_constants.ts",
     "path/_interface.ts",
     "path/_util.ts",
@@ -619,11 +676,11 @@ deno_core::extension!(deno_node,
     "node:_http_common" = "_http_common.ts",
     "node:_http_outgoing" = "_http_outgoing.ts",
     "node:_http_server" = "_http_server.ts",
-    "node:_stream_duplex" = "internal/streams/duplex.mjs",
-    "node:_stream_passthrough" = "internal/streams/passthrough.mjs",
-    "node:_stream_readable" = "internal/streams/readable.mjs",
-    "node:_stream_transform" = "internal/streams/transform.mjs",
-    "node:_stream_writable" = "internal/streams/writable.mjs",
+    "node:_stream_duplex" = "internal/streams/duplex.js",
+    "node:_stream_passthrough" = "internal/streams/passthrough.js",
+    "node:_stream_readable" = "internal/streams/readable.js",
+    "node:_stream_transform" = "internal/streams/transform.js",
+    "node:_stream_writable" = "internal/streams/writable.js",
     "node:_tls_common" = "_tls_common.ts",
     "node:_tls_wrap" = "_tls_wrap.ts",
     "node:assert" = "assert.ts",
@@ -661,10 +718,11 @@ deno_core::extension!(deno_node,
     "node:readline" = "readline.ts",
     "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
+    "node:sqlite" = "sqlite.ts",
     "node:stream" = "stream.ts",
-    "node:stream/consumers" = "stream/consumers.mjs",
-    "node:stream/promises" = "stream/promises.mjs",
-    "node:stream/web" = "stream/web.ts",
+    "node:stream/consumers" = "stream/consumers.js",
+    "node:stream/promises" = "stream/promises.js",
+    "node:stream/web" = "stream/web.js",
     "node:string_decoder" = "string_decoder.ts",
     "node:sys" = "sys.ts",
     "node:test" = "testing.ts",
@@ -695,6 +753,8 @@ deno_core::extension!(deno_node,
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
     }
+
+    state.put(AsyncId::default());
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
@@ -813,16 +873,6 @@ deno_core::extension!(deno_node,
   },
 );
 
-#[derive(Debug)]
-pub struct RealIsBuiltInNodeModuleChecker;
-
-impl IsBuiltInNodeModuleChecker for RealIsBuiltInNodeModuleChecker {
-  #[inline]
-  fn is_builtin_node_module(&self, specifier: &str) -> bool {
-    is_builtin_node_module(specifier)
-  }
-}
-
 pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
@@ -832,12 +882,20 @@ pub trait ExtNodeSys:
 {
 }
 
-impl ExtNodeSys for sys_traits::impls::RealSys {}
+impl<
+    T: sys_traits::BaseFsCanonicalize
+      + sys_traits::BaseFsMetadata
+      + sys_traits::BaseFsRead
+      + sys_traits::EnvCurrentDir
+      + Clone,
+  > ExtNodeSys for T
+{
+}
 
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<
     TInNpmPackageChecker,
-    RealIsBuiltInNodeModuleChecker,
+    DenoIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
     TSys,
   >;
@@ -846,8 +904,8 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
-#[allow(clippy::disallowed_types)]
 
+#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Data> {

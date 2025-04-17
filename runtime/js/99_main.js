@@ -8,10 +8,12 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_stderr_tty,
-  op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
   op_bootstrap_pid,
+  op_bootstrap_stderr_no_color,
+  op_bootstrap_stdout_no_color,
+  op_get_ext_import_meta_proto,
+  op_internal_log,
   op_main_module,
   op_ppid,
   op_set_format_exception_callback,
@@ -42,6 +44,7 @@ const {
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
+  RangeError,
   StringPrototypePadEnd,
   Symbol,
   SymbolIterator,
@@ -58,6 +61,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -94,6 +98,7 @@ import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
 }
+
 ObjectDefineProperties(Symbol, {
   dispose: {
     __proto__: null,
@@ -110,6 +115,24 @@ ObjectDefineProperties(Symbol, {
     configurable: false,
   },
 });
+
+// https://docs.rs/log/latest/log/enum.Level.html
+const LOG_LEVELS = {
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+  trace: 5,
+};
+
+op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log(this.url, level, message);
+};
 
 let windowIsClosing = false;
 let globalThis_;
@@ -276,8 +299,8 @@ function importScripts(...urls) {
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
 setNoColorFns(
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+  () => op_bootstrap_stdout_no_color(),
+  () => op_bootstrap_stderr_no_color(),
 );
 
 function formatException(error) {
@@ -359,6 +382,12 @@ core.registerErrorBuilder(
   "DOMExceptionDataError",
   function DOMExceptionDataError(msg) {
     return new DOMException(msg, "DataError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidStateError",
+  function DOMExceptionInvalidStateError(msg) {
+    return new DOMException(msg, "InvalidStateError");
   },
 );
 
@@ -466,6 +495,136 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
   }
 }
 
+function updateTemporal() {
+  // Removes the obsoleted `Temporal` API.
+  // https://github.com/tc39/proposal-temporal/pull/2895
+  // https://github.com/tc39/proposal-temporal/pull/2914
+  // https://github.com/tc39/proposal-temporal/pull/2925
+  if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
+    throw "V8 removes obsoleted Temporal API now, no need to delete them";
+  }
+  delete globalThis.Temporal.Instant.fromEpochSeconds;
+  delete globalThis.Temporal.Instant.fromEpochMicroseconds;
+  delete globalThis.Temporal.Instant.prototype.epochSeconds;
+  delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
+  delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
+  delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
+  delete globalThis.Temporal.PlainDate.prototype.getISOFields;
+  delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
+  delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
+  delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
+  delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
+  delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
+  delete globalThis.Temporal.PlainTime.prototype.calendar;
+  delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
+  delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
+  delete globalThis.Temporal.PlainTime.prototype.getISOFields;
+  delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
+  delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
+  delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
+  delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
+  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+  delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
+  delete globalThis.Temporal.Now.zonedDateTime;
+  delete globalThis.Temporal.Now.plainDateTime;
+  delete globalThis.Temporal.Now.plainDate;
+  delete globalThis.Temporal.Calendar;
+  delete globalThis.Temporal.TimeZone;
+
+  // Modify `Temporal.Calendar` to calendarId string
+  ArrayPrototypeForEach([
+    globalThis.Temporal.PlainDate,
+    globalThis.Temporal.PlainDateTime,
+    globalThis.Temporal.PlainMonthDay,
+    globalThis.Temporal.PlainYearMonth,
+    globalThis.Temporal.ZonedDateTime,
+  ], (target) => {
+    const getCalendar =
+      ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
+    ObjectDefineProperty(target.prototype, "calendarId", {
+      __proto__: null,
+      get: function calendarId() {
+        return FunctionPrototypeCall(getCalendar, this).id;
+      },
+      enumerable: false,
+      configurable: true,
+    });
+    delete target.prototype.calendar;
+  });
+
+  // Modify `Temporal.TimeZone` to timeZoneId string
+  {
+    const getTimeZone = ObjectGetOwnPropertyDescriptor(
+      globalThis.Temporal.ZonedDateTime.prototype,
+      "timeZone",
+    ).get;
+    ObjectDefineProperty(
+      globalThis.Temporal.ZonedDateTime.prototype,
+      "timeZoneId",
+      {
+        __proto__: null,
+        get: function timeZoneId() {
+          return FunctionPrototypeCall(getTimeZone, this).id;
+        },
+        enumerable: false,
+        configurable: true,
+      },
+    );
+    ObjectAssign(globalThis.Temporal.ZonedDateTime.prototype, {
+      getTimeZoneTransition(options) {
+        if (options === undefined) {
+          throw new TypeError("options parameter is required");
+        }
+        if (typeof options === "string") {
+          options = {
+            direction: options,
+          };
+        }
+        const direction = options.direction;
+        if (direction === undefined) {
+          throw new TypeError("direction option is required");
+        }
+        const tz = FunctionPrototypeCall(getTimeZone, this);
+        let resultInstant;
+        switch (direction) {
+          case "next":
+            resultInstant = tz.getNextTransition(this.toInstant());
+            break;
+          case "previous":
+            resultInstant = tz.getPreviousTransition(this.toInstant());
+            break;
+          default:
+            throw new RangeError(
+              `direction must be one of next, previous, not ${options.direction}`,
+            );
+        }
+        return resultInstant?.toZonedDateTimeISO(tz.id) ?? null;
+      },
+    });
+    delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
+  }
+  {
+    const nowTimeZone = globalThis.Temporal.Now.timeZone;
+    ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
+      __proto__: null,
+      value: function timeZoneId() {
+        return nowTimeZone().id;
+      },
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+    delete globalThis.Temporal.Now.timeZone;
+  }
+
+  // deno-lint-ignore prefer-primordials
+  if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
+    throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
+  }
+  shimTemporalDurationToLocaleString();
+}
+
 function shimTemporalDurationToLocaleString() {
   const DurationFormat = Intl.DurationFormat;
   if (!DurationFormat) {
@@ -523,11 +682,16 @@ const NOT_IMPORTED_OPS = [
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
   "op_jupyter_input",
+  "op_jupyter_create_png_from_texture",
+  "op_jupyter_get_buffer",
   // Used in jupyter API
   "op_base64_encode",
 
   // Used in the lint API
+  "op_lint_report",
+  "op_lint_get_source",
   "op_lint_create_serialized_ast",
+  "op_is_cancelled",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -569,11 +733,18 @@ const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
   ...denoNs,
-  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
   // contexts.
   test: () => {},
   bench: () => {},
+  lint: {
+    runPlugin: () => {
+      throw new Error(
+        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+      );
+    },
+  },
 };
 
 ObjectDefineProperties(finalDenoNs, {
@@ -633,7 +804,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: serveIsMain,
       12: serveWorkerCount,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
@@ -669,8 +843,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (mode === executionModes.serve && !serve) {
           if (serveIsMain) {
             // Only error if main worker
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -683,8 +857,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
         if (serve) {
           if (mode === executionModes.run) {
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -786,102 +960,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
     } else {
-      // Removes the obsoleted `Temporal` API.
-      // https://github.com/tc39/proposal-temporal/pull/2895
-      // https://github.com/tc39/proposal-temporal/pull/2914
-      // https://github.com/tc39/proposal-temporal/pull/2925
-      if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them";
-      }
-      delete globalThis.Temporal.Instant.fromEpochSeconds;
-      delete globalThis.Temporal.Instant.fromEpochMicroseconds;
-      delete globalThis.Temporal.Instant.prototype.epochSeconds;
-      delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
-      delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
-      delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
-      delete globalThis.Temporal.PlainDate.prototype.getISOFields;
-      delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
-      delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
-      delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
-      delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
-      delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
-      delete globalThis.Temporal.PlainTime.prototype.calendar;
-      delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
-      delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
-      delete globalThis.Temporal.PlainTime.prototype.getISOFields;
-      delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
-      delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
-      delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
-      delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
-      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
-      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
-      delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
-      delete globalThis.Temporal.Now.zonedDateTime;
-      delete globalThis.Temporal.Now.plainDateTime;
-      delete globalThis.Temporal.Now.plainDate;
-      delete globalThis.Temporal.Calendar;
-      delete globalThis.Temporal.TimeZone;
-
-      // Modify `Temporal.Calendar` to calendarId string
-      ArrayPrototypeForEach([
-        globalThis.Temporal.PlainDate,
-        globalThis.Temporal.PlainDateTime,
-        globalThis.Temporal.PlainMonthDay,
-        globalThis.Temporal.PlainYearMonth,
-        globalThis.Temporal.ZonedDateTime,
-      ], (target) => {
-        const getCalendar =
-          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
-        ObjectDefineProperty(target.prototype, "calendarId", {
-          __proto__: null,
-          get: function calendarId() {
-            return FunctionPrototypeCall(getCalendar, this).id;
-          },
-          enumerable: false,
-          configurable: true,
-        });
-        delete target.prototype.calendar;
-      });
-
-      // Modify `Temporal.TimeZone` to timeZoneId string
-      {
-        const getTimeZone = ObjectGetOwnPropertyDescriptor(
-          globalThis.Temporal.ZonedDateTime.prototype,
-          "timeZone",
-        ).get;
-        ObjectDefineProperty(
-          globalThis.Temporal.ZonedDateTime.prototype,
-          "timeZoneId",
-          {
-            __proto__: null,
-            get: function timeZoneId() {
-              return FunctionPrototypeCall(getTimeZone, this).id;
-            },
-            enumerable: false,
-            configurable: true,
-          },
-        );
-        delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
-      }
-      {
-        const nowTimeZone = globalThis.Temporal.Now.timeZone;
-        ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
-          __proto__: null,
-          value: function timeZoneId() {
-            return nowTimeZone().id;
-          },
-          writable: true,
-          enumerable: false,
-          configurable: true,
-        });
-        delete globalThis.Temporal.Now.timeZone;
-      }
-
-      // deno-lint-ignore prefer-primordials
-      if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
-        throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
-      }
-      shimTemporalDurationToLocaleString();
+      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -923,8 +1002,8 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
-      14: closeOnIdle_,
     } = runtimeOptions;
+    closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -976,7 +1055,6 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
-    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
@@ -997,98 +1075,7 @@ function bootstrapWorkerRuntime(
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
     } else {
-      // Removes the obsoleted `Temporal` API.
-      // https://github.com/tc39/proposal-temporal/pull/2895
-      // https://github.com/tc39/proposal-temporal/pull/2914
-      // https://github.com/tc39/proposal-temporal/pull/2925
-      if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them";
-      }
-      delete globalThis.Temporal.Instant.fromEpochSeconds;
-      delete globalThis.Temporal.Instant.fromEpochMicroseconds;
-      delete globalThis.Temporal.Instant.prototype.epochSeconds;
-      delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
-      delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
-      delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
-      delete globalThis.Temporal.PlainDate.prototype.getISOFields;
-      delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
-      delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
-      delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
-      delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
-      delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
-      delete globalThis.Temporal.PlainTime.prototype.calendar;
-      delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
-      delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
-      delete globalThis.Temporal.PlainTime.prototype.getISOFields;
-      delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
-      delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
-      delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
-      delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
-      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
-      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
-      delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
-      delete globalThis.Temporal.Now.zonedDateTime;
-      delete globalThis.Temporal.Now.plainDateTime;
-      delete globalThis.Temporal.Now.plainDate;
-      delete globalThis.Temporal.Calendar;
-      delete globalThis.Temporal.TimeZone;
-
-      // Modify `Temporal.Calendar` to calendarId string
-      ArrayPrototypeForEach([
-        globalThis.Temporal.PlainDate,
-        globalThis.Temporal.PlainDateTime,
-        globalThis.Temporal.PlainMonthDay,
-        globalThis.Temporal.PlainYearMonth,
-        globalThis.Temporal.ZonedDateTime,
-      ], (target) => {
-        const getCalendar =
-          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
-        ObjectDefineProperty(target.prototype, "calendarId", {
-          __proto__: null,
-          get: function calendarId() {
-            return FunctionPrototypeCall(getCalendar, this).id;
-          },
-          enumerable: false,
-          configurable: true,
-        });
-        delete target.prototype.calendar;
-      });
-
-      // Modify `Temporal.TimeZone` to timeZoneId string
-      {
-        const getTimeZone = ObjectGetOwnPropertyDescriptor(
-          globalThis.Temporal.ZonedDateTime.prototype,
-          "timeZone",
-        ).get;
-        ObjectDefineProperty(
-          globalThis.Temporal.ZonedDateTime.prototype,
-          "timeZoneId",
-          {
-            __proto__: null,
-            get: function timeZoneId() {
-              return FunctionPrototypeCall(getTimeZone, this).id;
-            },
-            enumerable: false,
-            configurable: true,
-          },
-        );
-        delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
-      }
-      {
-        const nowTimeZone = globalThis.Temporal.Now.timeZone;
-        ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
-          __proto__: null,
-          value: function timeZoneId() {
-            return nowTimeZone().id;
-          },
-          writable: true,
-          enumerable: false,
-          configurable: true,
-        });
-        delete globalThis.Temporal.Now.timeZone;
-      }
-
-      shimTemporalDurationToLocaleString();
+      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

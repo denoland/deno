@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::colors;
@@ -44,6 +46,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use node_resolver::errors::ResolvePkgJsonBinExportError;
+use node_resolver::UrlOrPath;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -137,6 +140,9 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 pub enum ResolveNpmBinaryEntrypointError {
   #[class(inherit)]
   #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
   #[class(generic)]
   #[error("{original:#}\n\nFallback failed: {fallback:#}")]
@@ -153,7 +159,7 @@ pub enum ResolveNpmBinaryEntrypointFallbackError {
   PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
-  ModuleNotFound(Url),
+  ModuleNotFound(UrlOrPath),
 }
 
 pub struct LibMainWorkerOptions {
@@ -166,6 +172,8 @@ pub struct LibMainWorkerOptions {
   pub inspect_wait: bool,
   pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
+  /// If this is a `deno compile`-ed executable.
+  pub is_standalone: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -175,6 +183,7 @@ pub struct LibMainWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
   pub node_ipc: Option<i64>,
+  pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
@@ -296,13 +305,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           enable_testing_features: shared.options.enable_testing_features,
           locale: deno_core::v8::icu::get_language_tag(),
           location: Some(args.main_module),
-          no_color: !colors::use_color(),
           color_level: colors::get_color_level(),
-          is_stdout_tty: deno_terminal::is_stdout_tty(),
-          is_stderr_tty: deno_terminal::is_stderr_tty(),
           unstable_features,
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
+          is_standalone: shared.options.is_standalone,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -311,6 +318,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
           otel_config: shared.options.otel_config.clone(),
+          no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
         },
         extensions: vec![],
@@ -468,18 +476,17 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
-        no_color: !colors::use_color(),
-        is_stdout_tty: deno_terminal::is_stdout_tty(),
-        is_stderr_tty: deno_terminal::is_stderr_tty(),
         color_level: colors::get_color_level(),
         unstable_features,
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
+        is_standalone: shared.options.is_standalone,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.options.node_ipc,
         mode,
+        no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
@@ -525,13 +532,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(specifier) => Ok(specifier),
+      Ok(path) => Ok(url_from_file_path(&path)?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
-          Ok(Some(specifier)) => Ok(specifier),
+          Ok(Some(path)) => Ok(url_from_file_path(&path)?),
           Ok(None) => {
             Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
               original_err,
@@ -551,7 +558,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<Option<Url>, ResolveNpmBinaryEntrypointFallbackError> {
+  ) -> Result<Option<PathBuf>, ResolveNpmBinaryEntrypointFallbackError> {
     // only fallback if the user specified a sub path
     if sub_path.is_none() {
       // it's confusing to users if the package doesn't have any binary
@@ -573,14 +580,22 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .map_err(
         ResolveNpmBinaryEntrypointFallbackError::PackageSubpathResolve,
       )?;
-    if deno_path_util::url_to_file_path(&specifier)
-      .map(|p| self.shared.sys.fs_exists_no_err(p))
-      .unwrap_or(false)
-    {
-      Ok(Some(specifier))
+    let path = match specifier {
+      UrlOrPath::Url(ref url) => match url_to_file_path(url) {
+        Ok(path) => path,
+        Err(_) => {
+          return Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
+            specifier,
+          ));
+        }
+      },
+      UrlOrPath::Path(path) => path,
+    };
+    if self.shared.sys.fs_exists_no_err(&path) {
+      Ok(Some(path))
     } else {
       Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
-        specifier,
+        UrlOrPath::Path(path),
       ))
     }
   }

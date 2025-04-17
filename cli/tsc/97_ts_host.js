@@ -11,6 +11,18 @@ const ops = core.ops;
 let logDebug = false;
 let logSource = "JS";
 
+function spanned(name, f) {
+  if (!ops.op_make_span) {
+    return f();
+  }
+  const span = ops.op_make_span(name, false);
+  try {
+    return f();
+  } finally {
+    ops.op_exit_span(span);
+  }
+}
+
 // The map from the normalized specifier to the original.
 // TypeScript normalizes the specifier in its internal processing,
 // but the original specifier is needed when looking up the source from the runtime.
@@ -162,7 +174,8 @@ export const LAST_REQUEST_SCOPE = {
   },
 };
 
-ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
+/** @param sourceFile {ts.SourceFile} */
+function isNodeSourceFile(sourceFile) {
   const fileName = sourceFile.fileName;
   let isNodeSourceFile = IS_NODE_SOURCE_FILE_CACHE.get(fileName);
   if (isNodeSourceFile == null) {
@@ -171,7 +184,9 @@ ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
     IS_NODE_SOURCE_FILE_CACHE.set(fileName, isNodeSourceFile);
   }
   return isNodeSourceFile;
-});
+}
+
+ts.deno.setIsNodeSourceFileCallback(isNodeSourceFile);
 
 /**
  * @param msg {string}
@@ -234,7 +249,14 @@ function fromRelatedInformation({
   }
   if (start !== undefined && length !== undefined && file) {
     let startPos = file.getLineAndCharacterOfPosition(start);
-    let sourceLine = file.getFullText().split("\n")[startPos.line];
+    let endPos = file.getLineAndCharacterOfPosition(start + length);
+    // ok to get because it's cached via file.getLineAndCharacterOfPosition
+    const lineStarts = file.getLineStarts();
+    /** @type {string | undefined} */
+    let sourceLine = file.getFullText().slice(
+      lineStarts[startPos.line],
+      lineStarts[startPos.line + 1],
+    ).trimEnd();
     const originalFileName = file.fileName;
     const fileName = ops.op_remap_specifier
       ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
@@ -244,12 +266,12 @@ function fromRelatedInformation({
     if (
       fileName.endsWith(".wasm") && originalFileName.endsWith(".wasm.d.mts")
     ) {
-      startPos = { line: 0, character: 0 };
+      startPos = endPos = { line: 0, character: 0 };
       sourceLine = undefined;
     }
     return {
       start: startPos,
-      end: file.getLineAndCharacterOfPosition(start + length),
+      end: endPos,
       fileName,
       messageChain,
       messageText,
@@ -296,6 +318,9 @@ const IGNORED_DIAGNOSTICS = [
   // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
   // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
   1479,
+  // TS1543: Importing a JSON file into an ECMAScript module requires a 'type: \"json\"' import
+  // attribute when 'module' is set to 'NodeNext'.
+  1543,
   // TS2306: File '.../index.d.ts' is not a module.
   // We get this for `x-typescript-types` declaration files which don't export
   // anything. We prefer to treat these as modules with no exports.
@@ -322,8 +347,6 @@ const IGNORED_DIAGNOSTICS = [
   // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
   // so we will ignore complaints about this compiler setting.
   5070,
-  // TS6053: File '{0}' not found.
-  6053,
   // TS7016: Could not find a declaration file for module '...'. '...'
   // implicitly has an 'any' type.  This is due to `allowJs` being off by
   // default but importing of a JavaScript module.
@@ -374,7 +397,7 @@ export function clearScriptNamesCache() {
  * specific "bindings" to the Deno environment that tsc needs to work.
  *
  * @type {ts.CompilerHost & ts.LanguageServiceHost} */
-export const host = {
+const hostImpl = {
   fileExists(specifier) {
     if (logDebug) {
       debug(`host.fileExists("${specifier}")`);
@@ -408,20 +431,9 @@ export const host = {
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
-  getModuleSpecifierCache() {
-    return moduleSpecifierCache;
-  },
-  // @ts-ignore Undocumented method.
-  getCachedExportInfoMap() {
-    return exportMapCache;
-  },
-  getGlobalTypingsCacheLocation() {
-    return undefined;
-  },
-  // @ts-ignore Undocumented method.
   toPath(fileName) {
     // @ts-ignore Undocumented function.
-    ts.toPath(
+    return ts.toPath(
       fileName,
       this.getCurrentDirectory(),
       this.getCanonicalFileName.bind(this),
@@ -714,13 +726,41 @@ export const host = {
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // always return `undefined` in order to short-circuit
+    // a codepath in the TypeScript compiler that always
+    // ends up returning `undefined` in Deno anyway
+    return undefined;
+  },
 };
 
-// @ts-ignore Undocumented function.
-const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
-
-// @ts-ignore Undocumented function.
-const exportMapCache = ts.createCacheableExportInfoMap(host);
+// these host methods are super noisy (often thousands of calls per TSC request)
+const excluded = new Set([
+  "getScriptVersion",
+  "fileExists",
+  "getScriptSnapshot",
+  "getCompilationSettings",
+  "getCurrentDirectory",
+  "useCaseSensitiveFileNames",
+  "getModuleSpecifierCache",
+  "getGlobalTypingsCacheLocation",
+  "getSourceFile",
+]);
+/** @type {typeof hostImpl} */
+export const host = {
+  log(msg) {
+    ops.op_log_event(msg);
+  },
+};
+for (const [key, value] of Object.entries(hostImpl)) {
+  if (typeof value === "function" && !excluded.has(key)) {
+    host[key] = (...args) => {
+      return spanned(key, () => value.bind(host)(...args));
+    };
+  } else {
+    host[key] = value;
+  }
+}
 
 // override the npm install @types package diagnostics to be deno specific
 ts.setLocalizedDiagnosticMessages((() => {
@@ -746,35 +786,14 @@ export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
   }
-
-  // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
-  // the one in @types/node. the types of the filename and dirname properties are different,
-  // which causes tsc to error.
-  const importMetaFilenameDirnameModifiersRe =
-    /^All declarations of '(filename|dirname)'/;
-  const importMetaFilenameDirnameTypesRe =
-    /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
-  // Declarations of X must have identical modifiers.
-  if (diagnostic.code === 2687) {
-    if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameModifiersRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
-    ) {
-      return false;
-    }
-  }
-  // Subsequent property declarations must have the same type.
-  if (diagnostic.code === 2717) {
-    if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameTypesRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
-    ) {
-      return false;
-    }
+  // surface not found diagnostics inside npm packages
+  // because we don't analyze it with deno_graph
+  if (
+    // TS6053: File '{0}' not found.
+    diagnostic.code === 6053 &&
+    (diagnostic.file == null || !isNodeSourceFile(diagnostic.file))
+  ) {
+    return false;
   }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
@@ -789,44 +808,95 @@ export function filterMapDiagnostic(diagnostic) {
       }
     }
   }
+
   return true;
 }
 
 // list of globals that should be kept in Node's globalThis
-ts.deno.setNodeOnlyGlobalNames([
-  "__dirname",
-  "__filename",
-  "Buffer",
-  "BufferConstructor",
-  "BufferEncoding",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
-  "console",
-  "Console",
-  "ErrorConstructor",
-  "gc",
-  "Global",
-  "localStorage",
-  "queueMicrotask",
-  "RequestInit",
-  "ResponseInit",
-  "sessionStorage",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
+ts.deno.setNodeOnlyGlobalNames(
+  new Set([
+    "__dirname",
+    "__filename",
+    '"buffer"',
+    "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
+    "Console",
+    "crypto",
+    "ErrorConstructor",
+    "gc",
+    "Global",
+    "localStorage",
+    "queueMicrotask",
+    "RequestInit",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
+  ]),
+);
+// List of globals in @types/node that collide with Deno's types.
+// When the `@types/node` package attempts to assign to these types
+// if the type is already in the global symbol table, then assignment
+// will be a no-op, but if the global type does not exist then the package can
+// create the global.
+const setTypesNodeIgnorableNames = new Set([
+  "AbortController",
+  "AbortSignal",
+  "AsyncIteratorObject",
+  "atob",
+  "Blob",
+  "BroadcastChannel",
+  "btoa",
+  "ByteLengthQueuingStrategy",
+  "CompressionStream",
+  "CountQueuingStrategy",
+  "DecompressionStream",
+  "Disposable",
+  "DOMException",
+  "Event",
+  "EventSource",
+  "EventTarget",
+  "fetch",
+  "File",
+  "Float32Array",
+  "Float64Array",
+  "FormData",
+  "Headers",
+  "ImportMeta",
+  "MessageChannel",
+  "MessageEvent",
+  "MessagePort",
+  "performance",
+  "PerformanceEntry",
+  "PerformanceMark",
+  "PerformanceMeasure",
+  "ReadableByteStreamController",
+  "ReadableStream",
+  "ReadableStreamBYOBReader",
+  "ReadableStreamBYOBRequest",
+  "ReadableStreamDefaultController",
+  "ReadableStreamDefaultReader",
+  "ReadonlyArray",
+  "Request",
+  "Response",
+  "Storage",
+  "TextDecoder",
+  "TextDecoderStream",
+  "TextEncoder",
+  "TextEncoderStream",
+  "TransformStream",
+  "TransformStreamDefaultController",
+  "URL",
+  "URLSearchParams",
+  "WebSocket",
+  "WritableStream",
+  "WritableStreamDefaultController",
+  "WritableStreamDefaultWriter",
 ]);
-
-export function getAssets() {
-  /** @type {{ specifier: string; text: string; }[]} */
-  const assets = [];
-  for (const sourceFile of SOURCE_FILE_CACHE.values()) {
-    if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
-      assets.push({
-        specifier: sourceFile.fileName,
-        text: sourceFile.text,
-      });
-    }
-  }
-  return assets;
-}
+ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);

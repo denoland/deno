@@ -1,5 +1,5 @@
 Check file:///[WILDLINE]/main.ts
-error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/a.js'. Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/a.js'. Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
     at file:///[WILDLINE]/main.ts:1:20
 
 TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/b'. Maybe add a '.js' extension or run with --unstable-sloppy-imports
@@ -24,3 +24,8 @@ TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/dir'. Maybe specify path 
     at file:///[WILDLINE]/main.ts:8:20
 
 Found 8 errors.
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

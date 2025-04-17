@@ -28,6 +28,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { AsyncWrap, op_node_new_async_id } from "ext:core/ops";
+
 export function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
   _target: any,
@@ -59,22 +61,17 @@ export { asyncHookFields as async_hook_fields };
 
 // Increment the internal id counter and return the value.
 export function newAsyncId() {
-  return ++asyncIdFields[constants.kAsyncIdCounter];
+  return op_node_new_async_id();
 }
 
 export enum UidFields {
   kExecutionAsyncId,
   kTriggerAsyncId,
-  kAsyncIdCounter,
   kDefaultTriggerAsyncId,
   kUidFieldsCount,
 }
 
 const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
-
-// `kAsyncIdCounter` should start at `1` because that'll be the id the execution
-// context during bootstrap.
-asyncIdFields[UidFields.kAsyncIdCounter] = 1;
 
 // `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
 // specified default value and it should fallback to the executionAsyncId.
@@ -130,26 +127,4 @@ export enum providerType {
   ZLIB,
 }
 
-const kInvalidAsyncId = -1;
-
-export class AsyncWrap {
-  provider: providerType = providerType.NONE;
-  asyncId = kInvalidAsyncId;
-
-  constructor(provider: providerType) {
-    this.provider = provider;
-    this.getAsyncId();
-  }
-
-  getAsyncId(): number {
-    this.asyncId = this.asyncId === kInvalidAsyncId
-      ? newAsyncId()
-      : this.asyncId;
-
-    return this.asyncId;
-  }
-
-  getProviderType() {
-    return this.provider;
-  }
-}
+export { AsyncWrap };

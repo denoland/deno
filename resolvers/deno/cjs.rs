@@ -196,7 +196,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       | MediaType::Tsx
       // treat these as unknown
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         match is_script {
           Some(true) => self.check_based_on_pkg_json(specifier).unwrap_or(ResolutionMode::Import),
@@ -241,7 +243,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       | MediaType::Tsx
       // treat these as unknown
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           if value == ResolutionMode::Require && is_script == Some(false) {
@@ -267,11 +271,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
   ) -> Result<ResolutionMode, ClosestPkgJsonError> {
     if self.in_npm_pkg_checker.in_npm_package(specifier) {
+      let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+        return Ok(ResolutionMode::Require);
+      };
       if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(specifier)?
+        self.pkg_json_resolver.get_closest_package_json(&path)?
       {
         let is_file_location_cjs = pkg_json.typ != "module";
-        Ok(if is_file_location_cjs {
+        Ok(if is_file_location_cjs || path.extension().is_none() {
           ResolutionMode::Require
         } else {
           ResolutionMode::Import
@@ -280,8 +287,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
         Ok(ResolutionMode::Require)
       }
     } else if self.mode != IsCjsResolutionMode::Disabled {
+      let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+        return Ok(ResolutionMode::Import);
+      };
       if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(specifier)?
+        self.pkg_json_resolver.get_closest_package_json(&path)?
       {
         let is_cjs_type = pkg_json.typ == "commonjs"
           || self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs

@@ -9,13 +9,14 @@ use url::Url;
 
 use crate::errors;
 use crate::path::PathClean;
+use crate::path::UrlOrPathRef;
 
 pub trait NpmPackageFolderResolver {
   /// Resolves an npm package folder path from the specified referrer.
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, errors::PackageFolderResolveError>;
 }
 

@@ -61,6 +61,5 @@
   "bugs": {
     "url": "https://github.com/watson/is-lambda/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

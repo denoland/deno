@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -20,17 +21,16 @@ pub enum X25519Error {
   #[error(transparent)]
   Der(#[from] spki::der::Error),
 }
-
+// u-coordinate of the base point.
+const X25519_BASEPOINT_BYTES: [u8; 32] = [
+  9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0,
+];
 #[op2(fast)]
 pub fn op_crypto_generate_x25519_keypair(
   #[buffer] pkey: &mut [u8],
   #[buffer] pubkey: &mut [u8],
 ) {
-  // u-coordinate of the base point.
-  const X25519_BASEPOINT_BYTES: [u8; 32] = [
-    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0,
-  ];
   let mut rng = OsRng;
   rng.fill_bytes(pkey);
   // https://www.rfc-editor.org/rfc/rfc7748#section-6.1
@@ -40,6 +40,17 @@ pub fn op_crypto_generate_x25519_keypair(
   // pubkey is in LE order.
   let pkey: [u8; 32] = pkey.try_into().expect("Expected byteLength 32");
   pubkey.copy_from_slice(&x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES));
+}
+
+#[op2]
+#[string]
+pub fn op_crypto_x25519_public_key(#[buffer] private_key: &[u8]) -> String {
+  use base64::Engine;
+
+  let private_key: [u8; 32] =
+    private_key.try_into().expect("Expected byteLength 32");
+  BASE64_URL_SAFE_NO_PAD
+    .encode(x25519_dalek::x25519(private_key, X25519_BASEPOINT_BYTES))
 }
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
