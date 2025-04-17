@@ -1,4 +1,0 @@
-error: Failed reading lockfile at '[WILDCARD]'
-
-Caused by:
-    Unsupported lockfile version '5'. Try upgrading Deno or recreating the lockfile
