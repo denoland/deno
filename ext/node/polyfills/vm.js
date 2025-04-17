@@ -2,6 +2,8 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { Buffer } from "node:buffer";
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   op_vm_compile_function,
@@ -53,6 +55,15 @@ export class Script {
     } = options;
 
     validateString(filename, "options.filename");
+
+    // Join Node in normalizing absolute filenames to file:// URLs so that
+    // inspector-based consumers like coverage tools can filter by file URL.
+    // Relative filenames (including the default evalmachine.<anonymous>) are
+    // passed through unchanged.
+    let originFilename = filename;
+    if (path.isAbsolute(filename)) {
+      originFilename = pathToFileURL(filename).href;
+    }
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
     if (cachedData !== undefined) {
@@ -65,7 +76,7 @@ export class Script {
 
     const result = op_vm_create_script(
       code,
-      filename,
+      originFilename,
       lineOffset,
       columnOffset,
       cachedData,
