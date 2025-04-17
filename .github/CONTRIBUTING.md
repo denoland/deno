@@ -84,12 +84,8 @@ Deno you can download a prebuilt executable (more information in the
 
 ### Cloning the Repository
 
-:::note
-
-Deno uses submodules, so you must remember to clone using
-`--recurse-submodules`.
-
-:::
+> Deno uses submodules, so you must remember to clone using
+> `--recurse-submodules`.
 
 **Linux(Debian)**/**Mac**/**WSL**:
 
@@ -113,13 +109,9 @@ git clone --recurse-submodules https://github.com/denoland/deno.git
 
 #### Rust
 
-:::note
-
-Deno requires a specific release of Rust. Deno may not support building on other
-versions, or on the Rust Nightly Releases. The version of Rust required for a
-particular release is specified in the `rust-toolchain.toml` file.
-
-:::
+> Deno requires a specific release of Rust. Deno may not support building on
+> other versions, or on the Rust Nightly Releases. The version of Rust required
+> for a particular release is specified in the `rust-toolchain.toml` file.
 
 [Update or Install Rust](https://www.rust-lang.org/tools/install). Check that
 Rust installed/updated correctly:
@@ -215,13 +207,9 @@ Windows users can download the latest binary release from
 
 ### Python 3
 
-:::note
-
-Deno requires [Python 3](https://www.python.org/downloads) for running WPT
-tests. Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
-it refers to Python 3.
-
-:::
+> Deno requires [Python 3](https://www.python.org/downloads) for running WPT
+> tests. Ensure that a suffix-less `python`/`python.exe` exists in your `PATH`
+> and it refers to Python 3.
 
 ### Building Deno
 
