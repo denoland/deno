@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
@@ -13,6 +14,7 @@ use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::colors;
 use deno_semver::package::PackageReq;
+use rustc_hash::FxHashSet;
 
 pub use self::common::NpmPackageFsInstaller;
 use self::global::GlobalNpmPackageInstaller;
@@ -49,6 +51,7 @@ pub struct NpmInstaller {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
+  cached_reqs: Arc<Mutex<FxHashSet<PackageReq>>>,
 }
 
 impl NpmInstaller {
@@ -100,6 +103,7 @@ impl NpmInstaller {
       npm_resolution_installer,
       maybe_lockfile,
       top_level_install_flag: Default::default(),
+      cached_reqs: Default::default(),
     }
   }
 
@@ -168,7 +172,32 @@ impl NpmInstaller {
     }
     if result.dependencies_result.is_ok() {
       if let Some(caching) = caching {
-        result.dependencies_result = self.cache_packages(caching).await;
+        // there should never really be any contention on this mutex
+        let uncached = {
+          let mut cached_reqs = self.cached_reqs.lock();
+          packages
+            .iter()
+            .filter_map(|req| {
+              if cached_reqs.insert(req.clone()) {
+                Some(req.clone())
+              } else {
+                None
+              }
+            })
+            .collect::<Vec<_>>()
+        };
+
+        if !uncached.is_empty() {
+          result.dependencies_result = self.cache_packages(caching).await;
+          if result.dependencies_result.is_err() {
+            // if we failed to cache, we need to remove the cached reqs.
+            // we don't really know which ones failed, so just be safe and remove all of them
+            let mut cached_reqs = self.cached_reqs.lock();
+            for req in uncached {
+              cached_reqs.remove(&req);
+            }
+          }
+        }
       }
     }
 
