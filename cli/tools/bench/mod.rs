@@ -185,18 +185,17 @@ async fn bench_specifier_inner(
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), CreateCustomWorkerError> {
-  let mut worker = worker_factory
-    .create_custom_worker(
-      WorkerExecutionMode::Bench,
-      specifier.clone(),
-      permissions_container,
-      vec![ops::bench::deno_bench::init_ops(sender.clone())],
-      Default::default(),
-    )
-    .await?;
+  let specifier = worker_factory.main_module_specifier(specifier).await?;
+  let mut worker = worker_factory.create_custom_worker(
+    WorkerExecutionMode::Bench,
+    Some(&specifier),
+    permissions_container,
+    vec![ops::bench::deno_bench::init_ops(sender.clone())],
+    Default::default(),
+  )?;
 
   // We execute the main module as a side module so that import.meta.main is not set.
-  worker.execute_side_module().await?;
+  worker.execute_side_module(&specifier).await?;
 
   let mut worker = worker.into_main_worker();
 

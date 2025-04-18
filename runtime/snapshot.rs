@@ -72,7 +72,7 @@ pub fn create_runtime_snapshot(
       sys_traits::impls::RealSys,
     >(None, fs.clone()),
     runtime::init_ops_and_esm(),
-    ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
+    ops::runtime::deno_runtime::init_ops(),
     ops::worker_host::deno_worker_host::init_ops(
       Arc::new(|_| unreachable!("not used in snapshot.")),
       None,

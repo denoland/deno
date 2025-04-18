@@ -625,23 +625,24 @@ async fn configure_main_worker(
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,
 > {
-  let mut worker = worker_factory
-    .create_custom_worker(
-      WorkerExecutionMode::Test,
-      specifier.clone(),
-      permissions_container,
-      vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint_ext_for_test::init_ops(),
-        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
-      ],
-      Stdio {
-        stdin: StdioPipe::inherit(),
-        stdout: StdioPipe::file(worker_sender.stdout),
-        stderr: StdioPipe::file(worker_sender.stderr),
-      },
-    )
+  let specifier = worker_factory
+    .main_module_specifier(specifier.to_owned())
     .await?;
+  let mut worker = worker_factory.create_custom_worker(
+    WorkerExecutionMode::Test,
+    Some(&specifier),
+    permissions_container,
+    vec![
+      ops::testing::deno_test::init_ops(worker_sender.sender),
+      ops::lint::deno_lint_ext_for_test::init_ops(),
+      ops::jupyter::deno_jupyter_for_test::init_ops(sender),
+    ],
+    Stdio {
+      stdin: StdioPipe::inherit(),
+      stdout: StdioPipe::file(worker_sender.stdout),
+      stderr: StdioPipe::file(worker_sender.stderr),
+    },
+  )?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
   if options.trace_leaks {
     worker.execute_script_static(
@@ -649,7 +650,7 @@ async fn configure_main_worker(
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
-  let res = worker.execute_side_module().await;
+  let res = worker.execute_side_module(&specifier).await;
   let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),

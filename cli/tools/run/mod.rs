@@ -9,6 +9,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
+use deno_core::ModuleSpecifier;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
@@ -74,21 +75,69 @@ pub async fn run_script(
     deno_dir.upgrade_check_file_path(),
   );
 
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+
   let main_module = cli_options.resolve_main_module()?;
 
-  if main_module.scheme() == "npm" {
-    set_npm_user_agent();
-  }
+  let exit_code = if main_module.scheme() == "lazy" {
+    let mut worker = worker_factory.create_main_worker(mode, None)?;
 
-  maybe_npm_install(&factory).await?;
+    let main_module = lazy_main_module(main_module.path()).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone())
-    .await?;
+    // TODO: reload deno.json here
 
-  let exit_code = worker.run().await?;
+    if main_module.scheme() == "npm" {
+      set_npm_user_agent();
+    }
+
+    maybe_npm_install(&factory).await?;
+
+    let main_module = worker_factory
+      .main_module_specifier(main_module.to_owned())
+      .await?;
+
+    worker.run(&main_module).await?
+  } else {
+    if main_module.scheme() == "npm" {
+      set_npm_user_agent();
+    }
+
+    maybe_npm_install(&factory).await?;
+
+    let main_module = worker_factory
+      .main_module_specifier(main_module.to_owned())
+      .await?;
+
+    let mut worker =
+      worker_factory.create_main_worker(mode, Some(&main_module))?;
+
+    worker.run(&main_module).await?
+  };
+
   Ok(exit_code)
+}
+
+async fn lazy_main_module(path: &str) -> Result<ModuleSpecifier, AnyError> {
+  use tokio::io::AsyncReadExt;
+
+  let _ = tokio::fs::remove_file(path).await;
+
+  let socket = tokio::net::UnixSocket::new_stream()?;
+  socket.bind(path)?;
+  let listener = socket.listen(1)?;
+
+  let (mut stream, _) = listener.accept().await?;
+
+  let mut buf = vec![0; 1024];
+  let n = stream.read(&mut buf).await?;
+  buf.truncate(n);
+
+  let path = String::from_utf8(buf)?;
+  let path = std::path::PathBuf::from(path).canonicalize()?;
+
+  let s = ModuleSpecifier::from_file_path(path).unwrap();
+
+  Ok(s)
 }
 
 pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
@@ -110,10 +159,12 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
     source: source.into(),
   });
 
-  let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Run, main_module.clone())
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
-  let exit_code = worker.run().await?;
+  let mut worker = worker_factory
+    .create_main_worker(WorkerExecutionMode::Run, Some(&main_module))?;
+  let exit_code = worker.run(&main_module).await?;
   Ok(exit_code)
 }
 
@@ -150,16 +201,19 @@ async fn run_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let mut worker = factory
-          .create_cli_main_worker_factory()
-          .await?
-          .create_main_worker(mode, main_module.clone())
+        let worker_factory = factory.create_cli_main_worker_factory().await?;
+
+        let main_module = worker_factory
+          .main_module_specifier(main_module.to_owned())
           .await?;
 
+        let mut worker =
+          worker_factory.create_main_worker(mode, Some(&main_module))?;
+
         if watch_flags.hmr {
-          worker.run().await?;
+          worker.run(&main_module).await?;
         } else {
-          worker.run_for_watcher().await?;
+          worker.run_for_watcher(&main_module).await?;
         }
 
         Ok(())
@@ -199,10 +253,12 @@ pub async fn eval_command(
   });
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Eval, main_module.clone())
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
-  let exit_code = worker.run().await?;
+  let mut worker = worker_factory
+    .create_main_worker(WorkerExecutionMode::Eval, Some(&main_module))?;
+  let exit_code = worker.run(&main_module).await?;
   Ok(exit_code)
 }
 
@@ -247,11 +303,13 @@ pub async fn run_eszip(
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone())
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
+  let mut worker =
+    worker_factory.create_main_worker(mode, Some(&main_module))?;
 
-  let exit_code = worker.run().await?;
+  let exit_code = worker.run(&main_module).await?;
   Ok(exit_code)
 }
 

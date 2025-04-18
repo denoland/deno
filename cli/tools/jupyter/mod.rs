@@ -94,23 +94,24 @@ pub async fn kernel(
     stderr,
   } = worker;
 
-  let mut worker = worker_factory
-    .create_custom_worker(
-      WorkerExecutionMode::Jupyter,
-      main_module.clone(),
-      permissions,
-      vec![
-        ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
-        ops::testing::deno_test::init_ops(test_event_sender),
-      ],
-      // FIXME(nayeemrmn): Test output capturing currently doesn't work.
-      Stdio {
-        stdin: StdioPipe::inherit(),
-        stdout: StdioPipe::file(stdout),
-        stderr: StdioPipe::file(stderr),
-      },
-    )
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
+  let mut worker = worker_factory.create_custom_worker(
+    WorkerExecutionMode::Jupyter,
+    Some(&main_module),
+    permissions,
+    vec![
+      ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
+      ops::testing::deno_test::init_ops(test_event_sender),
+    ],
+    // FIXME(nayeemrmn): Test output capturing currently doesn't work.
+    Stdio {
+      stdin: StdioPipe::inherit(),
+      stdout: StdioPipe::file(stdout),
+      stderr: StdioPipe::file(stderr),
+    },
+  )?;
   worker.setup_repl().await?;
   worker.execute_script_static(
     located_script_name!(),

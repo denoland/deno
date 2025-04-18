@@ -181,15 +181,16 @@ pub async fn run(
     .and_then(|dir| dir.repl_history_file_path());
   let (worker, test_event_receiver) = create_single_test_event_channel();
   let test_event_sender = worker.sender;
-  let mut worker = worker_factory
-    .create_custom_worker(
-      WorkerExecutionMode::Repl,
-      main_module.clone(),
-      permissions.clone(),
-      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
-      Default::default(),
-    )
+  let main_module = worker_factory
+    .main_module_specifier(main_module.to_owned())
     .await?;
+  let mut worker = worker_factory.create_custom_worker(
+    WorkerExecutionMode::Repl,
+    Some(&main_module),
+    permissions.clone(),
+    vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
+    Default::default(),
+  )?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
   let session = ReplSession::initialize(
