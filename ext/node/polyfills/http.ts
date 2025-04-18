@@ -508,12 +508,12 @@ class ClientRequest extends OutgoingMessage {
 
         let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
-          const hasCaCerts = this.agent.options.ca !== undefined;
+          const hasCaCerts = this.agent?.options?.ca !== undefined;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
             : [];
-          const hasTlsKey = this.agent.options.key !== undefined &&
-            this.agent.options.cert !== undefined;
+          const hasTlsKey = this.agent?.options?.key !== undefined &&
+            this.agent?.options?.cert !== undefined;
           const keyPair = hasTlsKey
             ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
             : op_tls_key_null();
