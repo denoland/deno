@@ -65,7 +65,10 @@ impl NpmPackageInfoApiAdapter {
     api: Arc<dyn NpmRegistryApi + Send + Sync>,
     workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
-    Self { api, workspace_patch_packages }
+    Self {
+      api,
+      workspace_patch_packages,
+    }
   }
 }
 async fn get_infos(
