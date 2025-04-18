@@ -665,7 +665,7 @@ fn test_collect_summary_with_no_matches() {
   let temp_dir: &TempDir = context.temp_dir();
   let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
 
-  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  let empty_test_dir: PathRef = temp_dir.path().join("empty_dir");
   empty_test_dir.create_dir_all();
 
   let output: util::TestCommandOutput = context
