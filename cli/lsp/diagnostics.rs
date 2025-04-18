@@ -1967,9 +1967,7 @@ mod tests {
 
   use deno_config::deno_json::ConfigFile;
   use deno_core::resolve_url;
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryApi;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+  use deno_semver::package::PackageNv;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -2011,16 +2009,20 @@ mod tests {
   struct DefaultRegistry;
 
   #[async_trait::async_trait(?Send)]
-  impl NpmRegistryApi for DefaultRegistry {
-    async fn package_info(
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
       &self,
-      _name: &str,
-    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-      Ok(Arc::new(NpmPackageInfo::default()))
+      values: &[PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
     }
   }
 
-  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
     Arc::new(DefaultRegistry)
   }
 

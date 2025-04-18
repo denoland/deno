@@ -42,7 +42,6 @@ use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::registry::NpmRegistryApi;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
@@ -1270,7 +1269,9 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1309,7 +1310,7 @@ impl ConfigData {
           scope,
           settings,
           Some(file_fetcher),
-          npm_package_info_provider,
+          lockfile_package_info_provider,
         )
         .await
       }
@@ -1325,7 +1326,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
-          npm_package_info_provider,
+          lockfile_package_info_provider,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1368,7 +1369,9 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1513,10 +1516,12 @@ impl ConfigData {
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
-    let lockfile =
-      resolve_lockfile_from_workspace(&member_dir, npm_package_info_provider)
-        .await
-        .map(Arc::new);
+    let lockfile = resolve_lockfile_from_workspace(
+      &member_dir,
+      lockfile_package_info_provider,
+    )
+    .await
+    .map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1928,7 +1933,9 @@ impl ConfigTree {
     workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
     deno_dir: &DenoDir,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1961,7 +1968,7 @@ impl ConfigTree {
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
-                npm_package_info_provider,
+                lockfile_package_info_provider,
               )
               .await,
             ),
@@ -1995,7 +2002,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          npm_package_info_provider,
+          lockfile_package_info_provider,
         )
         .await,
       );
@@ -2012,7 +2019,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          npm_package_info_provider,
+          lockfile_package_info_provider,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2030,7 +2037,9 @@ impl ConfigTree {
   pub async fn inject_config_file(
     &mut self,
     config_file: ConfigFile,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
@@ -2061,7 +2070,7 @@ impl ConfigTree {
         scope.clone(),
         &Default::default(),
         None,
-        npm_package_info_provider,
+        lockfile_package_info_provider,
       )
       .await,
     );
@@ -2072,7 +2081,9 @@ impl ConfigTree {
 
 async fn resolve_lockfile_from_workspace(
   workspace: &WorkspaceDirectory,
-  npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -2087,8 +2098,12 @@ async fn resolve_lockfile_from_workspace(
     .root_deno_json()
     .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
     .unwrap_or(false);
-  resolve_lockfile_from_path(lockfile_path, frozen, npm_package_info_provider)
-    .await
+  resolve_lockfile_from_path(
+    lockfile_path,
+    frozen,
+    lockfile_package_info_provider,
+  )
+  .await
 }
 
 fn resolve_node_modules_dir(
@@ -2124,7 +2139,9 @@ fn resolve_node_modules_dir(
 async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
-  npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
@@ -2133,7 +2150,7 @@ async fn resolve_lockfile_from_path(
       frozen,
       skip_write: false,
     },
-    &crate::npm::NpmPackageInfoApiAdapter(npm_package_info_provider.clone()),
+    &**lockfile_package_info_provider,
   )
   .await
   {
@@ -2198,8 +2215,6 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -2465,16 +2480,20 @@ mod tests {
   struct DefaultRegistry;
 
   #[async_trait::async_trait(?Send)]
-  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
-    async fn package_info(
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
       &self,
-      _name: &str,
-    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-      Ok(Arc::new(NpmPackageInfo::default()))
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
     }
   }
 
-  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
     Arc::new(DefaultRegistry)
   }
 
