@@ -2,6 +2,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_otel_collect_isolate_metrics,
+  op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
   op_otel_metric_attribute3,
@@ -27,28 +29,55 @@ import {
 import { Console } from "ext:deno_console/01_console.js";
 
 const {
+  ArrayFrom,
   ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeReduce,
+  ArrayPrototypeReverse,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
+  MapPrototypeEntries,
+  MapPrototypeKeys,
+  Number,
+  NumberParseInt,
+  NumberPrototypeToString,
+  ObjectAssign,
   ObjectDefineProperty,
   ObjectEntries,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectValues,
   ReflectApply,
+  SafeArrayIterator,
   SafeIterator,
   SafeMap,
   SafePromiseAll,
+  SafeRegExp,
   SafeSet,
   SafeWeakSet,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeSubstring,
+  StringPrototypeTrim,
   SymbolFor,
   TypeError,
+  decodeURIComponent,
+  encodeURIComponent,
 } = primordials;
-const { AsyncVariable, setAsyncContext } = core;
+const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
+export let PROPAGATORS: TextMapPropagator[] = [];
+let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -143,18 +172,40 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
-export function enterSpan(span: Span): Context | undefined {
+function isTimeInput(input: unknown): input is TimeInput {
+  return typeof input === "number" ||
+    (input && (ArrayIsArray(input) || isDate(input)));
+}
+
+function timeInputToMs(input?: TimeInput): number | undefined {
+  if (input === undefined) return;
+  if (ArrayIsArray(input)) {
+    return hrToMs(input);
+  } else if (isDate(input)) {
+    return DatePrototypeGetTime(input);
+  }
+  return input;
+}
+
+function countAttributes(attributes?: Attributes): number {
+  return attributes ? ObjectKeys(attributes).length : 0;
+}
+
+interface AsyncContextSnapshot {
+  __brand: "AsyncContextSnapshot";
+}
+
+export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
   const context = (CURRENT.get() ?? ROOT_CONTEXT).setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
 
-export function restoreContext(context: Context): void {
-  setAsyncContext(context);
-}
+export const currentSnapshot = getAsyncContext;
+export const restoreSnapshot = setAsyncContext;
 
 function isDate(value: unknown): value is Date {
-  return ObjectPrototypeIsPrototypeOf(value, DatePrototype);
+  return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
 }
 
 interface OtelTracer {
@@ -186,6 +237,11 @@ interface OtelSpan {
 
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
+  addEvent(
+    name: string,
+    startTime: number,
+    droppedAttributeCount: number,
+  ): void;
   dropEvent(): void;
   end(endTime: number): void;
 }
@@ -274,20 +330,13 @@ class Tracer {
       context = context ?? CURRENT.get();
     }
 
-    let startTime = options?.startTime;
-    if (startTime && ArrayIsArray(startTime)) {
-      startTime = hrToMs(startTime);
-    } else if (startTime && isDate(startTime)) {
-      startTime = DatePrototypeGetTime(startTime);
-    }
+    const startTime = timeInputToMs(options?.startTime);
 
     const parentSpan = context?.getValue(SPAN_KEY) as
       | Span
       | { spanContext(): SpanContext }
       | undefined;
-    const attributesCount = options?.attributes
-      ? ObjectKeys(options.attributes).length
-      : 0;
+    const attributesCount = countAttributes(options?.attributes);
     const parentOtelSpan: OtelSpan | null | undefined = parentSpan !== undefined
       ? getOtelSpan(parentSpan) ?? undefined
       : undefined;
@@ -351,17 +400,27 @@ class Span {
   }
 
   addEvent(
-    _name: string,
-    _attributesOrStartTime?: Attributes | TimeInput,
-    _startTime?: TimeInput,
-  ): Span {
-    this.#otelSpan?.dropEvent();
+    name: string,
+    attributesOrStartTime?: Attributes | TimeInput,
+    startTime?: TimeInput,
+  ): this {
+    if (isTimeInput(attributesOrStartTime)) {
+      startTime = attributesOrStartTime;
+      attributesOrStartTime = undefined;
+    }
+    const startTimeMs = timeInputToMs(startTime);
+
+    this.#otelSpan?.addEvent(
+      name,
+      startTimeMs ?? NaN,
+      countAttributes(attributesOrStartTime),
+    );
     return this;
   }
 
-  addLink(link: Link): Span {
+  addLink(link: Link): this {
     const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
-      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+      countAttributes(link.attributes);
     const valid = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
@@ -374,7 +433,7 @@ class Span {
     return this;
   }
 
-  addLinks(links: Link[]): Span {
+  addLinks(links: Link[]): this {
     for (let i = 0; i < links.length; i++) {
       this.addLink(links[i]);
     }
@@ -382,12 +441,7 @@ class Span {
   }
 
   end(endTime?: TimeInput): void {
-    if (endTime && ArrayIsArray(endTime)) {
-      endTime = hrToMs(endTime);
-    } else if (endTime && isDate(endTime)) {
-      endTime = DatePrototypeGetTime(endTime);
-    }
-    this.#otelSpan?.end(endTime || NaN);
+    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
   }
 
   isRecording(): boolean {
@@ -395,18 +449,17 @@ class Span {
   }
 
   // deno-lint-ignore no-explicit-any
-  recordException(_exception: any, _time?: TimeInput): Span {
+  recordException(_exception: any, _time?: TimeInput): void {
     this.#otelSpan?.dropEvent();
-    return this;
   }
 
-  setAttribute(key: string, value: AttributeValue): Span {
+  setAttribute(key: string, value: AttributeValue): this {
     if (!this.#otelSpan) return this;
     op_otel_span_attribute1(this.#otelSpan, key, value);
     return this;
   }
 
-  setAttributes(attributes: Attributes): Span {
+  setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
     const attributeKvs = ObjectEntries(attributes);
     let i = 0;
@@ -443,12 +496,12 @@ class Span {
     return this;
   }
 
-  setStatus(status: SpanStatus): Span {
+  setStatus(status: SpanStatus): this {
     this.#otelSpan?.setStatus(status.code, status.message ?? "");
     return this;
   }
 
-  updateName(name: string): Span {
+  updateName(name: string): this {
     if (!this.#otelSpan) return this;
     op_otel_span_update_name(this.#otelSpan, name);
     return this;
@@ -487,7 +540,7 @@ class Context {
 const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
-class ContextManager {
+export class ContextManager {
   constructor() {
     throw new TypeError("ContextManager can not be constructed");
   }
@@ -1011,6 +1064,10 @@ class ObservableResult {
 }
 
 async function observe(): Promise<void> {
+  if (ISOLATE_METRICS) {
+    op_otel_collect_isolate_metrics();
+  }
+
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
   // deno-lint-ignore prefer-primordials
@@ -1076,6 +1133,539 @@ function otelLog(message: string, level: number) {
   }
 }
 
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+const VERSION = "00";
+const VERSION_PART = "(?!ff)[\\da-f]{2}";
+const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
+const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
+const FLAGS_PART = "[\\da-f]{2}";
+const TRACE_PARENT_REGEX = new SafeRegExp(
+  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
+);
+const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$", "i");
+const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$", "i");
+const MAX_TRACE_STATE_ITEMS = 32;
+const MAX_TRACE_STATE_LEN = 512;
+const LIST_MEMBERS_SEPARATOR = ",";
+const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
+const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
+const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
+const VALID_VENDOR_KEY =
+  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
+const VALID_KEY_REGEX = new SafeRegExp(
+  `^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`,
+);
+const VALID_VALUE_BASE_REGEX = new SafeRegExp("^[ -~]{0,255}[!-~]$");
+const INVALID_VALUE_COMMA_EQUAL_REGEX = new SafeRegExp(",|=");
+
+const TRACE_PARENT_HEADER = "traceparent";
+const TRACE_STATE_HEADER = "tracestate";
+const INVALID_TRACEID = "00000000000000000000000000000000";
+const INVALID_SPANID = "0000000000000000";
+const INVALID_SPAN_CONTEXT: SpanContext = {
+  traceId: INVALID_TRACEID,
+  spanId: INVALID_SPANID,
+  traceFlags: 0,
+};
+const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
+const BAGGAGE_PROPERTIES_SEPARATOR = ";";
+const BAGGAGE_ITEMS_SEPARATOR = ",";
+const BAGGAGE_HEADER = "baggage";
+const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
+const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
+const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
+
+class NonRecordingSpan implements Span {
+  constructor(
+    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT,
+  ) {}
+
+  spanContext(): SpanContext {
+    return this._spanContext;
+  }
+
+  setAttribute(_key: string, _value: unknown): this {
+    return this;
+  }
+
+  setAttributes(_attributes: SpanAttributes): this {
+    return this;
+  }
+
+  addEvent(_name: string, _attributes?: SpanAttributes): this {
+    return this;
+  }
+
+  addLink(_link: Link): this {
+    return this;
+  }
+
+  addLinks(_links: Link[]): this {
+    return this;
+  }
+
+  setStatus(_status: SpanStatus): this {
+    return this;
+  }
+
+  updateName(_name: string): this {
+    return this;
+  }
+
+  end(_endTime?: TimeInput): void {}
+
+  isRecording(): boolean {
+    return false;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  recordException(_exception: any, _time?: TimeInput): void {}
+}
+
+const otelPropagators = {
+  traceContext: 0,
+  baggage: 1,
+  none: 2,
+};
+
+function parseTraceParent(traceParent: string): SpanContext | null {
+  const match = TRACE_PARENT_REGEX.exec(traceParent);
+  if (!match) return null;
+
+  // According to the specification the implementation should be compatible
+  // with future versions. If there are more parts, we only reject it if it's using version 00
+  // See https://www.w3.org/TR/trace-context/#versioning-of-traceparent
+  if (match[1] === "00" && match[5]) return null;
+
+  return {
+    traceId: match[2],
+    spanId: match[3],
+    traceFlags: NumberParseInt(match[4], 16),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapSetter<Carrier = any> {
+  set(carrier: Carrier, key: string, value: string): void;
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapPropagator<Carrier = any> {
+  inject(
+    context: Context,
+    carrier: Carrier,
+    setter: TextMapSetter<Carrier>,
+  ): void;
+  extract(
+    context: Context,
+    carrier: Carrier,
+    getter: TextMapGetter<Carrier>,
+  ): Context;
+  fields(): string[];
+}
+
+// deno-lint-ignore no-explicit-any
+interface TextMapGetter<Carrier = any> {
+  keys(carrier: Carrier): string[];
+  get(carrier: Carrier, key: string): undefined | string | string[];
+}
+
+function isTracingSuppressed(context: Context): boolean {
+  return context.getValue(
+    SymbolFor("OpenTelemetry SDK Context Key SUPPRESS_TRACING"),
+  ) === true;
+}
+
+function isValidTraceId(traceId: string): boolean {
+  return VALID_TRACEID_REGEX.test(traceId) && traceId !== INVALID_TRACEID;
+}
+
+function isValidSpanId(spanId: string): boolean {
+  return VALID_SPANID_REGEX.test(spanId) && spanId !== INVALID_SPANID;
+}
+
+function isSpanContextValid(spanContext: SpanContext): boolean {
+  return (
+    isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId)
+  );
+}
+
+function validateKey(key: string): boolean {
+  return VALID_KEY_REGEX.test(key);
+}
+
+function validateValue(value: string): boolean {
+  return (
+    VALID_VALUE_BASE_REGEX.test(value) &&
+    !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value)
+  );
+}
+
+class TraceStateClass implements TraceState {
+  private _internalState: Map<string, string> = new SafeMap();
+
+  constructor(rawTraceState?: string) {
+    if (rawTraceState) this._parse(rawTraceState);
+  }
+
+  set(key: string, value: string): TraceStateClass {
+    const traceState = this._clone();
+    if (traceState._internalState.has(key)) {
+      traceState._internalState.delete(key);
+    }
+    traceState._internalState.set(key, value);
+    return traceState;
+  }
+
+  unset(key: string): TraceStateClass {
+    const traceState = this._clone();
+    traceState._internalState.delete(key);
+    return traceState;
+  }
+
+  get(key: string): string | undefined {
+    return this._internalState.get(key);
+  }
+
+  serialize(): string {
+    return ArrayPrototypeJoin(
+      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
+        ArrayPrototypePush(
+          agg,
+          key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
+        );
+        return agg;
+      }, []),
+      LIST_MEMBERS_SEPARATOR,
+    );
+  }
+
+  private _parse(rawTraceState: string) {
+    if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
+    this._internalState = ArrayPrototypeReduce(
+      ArrayPrototypeReverse(
+        StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
+      ),
+      (agg: Map<string, string>, part: string) => {
+        const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
+        const i = StringPrototypeIndexOf(
+          listMember,
+          LIST_MEMBER_KEY_VALUE_SPLITTER,
+        );
+        if (i !== -1) {
+          const key = StringPrototypeSlice(listMember, 0, i);
+          const value = StringPrototypeSlice(listMember, i + 1, part.length);
+          if (validateKey(key) && validateValue(value)) {
+            agg.set(key, value);
+          }
+        }
+        return agg;
+      },
+      new SafeMap(),
+    );
+
+    // Because of the reverse() requirement, trunc must be done after map is created
+    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
+      this._internalState = new SafeMap(
+        ArrayPrototypeSlice(
+          ArrayPrototypeReverse(
+            ArrayFrom(MapPrototypeEntries(this._internalState)),
+          ),
+          0,
+          MAX_TRACE_STATE_ITEMS,
+        ),
+      );
+    }
+  }
+
+  private _keys(): string[] {
+    return ArrayPrototypeReverse(
+      ArrayFrom(MapPrototypeKeys(this._internalState)),
+    );
+  }
+
+  private _clone(): TraceStateClass {
+    const traceState = new TraceStateClass();
+    traceState._internalState = new SafeMap(this._internalState);
+    return traceState;
+  }
+}
+
+class W3CTraceContextPropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
+      ?.spanContext();
+    if (
+      !spanContext ||
+      isTracingSuppressed(context) ||
+      !isSpanContextValid(spanContext)
+    ) {
+      return;
+    }
+
+    const traceParent =
+      `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
+        NumberPrototypeToString(Number(spanContext.traceFlags || 0), 16)
+      }`;
+
+    setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
+    if (spanContext.traceState) {
+      setter.set(
+        carrier,
+        TRACE_STATE_HEADER,
+        spanContext.traceState.serialize(),
+      );
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
+    if (!traceParentHeader) return context;
+    const traceParent = ArrayIsArray(traceParentHeader)
+      ? traceParentHeader[0]
+      : traceParentHeader;
+    if (typeof traceParent !== "string") return context;
+    const spanContext = parseTraceParent(traceParent);
+    if (!spanContext) return context;
+
+    spanContext.isRemote = true;
+
+    const traceStateHeader = getter.get(carrier, TRACE_STATE_HEADER);
+    if (traceStateHeader) {
+      // If more than one `tracestate` header is found, we merge them into a
+      // single header.
+      const state = ArrayIsArray(traceStateHeader)
+        ? ArrayPrototypeJoin(traceStateHeader, ",")
+        : traceStateHeader;
+      spanContext.traceState = new TraceStateClass(
+        typeof state === "string" ? state : undefined,
+      );
+    }
+    return context.setValue(SPAN_KEY, new NonRecordingSpan(spanContext));
+  }
+
+  fields(): string[] {
+    return [TRACE_PARENT_HEADER, TRACE_STATE_HEADER];
+  }
+}
+
+const baggageEntryMetadataSymbol = SymbolFor("BaggageEntryMetadata");
+
+type BaggageEntryMetadata = { toString(): string } & {
+  __TYPE__: typeof baggageEntryMetadataSymbol;
+};
+
+interface BaggageEntry {
+  value: string;
+  metadata?: BaggageEntryMetadata;
+}
+
+interface ParsedBaggageKeyValue {
+  key: string;
+  value: string;
+  metadata: BaggageEntryMetadata | undefined;
+}
+
+interface Baggage {
+  getEntry(key: string): BaggageEntry | undefined;
+  getAllEntries(): [string, BaggageEntry][];
+  setEntry(key: string, entry: BaggageEntry): Baggage;
+  removeEntry(key: string): Baggage;
+  removeEntries(...key: string[]): Baggage;
+  clear(): Baggage;
+}
+
+export function baggageEntryMetadataFromString(
+  str: string,
+): BaggageEntryMetadata {
+  if (typeof str !== "string") {
+    str = "";
+  }
+
+  return {
+    __TYPE__: baggageEntryMetadataSymbol,
+    toString() {
+      return str;
+    },
+  };
+}
+
+function serializeKeyPairs(keyPairs: string[]): string {
+  return ArrayPrototypeReduce(keyPairs, (hValue: string, current: string) => {
+    const value = `${hValue}${
+      hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
+    }${current}`;
+    return value.length > BAGGAGE_MAX_TOTAL_LENGTH ? hValue : value;
+  }, "");
+}
+
+function getKeyPairs(baggage: Baggage): string[] {
+  return ArrayPrototypeMap(baggage.getAllEntries(), (baggageEntry) => {
+    let entry = `${encodeURIComponent(baggageEntry[0])}=${
+      encodeURIComponent(baggageEntry[1].value)
+    }`;
+
+    // include opaque metadata if provided
+    // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
+    if (baggageEntry[1].metadata !== undefined) {
+      entry += BAGGAGE_PROPERTIES_SEPARATOR +
+        // deno-lint-ignore prefer-primordials
+        baggageEntry[1].metadata.toString();
+    }
+
+    return entry;
+  });
+}
+
+function parsePairKeyValue(
+  entry: string,
+): ParsedBaggageKeyValue | undefined {
+  const valueProps = StringPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
+  if (valueProps.length <= 0) return;
+  const keyPairPart = ArrayPrototypeShift(valueProps);
+  if (!keyPairPart) return;
+  const separatorIndex = StringPrototypeIndexOf(
+    keyPairPart,
+    BAGGAGE_KEY_PAIR_SEPARATOR,
+  );
+  if (separatorIndex <= 0) return;
+  const key = decodeURIComponent(
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, 0, separatorIndex),
+    ),
+  );
+  const value = decodeURIComponent(
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, separatorIndex + 1),
+    ),
+  );
+  let metadata;
+  if (valueProps.length > 0) {
+    metadata = baggageEntryMetadataFromString(
+      ArrayPrototypeJoin(valueProps, BAGGAGE_PROPERTIES_SEPARATOR),
+    );
+  }
+  return { key, value, metadata };
+}
+
+class BaggageImpl implements Baggage {
+  #entries: Map<string, BaggageEntry>;
+
+  constructor(entries?: Map<string, BaggageEntry>) {
+    this.#entries = entries ? new SafeMap(entries) : new SafeMap();
+  }
+
+  getEntry(key: string): BaggageEntry | undefined {
+    const entry = this.#entries.get(key);
+    if (!entry) {
+      return undefined;
+    }
+
+    return ObjectAssign({}, entry);
+  }
+
+  getAllEntries(): [string, BaggageEntry][] {
+    return ArrayPrototypeMap(
+      ArrayFrom(MapPrototypeEntries(this.#entries)),
+      (entry) => [entry[0], entry[1]],
+    );
+  }
+
+  setEntry(key: string, entry: BaggageEntry): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.set(key, entry);
+    return newBaggage;
+  }
+
+  removeEntry(key: string): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.delete(key);
+    return newBaggage;
+  }
+
+  removeEntries(...keys: string[]): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    for (const key of new SafeArrayIterator(keys)) {
+      newBaggage.#entries.delete(key);
+    }
+    return newBaggage;
+  }
+
+  clear(): BaggageImpl {
+    return new BaggageImpl();
+  }
+}
+
+export class W3CBaggagePropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const baggage = context.getValue(baggageEntryMetadataSymbol) as
+      | Baggage
+      | undefined;
+    if (!baggage || isTracingSuppressed(context)) return;
+    const keyPairs = ArrayPrototypeSlice(
+      ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
+        return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
+      }),
+      0,
+      BAGGAGE_MAX_NAME_VALUE_PAIRS,
+    );
+    const headerValue = serializeKeyPairs(keyPairs);
+    if (headerValue.length > 0) {
+      setter.set(carrier, BAGGAGE_HEADER, headerValue);
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const headerValue = getter.get(carrier, BAGGAGE_HEADER);
+    const baggageString = ArrayIsArray(headerValue)
+      ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
+      : headerValue;
+    if (!baggageString) return context;
+    const baggage: Record<string, BaggageEntry> = {};
+    if (baggageString.length === 0) {
+      return context;
+    }
+    const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
+    ArrayPrototypeForEach(pairs, (entry) => {
+      const keyPair = parsePairKeyValue(entry);
+      if (keyPair) {
+        const baggageEntry: BaggageEntry = { value: keyPair.value };
+        if (keyPair.metadata) {
+          baggageEntry.metadata = keyPair.metadata;
+        }
+        baggage[keyPair.key] = baggageEntry;
+      }
+    });
+    if (ObjectEntries(baggage).length === 0) {
+      return context;
+    }
+
+    return context.setValue(
+      baggageEntryMetadataSymbol,
+      new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
+    );
+  }
+
+  fields(): string[] {
+    return [BAGGAGE_HEADER];
+  }
+}
+
 let builtinTracerCache: Tracer;
 
 export function builtinTracer(): Tracer {
@@ -1083,6 +1673,12 @@ export function builtinTracer(): Tracer {
     builtinTracerCache = new Tracer(OtelTracer.builtin());
   }
   return builtinTracerCache;
+}
+
+function enableIsolateMetrics() {
+  op_otel_enable_isolate_metrics();
+  ISOLATE_METRICS = true;
+  startObserving();
 }
 
 // We specify a very high version number, to allow any `@opentelemetry/api`
@@ -1095,13 +1691,33 @@ export function bootstrap(
     0 | 1,
     0 | 1,
     (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
-    0 | 1,
+    ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
 ): void {
-  const { 0: tracingEnabled, 1: metricsEnabled, 2: consoleConfig } = config;
+  const {
+    0: tracingEnabled,
+    1: metricsEnabled,
+    2: consoleConfig,
+    ...propagators
+  } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
+
+  PROPAGATORS = ArrayPrototypeMap(
+    ArrayPrototypeFilter(
+      ObjectValues(propagators),
+      (propagator) => propagator !== otelPropagators.none,
+    ),
+    (propagator) => {
+      switch (propagator) {
+        case otelPropagators.traceContext:
+          return new W3CTraceContextPropagator();
+        case otelPropagators.baggage:
+          return new W3CBaggagePropagator();
+      }
+    },
+  );
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:
@@ -1128,6 +1744,7 @@ export function bootstrap(
     }
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
+      enableIsolateMetrics();
     }
   }
 }

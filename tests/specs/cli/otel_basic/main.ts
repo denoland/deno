@@ -16,7 +16,7 @@ const server = Deno.serve(
         args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
         env: {
           OTEL_DENO: "true",
-          DENO_UNSTABLE_OTEL_DETERMINISTIC: "1",
+          DENO_UNSTABLE_OTEL_DETERMINISTIC: "0",
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
           OTEL_EXPORTER_OTLP_CERTIFICATE: "../../../testdata/tls/RootCA.crt",
@@ -40,6 +40,8 @@ const server = Deno.serve(
           data.spans.sort((a, b) =>
             Number(BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`))
           );
+          // v8js metrics are non-deterministic
+          data.metrics = data.metrics.filter((m) => !m.name.startsWith("v8js"));
           data.metrics.sort((a, b) => a.name.localeCompare(b.name));
           for (const metric of data.metrics) {
             if ("histogram" in metric) {
@@ -49,8 +51,14 @@ const server = Deno.serve(
                 });
               }
             }
+            if ("sum" in metric) {
+              for (const dataPoint of metric.sum.dataPoints) {
+                dataPoint.attributes.sort((a, b) => {
+                  return a.key.localeCompare(b.key);
+                });
+              }
+            }
           }
-
           console.log(JSON.stringify(data, null, 2));
         });
     },

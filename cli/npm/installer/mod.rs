@@ -13,6 +13,7 @@ use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::colors;
 use deno_semver::package::PackageReq;
+use rustc_hash::FxHashSet;
 
 pub use self::common::NpmPackageFsInstaller;
 use self::global::GlobalNpmPackageInstaller;
@@ -49,6 +50,7 @@ pub struct NpmInstaller {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
+  cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
 }
 
 impl NpmInstaller {
@@ -56,6 +58,9 @@ impl NpmInstaller {
   pub fn new(
     npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+    npm_registry_info_provider: Arc<
+      dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
+    >,
     npm_resolution: Arc<NpmResolutionCell>,
     npm_resolution_initializer: Arc<NpmResolutionInitializer>,
     npm_resolution_installer: Arc<NpmResolutionInstaller>,
@@ -79,6 +84,7 @@ impl NpmInstaller {
           node_modules_folder,
           lifecycle_scripts,
           system_info,
+          npm_registry_info_provider,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -96,6 +102,7 @@ impl NpmInstaller {
       npm_resolution_installer,
       maybe_lockfile,
       top_level_install_flag: Default::default(),
+      cached_reqs: Default::default(),
     }
   }
 
@@ -164,7 +171,28 @@ impl NpmInstaller {
     }
     if result.dependencies_result.is_ok() {
       if let Some(caching) = caching {
-        result.dependencies_result = self.cache_packages(caching).await;
+        // the async mutex is unfortunate, but needed to handle the edge case where two workers
+        // try to cache the same package at the same time. we need to hold the lock while we cache
+        // and since that crosses an await point, we need the async mutex.
+        //
+        // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+        // while caching typically takes micro or milli seconds.
+        let mut cached_reqs = self.cached_reqs.lock().await;
+        let uncached = {
+          packages
+            .iter()
+            .filter(|req| !cached_reqs.contains(req))
+            .collect::<Vec<_>>()
+        };
+
+        if !uncached.is_empty() {
+          result.dependencies_result = self.cache_packages(caching).await;
+          if result.dependencies_result.is_ok() {
+            for req in uncached {
+              cached_reqs.insert(req.clone());
+            }
+          }
+        }
       }
     }
 

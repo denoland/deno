@@ -94,7 +94,7 @@ impl LocalCronHandler {
         if let Some(delta) = earliest_deadline.checked_sub(now) {
           tokio::time::sleep(std::time::Duration::from_millis(delta)).boxed()
         } else {
-          futures::future::ready(()).boxed()
+          std::future::ready(()).boxed()
         }
       } else {
         futures::future::pending().boxed()

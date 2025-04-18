@@ -884,18 +884,6 @@ class SubtleCrypto {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
 
-        if (
-          (key[_algorithm].namedCurve === "P-256" &&
-            hashAlgorithm !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" &&
-            hashAlgorithm !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "ECDSA",
@@ -1314,17 +1302,6 @@ class SubtleCrypto {
         }
         // 2.
         const hash = normalizedAlgorithm.hash.name;
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" && hash !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" && hash !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         // 3-8.
         return await op_crypto_verify_key({
           key: keyData,

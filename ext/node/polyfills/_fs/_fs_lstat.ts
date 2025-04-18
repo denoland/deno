@@ -1,8 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
   BigIntStats,
@@ -13,6 +10,14 @@ import {
   Stats,
 } from "ext:deno_node/_fs/_fs_stat.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  Error,
+  ErrorPrototype,
+  PromisePrototypeThen,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(
@@ -42,7 +47,8 @@ export function lstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.lstat(path).then(
+  PromisePrototypeThen(
+    Deno.lstat(path),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(err),
   );
@@ -73,12 +79,12 @@ export function lstatSync(
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
-      err instanceof Deno.errors.NotFound
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
     ) {
       return;
     }
 
-    if (err instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
       throw denoErrorToNodeError(err, { syscall: "stat" });
     } else {
       throw err;

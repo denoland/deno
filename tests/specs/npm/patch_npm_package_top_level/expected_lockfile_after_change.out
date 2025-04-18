@@ -1,0 +1,31 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:cowsay@1.2": "1.2.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "sha512-P7KqAn8qFLI/13TfERSPS0NYt7CmA0diT6bhscyT6FzZjFaAVCja3K/dk96eZDsCyI1gtwtHg5Ahh8XDIvAgrw==",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    },
+    "cowsay@1.2.0": {
+      "dependencies": [
+        "@denotest/add"
+      ]
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:cowsay@1.2"
+      ]
+    },
+    "patches": {
+      "npm:cowsay@1.2.0": {
+        "dependencies": [
+          "npm:@denotest/add@1"
+        ]
+      }
+    }
+  }
+}

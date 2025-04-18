@@ -288,6 +288,30 @@ pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), ZlibError> {
   Ok(())
 }
 
+#[op2]
+#[string]
+pub fn op_zlib_err_msg(
+  #[cppgc] resource: &Zlib,
+) -> Result<Option<String>, ZlibError> {
+  let mut zlib = resource.inner.borrow_mut();
+  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+  let msg = zlib.strm.msg;
+  if msg.is_null() {
+    return Ok(None);
+  }
+
+  // SAFETY: `msg` is a valid pointer to a null-terminated string.
+  let msg = unsafe {
+    std::ffi::CStr::from_ptr(msg)
+      .to_str()
+      .map_err(|_| JsErrorBox::type_error("invalid error message"))?
+      .to_string()
+  };
+
+  Ok(Some(msg))
+}
+
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 #[smi]

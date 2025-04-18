@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::future::poll_fn;
+use std::future::Future;
 use std::pin::Pin;
 use std::result::Result;
 
@@ -11,8 +13,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 use futures::future::join3;
-use futures::future::poll_fn;
-use futures::Future;
 use futures::StreamExt;
 use h2::server::Handshake;
 use h2::server::SendResponse;
@@ -59,6 +59,24 @@ pub async fn run_ws_close_server(port: u16) {
   let mut tcp = get_tcp_listener_stream("ws (close)", port).await;
   while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
+  }
+}
+
+pub async fn run_ws_hang_handshake(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (hang handshake)", port).await;
+  while let Some(Ok(mut stream)) = tcp.next().await {
+    loop {
+      let mut buf = [0; 1024];
+      let n = stream.read(&mut buf).await;
+
+      if n.is_err() {
+        break;
+      }
+
+      if n.unwrap() == 0 {
+        break;
+      }
+    }
   }
 }
 

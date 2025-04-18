@@ -130,7 +130,7 @@ export class LibuvStreamWrap extends HandleWrap {
     provider: providerType,
     stream?: Reader & Writer & Closer & Ref,
   ) {
-    super(provider);
+    super(provider, stream?.[internalRidSymbol]);
     this.#attachToObject(stream);
   }
 

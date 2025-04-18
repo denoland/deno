@@ -17,6 +17,7 @@ import {
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -31,10 +32,13 @@ import {
   op_http_wait,
 } from "ext:core/ops";
 const {
+  ArrayPrototypeFind,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
@@ -43,8 +47,8 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  Number,
 } = primordials;
-const { getAsyncContext, setAsyncContext } = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -89,8 +93,12 @@ import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
+  ContextManager,
+  currentSnapshot,
   enterSpan,
   METRICS_ENABLED,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -173,12 +181,17 @@ class InnerRequest {
       if (success) {
         this.#completed.resolve(undefined);
       } else {
+        if (!this.#context.legacyAbort) {
+          abortRequest(this.request);
+        }
         this.#completed.reject(
           new Interrupted("HTTP response was not sent successfully"),
         );
       }
     }
-    abortRequest(this.request);
+    if (this.#context.legacyAbort) {
+      abortRequest(this.request);
+    }
     this.#external = null;
   }
 
@@ -337,6 +350,13 @@ class InnerRequest {
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
+    if (transport === "vsock") {
+      return {
+        transport,
+        cid: Number(this.#methodAndUri[3]),
+        port: this.#methodAndUri[4],
+      };
+    }
     return {
       transport: "tcp",
       hostname: this.#methodAndUri[3],
@@ -408,11 +428,16 @@ class InnerRequest {
 
   onCancel(callback) {
     if (this.#external === null) {
-      callback();
+      if (this.#context.legacyAbort) callback();
       return;
     }
 
-    PromisePrototypeThen(op_http_request_on_cancel(this.#external), callback);
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      (r) => {
+        return !this.#context.legacyAbort ? r && callback() : callback();
+      },
+    );
   }
 }
 
@@ -425,10 +450,11 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
-  asyncContext;
+  asyncContextSnapshot;
+  legacyAbort;
 
   constructor(signal, args, listener) {
-    this.asyncContext = getAsyncContext();
+    this.asyncContextSnapshot = currentSnapshot();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -441,6 +467,7 @@ class CallbackContext {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
+    this.legacyAbort = args[3] == false;
     this.closed = false;
     this.listener = listener;
   }
@@ -578,8 +605,11 @@ function mapToCallback(context, callback, onError) {
         if (METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
         }
-        // deno-lint-ignore no-console
-        console.error("Exception in onError while handling exception", error);
+        import.meta.log(
+          "error",
+          "Exception in onError while handling exception",
+          error,
+        );
         response = internalServerError();
       }
     }
@@ -592,8 +622,10 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        // deno-lint-ignore no-console
-        console.error("Upgrade response was not returned from callback");
+        import.meta.log(
+          "error",
+          "Upgrade response was not returned from callback",
+        );
         context.close();
       }
       innerRequest?.[_upgraded]();
@@ -624,29 +656,56 @@ function mapToCallback(context, callback, onError) {
   if (TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
-      const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
+
+      const reqHeaders = op_http_get_request_headers(req);
+      const headers: [key: string, value: string][] = [];
+      for (let i = 0; i < reqHeaders.length; i += 2) {
+        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+      }
+      let activeContext = ContextManager.active();
+      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        activeContext = propagator.extract(activeContext, headers, {
+          get(carrier: [key: string, value: string][], key: string) {
+            return ArrayPrototypeFind(
+              carrier,
+              (carrierEntry) => carrierEntry[0] === key,
+            )?.[1];
+          },
+          keys(carrier: [key: string, value: string][]) {
+            return ArrayPrototypeMap(
+              carrier,
+              (carrierEntry) => carrierEntry[0],
+            );
+          },
+        });
+      }
+
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
+      enterSpan(span);
       try {
-        enterSpan(span);
         return SafePromisePrototypeFinally(
           origMapped(req, span),
           () => span.end(),
         );
       } finally {
-        // equiv to exitSpan.
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   } else {
     const origMapped = mapped;
     mapped = function (req, span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
       try {
         return origMapped(req, span);
       } finally {
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   }
@@ -717,13 +776,50 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
+    op_http_serve_address_override();
+  switch (overrideKind) {
+    case 1: {
+      // TCP
+      options = {
+        ...options,
+        hostname: overrideHost,
+        port: overridePort,
+      };
+      delete options.path;
+      delete options.cid;
+      break;
+    }
+    case 2: {
+      // Unix
+      options = {
+        ...options,
+        path: overrideHost,
+      };
+      delete options.hostname;
+      delete options.port;
+      break;
+    }
+    case 3: {
+      // Vsock
+      options = {
+        ...options,
+        cid: Number(overrideHost),
+        port: overridePort,
+      };
+      delete options.hostname;
+      delete options.path;
+      break;
+    }
+  }
+
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+  const wantsVsock = ObjectHasOwn(options, "cid");
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
-      // deno-lint-ignore no-console
-      console.error(error);
+      import.meta.log("error", error);
       return internalServerError();
     };
 
@@ -738,8 +834,24 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        // deno-lint-ignore no-console
-        console.error(`Listening on ${path}`);
+        import.meta.log("info", `Listening on ${path}`);
+      }
+    });
+  }
+
+  if (wantsVsock) {
+    const listener = listen({
+      transport: "vsock",
+      cid: options.cid,
+      port: options.port,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const { cid, port } = listener.addr;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
@@ -787,8 +899,7 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      import.meta.log("info", `Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -833,8 +944,11 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    // deno-lint-ignore no-console
-    console.error("Terminating Deno.serve loop due to unexpected error", error);
+    import.meta.log(
+      "error",
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
     context.close();
   };
 
@@ -960,8 +1074,8 @@ function registerDeclarativeServer(exports) {
               : "";
             const host = formatHostName(hostname);
 
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "info",
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
