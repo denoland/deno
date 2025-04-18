@@ -325,12 +325,12 @@ export class UDP extends HandleWrap {
     this.#unrefed = true;
   }
 
-  #doBind(ip: string, port: number, _flags: number, family: number): number {
+  #doBind(ip: string, port: number, flags: number, family: number): number {
     const listenOptions = {
       port,
       hostname: ip,
       transport: "udp" as const,
-      reuseAddress: (_flags & os.UV_UDP_REUSEADDR ?? 0) !== 0,
+      reuseAddress: (flags & os.UV_UDP_REUSEADDR) !== 0,
     };
 
     let listener;
