@@ -55,11 +55,19 @@ pub type CliNpmResolverCreateOptions =
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
 
-pub struct NpmPackageInfoApiAdapter(
-  pub Arc<dyn NpmRegistryApi + Send + Sync>,
-  pub Arc<WorkspaceNpmPatchPackages>,
-);
+pub struct NpmPackageInfoApiAdapter {
+  api: Arc<dyn NpmRegistryApi + Send + Sync>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+}
 
+impl NpmPackageInfoApiAdapter {
+  pub fn new(
+    api: Arc<dyn NpmRegistryApi + Send + Sync>,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  ) -> Self {
+    Self { api, workspace_patch_packages }
+  }
+}
 async fn get_infos(
   info_provider: &(dyn NpmRegistryApi + Send + Sync),
   workspace_patch_packages: &WorkspaceNpmPatchPackages,
@@ -133,13 +141,14 @@ impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
     Vec<deno_lockfile::Lockfile5NpmInfo>,
     Box<dyn std::error::Error + Send + Sync>,
   > {
-    let package_infos = get_infos(&*self.0, &self.1, values).await;
+    let package_infos =
+      get_infos(&*self.api, &self.workspace_patch_packages, values).await;
 
     match package_infos {
       Ok(package_infos) => Ok(package_infos),
       Err(err) => {
-        if self.0.mark_force_reload() {
-          get_infos(&*self.0, &self.1, values).await
+        if self.api.mark_force_reload() {
+          get_infos(&*self.api, &self.workspace_patch_packages, values).await
         } else {
           Err(err)
         }

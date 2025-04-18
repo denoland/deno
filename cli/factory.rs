@@ -681,7 +681,7 @@ impl CliFactory {
   pub fn lockfile_npm_package_info_provider(
     &self,
   ) -> Result<crate::npm::NpmPackageInfoApiAdapter, AnyError> {
-    Ok(crate::npm::NpmPackageInfoApiAdapter(
+    Ok(crate::npm::NpmPackageInfoApiAdapter::new(
       Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
       self.workspace_npm_patch_packages()?.clone(),
     ))
