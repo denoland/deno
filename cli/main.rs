@@ -144,8 +144,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::compile::compile(flags, compile_flags).await
       }
     }),
-    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags)
+    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
+      let reporter = crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
+      tools::coverage::cover_files(
+        flags,
+        coverage_flags.files.include,
+        coverage_flags.files.ignore,
+        coverage_flags.include,
+        coverage_flags.exclude,
+        coverage_flags.output,
+        &[&*reporter]
+      )
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -285,7 +294,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
         if let Some(ref coverage_dir) = test_flags.coverage_dir {
-          if test_flags.clean {
+          if !test_flags.coverage_raw_data_only || test_flags.clean {
+            // Keeps coverage_dir contents only when --coverage-raw-data-only is set and --clean is not set
             let _ = std::fs::remove_dir_all(coverage_dir);
           }
           std::fs::create_dir_all(coverage_dir)
