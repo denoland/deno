@@ -48,6 +48,8 @@ hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry"]
+# Custom panic trace with `deno_panic`
+panic-trace = ["deno_panic"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
@@ -81,7 +83,7 @@ deno_media_type = { workspace = true, features = ["data_url", "decoding", "modul
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
-deno_panic = "0.1.0"
+deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
