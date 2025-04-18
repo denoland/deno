@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::PollEventLoopOptions;
@@ -367,6 +368,19 @@ impl CliMainWorkerFactory {
         Default::default(),
       )
       .await
+  }
+
+  /// Resolve the npm binary entrypoint for a package. This forwards to the
+  /// underlying `LibMainWorkerFactory`, but exposes it on this type for use
+  /// in CLI subcommands.
+  pub fn resolve_npm_binary_entrypoint(
+    &self,
+    package_folder: &std::path::Path,
+    sub_path: Option<&str>,
+  ) -> Result<Url, ResolveNpmBinaryEntrypointError> {
+    self
+      .lib_main_worker_factory
+      .resolve_npm_binary_entrypoint(package_folder, sub_path)
   }
 
   pub async fn create_custom_worker(
