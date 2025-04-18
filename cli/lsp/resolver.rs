@@ -785,7 +785,6 @@ impl<'a> ResolverFactory<'a> {
         })
         .unwrap_or_default();
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
-        registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         patch_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {

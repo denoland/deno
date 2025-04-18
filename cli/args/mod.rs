@@ -1089,10 +1089,6 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
-  pub fn unstable_lockfile_v5(&self) -> bool {
-    unstable_lockfile_v5(&self.flags, self.workspace())
-  }
-
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1239,13 +1235,6 @@ impl CliOptions {
       NpmCachingStrategy::Eager
     }
   }
-}
-
-pub(crate) fn unstable_lockfile_v5(
-  flags: &Flags,
-  workspace: &Workspace,
-) -> bool {
-  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(

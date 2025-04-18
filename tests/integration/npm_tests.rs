@@ -649,7 +649,7 @@ fn lock_file_lock_write() {
 
   temp_dir.write("deno.json", "{}");
   let lock_file_content = r#"{
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:cowsay@1.5.0": "1.5.0"
   },
@@ -863,13 +863,14 @@ fn auto_discover_lock_file() {
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
-        "integrity": "sha512-foobar"
+        "integrity": "sha512-foobar",
+        "tarball": "http://localhost:4260/@denotest/bin/1.0.0.tgz"
       }
     }
   }"#;
@@ -881,20 +882,16 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4260/@denotest%2fbin
-error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
-is the same as when the lockfile was generated.
+r#"Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+error: Failed caching npm package '@denotest/bin@1.0.0'
 
-Actual: sha512-[WILDCARD]
-Expected: sha512-foobar
-
-This could be caused by:
-  * the lock file may be corrupt
-  * the source itself may be corrupt
-
-Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
+Caused by:
+    Tarball checksum did not match what was provided by npm registry for @denotest/bin@1.0.0.
+    
+    Expected: foobar
+    Actual: [WILDCARD]
 "#)
-    .assert_exit_code(10);
+    .assert_exit_code(1);
 }
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`

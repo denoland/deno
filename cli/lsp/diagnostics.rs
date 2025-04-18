@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -15,6 +16,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -49,13 +51,13 @@ use super::client::Client;
 use super::config::Config;
 use super::documents::Document;
 use super::documents::DocumentModule;
+use super::documents::DocumentModules;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
-use super::urls::uri_parse_unencoded;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::logging::lsp_warn;
@@ -867,6 +869,8 @@ fn to_lsp_range(
 
 fn to_lsp_related_information(
   related_information: &Option<Vec<crate::tsc::Diagnostic>>,
+  module: &DocumentModule,
+  document_modules: &DocumentModules,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
@@ -875,7 +879,13 @@ fn to_lsp_related_information(
         if let (Some(file_name), Some(start), Some(end)) =
           (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = uri_parse_unencoded(file_name).unwrap();
+          let uri = resolve_url(file_name)
+            .ok()
+            .and_then(|s| {
+              document_modules.module_for_specifier(&s, module.scope.as_deref())
+            })
+            .map(|m| m.uri.as_ref().clone())
+            .unwrap_or_else(|| Uri::from_str("unknown:").unwrap());
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
@@ -893,6 +903,8 @@ fn to_lsp_related_information(
 
 fn ts_json_to_diagnostics(
   diagnostics: Vec<crate::tsc::Diagnostic>,
+  module: &DocumentModule,
+  document_modules: &DocumentModules,
 ) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()
@@ -907,6 +919,8 @@ fn ts_json_to_diagnostics(
           message: get_diagnostic_message(d),
           related_information: to_lsp_related_information(
             &d.related_information,
+            module,
+            document_modules,
           ),
           tags: match d.code {
             // These are codes that indicate the variable is unused.
@@ -933,6 +947,12 @@ fn generate_lint_diagnostics(
   let config_data_by_scope = config.tree.data_by_scope();
   let mut records = Vec::new();
   for document in snapshot.document_modules.documents.open_docs() {
+    // TODO(nayeemrmn): Support linting notebooks cells. Will require stitching
+    // cells from the same notebook into one module, linting it and then
+    // splitting/relocating the diagnostics to each cell.
+    if document.notebook_uri.is_some() {
+      continue;
+    }
     let Some(module) = snapshot
       .document_modules
       .primary_module(&Document::Open(document.clone()))
@@ -1054,7 +1074,7 @@ async fn generate_ts_diagnostics(
       {
         if config.specifier_enabled(&module.specifier) {
           enabled_modules_by_scope
-            .entry(module.scope.clone())
+            .entry((module.scope.clone(), module.notebook_uri.clone()))
             .or_default()
             .push(module);
           continue;
@@ -1075,18 +1095,21 @@ async fn generate_ts_diagnostics(
     });
   }
   let mut enabled_modules_with_diagnostics = Vec::new();
-  for (scope, enabled_modules) in enabled_modules_by_scope {
+  for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         enabled_modules.iter().map(|m| m.specifier.as_ref()),
         scope.as_ref(),
+        notebook_uri.as_ref(),
         &token,
       )
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
-    ambient_modules_by_scope.insert(scope.clone(), ambient_modules);
+    if notebook_uri.is_none() {
+      ambient_modules_by_scope.insert(scope, ambient_modules);
+    }
   }
   for (module, mut diagnostics) in enabled_modules_with_diagnostics {
     let suggestion_actions_settings = snapshot
@@ -1103,7 +1126,8 @@ async fn generate_ts_diagnostics(
           || d.reports_unnecessary == Some(true)
       });
     }
-    let diagnostics = ts_json_to_diagnostics(diagnostics);
+    let diagnostics =
+      ts_json_to_diagnostics(diagnostics, &module, &snapshot.document_modules);
     records.push(DiagnosticRecord {
       uri: module.uri.clone(),
       versioned: VersionedDiagnostics {
@@ -2032,6 +2056,7 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     (
