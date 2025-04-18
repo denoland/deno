@@ -5,10 +5,9 @@ async function createComment(context, github) {
     issue_number: context.issue.number,
     owner: context.repo.owner,
     repo: context.repo.repo,
-    body: `Thanks the PR!
+    body: `Thanks for the PR!
 
-Once you are done, please request a review from Deno team member.`,
-  });
+Once you are done, please request a review from a Deno team member.`,
 }
 
 async function updateLabels(context, github) {
