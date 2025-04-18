@@ -1,0 +1,12 @@
+Check file:///[WILDLINE]/index.mts
+Checking for slow types in the public API...
+Check file:///[WILDLINE]/index.mts
+error[unsupported-file-specifier]: unsupported package.json file specifier for 'package-b'
+ --> [WILDLINE]index.mts:1:28
+  | 
+1 | import * as packageB from "package-b";
+  |                            ^^^^^^^^^ the import
+  | 
+  = hint: change the package dependency to point to something on npm instead
+
+error: Found 1 problem

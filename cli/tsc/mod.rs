@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -10,7 +11,6 @@ use std::sync::OnceLock;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::resolve_url_or_path;
@@ -20,6 +20,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::FastString;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -34,6 +35,7 @@ use deno_lib::worker::create_isolate_create_params;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
+use indexmap::IndexMap;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
@@ -60,12 +62,6 @@ pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
 pub fn get_types_declaration_file_text() -> String {
-  let mut assets = get_asset_texts()
-    .unwrap()
-    .into_iter()
-    .map(|a| (a.specifier, a.text))
-    .collect::<HashMap<_, _>>();
-
   let lib_names = vec![
     "deno.ns",
     "deno.console",
@@ -88,22 +84,14 @@ pub fn get_types_declaration_file_text() -> String {
   lib_names
     .into_iter()
     .map(|name| {
-      let asset_url = format!("asset:///lib.{name}.d.ts");
-      assets.remove(&asset_url).unwrap()
+      let lib_name = format!("lib.{name}.d.ts");
+      LAZILY_LOADED_STATIC_ASSETS
+        .get(lib_name.as_str())
+        .unwrap()
+        .as_str()
     })
     .collect::<Vec<_>>()
     .join("\n")
-}
-
-fn get_asset_texts() -> Result<Vec<AssetText>, AnyError> {
-  let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for (name, text) in LAZILY_LOADED_STATIC_ASSETS.iter() {
-    out.push(AssetText {
-      specifier: format!("asset:///{name}"),
-      text: text.to_string(),
-    });
-  }
-  Ok(out)
 }
 
 macro_rules! maybe_compressed_source {
@@ -147,18 +135,6 @@ macro_rules! maybe_compressed_lib {
   };
 }
 
-macro_rules! maybe_compressed_ext_lib {
-  ($name: expr, $file: expr) => {
-    (
-      $name,
-      maybe_compressed_source!(
-        compressed = concat!("ext/", $file),
-        uncompressed = concat!("../ext/", $file)
-      ),
-    )
-  };
-}
-
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
@@ -168,76 +144,19 @@ pub enum StaticAssetSource {
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
-/// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
-#[derive(Debug, Clone)]
-pub enum MaybeStaticSource {
-  Computed(Arc<str>),
-  Static(&'static str),
-}
-
-impl std::fmt::Display for MaybeStaticSource {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      MaybeStaticSource::Computed(arc) => write!(f, "{}", arc),
-      MaybeStaticSource::Static(s) => write!(f, "{}", s),
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for Cow<'static, str> {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => Cow::Owned(arc.to_string()),
-      MaybeStaticSource::Static(s) => Cow::Borrowed(s),
-    }
-  }
-}
-
-impl AsRef<str> for MaybeStaticSource {
-  fn as_ref(&self) -> &str {
-    match self {
-      MaybeStaticSource::Computed(arc) => arc.as_ref(),
-      MaybeStaticSource::Static(s) => s,
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for String {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => arc.to_string(),
-      MaybeStaticSource::Static(s) => s.into(),
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for Arc<str> {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => arc,
-      MaybeStaticSource::Static(s) => Arc::from(s),
-    }
-  }
-}
-
 impl StaticAssetSource {
-  pub fn get(&self) -> MaybeStaticSource {
+  pub fn as_str(&'static self) -> &'static str {
     match self {
       StaticAssetSource::Compressed(compressed_source) => {
-        MaybeStaticSource::Computed(compressed_source.get())
+        compressed_source.get()
       }
-      StaticAssetSource::Uncompressed(src) => MaybeStaticSource::Static(src),
+      StaticAssetSource::Uncompressed(src) => src,
       StaticAssetSource::Owned(path, cell) => {
         let str =
           cell.get_or_init(|| std::fs::read_to_string(path).unwrap().into());
-        MaybeStaticSource::Computed((*str).clone())
+        str.as_ref()
       }
     }
-  }
-
-  #[allow(clippy::inherent_to_string)]
-  pub fn to_string(&self) -> String {
-    self.get().into()
   }
 }
 
@@ -246,45 +165,27 @@ impl StaticAssetSource {
 /// We lazily load these because putting them in the compiler snapshot will
 /// increase memory usage when not used (last time checked by about 0.5MB).
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
-  HashMap<&'static str, StaticAssetSource>,
+  IndexMap<&'static str, StaticAssetSource>,
 > = Lazy::new(|| {
-  ([
+  IndexMap::from([
     // compressed in build.rs
-    maybe_compressed_ext_lib!(
-      "lib.deno.console.d.ts",
-      "console/lib.deno_console.d.ts"
-    ),
-    maybe_compressed_ext_lib!("lib.deno.url.d.ts", "url/lib.deno_url.d.ts"),
-    maybe_compressed_ext_lib!("lib.deno.web.d.ts", "web/lib.deno_web.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.fetch.d.ts",
-      "fetch/lib.deno_fetch.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.websocket.d.ts",
-      "websocket/lib.deno_websocket.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
+    maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
+    maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
+    maybe_compressed_lib!("lib.deno.web.d.ts", "lib.deno_web.d.ts"),
+    maybe_compressed_lib!("lib.deno.fetch.d.ts", "lib.deno_fetch.d.ts"),
+    maybe_compressed_lib!("lib.deno.websocket.d.ts", "lib.deno_websocket.d.ts"),
+    maybe_compressed_lib!(
       "lib.deno.webstorage.d.ts",
-      "webstorage/lib.deno_webstorage.d.ts"
+      "lib.deno_webstorage.d.ts"
     ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.canvas.d.ts",
-      "canvas/lib.deno_canvas.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.crypto.d.ts",
-      "crypto/lib.deno_crypto.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
+    maybe_compressed_lib!("lib.deno.canvas.d.ts", "lib.deno_canvas.d.ts"),
+    maybe_compressed_lib!("lib.deno.crypto.d.ts", "lib.deno_crypto.d.ts"),
+    maybe_compressed_lib!(
       "lib.deno.broadcast_channel.d.ts",
-      "broadcast_channel/lib.deno_broadcast_channel.d.ts"
+      "lib.deno_broadcast_channel.d.ts"
     ),
-    maybe_compressed_ext_lib!("lib.deno.net.d.ts", "net/lib.deno_net.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.cache.d.ts",
-      "cache/lib.deno_cache.d.ts"
-    ),
+    maybe_compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
+    maybe_compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
@@ -396,9 +297,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
       ),
     ),
   ])
-  .iter()
-  .cloned()
-  .collect()
 });
 
 /// A structure representing stats from a type check operation for a graph.
@@ -435,16 +333,9 @@ impl fmt::Display for Stats {
   }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AssetText {
-  pub specifier: String,
-  pub text: String,
-}
-
 /// Retrieve a static asset that are included in the binary.
-fn get_lazily_loaded_asset(asset: &str) -> Option<MaybeStaticSource> {
-  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.get())
+fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.as_str())
 }
 
 fn get_maybe_hash(
@@ -713,6 +604,8 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     MediaType::Json => 6,
     MediaType::SourceMap
     | MediaType::Css
+    | MediaType::Html
+    | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
   }
@@ -742,7 +635,7 @@ pub enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: String,
+  data: FastString,
   version: Option<String>,
   script_kind: i32,
   is_cjs: bool,
@@ -766,23 +659,28 @@ fn op_load_inner(
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<String, LoadError> {
+  ) -> Result<Option<FastString>, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path).map_err(|err| {
-      LoadError::LoadFromNodeModule {
-        path: file_path.display().to_string(),
-        error: err,
+    let code = match std::fs::read_to_string(&file_path) {
+      Ok(code) => code,
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        return Ok(None);
       }
-    })?;
+      Err(err) => {
+        return Err(LoadError::LoadFromNodeModule {
+          path: file_path.display().to_string(),
+          error: err,
+        })
+      }
+    };
     let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
         npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
-    // todo(dsherret): how to avoid cloning here?
-    Ok(code.to_string())
+    Ok(Some(code.into()))
   }
 
   let state = state.borrow_mut::<State>();
@@ -795,16 +693,19 @@ fn op_load_inner(
   let mut is_cjs = false;
 
   let data = if load_specifier == "internal:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
+    state
+      .maybe_tsbuildinfo
+      .as_deref()
+      .map(|s| s.to_string().into())
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name).map(Cow::from);
-    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
+    let maybe_source = get_lazily_loaded_asset(name);
+    hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
-    maybe_source
+    maybe_source.map(FastString::from_static)
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -818,7 +719,7 @@ fn op_load_inner(
       Err(err) => match err {
         deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
           return Ok(Some(LoadResponse {
-            data: "".to_string(),
+            data: FastString::from_static(""),
             version: Some("1".to_string()),
             script_kind: as_ts_script_kind(*media_type),
             is_cjs: false,
@@ -838,19 +739,20 @@ fn op_load_inner(
               module.is_script,
             )?;
           }
-          let source = module
-            .fast_check_module()
-            .map(|m| &*m.source)
-            .unwrap_or(&*module.source);
-          Some(Cow::Borrowed(source))
+          Some(
+            module
+              .fast_check_module()
+              .map(|m| FastString::from(m.source.clone()))
+              .unwrap_or(module.source.clone().into()),
+          )
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
-          Some(Cow::Borrowed(&*module.source))
+          Some(FastString::from(module.source.clone()))
         }
         Module::Wasm(module) => {
           media_type = MediaType::Dts;
-          Some(Cow::Borrowed(&*module.source_dts))
+          Some(FastString::from(module.source_dts.clone()))
         }
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
@@ -862,12 +764,12 @@ fn op_load_inner(
               &CliSys::default(),
               &module.specifier,
             );
-            Some(Cow::Owned(load_from_node_modules(
+            load_from_node_modules(
               &specifier,
               state.maybe_npm.as_ref(),
               &mut media_type,
               &mut is_cjs,
-            )?))
+            )?
           }
         }
       }
@@ -876,12 +778,12 @@ fn op_load_inner(
       .as_ref()
       .filter(|npm| npm.node_resolver.in_npm_package(specifier))
     {
-      Some(Cow::Owned(load_from_node_modules(
+      load_from_node_modules(
         specifier,
         Some(npm),
         &mut media_type,
         &mut is_cjs,
-      )?))
+      )?
     } else {
       None
     };
@@ -892,7 +794,7 @@ fn op_load_inner(
     return Ok(None);
   };
   Ok(Some(LoadResponse {
-    data: data.into_owned(),
+    data,
     version: hash,
     script_kind: as_ts_script_kind(media_type),
     is_cjs,
@@ -1160,8 +1062,42 @@ fn resolve_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
+              let reqs = npm
+                .npm_resolver
+                .as_managed()
+                .unwrap()
+                .resolution()
+                .package_reqs();
+              if let Some((_, types_nv)) =
+                deno_resolver::npm::find_definitely_typed_package(
+                  module.nv_reference.nv(),
+                  reqs.iter().map(|tup| (&tup.0, &tup.1)),
+                )
+              {
+                let package_folder = npm
+                  .npm_resolver
+                  .as_managed()
+                  .unwrap() // should never be byonm because it won't create Module::Npm
+                  .resolve_pkg_folder_from_deno_module(types_nv)?;
+                let res_result =
+                  npm.node_resolver.resolve_package_subpath_from_deno_module(
+                    &package_folder,
+                    module.nv_reference.sub_path(),
+                    Some(referrer),
+                    resolution_mode,
+                    NodeResolutionKind::Types,
+                  );
+                if let Ok(res_result) = res_result {
+                  Some(res_result.into_url()?)
+                } else {
+                  None
+                }
+              } else {
+                None
+              }
+            }
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -1313,11 +1249,11 @@ impl CompressedSource {
       uncompressed: OnceLock::new(),
     }
   }
-  pub(crate) fn get(&self) -> Arc<str> {
+  pub(crate) fn get(&self) -> &str {
     self
       .uncompressed
       .get_or_init(|| decompress_source(self.bytes))
-      .clone()
+      .as_ref()
   }
 }
 
@@ -1369,10 +1305,10 @@ deno_core::extension!(deno_cli_tsc,
   },
   customizer = |ext: &mut deno_core::Extension| {
     use deno_core::ExtensionFileSource;
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
-    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.as_str().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.as_str().into()));
     ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
   }
 );
@@ -1722,7 +1658,7 @@ mod tests {
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data, expected.to_string());
+    assert_eq!(actual.data.to_string(), expected.to_string());
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }

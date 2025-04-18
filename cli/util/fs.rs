@@ -179,7 +179,7 @@ pub fn clone_dir_recursive<
         err.kind(),
         std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::Unsupported
       ) {
-        log::warn!(
+        log::debug!(
           "Failed to clone dir {:?} to {:?} via clonefile: {}",
           from,
           to,
@@ -210,7 +210,7 @@ pub enum CopyDirRecursiveError {
     source: Error,
   },
   #[class(inherit)]
-  #[error("Creating {path}")]
+  #[error("Reading {path}")]
   Reading {
     path: PathBuf,
     #[source]
@@ -348,11 +348,10 @@ struct LaxSingleProcessFsFlagInner {
 
 impl Drop for LaxSingleProcessFsFlagInner {
   fn drop(&mut self) {
-    use fs3::FileExt;
     // kill the poll thread
     self.finished_token.cancel();
     // release the file lock
-    if let Err(err) = self.fs_file.unlock() {
+    if let Err(err) = fs3::FileExt::unlock(&self.fs_file) {
       log::debug!(
         "Failed releasing lock for {}. {:#}",
         self.file_path.display(),

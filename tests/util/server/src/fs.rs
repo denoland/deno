@@ -22,6 +22,88 @@ use url::Url;
 use crate::assertions::assert_wildcard_match;
 use crate::testdata_path;
 
+/// Characters that are left unencoded in a `Url` path but will be encoded in a
+/// VSCode URI.
+const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
+  &percent_encoding::CONTROLS
+    .add(b' ')
+    .add(b'!')
+    .add(b'$')
+    .add(b'&')
+    .add(b'\'')
+    .add(b'(')
+    .add(b')')
+    .add(b'*')
+    .add(b'+')
+    .add(b',')
+    .add(b':')
+    .add(b';')
+    .add(b'=')
+    .add(b'@')
+    .add(b'[')
+    .add(b']')
+    .add(b'^')
+    .add(b'|');
+
+/// Characters that may be left unencoded in a `Url` query but not valid in a
+/// `Uri` query.
+const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
+  &URL_TO_URI_PATH.add(b'\\').add(b'`').add(b'{').add(b'}');
+
+/// Characters that may be left unencoded in a `Url` fragment but not valid in
+/// a `Uri` fragment.
+const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
+  &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
+
+pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
+  let components = url::quirks::internal_components(url);
+  let mut input = String::with_capacity(url.as_str().len());
+  input.push_str(&url.as_str()[..components.path_start as usize]);
+  let path = url.path();
+  let mut chars = path.chars();
+  let has_drive_letter = chars.next().is_some_and(|c| c == '/')
+    && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+    && chars.next().is_some_and(|c| c == ':')
+    && chars.next().is_none_or(|c| c == '/');
+  if has_drive_letter {
+    let (dl_part, rest) = path.split_at(2);
+    input.push_str(&dl_part.to_ascii_lowercase());
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(rest, URL_TO_URI_PATH).to_string(),
+    );
+  } else {
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH).to_string(),
+    );
+  }
+  if let Some(query) = url.query() {
+    input.push('?');
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(query, URL_TO_URI_QUERY)
+        .to_string(),
+    );
+  }
+  if let Some(fragment) = url.fragment() {
+    input.push('#');
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(fragment, URL_TO_URI_FRAGMENT)
+        .to_string(),
+    );
+  }
+  Uri::from_str(&input).map_err(|err| {
+    anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
+  })
+}
+
+pub fn url_to_notebook_cell_uri(url: &Url) -> Uri {
+  let uri = url_to_uri(url).unwrap();
+  Uri::from_str(&format!(
+    "vscode-notebook-cell:{}",
+    uri.as_str().strip_prefix("file:").unwrap()
+  ))
+  .unwrap()
+}
+
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -63,11 +145,11 @@ impl PathRef {
   }
 
   pub fn uri_dir(&self) -> Uri {
-    Uri::from_str(self.url_dir().as_str()).unwrap()
+    url_to_uri(&self.url_dir()).unwrap()
   }
 
   pub fn uri_file(&self) -> Uri {
-    Uri::from_str(self.url_file().as_str()).unwrap()
+    url_to_uri(&self.url_file()).unwrap()
   }
 
   pub fn as_path(&self) -> &Path {
@@ -475,7 +557,7 @@ impl TempDir {
   }
 
   pub fn uri(&self) -> Uri {
-    Uri::from_str(self.url().as_str()).unwrap()
+    url_to_uri(&self.url()).unwrap()
   }
 
   pub fn path(&self) -> &PathRef {

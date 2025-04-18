@@ -132,6 +132,8 @@ impl GPUCanvasContext {
           instance: config.device.instance.clone(),
           error_handler: config.device.error_handler.clone(),
           id,
+          device_id: config.device.id,
+          queue_id: config.device.queue,
           label: "".to_string(),
           size: wgpu_types::Extent3d {
             width: *self.width.borrow(),
@@ -163,6 +165,9 @@ impl GPUCanvasContext {
     };
 
     config.device.instance.surface_present(self.surface_id)?;
+
+    // next `get_current_texture` call would get a new texture
+    *self.texture.borrow_mut() = None;
 
     Ok(())
   }

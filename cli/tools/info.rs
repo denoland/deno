@@ -23,6 +23,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_resolver::DenoResolveErrorKind;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -48,7 +49,7 @@ pub async fn info(
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = cli_options.maybe_lockfile();
+    let maybe_lockfile = factory.maybe_lockfile().await?;
     let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
@@ -91,6 +92,13 @@ pub async fn info(
           dep_result,
           ..
         } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::File(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                .into_box()
+                .into(),
+            );
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(

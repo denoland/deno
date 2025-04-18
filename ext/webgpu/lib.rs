@@ -18,14 +18,14 @@ use wgpu_types::PowerPreference;
 mod adapter;
 mod bind_group;
 mod bind_group_layout;
-mod buffer;
+pub mod buffer;
 mod byow;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
 mod compute_pipeline;
 mod device;
-mod error;
+pub mod error;
 mod pipeline_layout;
 mod query_set;
 mod queue;
@@ -35,7 +35,7 @@ mod render_pipeline;
 mod sampler;
 mod shader;
 mod surface;
-mod texture;
+pub mod texture;
 mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
@@ -64,7 +64,11 @@ pub type Instance = Arc<wgpu_core::global::Global>;
 deno_core::extension!(
   deno_webgpu,
   deps = [deno_webidl, deno_web],
-  ops = [op_create_gpu],
+  ops = [
+    op_create_gpu,
+    device::op_webgpu_device_start_capture,
+    device::op_webgpu_device_stop_capture,
+  ],
   objects = [
     GPU,
     adapter::GPUAdapter,

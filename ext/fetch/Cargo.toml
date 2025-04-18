@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.214.0"
+version = "0.225.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,8 +23,8 @@ deno_fs.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-dyn-clone = "1"
-error_reporter = "1"
+dyn-clone.workspace = true
+error_reporter.workspace = true
 h2.workspace = true
 hickory-resolver.workspace = true
 http.workspace = true

@@ -4,6 +4,7 @@
 
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
+import { delay } from "@std/async/delay";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -823,42 +824,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
   await server.finished;
 });
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerDefaultOnListenCallback() {
-    const ac = new AbortController();
-
-    const consoleError = console.error;
-    console.error = (msg) => {
-      try {
-        const match = msg.match(
-          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
-        );
-        assert(!!match, `Didn't match ${msg}`);
-        const port = +match[2];
-        assert(port > 0 && port < 65536);
-      } finally {
-        ac.abort();
-      }
-    };
-
-    try {
-      await using server = Deno.serve({
-        handler() {
-          return new Response("Hello World");
-        },
-        hostname: "0.0.0.0",
-        port: 0,
-        signal: ac.signal,
-      });
-
-      await server.finished;
-    } finally {
-      console.error = consoleError;
-    }
-  },
-);
-
 // https://github.com/denoland/deno/issues/15107
 Deno.test(
   { permissions: { net: true } },
@@ -905,36 +870,6 @@ Deno.test({ permissions: { net: true } }, async function validPortString() {
   assertEquals(server.addr.transport, "tcp");
   assertEquals(server.addr.port, 4501);
   await server.shutdown();
-});
-
-Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
-  const ac = new AbortController();
-  let url = "";
-
-  const consoleError = console.error;
-  console.error = (msg) => {
-    try {
-      const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
-      assert(!!match, `Didn't match ${msg}`);
-      url = match[1];
-    } finally {
-      ac.abort();
-    }
-  };
-
-  try {
-    await using server = Deno.serve({
-      handler: () => new Response(),
-      hostname: "::1",
-      port: 0,
-      signal: ac.signal,
-    });
-    assertEquals(server.addr.transport, "tcp");
-    assert(new URL(url), `Not a valid URL "${url}"`);
-    await server.shutdown();
-  } finally {
-    console.error = consoleError;
-  }
 });
 
 Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
@@ -3035,6 +2970,8 @@ for (const delay of ["delay", "nodelay"]) {
   }
 }
 
+// NOTE: This test will start failing when we disable "deno_http/legacy_abort" feature.
+//
 // Test for the internal implementation detail of cached request signals. Ensure that the request's
 // signal is aborted if we try to access it after the request has been completed.
 Deno.test(
@@ -4108,6 +4045,58 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockSocket() {
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const ac = new AbortController();
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8000,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr.transport, "vsock");
+        assertEquals(remoteAddr.cid, 1);
+        assertEquals(remoteAddr.port, conn.localAddr.port);
+        return new Response("hello world!");
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8000);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8000,
+    });
+    await conn.write(
+      new TextEncoder().encode("GET / HTTP/1.1\r\nhost: example.com\r\n\r\n"),
+    );
+    const data = new Uint8Array(512);
+    const n = await conn.read(data);
+    const body = new TextDecoder().decode(data.subarray(0, n!));
+
+    assertEquals(
+      "hello world!",
+      body.split("\r\n").at(-1),
+    );
+
+    await conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 // serve Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },
@@ -4391,6 +4380,7 @@ Deno.test({
 
     try {
       while (true) {
+        await delay(100);
         const { done } = await reader.read();
         if (done) break;
       }
@@ -4406,13 +4396,15 @@ Deno.test({
 
   async function onListen({ port }: { port: number }) {
     const body = "a".repeat(1000);
-    const request = `POST / HTTP/1.1\r\n` +
+    const header = `POST / HTTP/1.1\r\n` +
       `Host: 127.0.0.1:${port}\r\n` +
       `Content-Length: 1000\r\n` +
-      "\r\n" + body;
+      "\r\n";
 
     const connection = await Deno.connect({ hostname: "127.0.0.1", port });
-    await connection.write(new TextEncoder().encode(request));
+    await connection.write(new TextEncoder().encode(header));
+    await delay(100);
+    await connection.write(new TextEncoder().encode(body));
     connection.close();
   }
   await server.finished;

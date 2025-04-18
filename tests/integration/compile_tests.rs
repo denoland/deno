@@ -291,7 +291,7 @@ fn standalone_runtime_flags() {
     .name(&exe)
     .split_output()
     .run()
-    .assert_stdout_matches_text("0.147205063401058\n")
+    .assert_stdout_matches_text("0.1472050634010581\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     )

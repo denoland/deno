@@ -209,6 +209,8 @@ impl GPUDevice {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
       id,
+      device_id: self.id,
+      queue_id: self.queue,
       label: descriptor.label,
       size: wgpu_descriptor.size,
       mip_level_count: wgpu_descriptor.mip_level_count,
@@ -885,4 +887,14 @@ impl GPUDeviceLostInfo {
   fn message(&self) -> &'static str {
     "device was lost"
   }
+}
+
+#[op2(fast)]
+pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_start_capture(device.id);
+}
+
+#[op2(fast)]
+pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_stop_capture(device.id);
 }
