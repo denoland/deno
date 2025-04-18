@@ -150,7 +150,7 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    next_version: false,
+    next_version: true,
   })
   .unwrap();
   *lockfile
@@ -279,7 +279,7 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    next_version: false,
+    next_version: true,
   })
   .unwrap();
   let pkg_nv = "@denotest/no-module-graph@0.1.1";

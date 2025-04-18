@@ -1954,6 +1954,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
+ "denort_helper",
  "dlopen2",
  "libffi",
  "libffi-sys",
@@ -2202,6 +2203,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
+ "denort_helper",
  "libc",
  "libloading 0.7.4",
  "libuv-sys-lite",
@@ -2951,6 +2953,18 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "denort_helper"
+version = "0.1.0"
+dependencies = [
+ "deno_error",
+ "deno_path_util",
+ "sys_traits",
+ "tempfile",
+ "thiserror 2.0.12",
+ "twox-hash",
 ]
 
 [[package]]

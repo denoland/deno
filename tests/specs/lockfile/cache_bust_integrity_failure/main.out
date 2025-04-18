@@ -1,3 +1,2 @@
-[# should download because it cache busts]
 Download http://localhost:4545/welcome.ts
 Welcome to Deno!
