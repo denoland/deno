@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.11 / 2025.04.18
+
+- fix(ext/node): Fix `Writable.toWeb()` (#28914)
+- fix(ext/node): add `assert` property to test context object (#28904)
+- fix(install/global): do not append `bin` to `DENO_INSTALL_ROOT` when ends with
+  `bin` (#26446)
+- fix(npm): panic when using tag with patched package (#28900)
+- fix(task): document source of tasks, fix punctuation (#28413)
+- fix: better cjs vs esm module detection and upgrade swc (#28810)
+- fix: remove unnecessary whitespace in prompt function (#28868)
+- fix: resolve shebang parse error in deno doc --test (#26079)
+- perf(npm): don't try to cache npm packages we've already cached (#28938)
+
 ### 2.2.10 / 2025.04.14
 
 - fix: enable explicit resource management for JavaScript (#28119)
