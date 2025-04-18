@@ -654,4 +654,4 @@ util.inherits(DeflateRaw, Zlib);
 util.inherits(InflateRaw, Zlib);
 util.inherits(Unzip, Zlib);
 
-export { Deflate, DeflateRaw, Gunzip, Gzip, Inflate, InflateRaw, Unzip };
+export { Deflate, DeflateRaw, Gunzip, Gzip, Inflate, InflateRaw, Unzip, Zlib };

@@ -1,5 +1,5 @@
 [WILDCARD]
-running 63 tests from ./test.js
+running 67 tests from ./test.js
 sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
@@ -56,6 +56,43 @@ async skip fail ... FAILED [WILDCARD]
 async assertion fail ... FAILED [WILDCARD]
 resolve pass ... ok [WILDCARD]
 reject fail ... FAILED [WILDCARD]
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub suite 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 1 ... ok ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... ok ([WILDLINE])
+suite ... ok ([WILDLINE])
+describe ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub describe 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 1 ... ok ([WILDLINE])
+  sub describe 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 2 ... ok ([WILDLINE])
+describe ... ok ([WILDLINE])
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... FAILED ([WILDLINE])
+  sub suite 1 ...
+    nested test 2 ... FAILED ([WILDLINE])
+    nested test 1 ... ok ([WILDLINE])
+  sub suite 1 ... FAILED (due to 1 failed step) ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... FAILED ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... FAILED (due to 1 failed step) ([WILDLINE])
+suite ... FAILED (due to 3 failed steps) ([WILDLINE])
+assertions available via text context ... ok ([WILDLINE])
 unhandled rejection - passes but warns ...
 Uncaught error from ./test.js FAILED
 unhandled rejection - passes but warns ... cancelled ([WILDCARD])
@@ -151,6 +188,24 @@ error: Error: rejected from reject fail
                         ^
     at [WILDCARD]
 
+suite ... test 2 => ./test.js:[WILDLINE]
+error: Error: thrown from test 2
+    throw new Error("thrown from test 2");
+          ^
+    at [WILDCARD]
+
+suite ... sub suite 1 ... nested test 2 => ./test.js:[WILDLINE]
+error: Error: thrown from nested test 2
+      throw new Error("thrown from nested test 2");
+            ^
+    at [WILDCARD]
+
+suite ... sub suite 2 ... nested test 1 => ./test.js:[WILDLINE]
+error: Error: thrown from nested test 1
+      throw new Error("thrown from nested test 1");
+            ^
+    at [WILDCARD]
+
 ./test.js (uncaught error)
 error: (in promise) Error: rejected from unhandled rejection fail
   Promise.reject(new Error("rejected from unhandled rejection fail"));
@@ -168,8 +223,11 @@ async throw fail => ./test.js:53:1
 async skip fail => ./test.js:64:1
 async assertion fail => ./test.js:69:1
 reject fail => ./test.js:78:1
+suite ... test 2 => ./test.js:[WILDLINE]
+suite ... sub suite 1 ... nested test 2 => ./test.js:[WILDLINE]
+suite ... sub suite 2 ... nested test 1 => ./test.js:[WILDLINE]
 ./test.js (uncaught error)
 
-FAILED | 9 passed (2 steps) | 51 failed | 4 ignored [WILDCARD]
+FAILED | 12 passed (21 steps) | 52 failed (5 steps) | 4 ignored [WILDCARD]
 
 error: Test failed

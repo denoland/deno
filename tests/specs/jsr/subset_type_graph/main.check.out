@@ -9,7 +9,7 @@ Download http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0/mod.ts
 Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts
 [UNORDERED_END]
 Check file:///[WILDCARD]/subset_type_graph/main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 const invalidTypeCheck: number = "";
       ~~~~~~~~~~~~~~~~
     at http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts:11:7
@@ -45,3 +45,5 @@ new Foo2().method2();
         at http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts:2:3
 
 Found 5 errors.
+
+error: Type checking failed.

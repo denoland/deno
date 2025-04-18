@@ -115,6 +115,5 @@
   "bugs": {
     "url": "https://github.com/ljharb/has-symbols/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

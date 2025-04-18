@@ -7,14 +7,15 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::LintRulesConfig;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
+use deno_resolver::workspace::WorkspaceResolver;
 
-use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
 
 mod no_sloppy_imports;
 mod no_slow_types;
@@ -25,7 +26,7 @@ pub use no_slow_types::collect_no_slow_type_diagnostics;
 pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
   fn code(&self) -> &'static str;
 
-  fn tags(&self) -> &'static [&'static str] {
+  fn tags(&self) -> tags::Tags {
     &[]
   }
 
@@ -78,7 +79,7 @@ impl CliLintRule {
     }
   }
 
-  pub fn tags(&self) -> &'static [&'static str] {
+  pub fn tags(&self) -> tags::Tags {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => rule.tags(),
@@ -91,7 +92,7 @@ impl CliLintRule {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => {
-        Cow::Owned(format!("https://lint.deno.land/rules/{}", rule.code()))
+        Cow::Owned(format!("https://docs.deno.com/lint/rules/{}", rule.code()))
       }
       Extended(rule) => rule.help_docs_url(),
       Package(rule) => rule.help_docs_url(),
@@ -120,16 +121,16 @@ impl CliLintRule {
 
 #[derive(Debug)]
 pub struct ConfiguredRules {
-  pub all_rule_codes: HashSet<&'static str>,
+  pub all_rule_codes: HashSet<Cow<'static, str>>,
   pub rules: Vec<CliLintRule>,
 }
 
 impl ConfiguredRules {
-  pub fn incremental_cache_state(&self) -> Option<impl std::hash::Hash> {
-    if self.rules.iter().any(|r| !r.supports_incremental_cache()) {
-      return None;
-    }
+  pub fn supports_incremental_cache(&self) -> bool {
+    self.rules.iter().all(|r| r.supports_incremental_cache())
+  }
 
+  pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
     // use a hash of the rule names in order to bust the cache
     let mut codes = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
     // ensure this is stable by sorting it
@@ -139,19 +140,14 @@ impl ConfiguredRules {
 }
 
 pub struct LintRuleProvider {
-  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-  workspace_resolver: Option<Arc<WorkspaceResolver>>,
+  workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
 }
 
 impl LintRuleProvider {
   pub fn new(
-    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-    workspace_resolver: Option<Arc<WorkspaceResolver>>,
+    workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
   ) -> Self {
-    Self {
-      sloppy_imports_resolver,
-      workspace_resolver,
-    }
+    Self { workspace_resolver }
   }
 
   pub fn resolve_lint_rules_err_empty(
@@ -170,7 +166,6 @@ impl LintRuleProvider {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
     let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
       Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
-        self.sloppy_imports_resolver.clone(),
         self.workspace_resolver.clone(),
       )),
     ))];
@@ -193,7 +188,7 @@ impl LintRuleProvider {
     let all_rules = self.all_rules();
     let mut all_rule_names = HashSet::with_capacity(all_rules.len());
     for rule in &all_rules {
-      all_rule_names.insert(rule.code());
+      all_rule_names.insert(rule.code().into());
     }
     let rules = filtered_rules(
       all_rules.into_iter(),
@@ -272,7 +267,7 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules_provider = LintRuleProvider::new(None, None);
+    let rules_provider = LintRuleProvider::new(None);
     let rules = rules_provider.resolve_lint_rules(rules_config, None);
     let mut rule_names = rules
       .rules
@@ -284,7 +279,7 @@ mod test {
       .resolve_lint_rules(Default::default(), None)
       .rules
       .into_iter()
-      .filter(|r| r.tags().iter().any(|t| *t == "recommended"))
+      .filter(|r| r.tags().iter().any(|t| *t == tags::RECOMMENDED))
       .map(|r| r.code().to_string())
       .filter(|n| n != "no-debugger")
       .collect::<Vec<_>>();

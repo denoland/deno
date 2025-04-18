@@ -9,6 +9,7 @@ use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
@@ -23,7 +24,9 @@ use crate::colors;
 
 pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
-    return init_npm(package, init_flags.package_args).await;
+    return init_npm(package, init_flags.package_args)
+      .boxed_local()
+      .await;
   }
 
   let cwd =
@@ -158,7 +161,7 @@ Deno.test(function addTest() {
         "version": "0.1.0",
         "exports": "./mod.ts",
         "tasks": {
-          "dev": "deno test --watch mod.ts"
+          "dev": "deno test --watch"
         },
         "license": "MIT",
         "imports": {
@@ -334,6 +337,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       script: script_name,
       ..Default::default()
     }),
+    reload: true,
     ..Default::default()
   };
   crate::tools::run::run_script(

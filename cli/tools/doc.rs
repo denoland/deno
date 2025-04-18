@@ -16,6 +16,7 @@ use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
 use deno_graph::source::NullFileSystem;
+use deno_graph::CheckJsOption;
 use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -72,6 +73,7 @@ async fn generate_doc_nodes_for_builtin_types(
       deno_graph::BuildOptions {
         imports: Vec::new(),
         is_dynamic: false,
+        skip_dynamic_deps: false,
         passthrough_jsr_specifiers: false,
         executor: Default::default(),
         file_system: &NullFileSystem,
@@ -148,8 +150,9 @@ pub async fn doc(
         &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
-          check_js: false,
+          check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
+          allow_unknown_media_types: false,
         },
       );
       for error in errors {
@@ -514,7 +517,9 @@ fn print_docs_to_stdout(
   doc_flags: DocFlags,
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
-  doc_nodes.retain(|doc_node| doc_node.kind() != doc::DocNodeKind::Import);
+  doc_nodes.retain(|doc_node| {
+    !matches!(doc_node.def, doc::node::DocNodeDef::Import { .. })
+  });
   let details = if let Some(filter) = doc_flags.filter {
     let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
     if nodes.is_empty() {

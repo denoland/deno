@@ -146,7 +146,7 @@ fn check_error_in_dep_then_fix() {
   let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
 
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 
   temp_dir.write("greet.ts", correct_code);
@@ -155,7 +155,7 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 }
 
@@ -179,12 +179,12 @@ fn json_module_check_then_error() {
   temp_dir.write("test.json", incorrect_code);
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2551[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
 
-#[test]
-fn npm_module_check_then_error() {
+#[tokio::test]
+async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()
     .add_npm_env_vars()
@@ -205,12 +205,14 @@ fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
-  .unwrap();
+  let mut lockfile =
+    deno_lockfile::Lockfile::new_current_version(NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+      next_version: true,
+    })
+    .unwrap();
 
   // make the specifier resolve to version 1
   lockfile.content.packages.specifiers.insert(
@@ -242,6 +244,6 @@ fn npm_module_check_then_error() {
 
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
 }

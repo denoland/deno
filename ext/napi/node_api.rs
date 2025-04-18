@@ -400,18 +400,8 @@ fn napi_is_buffer(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-
-  let Some(is_buffer) = value
-    .unwrap()
-    .instance_of(&mut env.scope(), buffer_constructor.into())
-  else {
-    return napi_set_last_error(env, napi_generic_failure);
-  };
-
   unsafe {
-    *result = is_buffer;
+    *result = value.unwrap().is_array_buffer_view();
   }
 
   napi_clear_last_error(env)

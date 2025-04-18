@@ -13,16 +13,12 @@
 delete Object.prototype.__proto__;
 
 import {
-  assert,
   AssertionError,
-  ASSETS_URL_PREFIX,
   debug,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
-  getAssets,
   host,
   setLogDebug,
-  SOURCE_FILE_CACHE,
 } from "./97_ts_host.js";
 import { serverMainLoop } from "./98_lsp.js";
 
@@ -38,16 +34,6 @@ const ops = core.ops;
 // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
 /** @type {Map<string, string>} */
 const normalizedToOriginalMap = new Map();
-
-const SNAPSHOT_COMPILE_OPTIONS = {
-  esModuleInterop: true,
-  jsx: ts.JsxEmit.React,
-  module: ts.ModuleKind.ESNext,
-  noEmit: true,
-  strict: true,
-  target: ts.ScriptTarget.ESNext,
-  lib: ["lib.deno.window.d.ts"],
-};
 
 /** @type {Array<[string, number]>} */
 const stats = [];
@@ -225,49 +211,20 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
   debug("<<< exec stop");
 }
 
-// A build time only op that provides some setup information that is used to
-// ensure the snapshot is setup properly.
-/** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
-const { buildSpecifier, libs } = ops.op_build_info();
-
+const libs = ops.op_libs();
 for (const lib of libs) {
   const specifier = `lib.${lib}.d.ts`;
   // we are using internal APIs here to "inject" our custom libraries into
   // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
   if (!ts.libs.includes(lib)) {
     ts.libs.push(lib);
-    ts.libMap.set(lib, `lib.${lib}.d.ts`);
+    ts.libMap.set(lib, specifier);
   }
-  // we are caching in memory common type libraries that will be re-used by
-  // tsc on when the snapshot is restored
-  assert(
-    !!host.getSourceFile(
-      `${ASSETS_URL_PREFIX}${specifier}`,
-      ts.ScriptTarget.ESNext,
-    ),
-    `failed to load '${ASSETS_URL_PREFIX}${specifier}'`,
-  );
 }
-// this helps ensure as much as possible is in memory that is re-usable
-// before the snapshotting is done, which helps unsure fast "startup" for
-// subsequent uses of tsc in Deno.
-const TS_SNAPSHOT_PROGRAM = ts.createProgram({
-  rootNames: [buildSpecifier],
-  options: SNAPSHOT_COMPILE_OPTIONS,
-  host,
-});
-assert(
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
-  "lib.d.ts files have errors",
-);
-
-// remove this now that we don't need it anymore for warming up tsc
-SOURCE_FILE_CACHE.delete(buildSpecifier);
 
 // exposes the functions that are called by `tsc::exec()` when type
 // checking TypeScript.
 globalThis.exec = exec;
-globalThis.getAssets = getAssets;
 
 // exposes the functions that are called when the compiler is used as a
 // language service.

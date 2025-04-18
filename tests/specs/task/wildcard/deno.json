@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "foo-1": "echo 'foo-1'",
+    "foo-2": "echo 'foo-2'",
+    "foo-3": "echo 'foo-3'",
+    "dep-1": {
+      "command": "echo 'dep-1'",
+      "dependencies": ["dep-2", "foo-1"]
+    },
+    "dep-2": {
+      "command": "echo 'dep-2'",
+      "dependencies": ["foo-1"]
+    }
+  }
+}

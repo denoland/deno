@@ -1,0 +1,90 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000002",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [],
+          "droppedAttributesCount": 1
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000003",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [],
+          "droppedAttributesCount": 1
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

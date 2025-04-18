@@ -27,10 +27,15 @@ pub struct ModuleCodeStringSource {
 
 #[derive(Debug, Error, deno_error::JsError)]
 #[class(type)]
-#[error("{media_type} files are not supported in npm packages: {specifier}")]
-pub struct NotSupportedKindInNpmError {
-  pub media_type: MediaType,
+#[error("[{}]: Stripping types is currently unsupported for files under node_modules, for \"{}\"", self.code(), specifier)]
+pub struct StrippingTypesNodeModulesError {
   pub specifier: Url,
+}
+
+impl StrippingTypesNodeModulesError {
+  pub fn code(&self) -> &'static str {
+    "ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING"
+  }
 }
 
 #[derive(Debug, Error, deno_error::JsError)]
@@ -40,7 +45,7 @@ pub enum NpmModuleLoadError {
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
   #[class(inherit)]
   #[error(transparent)]
-  NotSupportedKindInNpm(#[from] NotSupportedKindInNpmError),
+  StrippingTypesNodeModules(#[from] StrippingTypesNodeModulesError),
   #[class(inherit)]
   #[error(transparent)]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
@@ -177,9 +182,8 @@ impl<
 
     let media_type = MediaType::from_specifier(specifier);
     if media_type.is_emittable() {
-      return Err(NpmModuleLoadError::NotSupportedKindInNpm(
-        NotSupportedKindInNpmError {
-          media_type,
+      return Err(NpmModuleLoadError::StrippingTypesNodeModules(
+        StrippingTypesNodeModulesError {
           specifier: specifier.clone(),
         },
       ));

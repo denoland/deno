@@ -1,10 +1,10 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A JSON representation of a Deno configuration file.",
-  "required": [],
   "title": "Deno configuration file Schema",
+  "description": "A JSON representation of a Deno configuration file.",
   "type": "object",
+  "required": [],
   "properties": {
     "compilerOptions": {
       "type": "object",
@@ -111,7 +111,35 @@
           "uniqueItems": true,
           "default": ["deno.window"],
           "items": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "deno.ns",
+              "deno.window",
+              "deno.worker",
+              "deno.unstable",
+              "dom",
+              "dom.iterable",
+              "dom.asynciterable",
+              "webworker",
+              "webworker.importscripts",
+              "webworker.iterable",
+              "webworker.asynciterable",
+              "scripthost",
+              "decorators",
+              "decorators.legacy",
+              "es5",
+              "es2015",
+              "es2016",
+              "es2017",
+              "es2018",
+              "es2019",
+              "es2020",
+              "es2021",
+              "es2022",
+              "es2023",
+              "es2024",
+              "esnext"
+            ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
@@ -174,6 +202,14 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "rootDirs": {
+          "description": "Declare many “virtual” directories acting as a single root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Declare many “virtual” directories acting as a single root.\n\nSee more: https://www.typescriptlang.org/tsconfig#rootDirs"
         },
         "strict": {
           "description": "Enable all strict type checking options.",
@@ -280,6 +316,13 @@
         "exclude": {
           "type": "array",
           "description": "List of files, directories or globs that will not be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugins": {
+          "type": "array",
+          "description": "UNSTABLE: List of plugins to load. These can be paths, npm or jsr specifiers",
           "items": {
             "type": "string"
           }

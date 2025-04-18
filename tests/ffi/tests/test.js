@@ -364,22 +364,15 @@ assertEquals(isNullBuffer(emptyBuffer), true, "isNullBuffer(emptyBuffer) !== tru
 assertEquals(isNullBufferDeopt(emptyBuffer), true, "isNullBufferDeopt(emptyBuffer) !== true");
 assertEquals(isNullBuffer(emptySlice), false, "isNullBuffer(emptySlice) !== false");
 assertEquals(isNullBufferDeopt(emptySlice), false, "isNullBufferDeopt(emptySlice) !== false");
+assertEquals(isNullBuffer(new Uint8Array()), true, "isNullBuffer(new Uint8Array()) !== false");
 assertEquals(isNullBufferDeopt(new Uint8Array()), true, "isNullBufferDeopt(new Uint8Array()) !== true");
-
-// ==== V8 ZERO LENGTH BUFFER ANOMALIES ====
-
-// V8 bug: inline Uint8Array creation to fast call sees non-null pointer
-// https://bugs.chromium.org/p/v8/issues/detail?id=13489
-if (Deno.build.os != "linux" || Deno.build.arch != "aarch64") {
-  assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
-}
 
 // Externally backed ArrayBuffer has a non-null data pointer, even though its length is zero.
 const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 0));
 // V8 Fast calls used to get null pointers for all zero-sized buffers no matter their external backing.
 assertEquals(isNullBuffer(externalZeroBuffer), false, "isNullBuffer(externalZeroBuffer) !== false");
 // V8's `Local<ArrayBuffer>->Data()` method also used to similarly return null pointers for all
-// zero-sized buffers which would not match what `Local<ArrayBuffer>->GetBackingStore()->Data()` 
+// zero-sized buffers which would not match what `Local<ArrayBuffer>->GetBackingStore()->Data()`
 // API returned. These issues have been fixed in https://bugs.chromium.org/p/v8/issues/detail?id=13488.
 assertEquals(isNullBufferDeopt(externalZeroBuffer), false, "isNullBufferDeopt(externalZeroBuffer) !== false");
 

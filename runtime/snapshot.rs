@@ -1,266 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_cache::SqliteBackedCache;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
-use deno_http::DefaultHttpPropertyExtractor;
-use deno_io::fs::FsError;
-use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::runtime;
-
-#[derive(Clone)]
-struct Permissions;
-
-impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_fetch::FetchPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read<'a>(
-    &mut self,
-    _p: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-#[cfg(feature = "ffi")]
-impl deno_ffi::FfiPermissions for Permissions {
-  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_partial_with_path(
-    &mut self,
-    _path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_napi::NapiPermissions for Permissions {
-  fn check(&mut self, _path: &str) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_node::NodePermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_net(
-    &mut self,
-    _host: (&str, Option<u16>),
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_read_path<'a>(
-    &mut self,
-    _path: &'a Path,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_read_with_api_name(
-    &mut self,
-    _p: &str,
-    _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn query_read_all(&mut self) -> bool {
-    unreachable!("snapshotting!")
-  }
-  fn check_write_with_api_name(
-    &mut self,
-    _p: &str,
-    _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_sys(
-    &mut self,
-    _kind: &str,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_net::NetPermissions for Permissions {
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    _host: &(T, Option<u16>),
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read(
-    &mut self,
-    _p: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write(
-    &mut self,
-    _p: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_path<'a>(
-    &mut self,
-    _p: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_fs::FsPermissions for Permissions {
-  fn check_open<'a>(
-    &mut self,
-    _resolved: bool,
-    _read: bool,
-    _write: bool,
-    _path: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read_all(
-    &mut self,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read_blind(
-    &mut self,
-    _path: &Path,
-    _display: &str,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_partial(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_all(
-    &mut self,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_blind(
-    &mut self,
-    _path: &Path,
-    _display: &str,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read_path<'a>(
-    &mut self,
-    _path: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_path<'a>(
-    &mut self,
-    _path: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
-  fn check_read(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write<'a>(
-    &mut self,
-    _path: &'a Path,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
+use crate::snapshot_info::Permissions;
 
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
@@ -269,7 +23,8 @@ pub fn create_runtime_snapshot(
   custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+  // and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
     deno_telemetry::deno_telemetry::init_ops_and_esm(),
@@ -283,7 +38,7 @@ pub fn create_runtime_snapshot(
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+    deno_cache::deno_cache::init_ops_and_esm(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
       "".to_owned(),
       None,
@@ -295,7 +50,7 @@ pub fn create_runtime_snapshot(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
     #[cfg(feature = "ffi")]
-    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(None),
     #[cfg(not(feature = "ffi"))]
     crate::shared::deno_ffi::init_ops_and_esm(),
     deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
@@ -307,10 +62,8 @@ pub fn create_runtime_snapshot(
     deno_cron::deno_cron::init_ops_and_esm(
       deno_cron::local::LocalCronHandler::new(),
     ),
-    deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
-    deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-      deno_http::Options::default(),
-    ),
+    deno_napi::deno_napi::init_ops_and_esm::<Permissions>(None),
+    deno_http::deno_http::init_ops_and_esm(deno_http::Options::default()),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
     deno_os::deno_os::init_ops_and_esm(Default::default()),

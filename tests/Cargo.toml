@@ -33,21 +33,22 @@ anyhow.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_bench_util.workspace = true
-deno_cache_dir = { workspace = true }
+deno_cache_dir.workspace = true
 deno_lockfile.workspace = true
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.3"
-flaky_test = "=0.2.2"
-hickory-client = "0.25.0-alpha.4"
-hickory-proto = "0.25.0-alpha.4"
-hickory-server = "0.25.0-alpha.4"
+file_test_runner.workspace = true
+flaky_test.workspace = true
+hickory-client.workspace = true
+hickory-proto.workspace = true
+hickory-server.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+ntest_timeout.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
@@ -59,11 +60,13 @@ rustls-tokio-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
+tempfile.workspace = true
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+walkdir.workspace = true
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]

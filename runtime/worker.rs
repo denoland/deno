@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::CoreError;
@@ -33,9 +34,9 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_os::ExitCode;
@@ -122,6 +123,7 @@ pub struct WorkerServiceOptions<
 > {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
@@ -340,6 +342,40 @@ impl MainWorker {
       },
     );
 
+    fn create_cache_inner(options: &WorkerOptions) -> Option<CreateCache> {
+      if let Ok(var) = std::env::var("DENO_CACHE_LSC_ENDPOINT") {
+        let elems: Vec<_> = var.split(",").collect();
+        if elems.len() == 2 {
+          let endpoint = elems[0];
+          let token = elems[1];
+          use deno_cache::CacheShard;
+
+          let shard =
+            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+          let create_cache_fn = move || {
+            let x = deno_cache::LscBackend::default();
+            x.set_shard(shard.clone());
+
+            Ok(CacheImpl::Lsc(x))
+          };
+          #[allow(clippy::arc_with_non_send_sync)]
+          return Some(CreateCache(Arc::new(create_cache_fn)));
+        }
+      }
+
+      if let Some(storage_dir) = &options.cache_storage_dir {
+        let storage_dir = storage_dir.clone();
+        let create_cache_fn = move || {
+          let s = SqliteBackedCache::new(storage_dir.clone())?;
+          Ok(CacheImpl::Sqlite(s))
+        };
+        return Some(CreateCache(Arc::new(create_cache_fn)));
+      }
+
+      None
+    }
+    let create_cache = create_cache_inner(&options);
+
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
@@ -349,13 +385,10 @@ impl MainWorker {
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode::default();
-    let create_cache = options.cache_storage_dir.map(|storage_dir| {
-      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(create_cache_fn))
-    });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+    // and `runtime/snapshot.rs`!
     let mut extensions = vec![
       deno_telemetry::deno_telemetry::init_ops_and_esm(),
       // Web APIs
@@ -380,9 +413,7 @@ impl MainWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
-        create_cache,
-      ),
+      deno_cache::deno_cache::init_ops_and_esm(create_cache),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         services.root_cert_store_provider.clone(),
@@ -396,7 +427,9 @@ impl MainWorker {
         services.broadcast_channel.clone(),
       ),
       #[cfg(feature = "ffi")]
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(
+        services.deno_rt_native_addon_loader.clone(),
+      ),
       #[cfg(not(feature = "ffi"))]
       crate::shared::deno_ffi::init_ops_and_esm(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
@@ -421,10 +454,13 @@ impl MainWorker {
         deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-        deno_http::Options::default(),
+      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(
+        services.deno_rt_native_addon_loader.clone(),
       ),
+      deno_http::deno_http::init_ops_and_esm(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
@@ -536,12 +572,12 @@ impl MainWorker {
               hasher.finish()
             };
             let data = cache
-              .get_sync(specifier, CodeCacheType::Script, source_hash)
-              .inspect(|_| {
-                // This log line is also used by tests.
-                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
-              })
-              .map(Cow::Owned);
+            .get_sync(specifier, CodeCacheType::Script, source_hash)
+            .inspect(|_| {
+              // This log line is also used by tests.
+              log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+            })
+            .map(Cow::Owned);
             Ok(SourceCodeCacheInfo {
               data,
               hash: source_hash,

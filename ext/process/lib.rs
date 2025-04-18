@@ -20,6 +20,7 @@ use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -192,6 +193,8 @@ pub struct SpawnArgs {
 
   #[serde(flatten)]
   stdio: ChildStdio,
+
+  input: Option<JsBuffer>,
 
   extra_stdio: Vec<Stdio>,
   detached: bool,
@@ -424,7 +427,7 @@ fn create_command(
 
   command.current_dir(run_env.cwd);
   command.env_clear();
-  command.envs(run_env.envs);
+  command.envs(run_env.envs.into_iter().map(|(k, v)| (k.into_inner(), v)));
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
@@ -437,6 +440,8 @@ fn create_command(
 
   if args.stdio.stdin.is_ipc() {
     args.ipc = Some(0);
+  } else if args.input.is_some() {
+    command.stdin(std::process::Stdio::piped());
   } else {
     command.stdin(args.stdio.stdin.as_stdio(state)?);
   }
@@ -697,8 +702,60 @@ fn compute_run_cmd_and_check_permissions(
   Ok((cmd, run_env))
 }
 
+#[derive(Debug)]
+struct EnvVarKey {
+  inner: OsString,
+  // Windows treats env vars as case insensitive, so use
+  // a normalized value for comparisons instead of the raw
+  // case sensitive value
+  #[cfg(windows)]
+  normalized: OsString,
+}
+
+impl EnvVarKey {
+  pub fn new(value: OsString) -> Self {
+    Self {
+      #[cfg(windows)]
+      normalized: value.to_ascii_uppercase(),
+      inner: value,
+    }
+  }
+
+  pub fn from_str(value: &str) -> Self {
+    Self::new(OsString::from(value))
+  }
+
+  pub fn into_inner(self) -> OsString {
+    self.inner
+  }
+
+  pub fn comparison_value(&self) -> &OsString {
+    #[cfg(windows)]
+    {
+      &self.normalized
+    }
+    #[cfg(not(windows))]
+    {
+      &self.inner
+    }
+  }
+}
+
+impl std::hash::Hash for EnvVarKey {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.comparison_value().hash(state);
+  }
+}
+
+impl std::cmp::Eq for EnvVarKey {}
+impl std::cmp::PartialEq for EnvVarKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.comparison_value() == other.comparison_value()
+  }
+}
+
 struct RunEnv {
-  envs: HashMap<OsString, OsString>,
+  envs: HashMap<EnvVarKey, OsString>,
   cwd: PathBuf,
 }
 
@@ -721,30 +778,14 @@ fn compute_run_env(
   let envs = if arg_clear_env {
     arg_envs
       .iter()
-      .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+      .map(|(k, v)| (EnvVarKey::from_str(k), OsString::from(v)))
       .collect()
   } else {
     let mut envs = std::env::vars_os()
-      .map(|(k, v)| {
-        (
-          if cfg!(windows) {
-            k.to_ascii_uppercase()
-          } else {
-            k
-          },
-          v,
-        )
-      })
+      .map(|(k, v)| (EnvVarKey::new(k), v))
       .collect::<HashMap<_, _>>();
     for (key, value) in arg_envs {
-      envs.insert(
-        OsString::from(if cfg!(windows) {
-          key.to_ascii_uppercase()
-        } else {
-          key.clone()
-        }),
-        OsString::from(value.clone()),
-      );
+      envs.insert(EnvVarKey::from_str(key), OsString::from(value));
     }
     envs
   };
@@ -758,7 +799,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
   if is_path {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
-    let path = env.envs.get(&OsString::from("PATH"));
+    let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
       Err(which::Error::CannotFindBinaryPath) => {
@@ -815,10 +856,18 @@ fn check_run_permission(
 
 fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
   fn requires_allow_all(key: &str) -> bool {
+    fn starts_with_ignore_case(key: &str, search_value: &str) -> bool {
+      if let Some((key, _)) = key.split_at_checked(search_value.len()) {
+        search_value.eq_ignore_ascii_case(key)
+      } else {
+        false
+      }
+    }
+
     let key = key.trim();
     // we could be more targted here, but there are quite a lot of
     // LD_* and DYLD_* env variables
-    key.starts_with("LD_") || key.starts_with("DYLD_")
+    starts_with_ignore_case(key, "LD_") || starts_with_ignore_case(key, "DYLD_")
   }
 
   fn is_empty(value: &OsString) -> bool {
@@ -830,7 +879,7 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
     .envs
     .iter()
     .filter_map(|(k, v)| {
-      let key = k.to_str()?;
+      let key = k.comparison_value().to_str()?;
       if requires_allow_all(key) && !is_empty(v) {
         Some(key)
       } else {
@@ -892,13 +941,31 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, ProcessError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
+  let input = args.input.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
-  let output = command.output().map_err(|e| ProcessError::SpawnFailed {
+
+  let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().to_string(),
     error: Box::new(e.into()),
   })?;
-
+  if let Some(input) = input {
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+      ProcessError::Io(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "stdin is not available",
+      ))
+    })?;
+    stdin.write_all(&input)?;
+    stdin.flush()?;
+  }
+  let output =
+    child
+      .wait_with_output()
+      .map_err(|e| ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().to_string(),
+        error: Box::new(e.into()),
+      })?;
   Ok(SpawnOutput {
     status: output.status.try_into()?,
     stdout: if stdout {
@@ -993,7 +1060,7 @@ mod deprecated {
 
     c.env_clear();
     for (key, value) in run_env.envs {
-      c.env(key, value);
+      c.env(key.inner, value);
     }
 
     #[cfg(unix)]

@@ -19,6 +19,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
@@ -242,7 +243,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
     let path = self
       .fs_resolver
@@ -250,7 +251,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
     log::debug!(
       "Resolved {} from {} to {}",
       specifier,
-      referrer,
+      referrer.display(),
       path.display()
     );
     Ok(path)

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
@@ -60,7 +61,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
     match self {
       NpmPackageFsResolver::Local(r) => {

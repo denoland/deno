@@ -101,7 +101,7 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            result = hmr_result.map_err(Into::into);
+            result = hmr_result;
           },
           event_loop_result = event_loop_future => {
             result = event_loop_result;
@@ -486,7 +486,7 @@ mod tests {
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
     );
     let options = WorkerOptions {
-      startup_snapshot: crate::js::deno_isolate_init(),
+      startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       ..Default::default()
     };
 
@@ -497,6 +497,7 @@ mod tests {
     >(
       &main_module,
       WorkerServiceOptions {
+        deno_rt_native_addon_loader: None,
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(
           permission_desc_parser,

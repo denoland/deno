@@ -1358,6 +1358,53 @@ Deno.test(async function testImportExportEcDsaJwk() {
   }
 });
 
+Deno.test(async function testEcdsaCrossHashAlgorithms() {
+  // Ensure that we can sign and verify with hash algorithms that
+  // don't match the curve's nominal size. For example, sign using
+  // P-384 with a SHA-256 digest and verify using the same params.
+  const subtle = crypto.subtle;
+  assert(subtle);
+  const ec384 = jwtECKeys["384"];
+  const data = new Uint8Array([5, 6, 7, 8]);
+  const privateKey = await subtle.importKey(
+    "jwk",
+    {
+      alg: ec384.algo,
+      ...ec384.privateJWK,
+      ext: true,
+      "key_ops": ["sign"],
+    },
+    { name: "ECDSA", namedCurve: ec384.privateJWK.crv },
+    true,
+    ["sign"],
+  );
+  const publicKey = await subtle.importKey(
+    "jwk",
+    {
+      alg: ec384.algo,
+      ...ec384.publicJWK,
+      ext: true,
+      "key_ops": ["verify"],
+    },
+    { name: "ECDSA", namedCurve: ec384.publicJWK.crv },
+    true,
+    ["verify"],
+  );
+  // Use SHA-256 instead of SHA-384 with P-384 keys.
+  const signature = await subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    data,
+  );
+  const verified = await subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    publicKey,
+    signature,
+    data,
+  );
+  assert(verified);
+});
+
 Deno.test(async function testImportEcDhJwk() {
   const subtle = crypto.subtle;
   assert(subtle);
@@ -1500,7 +1547,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   assert(subtle);
 
   for (
-    const { namedCurve, raw, spki, pkcs8, signatureLength } of ecTestKeys
+    const { namedCurve, raw, spki, pkcs8 } of ecTestKeys
   ) {
     const rawPublicKeyECDSA = await subtle.importKey(
       "raw",
@@ -1566,7 +1613,8 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     ) {
       if (
         (hash == "SHA-256" && namedCurve == "P-256") ||
-        (hash == "SHA-384" && namedCurve == "P-384")
+        (hash == "SHA-384" && namedCurve == "P-384") ||
+        (hash == "SHA-512" && namedCurve == "P-521")
       ) {
         const signatureECDSA = await subtle.sign(
           { name: "ECDSA", hash },
@@ -1581,30 +1629,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
           new Uint8Array([1, 2, 3, 4]),
         );
         assert(verifyECDSA);
-      } else {
-        await assertRejects(
-          async () => {
-            await subtle.sign(
-              { name: "ECDSA", hash },
-              privateKeyECDSA,
-              new Uint8Array([1, 2, 3, 4]),
-            );
-          },
-          DOMException,
-          "Not implemented",
-        );
-        await assertRejects(
-          async () => {
-            await subtle.verify(
-              { name: "ECDSA", hash },
-              publicKeyECDSA,
-              new Uint8Array(signatureLength),
-              new Uint8Array([1, 2, 3, 4]),
-            );
-          },
-          DOMException,
-          "Not implemented",
-        );
       }
     }
   }
@@ -2084,4 +2108,57 @@ Deno.test(async function x25519SharedSecret() {
   assertEquals(sharedSecret1.byteLength, sharedSecret2.byteLength);
   assertEquals(sharedSecret1.byteLength, 16);
   assertEquals(new Uint8Array(sharedSecret1), new Uint8Array(sharedSecret2));
+});
+
+// https://github.com/denoland/deno/issues/26870
+Deno.test(async function jwkKeyOpsValidation() {
+  const { privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: { name: "SHA-256" },
+      publicExponent: new Uint8Array([1, 0, 1]),
+      modulusLength: 2048,
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  // https://github.com/node-opcua/node-opcua-crypto/blob/a2a1b8a4d416fe176cd1a38796c4b13f938cd01c/packages/node-opcua-crypto/source/x509/_build_public_key.ts#L30-L49
+  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+  delete jwk.d;
+  delete jwk.dp;
+  delete jwk.dq;
+  delete jwk.q;
+  delete jwk.qi;
+  jwk.key_ops = [
+    "encrypt",
+    "sign",
+  ];
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
+    true,
+    [],
+  );
+
+  assert(publicKey);
+});
+
+Deno.test(async function x25519ExportJwk() {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+
+  assertEquals(jwk.kty, "OKP");
+  assertEquals(jwk.crv, "X25519");
+  assert(jwk.d);
+  assert(jwk.x);
 });
