@@ -34,6 +34,8 @@ import {
   GPUTexture,
   GPUTextureView,
   op_create_gpu,
+  op_webgpu_device_start_capture,
+  op_webgpu_device_stop_capture,
 } from "ext:core/ops";
 const {
   ObjectDefineProperty,
@@ -821,6 +823,19 @@ webidl.converters["GPUUncapturedErrorEventInit"] = webidl
     dictMembersGPUUncapturedErrorEventInit,
   );
 
+function deviceStartCapture(device) {
+  op_webgpu_device_start_capture(device);
+}
+
+function deviceStopCapture(device) {
+  op_webgpu_device_stop_capture(device);
+}
+
+const denoNsWebGPU = {
+  deviceStartCapture,
+  deviceStopCapture,
+};
+
 let gpu;
 function initGPU() {
   if (!gpu) {
@@ -833,6 +848,7 @@ function initGPU() {
 }
 
 export {
+  denoNsWebGPU,
   GPU,
   gpu,
   GPUAdapter,

@@ -15,14 +15,10 @@ impl Default for AsyncFlag {
 
 impl AsyncFlag {
   pub fn raise(&self) {
-    self.0.close();
-  }
-
-  pub fn is_raised(&self) -> bool {
-    self.0.is_closed()
+    self.0.add_permits(1);
   }
 
   pub async fn wait_raised(&self) {
-    self.0.acquire().await.unwrap_err();
+    drop(self.0.acquire().await);
   }
 }

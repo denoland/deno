@@ -2087,14 +2087,8 @@ async fn resolve_lockfile_from_workspace(
     .root_deno_json()
     .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
     .unwrap_or(false);
-  let use_lockfile_v5 = workspace.workspace.has_unstable("lockfile-v5");
-  resolve_lockfile_from_path(
-    lockfile_path,
-    frozen,
-    npm_package_info_provider,
-    use_lockfile_v5,
-  )
-  .await
+  resolve_lockfile_from_path(lockfile_path, frozen, npm_package_info_provider)
+    .await
 }
 
 fn resolve_node_modules_dir(
@@ -2131,7 +2125,6 @@ async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
   npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
-  use_lockfile_v5: bool,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
@@ -2139,7 +2132,6 @@ async fn resolve_lockfile_from_path(
       file_path: lockfile_path,
       frozen,
       skip_write: false,
-      use_lockfile_v5,
     },
     &crate::npm::NpmPackageInfoApiAdapter(npm_package_info_provider.clone()),
   )

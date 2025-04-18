@@ -918,6 +918,42 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
+  pub fn notebook_did_open(
+    &mut self,
+    uri: Uri,
+    version: i32,
+    cells: Vec<Value>,
+  ) -> CollectedDiagnostics {
+    let cells = cells
+      .into_iter()
+      .map(|c| serde_json::from_value::<lsp::TextDocumentItem>(c).unwrap())
+      .collect::<Vec<_>>();
+    let params = lsp::DidOpenNotebookDocumentParams {
+      notebook_document: lsp::NotebookDocument {
+        uri,
+        notebook_type: "jupyter-notebook".to_string(),
+        version,
+        metadata: None,
+        cells: cells
+          .iter()
+          .map(|c| lsp::NotebookCell {
+            kind: if c.language_id == "markdown" {
+              lsp::NotebookCellKind::Markup
+            } else {
+              lsp::NotebookCellKind::Code
+            },
+            document: c.uri.clone(),
+            metadata: None,
+            execution_summary: None,
+          })
+          .collect(),
+      },
+      cell_text_documents: cells,
+    };
+    self.write_notification("notebookDocument/didOpen", json!(params));
+    self.read_diagnostics()
+  }
+
   pub fn change_configuration(&mut self, config: Value) {
     self.config = config;
     if self.supports_workspace_configuration {

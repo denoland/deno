@@ -409,17 +409,12 @@ impl CliFactory {
           provider.as_npm_registry_api(),
         ));
 
-        let use_lockfile_v5 = crate::args::unstable_lockfile_v5(
-          &self.flags,
-          &workspace_directory.workspace,
-        );
         let maybe_lock_file = CliLockfile::discover(
           &self.sys(),
           &self.flags,
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
           &adapter,
-          use_lockfile_v5,
         )
         .await?
         .map(Arc::new);
@@ -693,7 +688,6 @@ impl CliFactory {
       .npm_resolution_initializer
       .get_or_try_init_async(async move {
         Ok(Arc::new(NpmResolutionInitializer::new(
-          self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
           self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
@@ -1272,6 +1266,7 @@ impl CliFactory {
       } else {
         None
       },
+      None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
       self.maybe_inspector_server()?.clone(),
@@ -1317,6 +1312,7 @@ impl CliFactory {
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
+      is_standalone: false,
       is_inspecting: cli_options.is_inspecting(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]

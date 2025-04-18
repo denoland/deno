@@ -14,6 +14,7 @@ use test_util::lsp::range_of;
 use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
+use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
@@ -7788,7 +7789,7 @@ fn lsp_completions() {
     json!({
       "label": "build",
       "kind": 6,
-      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string;\n}",
+      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    standalone: boolean;\n    vendor: string;\n    env?: string;\n}",
       "documentation": {
         "kind": "markdown",
         "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime"
@@ -11417,45 +11418,260 @@ fn lsp_diagnostics_none_for_resolving_types() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_jupyter_diagnostics() {
+fn lsp_jupyter_import_map_and_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "exports": "./exports.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("./exports.ts", "export const someExport = 1;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "deno-notebook-cell:/a/file.ts#abc",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "Deno.readTextFileSync(1234);",
-    },
-  }));
+
+  let diagnostics = client.notebook_did_open(
+    url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+    1,
+    vec![
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"
+          // This should be shared between cells.
+          import { someExport } from "exports";
+        "#,
+      }),
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"
+          // This should produce a type checking error.
+          const someString: string = someExport;
+          console.log(someString);
+
+          // Top-level-await should be allowed.
+          await new Promise((r) => r(null));
+
+          // Local variables conflicting with globals.
+          const name = "Hello";
+          console.log(name);
+
+          // This should transfer to the next cell.
+          const someNumber = 123;
+        "#,
+      }),
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"
+          console.log(someNumber);
+        "#,
+      }),
+    ],
+  );
   assert_eq!(
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": "deno-notebook-cell:/a/file.ts#abc",
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
         "diagnostics": [
           {
             "range": {
-              "start": {
-                "line": 0,
-                "character": 22,
-              },
-              "end": {
-                "line": 0,
-                "character": 26,
-              },
+              "start": { "line": 2, "character": 16 },
+              "end": { "line": 2, "character": 26 },
             },
             "severity": 1,
-            "code": 2345,
+            "code": 2322,
             "source": "deno-ts",
-            "message": "Argument of type 'number' is not assignable to parameter of type 'string | URL'.",
+            "message": "Type 'number' is not assignable to type 'string'.",
+          },
+          // TODO(nayeemrmn): This only errors for classic scripts which we use
+          // for notebook cells. Figure out a workaround.
+          {
+            "range": {
+              "start": { "line": 9, "character": 16 },
+              "end": { "line": 9, "character": 20 },
+            },
+            "severity": 1,
+            "code": 2451,
+            "source": "deno-ts",
+            "message": "Cannot redeclare block-scoped variable 'name'.",
+            "relatedInformation": [
+              {
+                "location": {
+                  "uri": "deno:/asset/lib.deno.window.d.ts",
+                  "range": {
+                    "start": { "line": 466, "character": 12 },
+                    "end": { "line": 466, "character": 16 },
+                  },
+                },
+                "message": "'name' was also declared here.",
+              },
+            ],
           },
         ],
         "version": 1,
       },
-    ])
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+    ]),
   );
+
+  client.write_notification(
+    "notebookDocument/didChange",
+    json!({
+      "notebookDocument": {
+        "version": 2,
+        "uri": url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+      },
+      "change": {
+        "cells": {
+          "structure": {
+            "array": { "start": 1, "deleteCount": 1 },
+            "didOpen": [],
+            "didClose": [
+              { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()) },
+            ],
+          },
+        },
+      },
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 22 },
+              "end": { "line": 1, "character": 32 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'someNumber'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "diagnostics": [],
+        "version": 1,
+      },
+    ]),
+  );
+
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_jupyter_completions() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("./other.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.notebook_did_open(
+    url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+    1,
+    vec![
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"
+          import "./othe";
+          await Deno.readTextFil;
+        "#,
+      }),
+    ],
+  );
+
+  let list = client.get_completion_list(
+    url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap())
+      .as_str(),
+    (1, 24),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "other.ts")
+    .unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "other.ts",
+      "kind": 17,
+      "detail": "(local)",
+      "sortText": "1",
+      "filterText": "./other.ts",
+      "textEdit": {
+        "range": {
+          "start": { "line": 1, "character": 18 },
+          "end": { "line": 1, "character": 24 },
+        },
+        "newText": "./other.ts",
+      },
+      "commitCharacters": ["\"",  "'"],
+    }),
+  );
+
+  let list = client.get_completion_list(
+    url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap())
+      .as_str(),
+    (2, 32),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "readTextFile")
+    .unwrap();
+  let item = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "readTextFile",
+      "kind": 3,
+      "detail": "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions): Promise<string>",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string. Reading a directory throws an error.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nRequires `allow-read` permission.\n\n*@tags* - allow-read  \n\n*@category* - File System",
+      },
+      "sortText": "11",
+    }),
+  );
+
   client.shutdown();
 }
 
@@ -16537,67 +16753,6 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
     }])
   );
 
-  client.shutdown();
-}
-
-#[test]
-#[timeout(300_000)]
-fn lsp_jupyter_byonm_diagnostics() {
-  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
-  let temp_dir = context.temp_dir().path();
-  temp_dir.join("package.json").write_json(&json!({
-    "dependencies": {
-      "@denotest/esm-basic": "*"
-    }
-  }));
-  temp_dir.join("deno.json").write_json(&json!({
-    "unstable": ["byonm"]
-  }));
-  context.run_npm("install");
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  let notebook_uri = temp_dir.join("notebook.ipynb").uri_file();
-  let notebook_specifier = format!(
-    "{}#abc",
-    notebook_uri
-      .to_string()
-      .replace("file://", "deno-notebook-cell:")
-  );
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": notebook_specifier,
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import { getValue, nonExistent } from '@denotest/esm-basic';\n console.log(getValue, nonExistent);",
-    },
-  }));
-  assert_eq!(
-    json!(diagnostics.all_messages()),
-    json!([
-      {
-        "uri": notebook_specifier,
-        "diagnostics": [
-          {
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 19,
-              },
-              "end": {
-                "line": 0,
-                "character": 30,
-              },
-            },
-            "severity": 1,
-            "code": 2305,
-            "source": "deno-ts",
-            "message": "Module '\"@denotest/esm-basic\"' has no exported member 'nonExistent'.",
-          },
-        ],
-        "version": 1,
-      },
-    ])
-  );
   client.shutdown();
 }
 
