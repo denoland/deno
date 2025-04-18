@@ -205,7 +205,7 @@ const documentRegistry = {
       SOURCE_REF_COUNTS.delete(path);
       // We call `cleanupSemanticCache` for other purposes, don't bust the
       // source cache in this case.
-      if (LAST_REQUEST_METHOD.get() != "cleanupSemanticCache") {
+      if (LAST_REQUEST_METHOD.get() != "$cleanupSemanticCache") {
         const mapKey = path + key;
         documentRegistrySourceFileCache.delete(mapKey);
         SCRIPT_SNAPSHOT_CACHE.delete(path);
