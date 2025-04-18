@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// deno-lint-ignore-file no-console camelcase
+
 async function createComment(context, github) {
   await github.rest.issues.createComment({
     issue_number: context.issue.number,
