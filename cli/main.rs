@@ -370,6 +370,7 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
 
+    // Panic traces are not supported for custom/development builds.
     #[cfg(feature = "panic-trace")]
     {
       let info = &deno_lib::version::DENO_VERSION_INFO;
