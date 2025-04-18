@@ -1411,7 +1411,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
-      "install" => install_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m, app)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
@@ -5031,6 +5031,7 @@ fn info_parse(
 fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, false)?;
 
@@ -5068,6 +5069,13 @@ fn install_parse(
     .remove_many("cmd")
     .map(|packages| add_parse_inner(matches, Some(packages)))
   {
+    if matches!(flags.config_flag, ConfigFlag::Disabled) {
+      return Err(app.override_usage("deno install [OPTIONS] [PACKAGE]...").error(
+        clap::error::ErrorKind::ArgumentConflict,
+        format!("deno install with a list of packages can't be used with --no-config.\n{} To cache the packages without adding to a config, use `deno install --entrypoint`", deno_terminal::colors::cyan("hint:")),
+      ));
+    }
+
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
     ))
