@@ -1,5 +1,5 @@
-error: deno install with a list of packages can't be used with --no-config.
-hint: To cache the packages without adding to a config, use `deno install --entrypoint`
+error: deno install can't be used to add packages if `--no-config` is passed.
+hint: to cache the packages without adding to a config, pass the `--entrypoint` flag
 
 Usage: deno install [OPTIONS] [PACKAGE]...
 

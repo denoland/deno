@@ -5072,7 +5072,7 @@ fn install_parse(
     if matches!(flags.config_flag, ConfigFlag::Disabled) {
       return Err(app.override_usage("deno install [OPTIONS] [PACKAGE]...").error(
         clap::error::ErrorKind::ArgumentConflict,
-        format!("deno install with a list of packages can't be used with --no-config.\n{} To cache the packages without adding to a config, use `deno install --entrypoint`", deno_terminal::colors::cyan("hint:")),
+        format!("deno install can't be used to add packages if `--no-config` is passed.\n{} to cache the packages without adding to a config, pass the `--entrypoint` flag", deno_terminal::colors::cyan("hint:")),
       ));
     }
 
