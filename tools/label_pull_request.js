@@ -8,6 +8,7 @@ async function createComment(context, github) {
     body: `Thanks for the PR!
 
 Once you are done, please request a review from a Deno team member.`,
+  });
 }
 
 async function updateLabels(context, github) {
