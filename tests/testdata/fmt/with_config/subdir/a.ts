@@ -70,6 +70,6 @@ Deno.test(
 
 		// checks typeLiteral.separatorKind=semiColon
 		// checks spaceSurroundingProperties=false
-		type T = {a: 1; b: 2}
+		type T = {a: 1, b: 2}
 	}
 )

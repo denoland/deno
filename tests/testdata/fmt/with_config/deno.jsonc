@@ -23,7 +23,7 @@
 		"jsx.bracketPosition": "sameLine",
 		"jsx.forceNewLinesSurroundingContent": true,
 		"jsx.multiLineParens": "never",
-		"typeLiteral.separatorKind": "semiColon",
+		"typeLiteral.separatorKind": "comma",
 		"spaceAround": true,
 		"spaceSurroundingProperties": false
 	}
