@@ -899,7 +899,12 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      import.meta.log("info", `Listening on ${scheme}${host}:${addr.port}/`);
+      const url = `${scheme}${host}:${addr.port}/`;
+      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+        ? ` (accessible via ${scheme}://localhost:${addr.port})`
+        : "";
+
+      import.meta.log("info", `Listening on ${url}${helper}`);
     }
   };
 
