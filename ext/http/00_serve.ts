@@ -36,6 +36,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
+  ReflectHas,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeArrayIterator,
@@ -573,7 +574,14 @@ function mapToCallback(context, callback, onError) {
         updateSpanFromRequest(span, request);
       }
 
-      response = await callback(request, new ServeHandlerInfo(innerRequest));
+      response = callback(request, new ServeHandlerInfo(innerRequest));
+
+      if (
+        typeof response === "object" && response !== null &&
+        ReflectHas(response, "then")
+      ) {
+        response = await response;
+      }
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
