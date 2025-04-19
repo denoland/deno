@@ -223,41 +223,20 @@ fn uv_close<F>(
 
 #[cfg(test)]
 mod tests {
-  use std::future::poll_fn;
-  use std::task::Poll;
+  use crate::ops::js_test;
 
-  use deno_core::JsRuntime;
-  use deno_core::RuntimeOptions;
-
-  async fn js_test(source_code: &'static str) {
-    deno_core::extension!(
-      test_ext,
-      objects = [super::AsyncWrap, super::HandleWrap,],
-      state = |state| {
-        state.put::<super::AsyncId>(super::AsyncId::default());
-      }
-    );
-
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
-      ..Default::default()
-    });
-
-    poll_fn(move |cx| {
-      runtime
-        .execute_script("file://handle_wrap_test.js", source_code)
-        .unwrap();
-
-      let result = runtime.poll_event_loop(cx, Default::default());
-      assert!(matches!(result, Poll::Ready(Ok(()))));
-      Poll::Ready(())
-    })
-    .await;
-  }
+  deno_core::extension!(
+    test_ext,
+    objects = [super::AsyncWrap, super::HandleWrap,],
+    state = |state| {
+      state.put::<super::AsyncId>(super::AsyncId::default());
+    }
+  );
 
   #[tokio::test]
   async fn test_handle_wrap() {
     js_test(
+      test_ext::init_ops(),
       r#"
         const { HandleWrap } = Deno.core.ops;
 
