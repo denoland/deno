@@ -202,11 +202,13 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function wrapTestFn(fn, resolve) {
+function wrapTestFn(fn, resolve, reject) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t);
     try {
       await fn(nodeTestContext);
+    } catch (err) {
+      reject(err);
     } finally {
       resolve();
     }
@@ -218,11 +220,11 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   // TODO(iuioiua): Update once there's a primordial for `Promise.withResolvers()`.
   // deno-lint-ignore prefer-primordials
-  const { promise, resolve } = Promise.withResolvers();
+  const { promise, resolve, reject } = Promise.withResolvers();
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve),
+    fn: wrapTestFn(prepared.fn, resolve, reject),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
     sanitizeExit: false,
