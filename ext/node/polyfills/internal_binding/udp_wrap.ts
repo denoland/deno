@@ -42,6 +42,7 @@ import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
   op_node_unstable_net_listen_udp,
@@ -324,12 +325,12 @@ export class UDP extends HandleWrap {
     this.#unrefed = true;
   }
 
-  #doBind(ip: string, port: number, _flags: number, family: number): number {
-    // TODO(cmorten): use flags to inform socket reuse etc.
+  #doBind(ip: string, port: number, flags: number, family: number): number {
     const listenOptions = {
       port,
       hostname: ip,
       transport: "udp" as const,
+      reuseAddress: (flags & os.UV_UDP_REUSEADDR) !== 0,
     };
 
     let listener;
