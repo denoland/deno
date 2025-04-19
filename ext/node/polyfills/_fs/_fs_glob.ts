@@ -20,6 +20,44 @@ import {
 import assert from "node:assert"
 import minimatch from "npm:minimatch" // FIXME: how does this work?
 
+import type Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
+
+interface GlobOptionsBase {
+    /**
+     * Current working directory.
+     * @default process.cwd()
+     */
+    cwd?: string | undefined;
+    /**
+     * `true` if the glob should return paths as `Dirent`s, `false` otherwise.
+     * @default false
+     * @since v22.2.0
+     */
+    withFileTypes?: boolean | undefined;
+    /**
+     * Function to filter out files/directories. Return true to exclude the item, false to include it.
+     */
+    exclude?: ((fileName: any) => boolean) | undefined;
+}
+export interface GlobOptionsWithFileTypes extends GlobOptionsBase {
+    exclude?: ((fileName: Dirent) => boolean) | undefined;
+    withFileTypes: true;
+}
+export interface GlobOptionsWithoutFileTypes extends GlobOptionsBase {
+    exclude?: ((fileName: string) => boolean) | undefined;
+    withFileTypes?: false | undefined;
+}
+export interface GlobOptions extends GlobOptionsBase {
+    exclude?: ((fileName: Dirent | string) => boolean) | undefined;
+}
+
+export type GlobOptionsU = GlobOptionsWithFileTypes | GlobOptionsWithoutFileTypes | GlobOptions;
+
+export type GlobCallback<Args extends unknown[]> = (e: ErrnoException | null, ...args: Args) => unknown;
+
+const nop = () => {};
+
 const {
     ArrayFrom, 
     ArrayIsArray, 
@@ -841,11 +879,26 @@ function ArrayPrototypeFromAsync(asyncIterator) {
     return promise
 }
 
-export function globSync(pattern, options) {
+export function globSync(pattern: string | string[]): string[];
+export function globSync(pattern: string | string[], options: fs.GlobOptionsWithFileTypes): Dirent[];
+export function globSync(pattern: string | string[], options: fs.GlobOptionsWithoutFileTypes): string[];
+export function globSync(pattern: string | string[], options: fs.GlobOptions): Dirent[] | string[];
+export function globSync(pattern: string | string[], options: GlobOptionsU = {}): Dirent[] | string[] {
   return new Glob(pattern, options).globSync();
 }
 
-export function glob(pattern, options, callback) {
+/**
+ * Retrieves the files matching the specified pattern.
+ */
+export function glob(pattern: string | string[], callback: GlobCallback<[string[]]>): void;
+export function glob(pattern: string | string[], options: GlobOptionsWithFileTypes, callback: GlobCallback<[Dirent[]]>): void;
+export function glob(pattern: string | string[], options: GlobOptionsWithoutFileTypes, callback: GlobCallback<[string[]]>): void;
+export function glob(pattern: string | string[], options: GlobOptions, callback: GlobCallback<[Dirent[] | string[]]>): void;
+export function glob(
+	pattern: string | string[],
+	options: GlobOptionsU | GlobCallback<[string[]]>,
+	callback: GlobCallback<[Dirent[]]> | GlobCallback<[string[]]> = nop
+): void {
   if (typeof options === 'function') {
     callback = options;
     options = undefined;
