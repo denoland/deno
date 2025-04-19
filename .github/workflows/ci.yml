@@ -3,6 +3,7 @@
 name: ci
 permissions:
   contents: write
+  id-token: write
 on:
   push:
     branches:
@@ -48,6 +49,8 @@ jobs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
+    environment:
+      name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -495,6 +498,55 @@ jobs:
           strip -x -S ./denort
           zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
           shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
+      - name: Authenticate with Azure (windows)
+        if: |-
+          !(matrix.skip) && (matrix.os == 'windows' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
+        uses: azure/login@v1
+        with:
+          client-id: '${{ secrets.AZURE_CLIENT_ID }}'
+          tenant-id: '${{ secrets.AZURE_TENANT_ID }}'
+          subscription-id: '${{ secrets.AZURE_SUBSCRIPTION_ID }}'
+          enable-AzPSSession: true
+      - name: Code sign deno.exe (windows)
+        if: |-
+          !(matrix.skip) && (matrix.os == 'windows' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
+        uses: azure/trusted-signing-action@v0
+        with:
+          endpoint: 'https://eus.codesigning.azure.net/'
+          trusted-signing-account-name: deno-cli-code-signing
+          certificate-profile-name: deno-cli-code-signing-cert
+          files-folder: target/release
+          files-folder-filter: deno.exe
+          file-digest: SHA256
+          timestamp-rfc3161: 'http://timestamp.acs.microsoft.com'
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+      - name: Verify signature (windows)
+        if: |-
+          !(matrix.skip) && (matrix.os == 'windows' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
+        shell: pwsh
+        run: |-
+          $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $SignToolPath = $SignTool.FullName
+          & $SignToolPath verify /pa /v target\release\deno.exe
       - name: Pre-release (windows)
         if: |-
           !(matrix.skip) && (matrix.os == 'windows' &&
