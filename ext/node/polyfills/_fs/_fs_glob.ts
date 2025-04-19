@@ -18,7 +18,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 
 import assert from "node:assert"
-import minimatch from "npm:minimatch" // FIXME: how does this work?
+import minimatch from "npm:minimatch" // FIXME: will this work?
 
 import type Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -880,11 +880,11 @@ function ArrayPrototypeFromAsync(asyncIterator) {
 }
 
 export function globSync(pattern: string | string[]): string[];
-export function globSync(pattern: string | string[], options: fs.GlobOptionsWithFileTypes): Dirent[];
-export function globSync(pattern: string | string[], options: fs.GlobOptionsWithoutFileTypes): string[];
-export function globSync(pattern: string | string[], options: fs.GlobOptions): Dirent[] | string[];
+export function globSync(pattern: string | string[], options: GlobOptionsWithFileTypes): Dirent[];
+export function globSync(pattern: string | string[], options: GlobOptionsWithoutFileTypes): string[];
+export function globSync(pattern: string | string[], options: GlobOptions): Dirent[] | string[];
 export function globSync(pattern: string | string[], options: GlobOptionsU = {}): Dirent[] | string[] {
-  return new Glob(pattern, options).globSync();
+    return new Glob(pattern, options).globSync();
 }
 
 /**
@@ -901,7 +901,7 @@ export function glob(
 ): void {
   if (typeof options === 'function') {
     callback = options;
-    options = undefined;
+    options = {};
   }
   callback = makeCallback(callback);
 
