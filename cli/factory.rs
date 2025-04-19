@@ -404,10 +404,7 @@ impl CliFactory {
         let workspace_directory = workspace_factory.workspace_directory()?;
         let maybe_external_import_map =
           self.workspace_external_import_map_loader()?.get_or_load()?;
-        let provider = self.npm_registry_info_provider()?.clone();
-        let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
-          provider.as_npm_registry_api(),
-        ));
+        let adapter = self.lockfile_npm_package_info_provider()?;
 
         let maybe_lock_file = CliLockfile::discover(
           &self.sys(),
@@ -660,6 +657,7 @@ impl CliFactory {
             .map(|p| p.to_path_buf()),
           cli_options.lifecycle_scripts_config(),
           cli_options.npm_system_info(),
+          self.workspace_npm_patch_packages()?.clone(),
         )))
       })
       .await
@@ -678,6 +676,15 @@ impl CliFactory {
           self.npmrc()?.clone(),
         )))
       })
+  }
+
+  pub fn lockfile_npm_package_info_provider(
+    &self,
+  ) -> Result<crate::npm::NpmPackageInfoApiAdapter, AnyError> {
+    Ok(crate::npm::NpmPackageInfoApiAdapter::new(
+      Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
+      self.workspace_npm_patch_packages()?.clone(),
+    ))
   }
 
   pub async fn npm_resolution_initializer(
