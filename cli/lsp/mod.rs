@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_npm::registry::NpmRegistryApi;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
 use tower_lsp::LspService;
@@ -42,7 +41,9 @@ mod tsc;
 mod urls;
 
 pub async fn start(
-  registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  registry_provider: Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();

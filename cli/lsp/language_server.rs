@@ -29,7 +29,6 @@ use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
-use deno_npm::registry::NpmRegistryApi;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -260,7 +259,8 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-  registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  registry_provider:
+    Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
@@ -299,7 +299,9 @@ impl std::fmt::Debug for Inner {
 impl LanguageServer {
   pub fn new(
     client: Client,
-    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
@@ -533,7 +535,9 @@ impl Inner {
   fn new(
     client: Client,
     performance: Arc<Performance>,
-    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));

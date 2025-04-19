@@ -21,6 +21,7 @@ use self::local::LocalNpmPackageInstaller;
 pub use self::resolution::AddPkgReqsResult;
 pub use self::resolution::NpmResolutionInstaller;
 use super::NpmResolutionInitializer;
+use super::WorkspaceNpmPatchPackages;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
@@ -71,6 +72,7 @@ impl NpmInstaller {
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
@@ -85,6 +87,7 @@ impl NpmInstaller {
           lifecycle_scripts,
           system_info,
           npm_registry_info_provider,
+          workspace_patch_packages,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,

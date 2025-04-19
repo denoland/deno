@@ -293,7 +293,7 @@ impl CliLockfile {
   pub async fn read_from_path(
     sys: &CliSys,
     opts: CliLockfileReadFromPathOptions,
-    api: &(dyn NpmPackageInfoProvider + Send + Sync),
+    api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
       Ok(text) => {
