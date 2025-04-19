@@ -6,8 +6,8 @@ import { validateObject, validateString, validateStringArray } from "ext:deno_no
 import { isWindows, isMacOS } from "ext:deno_node/_util/os.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 
-import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import { readdirPromise as readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
+import { lstatPromise as lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 
 import { join, resolve, basename, isAbsolute, dirname } from "ext:node/polyfills/path/mod.ts"
 import { DirentFromStats } from "ext:node/polyfills/internal/fs/utils.mjs"
@@ -66,12 +66,15 @@ const {
     ArrayPrototypeMap, 
     ArrayPrototypePop, 
     ArrayPrototypePush, 
-    ArrayPrototypeSome, 
+    ArrayPrototypeSome,
+    ArrayPrototypeReduce,
+    ArrayPrototypeConcat,
     Promise, 
     PromisePrototypeThen, 
     SafeMap, 
     SafeSet, 
-    StringPrototypeEndsWith
+    StringPrototypeEndsWith,
+    ReflectApply,
 } = primordials
 
 // polyfill ArrayPrototypeFlatMap since it seems to be missing on the deno side
@@ -87,7 +90,7 @@ const {
             }
         }, []);
     }
-    function ArrayPrototypeFlatMap(arr, func, thisArg) {
+    function ArrayPrototypeFlatMap(arr, func, thisArg = undefined) {
         return _flattenArray(ArrayPrototypeMap(arr, func, thisArg))
     }
 
@@ -104,7 +107,7 @@ async function getDirent(path) {
     let stat
     try {
         stat = await lstat(path)
-    } catch {
+    } catch (err) {
         return null
     }
     return new DirentFromStats(basename(path), stat, dirname(path))
@@ -288,7 +291,7 @@ class Pattern {
 class ResultSet extends SafeSet {
     #root = "."
     #isExcluded = () => false
-    constructor(i) {
+    constructor(i=undefined) {
         super(i)
     } // eslint-disable-line no-useless-constructor
 
@@ -591,7 +594,7 @@ export class Glob {
         const isDirectory = stat?.isDirectory() || (stat?.isSymbolicLink() && pattern.hasSeenSymlinks)
         const isLast = pattern.isLast(isDirectory)
         const isFirst = pattern.isFirst()
-
+        
         if (this.#isExcluded(fullpath)) {
             return
         }
@@ -600,6 +603,7 @@ export class Glob {
             this.#addSubpattern(`${pattern.at(0)}\\`, pattern.child(new SafeSet().add(1)))
             return
         }
+        
         if (isFirst && pattern.at(0) === "") {
             // Absolute path, go to root
             this.#addSubpattern("/", pattern.child(new SafeSet().add(1)))
@@ -640,7 +644,7 @@ export class Glob {
                 }
             }
         }
-
+        
         if (!isDirectory) {
             return
         }
@@ -828,6 +832,8 @@ function makeCallback(cb) {
 
 // good-enough ponyfill of ArrayPrototypeFromAsync
 function ArrayPrototypeFromAsync(asyncIterator) {
+    // NOTE: I think I can't use "for await" in bootstrapping,
+    // so I use a recursive promise based approach
     let resolve, reject
     const promise = new Promise((_resolve, _reject)=>{
         resolve = _resolve
@@ -896,12 +902,12 @@ export function glob(pattern: string | string[], options: GlobOptionsWithoutFile
 export function glob(pattern: string | string[], options: GlobOptions, callback: GlobCallback<[Dirent[] | string[]]>): void;
 export function glob(
 	pattern: string | string[],
-	options: GlobOptionsU | GlobCallback<[string[]]>,
+	options: GlobOptionsU | GlobCallback<[string[]]> | undefined,
 	callback: GlobCallback<[Dirent[]]> | GlobCallback<[string[]]> = nop
 ): void {
   if (typeof options === 'function') {
     callback = options;
-    options = {};
+    options = undefined;
   }
   callback = makeCallback(callback);
 
@@ -922,7 +928,7 @@ export function globPromise(pattern: string | string[], options: GlobOptionsWith
 export function globPromise(pattern: string | string[], options: GlobOptions): Promise<Dirent[] | string[]>;
 export function globPromise(
 	pattern: string | string[],
-	options: GlobOptionsU,
+	options: GlobOptionsU | undefined,
 ): Promise<Dirent[] | string[]> {
     return new Promise((resolve: CallableFunction, reject: CallableFunction)=>{
         glob(pattern, options, (err: ErrnoException | null, files: Dirent[] | string[]) => {
