@@ -948,6 +948,9 @@ fn files_str(len: usize) -> &'static str {
 fn get_typescript_config_builder(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_typescript::configuration::ConfigurationBuilder {
+  use deno_config::deno_json::*;
+  use dprint_plugin_typescript::configuration as dprint_config;
+
   let mut builder =
     dprint_plugin_typescript::configuration::ConfigurationBuilder::new();
   builder.deno();
@@ -977,6 +980,149 @@ fn get_typescript_config_builder(
       true => dprint_plugin_typescript::configuration::SemiColons::Prefer,
       false => dprint_plugin_typescript::configuration::SemiColons::Asi,
     });
+  }
+
+  if let Some(quote_props) = options.quote_props {
+    builder.quote_props(match quote_props {
+      QuoteProps::AsNeeded => dprint_config::QuoteProps::AsNeeded,
+      QuoteProps::Consistent => dprint_config::QuoteProps::Consistent,
+      QuoteProps::Preserve => dprint_config::QuoteProps::Preserve,
+    });
+  }
+
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
+  }
+
+  if let Some(use_braces) = options.use_braces {
+    builder.use_braces(match use_braces {
+      UseBraces::Always => dprint_config::UseBraces::Always,
+      UseBraces::Maintain => dprint_config::UseBraces::Maintain,
+      UseBraces::PreferNone => dprint_config::UseBraces::PreferNone,
+      UseBraces::WhenNotSingleLine => {
+        dprint_config::UseBraces::WhenNotSingleLine
+      }
+    });
+  }
+
+  if let Some(brace_position) = options.brace_position {
+    builder.brace_position(match brace_position {
+      BracePosition::Maintain => dprint_config::BracePosition::Maintain,
+      BracePosition::NextLine => dprint_config::BracePosition::NextLine,
+      BracePosition::SameLine => dprint_config::BracePosition::SameLine,
+      BracePosition::SameLineUnlessHanging => {
+        dprint_config::BracePosition::SameLineUnlessHanging
+      }
+    });
+  }
+
+  if let Some(single_body_position) = options.single_body_position {
+    builder.single_body_position(match single_body_position {
+      SingleBodyPosition::Maintain => {
+        dprint_config::SameOrNextLinePosition::Maintain
+      }
+      SingleBodyPosition::NextLine => {
+        dprint_config::SameOrNextLinePosition::NextLine
+      }
+      SingleBodyPosition::SameLine => {
+        dprint_config::SameOrNextLinePosition::SameLine
+      }
+    });
+  }
+
+  if let Some(next_control_flow_position) = options.next_control_flow_position {
+    builder.next_control_flow_position(match next_control_flow_position {
+      NextControlFlowPosition::Maintain => {
+        dprint_config::NextControlFlowPosition::Maintain
+      }
+      NextControlFlowPosition::NextLine => {
+        dprint_config::NextControlFlowPosition::NextLine
+      }
+      NextControlFlowPosition::SameLine => {
+        dprint_config::NextControlFlowPosition::SameLine
+      }
+    });
+  }
+
+  if let Some(trailing_commas) = options.trailing_commas {
+    builder.trailing_commas(match trailing_commas {
+      TrailingCommas::Always => dprint_config::TrailingCommas::Always,
+      TrailingCommas::Never => dprint_config::TrailingCommas::Never,
+      TrailingCommas::OnlyMultiLine => {
+        dprint_config::TrailingCommas::OnlyMultiLine
+      }
+    });
+  }
+
+  if let Some(operator_position) = options.operator_position {
+    builder.operator_position(match operator_position {
+      OperatorPosition::Maintain => dprint_config::OperatorPosition::Maintain,
+      OperatorPosition::NextLine => dprint_config::OperatorPosition::NextLine,
+      OperatorPosition::SameLine => dprint_config::OperatorPosition::SameLine,
+    });
+  }
+
+  if let Some(jsx_bracket_position) = options.jsx_bracket_position {
+    builder.jsx_bracket_position(match jsx_bracket_position {
+      BracketPosition::Maintain => {
+        dprint_config::SameOrNextLinePosition::Maintain
+      }
+      BracketPosition::NextLine => {
+        dprint_config::SameOrNextLinePosition::NextLine
+      }
+      BracketPosition::SameLine => {
+        dprint_config::SameOrNextLinePosition::SameLine
+      }
+    });
+  }
+
+  if let Some(jsx_force_new_lines_surrounding_content) =
+    options.jsx_force_new_lines_surrounding_content
+  {
+    builder.jsx_force_new_lines_surrounding_content(
+      jsx_force_new_lines_surrounding_content,
+    );
+  }
+
+  if let Some(jsx_multi_line_parens) = options.jsx_multi_line_parens {
+    builder.jsx_multi_line_parens(match jsx_multi_line_parens {
+      MultiLineParens::Always => dprint_config::JsxMultiLineParens::Always,
+      MultiLineParens::Never => dprint_config::JsxMultiLineParens::Never,
+      MultiLineParens::Prefer => dprint_config::JsxMultiLineParens::Prefer,
+    });
+  }
+
+  if let Some(type_literal_separator_kind) = options.type_literal_separator_kind
+  {
+    builder.type_literal_separator_kind(match type_literal_separator_kind {
+      SeparatorKind::Comma => dprint_config::SemiColonOrComma::Comma,
+      SeparatorKind::SemiColon => dprint_config::SemiColonOrComma::SemiColon,
+    });
+  }
+
+  if let Some(space_around) = options.space_around {
+    builder.space_around(space_around);
+  }
+
+  if let Some(space_surrounding_properties) =
+    options.space_surrounding_properties
+  {
+    builder.space_surrounding_properties(space_surrounding_properties);
   }
 
   builder
