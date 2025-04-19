@@ -20,6 +20,8 @@ use serde::Serialize;
 use url::Url;
 
 use crate::assertions::assert_wildcard_match;
+use crate::lsp::source_file;
+use crate::lsp::SourceFile;
 use crate::testdata_path;
 
 /// Characters that are left unencoded in a `Url` path but will be encoded in a
@@ -591,6 +593,15 @@ impl TempDir {
 
   pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<[u8]>) {
     self.target_path().join(path).write(text)
+  }
+
+  pub fn source_file(
+    &self,
+    path: impl AsRef<Path>,
+    text: impl AsRef<str>,
+  ) -> SourceFile {
+    let path = self.target_path().join(path);
+    source_file(path, text)
   }
 
   pub fn symlink_dir(
