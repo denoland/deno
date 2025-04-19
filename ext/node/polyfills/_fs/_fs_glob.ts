@@ -915,3 +915,22 @@ export function glob(
     }
   })();
 }
+
+export function globPromise(pattern: string | string[]): Promise<Dirent[] | string[]>;
+export function globPromise(pattern: string | string[], options: GlobOptionsWithFileTypes): Promise<Dirent[] | string[]>;
+export function globPromise(pattern: string | string[], options: GlobOptionsWithoutFileTypes): Promise<Dirent[] | string[]>;
+export function globPromise(pattern: string | string[], options: GlobOptions): Promise<Dirent[] | string[]>;
+export function globPromise(
+	pattern: string | string[],
+	options: GlobOptionsU,
+): Promise<Dirent[] | string[]> {
+    return new Promise((resolve: CallableFunction, reject: CallableFunction)=>{
+        glob(pattern, options, (err: ErrnoException | null, files: Dirent[] | string[]) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(files)
+            }
+        })
+    })
+}
