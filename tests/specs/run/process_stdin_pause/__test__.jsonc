@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "stdin_pause": {
+      "args": "run stdin_pause.ts",
+      "output": "stdin_pause.out"
+    }
+  }
+}

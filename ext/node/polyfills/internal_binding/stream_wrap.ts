@@ -32,7 +32,11 @@
 
 import { core } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
-import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
+import {
+  op_can_write_vectored,
+  op_raw_write_vectored,
+  StreamWrap,
+} from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
@@ -113,10 +117,22 @@ export const kStreamBaseField = Symbol("kStreamBaseField");
 const SUGGESTED_SIZE = 64 * 1024;
 
 export class LibuvStreamWrap extends HandleWrap {
-  [kStreamBaseField]?: Reader & Writer & Closer & Ref;
+  #streamBaseField?: Reader & Writer & Closer & Ref;
+
+  get [kStreamBaseField]() {
+    return this.#streamBaseField;
+  }
+
+  set [kStreamBaseField](stream: Reader & Writer & Closer & Ref) {
+    this.#streamBaseField = stream;
+    if (stream) {
+      this.streamWrap.attachHandle(stream?.[internalRidSymbol] ?? stream?.rid);
+    }
+  }
 
   reading!: boolean;
-  #reading = false;
+  #readWrap;
+  #unrefed;
   destroyed = false;
   writeQueueSize = 0;
   bytesRead = 0;
@@ -129,7 +145,10 @@ export class LibuvStreamWrap extends HandleWrap {
     provider: providerType,
     stream?: Reader & Writer & Closer & Ref,
   ) {
-    super(provider, stream?.[internalRidSymbol]);
+    const rid = stream?.[internalRidSymbol] ?? stream?.rid;
+    super(provider, rid);
+
+    this.streamWrap = new StreamWrap(rid);
     this.#attachToObject(stream);
   }
 
@@ -138,10 +157,72 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   readStart(): number {
-    if (!this.#reading) {
-      this.#reading = true;
-      this.#read();
+    let nread: number | null;
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+
+    if (this.upgrading) {
+      // Starting an upgrade, stop reading. Upgrading will resume reading.
+      this.readStop();
+      return;
     }
+
+    this.readPromise = this.streamWrap.readStart(this.#buf, (nread) => {
+      nread ??= codeMap.get("EOF")!;
+
+      streamBaseState[kReadBytesOrError] = nread;
+
+      if (nread > 0) {
+        this.bytesRead += nread;
+      }
+
+      const buf = this.#buf.slice(0, nread);
+
+      streamBaseState[kArrayBufferOffset] = 0;
+
+      try {
+        this.onread!(buf, nread);
+      } catch {
+        // swallow callback errors.
+      }
+    });
+
+    if (this.#unrefed) {
+      core.unrefOpPromise(this.readPromise);
+    }
+
+    this.readPromise.catch((e) => {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (
+        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+      ) {
+        // TODO(littledivy): restart read
+        return;
+      }
+
+      if (
+        e instanceof Deno.errors.Interrupted ||
+        e instanceof Deno.errors.BadResource
+      ) {
+        nread = codeMap.get("EOF")!;
+      } else if (
+        e instanceof Deno.errors.ConnectionReset ||
+        e instanceof Deno.errors.ConnectionAborted
+      ) {
+        nread = codeMap.get("ECONNRESET")!;
+      } else {
+        this[ownerSymbol].destroy(e);
+        return;
+      }
+
+      streamBaseState[kReadBytesOrError] = nread;
+
+      try {
+        this.onread!(new Uint8Array(0), nread);
+      } catch {
+        // swallow callback errors.
+      }
+    });
 
     return 0;
   }
@@ -151,9 +232,7 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   readStop(): number {
-    this.#reading = false;
-
-    return 0;
+    return this.streamWrap.readStop();
   }
 
   /**
@@ -298,7 +377,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   override _onClose(): number {
     let status = 0;
-    this.#reading = false;
+    this.readStop();
 
     try {
       this[kStreamBaseField]?.close();
@@ -317,66 +396,17 @@ export class LibuvStreamWrap extends HandleWrap {
     this[kStreamBaseField] = stream;
   }
 
-  /** Internal method for reading from the attached stream. */
-  async #read() {
-    let buf = this.#buf;
-
-    let nread: number | null;
-    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
-
-    if (this.upgrading) {
-      // Starting an upgrade, stop reading. Upgrading will resume reading.
-      this.readStop();
-      return;
+  override ref() {
+    this.#unrefed = false;
+    if (this.readPromise) {
+      core.refOpPromise(this.readPromise);
     }
+  }
 
-    try {
-      nread = await this[kStreamBaseField]!.read(buf);
-    } catch (e) {
-      // Try to read again if the underlying stream resource
-      // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
-        return this.#read();
-      }
-
-      if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
-      ) {
-        nread = codeMap.get("EOF")!;
-      } else if (
-        e instanceof Deno.errors.ConnectionReset ||
-        e instanceof Deno.errors.ConnectionAborted
-      ) {
-        nread = codeMap.get("ECONNRESET")!;
-      } else {
-        this[ownerSymbol].destroy(e);
-        return;
-      }
-    }
-
-    nread ??= codeMap.get("EOF")!;
-
-    streamBaseState[kReadBytesOrError] = nread;
-
-    if (nread > 0) {
-      this.bytesRead += nread;
-    }
-
-    buf = buf.slice(0, nread);
-
-    streamBaseState[kArrayBufferOffset] = 0;
-
-    try {
-      this.onread!(buf, nread);
-    } catch {
-      // swallow callback errors.
-    }
-
-    if (nread >= 0 && this.#reading) {
-      this.#read();
+  override unref() {
+    this.#unrefed = true;
+    if (this.readPromise) {
+      core.unrefOpPromise(this.readPromise);
     }
   }
 

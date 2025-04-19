@@ -252,6 +252,8 @@ export class TCP extends ConnectionWrap {
     if (this[kStreamBaseField]) {
       this[kStreamBaseField].ref();
     }
+
+    return super.ref();
   }
 
   override unref() {
@@ -262,6 +264,8 @@ export class TCP extends ConnectionWrap {
     if (this[kStreamBaseField]) {
       this[kStreamBaseField].unref();
     }
+
+    return super.unref();
   }
 
   /**

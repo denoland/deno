@@ -483,6 +483,7 @@ deno_core::extension!(deno_node,
     ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::stream_wrap::StreamWrap,
     ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
