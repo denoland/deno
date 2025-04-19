@@ -196,7 +196,7 @@ pub fn op_tls_key_null() -> TlsKeysHolder {
   TlsKeysHolder::from(TlsKeys::Null)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[cppgc]
 pub fn op_tls_key_static(
   #[string] cert: &str,
@@ -258,6 +258,7 @@ pub fn op_tls_cert_resolver_resolve_error(
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
+  #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -308,7 +309,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    TlsKeys::Null,
+    key_pair.take(),
     SocketUse::GeneralSsl,
   )?;
 

@@ -532,7 +532,7 @@ declare namespace Deno {
    */
   export function startTls(
     conn: TcpConn,
-    options?: StartTlsOptions,
+    options?: StartTlsOptions | (StartTlsOptions & TlsCertifiedKeyPem),
   ): Promise<TlsConn>;
 
   /**
