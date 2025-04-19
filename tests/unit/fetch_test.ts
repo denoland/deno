@@ -1229,6 +1229,21 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
+  async function createHttpClientLocalAddress() {
+    const client = Deno.createHttpClient({
+      localAddress: "127.0.0.2",
+    });
+    const response = await fetch("http://localhost:4545/local_addr", {
+      client,
+    });
+    const addr = await response.text();
+    assertEquals(addr, "127.0.0.2");
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
