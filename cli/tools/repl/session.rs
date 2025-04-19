@@ -313,12 +313,10 @@ impl ReplSession {
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
-    let closed = self
-      .evaluate_expression(&expression)
-      .await?
-      .result
+    let result = self.evaluate_expression(&expression).await?.result;
+    let closed = result
       .value
-      .unwrap()
+      .ok_or_else(|| anyhow!(result.description.unwrap()))?
       .as_bool()
       .unwrap();
 
