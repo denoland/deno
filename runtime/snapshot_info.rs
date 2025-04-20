@@ -52,6 +52,7 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+#[cfg(feature = "ffi")]
 impl deno_ffi::FfiPermissions for Permissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
