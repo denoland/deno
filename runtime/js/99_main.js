@@ -804,7 +804,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: serveIsMain,
       12: serveWorkerCount,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
@@ -999,8 +1002,8 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
-      14: closeOnIdle_,
     } = runtimeOptions;
+    closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -1052,7 +1055,6 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
-    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];

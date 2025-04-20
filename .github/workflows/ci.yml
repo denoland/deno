@@ -184,8 +184,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '50-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '50-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '53-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '53-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -381,7 +381,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '50-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '53-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -412,12 +412,12 @@ jobs:
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Check tracing build
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
-        run: 'cargo check -p deno --features=lsp-tracing '
+        run: cargo check -p deno --features=lsp-tracing
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
-        run: cargo build --locked --all-targets
+        run: cargo build --locked --all-targets --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
@@ -427,7 +427,7 @@ jobs:
           github.repository == 'denoland/deno'))
         run: |-
           df -h
-          cargo build --release --locked --all-targets
+          cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'
@@ -492,7 +492,7 @@ jobs:
           cd target/release
           zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
           shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum
-          strip ./denort
+          strip -x -S ./denort
           zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
           shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
       - name: Pre-release (windows)
@@ -533,7 +533,7 @@ jobs:
           matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') &&
           matrix.os == 'linux')
-        run: cargo test --locked
+        run: cargo test --locked --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: 'Test (fast, debug)'
@@ -542,8 +542,8 @@ jobs:
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
-          cargo test --locked --lib
-          cargo test --locked --tests
+          cargo test --locked --lib --features=panic-trace
+          cargo test --locked --tests --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)
@@ -553,7 +553,7 @@ jobs:
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
-        run: cargo test --release --locked
+        run: cargo test --release --locked --features=panic-trace
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -718,7 +718,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '50-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '53-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   wasm:
     name: build wasm32
     needs:

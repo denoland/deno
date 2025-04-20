@@ -5,6 +5,7 @@ pub mod buffer;
 pub mod crypto;
 pub mod dns;
 pub mod fs;
+pub mod handle_wrap;
 pub mod http;
 pub mod http2;
 pub mod idna;

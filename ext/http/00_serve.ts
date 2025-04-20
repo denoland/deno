@@ -17,6 +17,7 @@ import {
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -46,6 +47,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  Number,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -347,6 +349,13 @@ class InnerRequest {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    }
+    if (transport === "vsock") {
+      return {
+        transport,
+        cid: Number(this.#methodAndUri[3]),
+        port: this.#methodAndUri[4],
+      };
     }
     return {
       transport: "tcp",
@@ -767,8 +776,46 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
+    op_http_serve_address_override();
+  switch (overrideKind) {
+    case 1: {
+      // TCP
+      options = {
+        ...options,
+        hostname: overrideHost,
+        port: overridePort,
+      };
+      delete options.path;
+      delete options.cid;
+      break;
+    }
+    case 2: {
+      // Unix
+      options = {
+        ...options,
+        path: overrideHost,
+      };
+      delete options.hostname;
+      delete options.port;
+      break;
+    }
+    case 3: {
+      // Vsock
+      options = {
+        ...options,
+        cid: Number(overrideHost),
+        port: overridePort,
+      };
+      delete options.hostname;
+      delete options.path;
+      break;
+    }
+  }
+
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+  const wantsVsock = ObjectHasOwn(options, "cid");
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -788,6 +835,23 @@ function serve(arg1, arg2) {
         options.onListen(listener.addr);
       } else {
         import.meta.log("info", `Listening on ${path}`);
+      }
+    });
+  }
+
+  if (wantsVsock) {
+    const listener = listen({
+      transport: "vsock",
+      cid: options.cid,
+      port: options.port,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const { cid, port } = listener.addr;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }

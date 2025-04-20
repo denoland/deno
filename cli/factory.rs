@@ -404,22 +404,14 @@ impl CliFactory {
         let workspace_directory = workspace_factory.workspace_directory()?;
         let maybe_external_import_map =
           self.workspace_external_import_map_loader()?.get_or_load()?;
-        let provider = self.npm_registry_info_provider()?.clone();
-        let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
-          provider.as_npm_registry_api(),
-        ));
+        let adapter = self.lockfile_npm_package_info_provider()?;
 
-        let use_lockfile_v5 = crate::args::unstable_lockfile_v5(
-          &self.flags,
-          &workspace_directory.workspace,
-        );
         let maybe_lock_file = CliLockfile::discover(
           &self.sys(),
           &self.flags,
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
           &adapter,
-          use_lockfile_v5,
         )
         .await?
         .map(Arc::new);
@@ -615,15 +607,18 @@ impl CliFactory {
     self
       .services
       .npm_graph_resolver
-      .get_or_try_init_async(async move {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(CliNpmGraphResolver::new(
-          self.npm_installer_if_managed().await?.cloned(),
-          self.services.found_pkg_json_dep_flag.clone(),
-          cli_options.unstable_bare_node_builtins(),
-          cli_options.default_npm_caching_strategy(),
-        )))
-      })
+      .get_or_try_init_async(
+        async move {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(CliNpmGraphResolver::new(
+            self.npm_installer_if_managed().await?.cloned(),
+            self.services.found_pkg_json_dep_flag.clone(),
+            cli_options.unstable_bare_node_builtins(),
+            cli_options.default_npm_caching_strategy(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -662,6 +657,7 @@ impl CliFactory {
             .map(|p| p.to_path_buf()),
           cli_options.lifecycle_scripts_config(),
           cli_options.npm_system_info(),
+          self.workspace_npm_patch_packages()?.clone(),
         )))
       })
       .await
@@ -682,6 +678,15 @@ impl CliFactory {
       })
   }
 
+  pub fn lockfile_npm_package_info_provider(
+    &self,
+  ) -> Result<crate::npm::NpmPackageInfoApiAdapter, AnyError> {
+    Ok(crate::npm::NpmPackageInfoApiAdapter::new(
+      Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
+      self.workspace_npm_patch_packages()?.clone(),
+    ))
+  }
+
   pub async fn npm_resolution_initializer(
     &self,
   ) -> Result<&Arc<NpmResolutionInitializer>, AnyError> {
@@ -690,7 +695,6 @@ impl CliFactory {
       .npm_resolution_initializer
       .get_or_try_init_async(async move {
         Ok(Arc::new(NpmResolutionInitializer::new(
-          self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
           self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
@@ -927,12 +931,16 @@ impl CliFactory {
     self
       .services
       .node_code_translator
-      .get_or_try_init_async(async {
-        let module_export_analyzer = self.cjs_module_export_analyzer().await?;
-        Ok(Arc::new(NodeCodeTranslator::new(
-          module_export_analyzer.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let module_export_analyzer =
+            self.cjs_module_export_analyzer().await?;
+          Ok(Arc::new(NodeCodeTranslator::new(
+            module_export_analyzer.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -1265,6 +1273,7 @@ impl CliFactory {
       } else {
         None
       },
+      None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
       self.maybe_inspector_server()?.clone(),
@@ -1310,6 +1319,7 @@ impl CliFactory {
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
+      is_standalone: false,
       is_inspecting: cli_options.is_inspecting(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]

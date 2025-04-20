@@ -24,6 +24,7 @@ use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
@@ -172,6 +173,8 @@ pub struct LibMainWorkerOptions {
   pub inspect_wait: bool,
   pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
+  /// If this is a `deno compile`-ed executable.
+  pub is_standalone: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -192,6 +195,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
+  deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -267,6 +271,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         shared.resolve_unstable_features(feature_checker.as_ref());
 
       let services = WebWorkerServiceOptions {
+        deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
         root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
         module_loader,
         fs: shared.fs.clone(),
@@ -307,6 +312,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           unstable_features,
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
+          is_standalone: shared.options.is_standalone,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -351,6 +357,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   pub fn new(
     blob_store: Arc<BlobStore>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -371,6 +378,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         broadcast_channel: Default::default(),
         code_cache,
         compiled_wasm_module_store: Default::default(),
+        deno_rt_native_addon_loader,
         feature_checker,
         fs,
         maybe_inspector_server,
@@ -440,6 +448,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     });
 
     let services = WorkerServiceOptions {
+      deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       module_loader,
       fs: shared.fs.clone(),
@@ -477,6 +486,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         unstable_features,
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
+        is_standalone: shared.options.is_standalone,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),

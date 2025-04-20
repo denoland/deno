@@ -14,7 +14,7 @@ import {
   validateBoolean,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { isWritable } from "ext:deno_node/internal/streams/utils.mjs";
+import { isWritable } from "ext:deno_node/internal/streams/utils.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const {
