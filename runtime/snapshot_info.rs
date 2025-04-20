@@ -292,7 +292,10 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::init_ops::<Permissions>(None),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::init_ops(),
     deno_net::deno_net::init_ops::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops(),
     deno_kv::deno_kv::init_ops(

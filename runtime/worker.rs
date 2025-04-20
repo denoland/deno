@@ -431,7 +431,9 @@ impl MainWorker {
         services.deno_rt_native_addon_loader.clone(),
       ),
       #[cfg(not(feature = "ffi"))]
-      crate::shared::deno_ffi::init_ops_and_esm(),
+      crate::shared::deno_ffi::init_ops_and_esm::<PermissionsContainer>(
+        services.deno_rt_native_addon_loader.clone(),
+      ),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
