@@ -49,6 +49,7 @@ use crate::colors;
 use crate::npm::installer::common::NpmPackageExtraInfoProvider;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
+use crate::npm::WorkspaceNpmPatchPackages;
 use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
@@ -70,6 +71,7 @@ pub struct LocalNpmPackageInstaller {
   system_info: NpmSystemInfo,
   npm_registry_info_provider:
     Arc<dyn deno_npm::registry::NpmRegistryApi + Send + Sync>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
 impl std::fmt::Debug for LocalNpmPackageInstaller {
@@ -103,6 +105,7 @@ impl LocalNpmPackageInstaller {
     npm_registry_info_provider: Arc<
       dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
     >,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
       cache,
@@ -115,6 +118,7 @@ impl LocalNpmPackageInstaller {
       root_node_modules_path: node_modules_folder,
       system_info,
       npm_registry_info_provider,
+      workspace_patch_packages,
     }
   }
 }
@@ -140,6 +144,7 @@ impl NpmPackageFsInstaller for LocalNpmPackageInstaller {
       &self.sys,
       &self.system_info,
       &self.lifecycle_scripts,
+      &self.workspace_patch_packages,
     )
     .await
     .map_err(JsErrorBox::from_err)
@@ -246,6 +251,7 @@ async fn sync_resolution_with_fs(
   sys: &CliSys,
   system_info: &NpmSystemInfo,
   lifecycle_scripts_config: &LifecycleScriptsConfig,
+  workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
 ) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -318,6 +324,7 @@ async fn sync_resolution_with_fs(
   let extra_info_provider = Arc::new(super::common::ExtraInfoProvider::new(
     cache.clone(),
     npm_registry_info_provider.clone(),
+    workspace_patch_packages.clone(),
   ));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =

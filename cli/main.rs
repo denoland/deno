@@ -193,7 +193,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         ", colors::cyan("deno lsp"));
       }
       let factory = CliFactory::from_flags(flags.clone());
-      lsp::start(Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api())).await
+      lsp::start(Arc::new(factory.lockfile_npm_package_info_provider()?)).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -380,22 +380,26 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
 
-    let info = &deno_lib::version::DENO_VERSION_INFO;
-    let version =
-      if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
-        format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
-      } else {
-        info.deno.to_string()
-      };
+    // Panic traces are not supported for custom/development builds.
+    #[cfg(feature = "panic-trace")]
+    {
+      let info = &deno_lib::version::DENO_VERSION_INFO;
+      let version =
+        if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+          format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+        } else {
+          info.deno.to_string()
+        };
 
-    let trace = deno_panic::trace();
-    eprintln!("View stack trace at:");
-    eprintln!(
-      "https://panic.deno.com/v{}/{}/{}",
-      version,
-      env!("TARGET"),
-      trace
-    );
+      let trace = deno_panic::trace();
+      eprintln!("View stack trace at:");
+      eprintln!(
+        "https://panic.deno.com/v{}/{}/{}",
+        version,
+        env!("TARGET"),
+        trace
+      );
+    }
 
     orig_hook(panic_info);
     deno_runtime::exit(1);
