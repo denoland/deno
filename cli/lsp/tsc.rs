@@ -118,6 +118,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 type Request = (
   TscRequest,
   Option<Arc<Url>>,
+  Option<Arc<Uri>>,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
@@ -294,6 +295,7 @@ pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
   pub new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+  pub new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -329,11 +331,29 @@ impl<'a> ToV8<'a> for PendingChange {
       } else {
         v8::null(scope).into()
       };
+    let new_notebook_scopes =
+      if let Some(new_notebook_scopes) = self.new_notebook_scopes {
+        serde_v8::to_v8(
+          scope,
+          new_notebook_scopes.into_iter().collect::<Vec<_>>(),
+        )
+        .unwrap_or_else(|err| {
+          lsp_warn!("Couldn't serialize ts configs: {err}");
+          v8::null(scope).into()
+        })
+      } else {
+        v8::null(scope).into()
+      };
 
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[modified_scripts, project_version, new_configs_by_scope],
+        &[
+          modified_scripts,
+          project_version,
+          new_configs_by_scope,
+          new_notebook_scopes,
+        ],
       )
       .into(),
     )
@@ -346,11 +366,15 @@ impl PendingChange {
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
     new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
     if let Some(new_configs_by_scope) = new_configs_by_scope {
       self.new_configs_by_scope = Some(new_configs_by_scope);
+    }
+    if let Some(new_notebook_scopes) = new_notebook_scopes {
+      self.new_notebook_scopes = Some(new_notebook_scopes);
     }
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
@@ -468,6 +492,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     modified_scripts: impl IntoIterator<Item = (&'a Url, ChangeKind)>,
     new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     let modified_scripts = modified_scripts
       .into_iter()
@@ -479,6 +504,7 @@ impl TsServer {
           snapshot.project_version,
           modified_scripts,
           new_configs_by_scope,
+          new_notebook_scopes,
         );
       }
       pending => {
@@ -486,6 +512,7 @@ impl TsServer {
           modified_scripts,
           project_version: snapshot.project_version,
           new_configs_by_scope,
+          new_notebook_scopes,
         };
         *pending = Some(pending_change);
       }
@@ -498,6 +525,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifiers: impl IntoIterator<Item = &Url>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
   {
@@ -509,7 +537,11 @@ impl TsServer {
       TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
     self
       .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|(mut diagnostics, ambient_modules)| {
@@ -528,24 +560,15 @@ impl TsServer {
     if !self.is_started() {
       return;
     }
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      let req = TscRequest::CleanupSemanticCache;
-      self
-        .request::<()>(snapshot.clone(), req, scope, &Default::default())
-        .await
-        .map_err(|err| {
-          log::error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })
-        .ok();
-    }
+    let req = TscRequest::CleanupSemanticCache;
+    self
+      .request::<()>(snapshot.clone(), req, None, None, &Default::default())
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -555,6 +578,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
     let req = TscRequest::FindReferences((
@@ -562,7 +586,13 @@ impl TsServer {
       position,
     ));
     self
-      .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req, scope, token)
+      .request::<Option<Vec<ReferencedSymbol>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut symbols| {
         for symbol in symbols.iter_mut().flatten() {
@@ -581,12 +611,15 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: &Url,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
       .denormalize(specifier),));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -596,7 +629,7 @@ impl TsServer {
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
     self
-      .request(snapshot, req, None, &Default::default())
+      .request(snapshot, req, None, None, &Default::default())
       .await
       .map_err(|err| {
         log::error!("Unable to get fixable diagnostics: {}", err);
@@ -611,13 +644,16 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<QuickInfo>, AnyError> {
     let req = TscRequest::GetQuickInfoAtPosition((
       self.specifier_map.denormalize(specifier),
       position,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -631,6 +667,7 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CodeFixAction>, AnyError> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
@@ -642,7 +679,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<Vec<CodeFixAction>>(snapshot, req, scope, token)
+      .request::<Vec<CodeFixAction>>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut actions| {
         for action in &mut actions {
@@ -663,6 +700,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
@@ -678,7 +716,7 @@ impl TsServer {
       only,
     )));
     self
-      .request(snapshot, req, scope, token)
+      .request(snapshot, req, scope, notebook_uri, token)
       .await
       .map_err(|err| {
         log::error!("Failed to request to tsserver {}", err);
@@ -696,6 +734,7 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<CombinedCodeActions, AnyError> {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
@@ -708,7 +747,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<CombinedCodeActions>(snapshot, req, scope, token)
+      .request::<CombinedCodeActions>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut actions| {
         actions.normalize(&self.specifier_map)?;
@@ -728,6 +767,7 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<RefactorEditInfo, AnyError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
@@ -739,7 +779,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<RefactorEditInfo>(snapshot, req, scope, token)
+      .request::<RefactorEditInfo>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut info| {
         info.normalize(&self.specifier_map)?;
@@ -757,6 +797,7 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
@@ -766,7 +807,13 @@ impl TsServer {
       user_preferences,
     )));
     self
-      .request::<Vec<FileTextChanges>>(snapshot, req, scope, token)
+      .request::<Vec<FileTextChanges>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut changes| {
         for changes in &mut changes {
@@ -783,6 +830,7 @@ impl TsServer {
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
@@ -791,6 +839,7 @@ impl TsServer {
     position: u32,
     files_to_search: Vec<ModuleSpecifier>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DocumentHighlights>>, AnyError> {
     let req = TscRequest::GetDocumentHighlights(Box::new((
@@ -801,7 +850,9 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<_>>(),
     )));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -811,6 +862,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, AnyError> {
     let req = TscRequest::GetDefinitionAndBoundSpan((
@@ -819,7 +871,11 @@ impl TsServer {
     ));
     self
       .request::<Option<DefinitionInfoAndBoundSpan>>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|mut info| {
@@ -837,6 +893,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DefinitionInfo>>, AnyError> {
     let req = TscRequest::GetTypeDefinitionAtPosition((
@@ -844,7 +901,13 @@ impl TsServer {
       position,
     ));
     self
-      .request::<Option<Vec<DefinitionInfo>>>(snapshot, req, scope, token)
+      .request::<Option<Vec<DefinitionInfo>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut infos| {
         for info in infos.iter_mut().flatten() {
@@ -867,6 +930,7 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
@@ -876,7 +940,13 @@ impl TsServer {
       format_code_settings,
     )));
     self
-      .request::<Option<CompletionInfo>>(snapshot, req, scope, token)
+      .request::<Option<CompletionInfo>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut info| {
         if let Some(info) = &mut info {
@@ -899,6 +969,7 @@ impl TsServer {
     preferences: Option<UserPreferences>,
     data: Option<Value>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
@@ -911,7 +982,13 @@ impl TsServer {
       data,
     )));
     self
-      .request::<Option<CompletionEntryDetails>>(snapshot, req, scope, token)
+      .request::<Option<CompletionEntryDetails>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut details| {
         if let Some(details) = &mut details {
@@ -928,6 +1005,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
     let req = TscRequest::GetImplementationAtPosition((
@@ -936,7 +1014,11 @@ impl TsServer {
     ));
     self
       .request::<Option<Vec<ImplementationLocation>>>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|mut locations| {
@@ -956,12 +1038,15 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: &Url,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<OutliningSpan>, AnyError> {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
       .denormalize(specifier),));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -971,6 +1056,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
@@ -978,7 +1064,13 @@ impl TsServer {
       position,
     ));
     self
-      .request::<Vec<CallHierarchyIncomingCall>>(snapshot, req, scope, token)
+      .request::<Vec<CallHierarchyIncomingCall>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut calls| {
         for call in &mut calls {
@@ -995,6 +1087,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyOutgoingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyOutgoingCalls((
@@ -1002,7 +1095,13 @@ impl TsServer {
       position,
     ));
     self
-      .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req, scope, token)
+      .request::<Vec<CallHierarchyOutgoingCall>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut calls| {
         for call in &mut calls {
@@ -1022,6 +1121,7 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, AnyError> {
     let req = TscRequest::PrepareCallHierarchy((
@@ -1030,7 +1130,11 @@ impl TsServer {
     ));
     self
       .request::<Option<OneOrMany<CallHierarchyItem>>>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|mut items| {
@@ -1049,6 +1153,7 @@ impl TsServer {
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
@@ -1057,6 +1162,7 @@ impl TsServer {
     position: u32,
     user_preferences: UserPreferences,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
@@ -1067,7 +1173,13 @@ impl TsServer {
       user_preferences,
     ));
     self
-      .request::<Option<Vec<RenameLocation>>>(snapshot, req, scope, token)
+      .request::<Option<Vec<RenameLocation>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut locations| {
         for location in locations.iter_mut().flatten() {
@@ -1087,13 +1199,16 @@ impl TsServer {
     specifier: &Url,
     position: u32,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<SelectionRange, AnyError> {
     let req = TscRequest::GetSmartSelectionRange((
       self.specifier_map.denormalize(specifier),
       position,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1103,6 +1218,7 @@ impl TsServer {
     specifier: &Url,
     range: Range<u32>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Classifications, AnyError> {
     let req = TscRequest::GetEncodedSemanticClassifications((
@@ -1113,9 +1229,12 @@ impl TsServer {
       },
       "2020",
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
@@ -1124,6 +1243,7 @@ impl TsServer {
     position: u32,
     options: SignatureHelpItemsOptions,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<SignatureHelpItems>, AnyError> {
     let req = TscRequest::GetSignatureHelpItems((
@@ -1131,9 +1251,12 @@ impl TsServer {
       position,
       options,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
@@ -1142,6 +1265,7 @@ impl TsServer {
     max_result_count: Option<u32>,
     file: Option<String>,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
@@ -1153,7 +1277,7 @@ impl TsServer {
       }),
     ));
     self
-      .request::<Vec<NavigateToItem>>(snapshot, req, scope, token)
+      .request::<Vec<NavigateToItem>>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut items| {
         for item in &mut items {
@@ -1166,6 +1290,7 @@ impl TsServer {
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
@@ -1174,6 +1299,7 @@ impl TsServer {
     text_span: TextSpan,
     user_preferences: UserPreferences,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<InlayHint>>, AnyError> {
     let req = TscRequest::ProvideInlayHints((
@@ -1181,7 +1307,9 @@ impl TsServer {
       text_span,
       user_preferences,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   async fn request<R>(
@@ -1189,6 +1317,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
     scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
@@ -1208,6 +1337,7 @@ impl TsServer {
       .send((
         req,
         scope.cloned(),
+        notebook_uri.cloned(),
         snapshot,
         tx,
         token.clone(),
@@ -4298,6 +4428,7 @@ struct State {
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   last_scope: Option<Arc<Url>>,
+  last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4320,6 +4451,7 @@ impl State {
       state_snapshot,
       specifier_map,
       last_scope: None,
+      last_notebook_uri: None,
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
@@ -4399,6 +4531,7 @@ struct LoadResponse {
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
+  is_classic_script: bool,
 }
 
 #[op2]
@@ -4423,6 +4556,7 @@ fn op_load<'s>(
     script_kind: crate::tsc::as_ts_script_kind(m.media_type),
     version: state.script_version(&specifier),
     is_cjs: m.resolution_mode == ResolutionMode::Require,
+    is_classic_script: m.notebook_uri.is_some(),
   });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
@@ -4463,6 +4597,7 @@ fn op_resolve(
 struct TscRequestArray {
   request: TscRequest,
   scope: Option<Arc<Url>>,
+  notebook_uri: Option<Arc<Uri>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
 }
@@ -4484,13 +4619,14 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let scope_url = serde_v8::to_v8(scope, self.scope)?;
+    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
 
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[id, method_name, args, scope_url, change],
+        &[id, method_name, args, scope_url, notebook_uri, change],
       )
       .into(),
     )
@@ -4511,8 +4647,16 @@ async fn op_poll_requests(
   // clear the resolution cache after each request
   NodeResolutionThreadLocalCache::clear();
 
-  let Some((request, scope, snapshot, response_tx, token, change, context)) =
-    pending_requests.recv().await
+  let Some((
+    request,
+    scope,
+    notebook_uri,
+    snapshot,
+    response_tx,
+    token,
+    change,
+    context,
+  )) = pending_requests.recv().await
   else {
     return None.into();
   };
@@ -4526,6 +4670,7 @@ async fn op_poll_requests(
   let id = state.last_id;
   state.last_id += 1;
   state.last_scope.clone_from(&scope);
+  state.last_notebook_uri.clone_from(&notebook_uri);
   let mark = state
     .performance
     .mark_with_args(format!("tsc.host.{}", request.method()), &request);
@@ -4535,6 +4680,7 @@ async fn op_poll_requests(
   Some(TscRequestArray {
     request,
     scope,
+    notebook_uri,
     id: Smi(id),
     change: change.into(),
   })
@@ -4582,6 +4728,7 @@ fn op_respond(
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
   state.last_scope = None;
+  state.last_notebook_uri = None;
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
@@ -4665,6 +4812,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 struct ScriptNames {
   unscoped: IndexSet<String>,
   by_scope: BTreeMap<Arc<Url>, IndexSet<String>>,
+  by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
 #[op2]
@@ -4684,6 +4832,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         .into_iter()
         .filter_map(|s| Some((s?, IndexSet::new()))),
     ),
+    by_notebook_uri: Default::default(),
   };
 
   let scopes_with_node_specifier = state
@@ -4726,6 +4875,41 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         }
       }
     }
+  }
+
+  // roots for notebook scopes
+  for (notebook_uri, cell_uris) in state
+    .state_snapshot
+    .document_modules
+    .documents
+    .cells_by_notebook_uri()
+  {
+    let mut script_names = IndexSet::default();
+    let scope = state
+      .state_snapshot
+      .document_modules
+      .primary_scope(notebook_uri)
+      .flatten();
+
+    // Copy over the globals from the containing regular scopes.
+    let global_script_names = scope
+      .and_then(|s| result.by_scope.get(s))
+      .unwrap_or(&result.unscoped);
+    script_names.extend(global_script_names.iter().cloned());
+
+    // Add the cells as roots.
+    script_names.extend(cell_uris.iter().flat_map(|u| {
+      let document = state.state_snapshot.document_modules.documents.get(u)?;
+      let module = state
+        .state_snapshot
+        .document_modules
+        .module(&document, scope.map(|s| s.as_ref()))?;
+      Some(module.specifier.to_string())
+    }));
+
+    result
+      .by_notebook_uri
+      .insert(notebook_uri.clone(), script_names);
   }
 
   // finally include the documents
@@ -5516,7 +5700,7 @@ impl TscRequest {
       TscRequest::ProvideInlayHints(args) => {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
-      TscRequest::CleanupSemanticCache => ("cleanupSemanticCache", None),
+      TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
     };
 
     Ok(args)
@@ -5525,7 +5709,7 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
-      TscRequest::CleanupSemanticCache => "cleanupSemanticCache",
+      TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
       TscRequest::GetSupportedCodeFixes => "$getSupportedCodeFixes",
@@ -5567,9 +5751,6 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryApi;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -5586,16 +5767,20 @@ mod tests {
   struct DefaultRegistry;
 
   #[async_trait::async_trait(?Send)]
-  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
-    async fn package_info(
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
       &self,
-      _name: &str,
-    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-      Ok(Arc::new(NpmPackageInfo::default()))
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
     }
   }
 
-  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
     Arc::new(DefaultRegistry)
   }
 
@@ -5631,11 +5816,12 @@ mod tests {
     );
     for (relative_specifier, source, version, language_id) in sources {
       let specifier = temp_dir.url().join(relative_specifier).unwrap();
-      document_modules.documents.open(
+      document_modules.open_document(
         url_to_uri(&specifier).unwrap(),
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     let snapshot = Arc::new(StateSnapshot {
@@ -5658,6 +5844,7 @@ mod tests {
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
           .collect(),
       ),
+      None,
     );
     (temp_dir, ts_server, snapshot, cache)
   }
@@ -5713,6 +5900,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5762,6 +5950,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5797,6 +5986,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5828,6 +6018,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5883,6 +6074,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5921,6 +6113,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -5985,6 +6178,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6048,6 +6242,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6098,6 +6293,7 @@ mod tests {
       snapshot.clone(),
       [(&specifier_dep, ChangeKind::Opened)],
       None,
+      None,
     );
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
@@ -6105,6 +6301,7 @@ mod tests {
         snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6182,6 +6379,7 @@ mod tests {
         },
         Default::default(),
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6199,6 +6397,7 @@ mod tests {
         None,
         None,
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6375,6 +6574,7 @@ mod tests {
         },
         FormatCodeSettings::from(&fmt_options_config),
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6399,6 +6599,7 @@ mod tests {
         }),
         entry.data.clone(),
         snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6469,6 +6670,7 @@ mod tests {
         FormatCodeSettings::default(),
         UserPreferences::default(),
         Some(&Arc::new(temp_dir.url())),
+        None,
         &Default::default(),
       )
       .await
@@ -6563,6 +6765,7 @@ mod tests {
           .map(|(s, c)| (s.as_ref().into(), c))
           .collect(),
         new_configs_by_scope,
+        new_notebook_scopes: None,
       }
     }
     let cases = [
@@ -6623,7 +6826,7 @@ mod tests {
 
     for (start, new, expected) in cases {
       let mut pending = start;
-      pending.coalesce(new.project_version, new.modified_scripts, None);
+      pending.coalesce(new.project_version, new.modified_scripts, None, None);
       assert_eq!(json!(pending), json!(expected));
     }
   }

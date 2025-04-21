@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 52;
+const cacheVersion = 53;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -701,13 +701,13 @@ const ci = {
           name: "Check tracing build",
           if:
             "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing ",
+          run: "cargo check -p deno --features=lsp-tracing",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -730,7 +730,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --all-targets --features=panic-trace",
             "df -h",
           ].join("\n"),
         },
@@ -887,7 +887,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -900,8 +900,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -914,7 +914,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked",
+          run: "cargo test --release --locked --features=panic-trace",
         },
         {
           name: "Configure hosts file for WPT",
