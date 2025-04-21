@@ -190,39 +190,41 @@ export class LibuvStreamWrap extends HandleWrap {
       core.unrefOpPromise(this.readPromise);
     }
 
-    this.readPromise.catch((e) => {
-      // Try to read again if the underlying stream resource
-      // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
-        // TODO(littledivy): restart read
-        return;
-      }
+    this.readPromise
+      .catch((e) => {
+        // Try to read again if the underlying stream resource
+        // changed. This can happen during TLS upgrades (eg. STARTTLS)
+        if (
+          ridBefore != this[kStreamBaseField]![internalRidSymbol]
+        ) {
+          return this.readStart();
+        }
 
-      if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
-      ) {
-        nread = codeMap.get("EOF")!;
-      } else if (
-        e instanceof Deno.errors.ConnectionReset ||
-        e instanceof Deno.errors.ConnectionAborted
-      ) {
-        nread = codeMap.get("ECONNRESET")!;
-      } else {
-        this[ownerSymbol].destroy(e);
-        return;
-      }
+        if (
+          e instanceof Deno.errors.Interrupted ||
+          e instanceof Deno.errors.BadResource
+        ) {
+          nread = codeMap.get("EOF")!;
+        } else if (
+          e instanceof Deno.errors.ConnectionReset ||
+          e instanceof Deno.errors.ConnectionAborted
+        ) {
+          nread = codeMap.get("ECONNRESET")!;
+        } else {
+          this[ownerSymbol].destroy(e);
+          return;
+        }
 
-      streamBaseState[kReadBytesOrError] = nread;
+        nread ??= codeMap.get("EOF")!;
 
-      try {
-        this.onread!(new Uint8Array(0), nread);
-      } catch {
-        // swallow callback errors.
-      }
-    });
+        streamBaseState[kReadBytesOrError] = nread;
+
+        try {
+          this.onread!(new Uint8Array(0), nread);
+        } catch {
+          // swallow callback errors.
+        }
+      });
 
     return 0;
   }
@@ -232,7 +234,8 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   readStop(): number {
-    return this.streamWrap.readStop();
+    this.streamWrap.readStop();
+    return 0;
   }
 
   /**

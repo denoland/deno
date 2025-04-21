@@ -133,9 +133,11 @@ async fn uv_read_start(
     };
 
     read_fut.await?;
+    // Wait for the event loop to process the read callback.
+    tokio::task::yield_now().await;
   }
 
-  Ok(())
+  Err(JsErrorBox::new("Interrupted", "Read interrupted"))
 }
 
 impl GarbageCollected for StreamWrap {}
@@ -154,6 +156,7 @@ impl StreamWrap {
   #[fast]
   fn attach_handle(&self, #[smi] handle: ResourceId) -> Result<(), JsErrorBox> {
     self.handle.borrow_mut().replace(handle);
+    self.read_state.deactivate();
     Ok(())
   }
 
