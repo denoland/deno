@@ -43,10 +43,12 @@ class TTY extends LibuvStreamWrap {
 
   ref() {
     this[kStreamBaseField][io.REF]();
+    return super.ref();
   }
 
   unref() {
     this[kStreamBaseField][io.UNREF]();
+    return super.unref();
   }
 }
 
