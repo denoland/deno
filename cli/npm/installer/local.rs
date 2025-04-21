@@ -24,7 +24,6 @@ use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::hard_link_file;
@@ -205,37 +204,6 @@ pub enum SyncResolutionWithFsError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
-}
-
-fn handle_package_scripts_bin_deprecated<'a>(
-  package: &'a NpmResolutionPackage,
-  extra: &NpmPackageExtraInfo,
-  package_path: PathBuf,
-  bin_entries: &RefCell<bin_entries::BinEntries<'a>>,
-  lifecycle_scripts: &RefCell<
-    super::common::lifecycle_scripts::LifecycleScripts<'a>,
-  >,
-  packages_with_deprecation_warnings: &Mutex<Vec<(PackageNv, String)>>,
-) {
-  if package.has_bin {
-    bin_entries
-      .borrow_mut()
-      .add(package, extra, package_path.to_path_buf());
-  }
-
-  if package.has_scripts {
-    lifecycle_scripts
-      .borrow_mut()
-      .add(package, extra, package_path.into());
-  }
-
-  if package.is_deprecated {
-    if let Some(deprecated) = &extra.deprecated {
-      packages_with_deprecation_warnings
-        .lock()
-        .push((package.id.nv.clone(), deprecated.clone()));
-    }
-  }
 }
 
 /// Creates a pnpm style folder structure.
@@ -444,14 +412,29 @@ async fn sync_resolution_with_fs(
               .map_err(JsErrorBox::from_err)?;
             let extra = extra.map_err(JsErrorBox::from_err)?;
 
-            handle_package_scripts_bin_deprecated(
-              package,
-              &extra,
-              package_path,
-              &bin_entries_to_setup,
-              &lifecycle_scripts,
-              &packages_with_deprecation_warnings,
-            );
+            if package.has_bin {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path.to_path_buf(),
+              );
+            }
+
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
+            }
+
+            if package.is_deprecated {
+              if let Some(deprecated) = &extra.deprecated {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.nv.clone(), deprecated.clone()));
+              }
+            }
 
             // finally stop showing the progress bar
             drop(pb_guard); // explicit for clarity
@@ -465,12 +448,10 @@ async fn sync_resolution_with_fs(
         write_initialized_file(&initialized_file, &tags)?;
       }
 
-      if package.has_bin || package.has_scripts || package.is_deprecated {
+      if package.has_bin || package.has_scripts {
         let bin_entries_to_setup = bin_entries.clone();
         let lifecycle_scripts = lifecycle_scripts.clone();
         let extra_info_provider = extra_info_provider.clone();
-        let packages_with_deprecation_warnings =
-          packages_with_deprecation_warnings.clone();
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
@@ -485,14 +466,22 @@ async fn sync_resolution_with_fs(
               .await
               .map_err(JsErrorBox::from_err)?;
 
-            handle_package_scripts_bin_deprecated(
-              package,
-              &extra,
-              package_path,
-              &bin_entries_to_setup,
-              &lifecycle_scripts,
-              &packages_with_deprecation_warnings,
-            );
+            if package.has_bin {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path.to_path_buf(),
+              );
+            }
+
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
+            }
+
             Ok(())
           }
           .boxed_local(),
