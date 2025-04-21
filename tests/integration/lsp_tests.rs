@@ -349,13 +349,10 @@ fn lsp_import_map() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -485,13 +482,10 @@ fn lsp_import_map_config_file() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -547,13 +541,10 @@ fn lsp_import_map_embedded_in_config_file() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -620,13 +611,10 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -684,13 +672,10 @@ fn lsp_import_map_config_file_auto_discovered() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -732,13 +717,10 @@ fn lsp_import_map_config_file_auto_discovered() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value":"(alias) const b: \"b\"\nimport b"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const b: \"b\"\nimport b\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 12 },
         "end": { "line": 2, "character": 13 }
@@ -961,13 +943,10 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(method) DateConstructor.now(): number\n```\n\nReturns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC).",
+      },
       "range": {
         "start": { "line": 0, "character": 5, },
         "end": { "line": 0, "character": 8, }
@@ -1659,14 +1638,10 @@ fn lsp_hover() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "const Deno.args: string[]"
-        },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.",
-        "\n\n*@category* - Runtime",
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
+      },
       "range": {
         "start": { "line": 0, "character": 17 },
         "end": { "line": 0, "character": 21 }
@@ -1721,14 +1696,10 @@ fn lsp_hover_asset() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "interface Date",
-        },
-        "Enables basic storage and retrieval of dates and times.",
-        "\n\n*@category* - Temporal  \n\n*@experimental*"
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\ninterface Date\n```\n\nEnables basic storage and retrieval of dates and times.\n\n*@category* - Temporal  \n\n*@experimental*",
+      },
       "range": {
         "start": { "line": 111, "character": 10, },
         "end": { "line": 111, "character": 14, }
@@ -2225,13 +2196,10 @@ fn lsp_workspace_disable_enable_paths() {
     assert_eq!(
       res,
       json!({
-        "contents": [
-          {
-            "language": "typescript",
-            "value": "(method) DateConstructor.now(): number",
-          },
-          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-        ],
+        "contents": {
+          "kind": "markdown",
+          "value": "```typescript\n(method) DateConstructor.now(): number\n```\n\nReturns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC).",
+        },
         "range": {
           "start": { "line": 0, "character": 17, },
           "end": { "line": 0, "character": 20, }
@@ -2251,13 +2219,10 @@ fn lsp_workspace_disable_enable_paths() {
     assert_eq!(
       res,
       json!({
-        "contents": [
-          {
-            "language": "typescript",
-            "value": "(method) DateConstructor.now(): number",
-          },
-          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-        ],
+        "contents": {
+          "kind": "markdown",
+          "value": "```typescript\n(method) DateConstructor.now(): number\n```\n\nReturns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC).",
+        },
         "range": {
           "start": { "line": 0, "character": 17, },
           "end": { "line": 0, "character": 20, }
@@ -2396,13 +2361,10 @@ fn lsp_exclude_config() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(method) DateConstructor.now(): number\n```\n\nReturns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC).",
+      },
       "range": {
         "start": { "line": 0, "character": 17, },
         "end": { "line": 0, "character": 20, }
@@ -2478,14 +2440,10 @@ fn lsp_hover_unstable_always_enabled() {
   assert_eq!(
     res,
     json!({
-      "contents":[
-        {
-          "language":"typescript",
-          "value":"interface Deno.DatagramConn"
-        },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
-        "\n\n*@category* - Network  \n\n*@experimental*",
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\ninterface Deno.DatagramConn\n```\n\n**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.\n\n*@category* - Network  \n\n*@experimental*",
+      },
       "range":{
         "start":{ "line":0, "character":14 },
         "end":{ "line":0, "character":26 }
@@ -2524,14 +2482,10 @@ fn lsp_hover_unstable_enabled() {
   assert_eq!(
     res,
     json!({
-      "contents":[
-        {
-          "language":"typescript",
-          "value":"interface Deno.DatagramConn"
-        },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
-        "\n\n*@category* - Network  \n\n*@experimental*",
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\ninterface Deno.DatagramConn\n```\n\n**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.\n\n*@category* - Network  \n\n*@experimental*",
+      },
       "range":{
         "start":{ "line":0, "character":14 },
         "end":{ "line":0, "character":26 }
@@ -2592,13 +2546,10 @@ fn lsp_hover_change_mbc() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "const b: \"😃\"",
-        },
-        "",
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nconst b: \"😃\"\n```",
+      },
       "range": {
         "start": { "line": 2, "character": 15, },
         "end": { "line": 2, "character": 16, },
@@ -2652,13 +2603,10 @@ fn lsp_hover_closed_document() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(alias) const a: \"a\"\nimport a"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const a: \"a\"\nimport a\n```",
+      },
       "range": {
         "start": { "line": 0, "character": 9 },
         "end": { "line": 0, "character": 10 }
@@ -2685,13 +2633,10 @@ fn lsp_hover_closed_document() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(alias) const a: \"a\"\nimport a"
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(alias) const a: \"a\"\nimport a\n```",
+      },
       "range": {
         "start": { "line": 0, "character": 9 },
         "end": { "line": 0, "character": 10 }
@@ -2907,13 +2852,10 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "const f: Foo",
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nconst f: Foo\n```",
+      },
       "range": {
         "start": { "line": 0, "character": 56, },
         "end": { "line": 0, "character": 57, }
@@ -2950,13 +2892,10 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "const f: Foo",
-        },
-        ""
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nconst f: Foo\n```",
+      },
       "range": {
         "start": { "line": 0, "character": 56, },
         "end": { "line": 0, "character": 57, }
@@ -3238,13 +3177,10 @@ fn lsp_hover_jsdoc_symbol_link() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "function a(): void"
-        },
-        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nfunction a(): void\n```\n\nJSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)",
+      },
       "range": {
         "start": { "line": 7, "character": 9 },
         "end": { "line": 7, "character": 10 }
@@ -13773,13 +13709,10 @@ fn lsp_jsx_import_source_byonm_preact() {
   assert_eq!(
     res,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>",
-        },
-        "",
-      ],
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```",
+      },
       "range": {
         "start": { "line": 0, "character": 1 },
         "end": { "line": 0, "character": 4 },
@@ -17576,15 +17509,10 @@ fn lsp_jsdoc_named_example() {
   assert_json_subset(
     hover,
     json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "function foo(): number"
-        },
-        "",
-        // The example name `Example1` should not be enclosed in backticks
-        "\n\n*@example*  \nExample1\n```ts\nfoo();\n```"
-      ]
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\nfunction foo(): number\n```\n\n*@example*  \nExample1\n```ts\nfoo();\n```",
+      },
     }),
   );
 }
