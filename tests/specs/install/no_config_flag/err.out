@@ -1,0 +1,5 @@
+error: deno install can't be used to add packages if `--no-config` is passed.
+hint: to cache the packages without adding to a config, pass the `--entrypoint` flag
+
+Usage: deno install [OPTIONS] [PACKAGE]...
+
