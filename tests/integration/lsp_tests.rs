@@ -6421,6 +6421,49 @@ fn lsp_code_actions_deno_cache_all() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_npm_managed_no_export_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:chalk/non-existent\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 31 },
+        },
+        "severity": 1,
+        "code": "no-export-npm",
+        "source": "deno",
+        "message": "NPM package \"chalk\" does not define an export \"non-existent\".",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
