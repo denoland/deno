@@ -1191,12 +1191,6 @@ pub enum DenoDiagnostic {
   NotInstalledNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
-  /// The specifier resolved to a remote specifier that was redirected to
-  /// another specifier.
-  Redirect {
-    from: ModuleSpecifier,
-    to: ModuleSpecifier,
-  },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
   /// Invalid `node:` specifier.
@@ -1216,7 +1210,6 @@ impl DenoDiagnostic {
       Self::NotInstalledJsr(_, _) => "not-installed-jsr",
       Self::NotInstalledNpm(_, _) => "not-installed-npm",
       Self::NoLocal(_) => "no-local",
-      Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => {
         if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
           "import-node-prefix-missing"
@@ -1469,7 +1462,6 @@ impl DenoDiagnostic {
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => {
         let mut message;
         message = enhanced_resolution_error_message(err);
@@ -1589,32 +1581,6 @@ fn diagnose_resolution(
   referrer_module: &DocumentModule,
   import_map: Option<&ImportMap>,
 ) -> (Vec<DenoDiagnostic>, Vec<DenoDiagnostic>) {
-  fn check_redirect_diagnostic(
-    specifier: &ModuleSpecifier,
-    module: &DocumentModule,
-  ) -> Option<DenoDiagnostic> {
-    // If the module was redirected, we want to issue an informational
-    // diagnostic that indicates this. This then allows us to issue a code
-    // action to replace the specifier with the final redirected one.
-    if specifier.scheme() == "jsr" || specifier == module.specifier.as_ref() {
-      return None;
-    }
-    // don't bother warning about sloppy import redirects from .js to .d.ts
-    // because explaining how to fix this via a diagnostic involves using
-    // @ts-types and that's a bit complicated to explain
-    let is_sloppy_import_dts_redirect = module.specifier.scheme() == "file"
-      && module.media_type.is_declaration()
-      && !MediaType::from_specifier(specifier).is_declaration();
-    if is_sloppy_import_dts_redirect {
-      return None;
-    }
-
-    Some(DenoDiagnostic::Redirect {
-      from: specifier.clone(),
-      to: module.specifier.as_ref().clone(),
-    })
-  }
-
   let mut diagnostics = vec![];
   let mut deferred_diagnostics = vec![];
   match resolution {
@@ -1638,10 +1604,6 @@ fn diagnose_resolution(
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
           }
-        }
-        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &module)
-        {
-          diagnostics.push(diagnostic);
         }
         if module.media_type == MediaType::Json {
           match maybe_assert_type {
