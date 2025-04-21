@@ -17,6 +17,7 @@ use deno_resolver::workspace::WorkspaceResolver;
 
 use crate::sys::CliSys;
 
+mod no_bare_node_builtins;
 mod no_sloppy_imports;
 mod no_slow_types;
 

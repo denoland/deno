@@ -161,8 +161,8 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
 pub enum MappedResolution<'a> {
   Normal {
     specifier: Url,
-    used_import_map: bool,
     sloppy_reason: Option<SloppyImportsResolutionReason>,
+    used_import_map: bool,
     used_compiler_options_root_dirs: bool,
     maybe_diagnostic: Option<Box<MappedResolutionDiagnostic>>,
   },
@@ -1293,9 +1293,9 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         return self.maybe_resolve_specifier_to_workspace_jsr_pkg(
           MappedResolution::Normal {
             specifier,
+            sloppy_reason,
             used_import_map,
             used_compiler_options_root_dirs,
-            sloppy_reason,
             maybe_diagnostic: None,
           },
         );
@@ -1332,8 +1332,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }
     }
 
+    // 3. Attempt to resolve from the package.json dependencies.
     if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      // 2. Attempt to resolve from the package.json dependencies.
       let mut previously_found_dir = false;
       for (dir_url, pkg_json_folder) in self.pkg_jsons.iter().rev() {
         if !referrer.as_str().starts_with(dir_url.as_str()) {
@@ -1369,7 +1369,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         }
       }
 
-      // 3. Finally try to resolve to a workspace npm package if inside the workspace.
+      // 4. Try to resolve to a workspace npm package if inside the workspace.
       if referrer.as_str().starts_with(self.workspace_root.as_str()) {
         for pkg_json_folder in self.pkg_jsons.values() {
           let Some(name) = &pkg_json_folder.pkg_json.name else {
@@ -1437,15 +1437,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     Ok(match resolution {
       MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         ..
       } => MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         maybe_diagnostic,
       },
       _ => return Ok(resolution),

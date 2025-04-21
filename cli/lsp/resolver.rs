@@ -93,7 +93,6 @@ pub struct LspScopedResolver {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
-  npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_installer_dirty: Arc<AtomicBool>,
   npm_resolution: Arc<NpmResolutionCell>,
@@ -116,7 +115,6 @@ impl Default for LspScopedResolver {
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
-      npm_graph_resolver: factory.npm_graph_resolver().clone(),
       npm_installer: None,
       npm_installer_dirty: Default::default(),
       npm_resolver: None,
@@ -158,7 +156,6 @@ impl LspScopedResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = factory.npm_graph_resolver();
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
@@ -180,7 +177,6 @@ impl LspScopedResolver {
                 imports,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(npm_graph_resolver.as_ref()),
               );
               (referrer, graph_import)
             })
@@ -203,7 +199,6 @@ impl LspScopedResolver {
       in_npm_pkg_checker,
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver,
-      npm_graph_resolver: factory.npm_graph_resolver().clone(),
       npm_pkg_req_resolver,
       npm_resolver,
       npm_installer,
@@ -278,7 +273,6 @@ impl LspScopedResolver {
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
-      npm_graph_resolver: factory.npm_graph_resolver().clone(),
       // npm installer isn't necessary for a snapshot
       npm_installer: None,
       npm_installer_dirty: Default::default(),
@@ -301,10 +295,6 @@ impl LspScopedResolver {
 
   pub fn as_cli_resolver(&self) -> &CliResolver {
     self.resolver.as_ref()
-  }
-
-  pub fn as_graph_npm_resolver(&self) -> &Arc<CliNpmGraphResolver> {
-    &self.npm_graph_resolver
   }
 
   pub fn as_is_cjs_resolver(&self) -> &CliIsCjsResolver {
@@ -686,7 +676,6 @@ struct ResolverFactoryServices {
   in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
-  npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<CliNpmResolver>,
@@ -890,6 +879,9 @@ impl<'a> ResolverFactory<'a> {
               self.sys.clone(),
             ))
           }),
+        bare_node_builtins: self
+          .config_data
+          .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
         is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
         maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
       }));
@@ -902,19 +894,6 @@ impl<'a> ResolverFactory<'a> {
 
   pub fn npm_installer(&self) -> Option<&Arc<NpmInstaller>> {
     self.services.npm_installer.as_ref()
-  }
-
-  pub fn npm_graph_resolver(&self) -> &Arc<CliNpmGraphResolver> {
-    self.services.npm_graph_resolver.get_or_init(|| {
-      Arc::new(CliNpmGraphResolver::new(
-        None,
-        self.services.found_pkg_json_dep_flag.clone(),
-        self
-          .config_data
-          .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
-        NpmCachingStrategy::Eager,
-      ))
-    })
   }
 
   pub fn pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {

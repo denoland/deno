@@ -1986,7 +1986,6 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => {
       let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
-      let npm_resolver = scoped_resolver.as_graph_npm_resolver();
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let config_data = scoped_resolver.as_config_data();
@@ -2015,7 +2014,6 @@ fn analyze_module(
             file_system: &deno_graph::source::NullFileSystem,
             jsr_url_provider: &CliJsrUrlProvider,
             maybe_resolver: Some(&resolver),
-            maybe_npm_resolver: Some(npm_resolver.as_ref()),
           },
         )),
         module_resolution_mode,

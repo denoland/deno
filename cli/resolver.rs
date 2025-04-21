@@ -7,7 +7,6 @@ use dashmap::DashSet;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
-use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
@@ -15,7 +14,6 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::MappedResolutionDiagnostic;
 use deno_resolver::workspace::MappedResolutionError;
 use deno_runtime::colors;
-use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::package::PackageReq;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -126,7 +124,6 @@ impl CliResolver {
 pub struct CliNpmGraphResolver {
   npm_installer: Option<Arc<NpmInstaller>>,
   found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-  bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
 }
 
@@ -134,13 +131,11 @@ impl CliNpmGraphResolver {
   pub fn new(
     npm_installer: Option<Arc<NpmInstaller>>,
     found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-    bare_node_builtins_enabled: bool,
     npm_caching: NpmCachingStrategy,
   ) -> Self {
     Self {
       npm_installer,
       found_package_json_dep_flag,
-      bare_node_builtins_enabled,
       npm_caching,
     }
   }
@@ -148,22 +143,6 @@ impl CliNpmGraphResolver {
 
 #[async_trait(?Send)]
 impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
-  fn resolve_builtin_node_module(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<String>, UnknownBuiltInNodeModuleError> {
-    if specifier.scheme() != "node" {
-      return Ok(None);
-    }
-
-    let module_name = specifier.path().to_string();
-    if is_builtin_node_module(&module_name) {
-      Ok(Some(module_name))
-    } else {
-      Err(UnknownBuiltInNodeModuleError { module_name })
-    }
-  }
-
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
     if let Some(npm_installer) = &self.npm_installer {
       let npm_installer = npm_installer.clone();
@@ -242,9 +221,5 @@ impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
         }
       }
     }
-  }
-
-  fn enables_bare_builtin_node_module(&self) -> bool {
-    self.bare_node_builtins_enabled
   }
 }
