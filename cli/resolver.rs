@@ -22,7 +22,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
 use crate::args::NpmCachingStrategy;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
@@ -162,18 +161,6 @@ impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
       Ok(Some(module_name))
     } else {
       Err(UnknownBuiltInNodeModuleError { module_name })
-    }
-  }
-
-  fn on_resolve_bare_builtin_node_module(
-    &self,
-    module_name: &str,
-    range: &deno_graph::Range,
-  ) {
-    let start = range.range.start;
-    let specifier = &range.specifier;
-    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{start}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 
