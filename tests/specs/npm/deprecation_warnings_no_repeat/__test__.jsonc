@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "run --node-modules-dir=auto main.ts",
-      "output": ""
+      "output": "warn.out"
     }
   ]
 }
