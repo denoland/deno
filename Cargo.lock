@@ -896,6 +896,7 @@ name = "cli_tests"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "chrono",
  "deno_bench_util",
@@ -1450,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.3.0-rc.0"
+version = "2.3.0-rc.1"
 dependencies = [
  "anstream",
  "async-trait",
@@ -2173,9 +2174,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.26.1"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d191fba7b3e2071f584c248b3aefeae185b57a8fa3c8985185e1d8b248835b92"
+checksum = "2089709ffe9ae01616a4933ebd385b4a6d244927165306025e03318d6fdb08f8"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2339,9 +2340,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.31.1"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343a30beea9bee6241affc3b1f7cb583c66bb8abbab281169cb18d9cc3344077"
+checksum = "b062c0da960b2acf1b6b92900122dbe86726ba40944d31f474f15ee3f272e3f6"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2923,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "2.2.11"
+version = "2.3.0-rc.1"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3510,9 +3511,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.84.0"
+version = "0.85.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88b6e201a88de1a02c8a29389474d50a33d995caeeb9c947a1a45521fd41f3a2"
+checksum = "108a46a3d4714146686451e9a5d7783523ddd4ff749d8cc360432ba375539ed5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5204,12 +5205,11 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.7.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7550a110415b4780bf6064d280f2dc5b761fb80d9af92258a72e5dc82ca6f05a"
+checksum = "89795977654ad6250d6c0915411b622bac22f9efb4f852af94b2e00964cab832"
 dependencies = [
  "editpe",
- "image",
  "libc",
  "sha2",
  "windows-sys 0.48.0",
