@@ -6,6 +6,69 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.11 / 2025.04.18
+
+- fix(ext/node): Fix `Writable.toWeb()` (#28914)
+- fix(ext/node): add `assert` property to test context object (#28904)
+- fix(install/global): do not append `bin` to `DENO_INSTALL_ROOT` when ends with
+  `bin` (#26446)
+- fix(npm): panic when using tag with patched package (#28900)
+- fix(task): document source of tasks, fix punctuation (#28413)
+- fix: better cjs vs esm module detection and upgrade swc (#28810)
+- fix: remove unnecessary whitespace in prompt function (#28868)
+- fix: resolve shebang parse error in deno doc --test (#26079)
+- perf(npm): don't try to cache npm packages we've already cached (#28938)
+
+### 2.2.10 / 2025.04.14
+
+- fix: enable explicit resource management for JavaScript (#28119)
+- feat(unstable): support linux vsock (#28725)
+- fix(ext/node): add basic support of suite/describe in node:test (#28847)
+- fix(ext/node): export test as property of default export (#28881)
+- fix(ext/node): querystring fallback to default decoder (#28838)
+- fix(ext/node): upgrade `node:stream` (#28855)
+- fix(fmt): upgrade malva to 0.11.2 (#28871)
+- fix(install): read extra package info from node_modules and fallback to
+  registry (#28893)
+- fix(unstable): vsock nits (#28851)
+
+### 2.2.9 / 2025.04.11
+
+- fix(build): upgrade libffi to 4.0.0 (#28816)
+- fix(compile): do not panic including node_modules directory (#28782)
+- fix(compile): multi icon ordering on windows (#28771)
+- fix(ext/canvas): handle integer overflow in `createImageBitmap` (#28764)
+- fix(ext/node): add createReadStream & createWriteStream methods to the
+  FileHandle class (#28700)
+- fix(ext/node): add support for --no- prefix (allowNegative option) in
+  parseArgs() (#28811)
+- fix(ext/node): alias `shake-128` and `shake-256` hash algorithms (#28451)
+- fix(ext/node): implement `Buffer.copyBytesFrom` (#28829)
+- fix(ext/node): implement `process.loadEnvFile` (#28824)
+- fix(ext/node): implement finished() for web streams (#28600)
+- fix(ext/node): return `Buffer` from crypto cipher APIs (#28826)
+- fix(ext/node): support input option in spawnSync (#28792)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_posix.ts` (#28665)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_win32.ts` (#28668)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/separator.ts`
+  (#28669)
+- fix(ext/node): verbose zlib error messages (#28831)
+- fix(install): handle when bin entry info isn't present in package.json but is
+  in registry (#28822)
+- fix(install): regression where Deno not used when postinstall script ran
+  script without file extension (#28786)
+- fix(lockfile): handling of peer deps when migrating to lockfile v5 (#28844)
+- fix(lockfile): omit tarball url from lockfile if it's the default (#28842)
+- fix(lsp): exclude unmapped npm cache paths from auto-imports (#28841)
+- fix(node): add reset method to event loop delay histogram (#28788)
+- fix(task): support backticks and basic tilde expansion (#28832)
+- fix(unstable): add missing decorators nodes in lint ast (#28834)
+- fix(unstable): add parent types to lint ast nodes (#28802)
+- fix(unstable): lint `.parent` property not traversing over groups (#28803)
+- fix: dont strip n-api symbols in `denort` on mac (#28800)
+- fix: use full SHA for canary panic URLs (#28819)
+- perf(npm): load npm resolution snapshot directly from lockfile (#28647)
+
 ### 2.2.8 / 2025.04.05
 
 - fix(compile): ensure atime/birthtime/mtime/ctime is set in vfs (#28731)
@@ -263,6 +326,86 @@ https://github.com/denoland/deno_install
 - perf(check): use v8 code cache for extension sources in `deno check` (#28089)
 - perf(lsp): add built-in tracing support for the LSP (#27843)
 - perf(lsp): don't clone asset text (#28165)
+- perf(lsp): make auto-imports a little faster (#28106)
+
+### 2.1.12 / 2025.04.11
+
+The 2.1.11 release had an incorrect version number when doing `deno -v`.
+
+- fix(ext/node): alias `shake-128` and `shake-256` hash algorithms (#28451)
+- fix(ext/node): return `Buffer` from crypto cipher APIs (#28826)
+- fix(ext/node): support input option in spawnSync (#28792)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/separator.ts`
+  (#28669)
+- fix(node): add reset method to event loop delay histogram (#28788)
+
+### 2.1.11 / 2025.04.08
+
+- docs: add examples for SubtleCrypto (#28068)
+- docs: adding a missing full stop to context help text (#28465)
+- docs: adding jsdocs for temporalAPI (#28542)
+- docs: fix a numerical error in update_typescript.md (#28556)
+- docs: fix a typo in specs README.md (#28524)
+- docs: fixed a typo in update_typescript.md (#28486)
+- docs: ignore absent window global variable in d.ts (#28456)
+- docs: making copy a little clearer (#28481)
+- docs: randomUUID and getRandomValues (#28496)
+- docs(canvas): Add examples to createImageBitmap jsdocs (#28055)
+- docs(console): update console documentation (#28196)
+- docs(web): update docs for `globalThis.caches` (#28061)
+- fix: add hint to run with `--no-check` when type checking fails (#28091)
+- fix: add info suggestion for `unsafely-ignore-certificate-errors` and add
+  `--help=full` (#28203)
+- fix: add stackTraceLimit to ErrorConstructor interface and removed
+  ErrorWithStackTraceLimit interface (#28539)
+- fix: cache bust http cache on lockfile integrity mismatch (#28087)
+- fix: don't panic when running with // as a filepath (#28189)
+- fix(add): better help text for --dev arg (#28304)
+- fix(check): npm resolution errors to tsc diagnostics (#28174)
+- fix(cli): add `compilerOptions.lib` examples to config-file.v1.json (#28226)
+- fix(completions): remove problematic character for powershell (#28102)
+- fix(coverage): exclude scripts with invalid URLs from raw coverage output
+  (#28210)
+- fix(ext/cache): add missing Cargo feature (#28178)
+- fix(ext/node): `mkdir()` parse file mode (#28609)
+- fix(ext/node): correct `STATUS_CODES` strings (#28489)
+- fix(ext/node): decipherIv() range error on invalid final block length (#28215)
+- fix(ext/node): emit 'close' event on ServerResponse object when client aborted
+  the request (#28601)
+- fix(ext/node): node compatibility issue missing fd in createServer callback
+  socket object (#27789)
+- fix(ext/node): propagate 'close' event of IncomingMessage to Socket (#28582)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_lstat.ts`
+  (#28644)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_readv.ts`
+  (#28645)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_realpath.ts`
+  (#28652)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_util.ts` (#28432)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/common.ts` (#28164)
+- fix(ext/os): explicitly enable `sysinfoapi` feature on `winapi` dependency
+  (#28568)
+- fix(ext/websocket): cancel in-flight handshake on close() (#28598)
+- fix(fmt): support "--ext vto" and "--ext njk" (#28262)
+- fix(init): force --reload if npm or jsr package (#28150)
+- fix(install): don't error on unknown media types in install (#28234)
+- fix(install): exclude npm workspace packages from graph roots in `install`
+  (#28401)
+- fix(npm): further reduce duplicates with optional peers (#28705)
+- fix(npm): improve optional peer dep handling (#28651)
+- fix(npm): reduce duplicate peers by preferring existing nv if nv anywhere in
+  ancestor peers (#28663)
+- fix(npm): reduce occurrences of duplicate packages due to peer dep resolution
+  (#28586)
+- fix(outdated): hint to use `--latest` if new versions are available in
+  `outdated --update` (#28190)
+- fix(run): skip the cjs suggestion for mjs/mts modules (#26698)
+- fix(task): support --frozen flag (#28094)
+- fix(types): add `Error.isError` type (#28679)
+- fix(unstable/temporal): implement
+  `Temporal.ZonedDateTime.getTimeZoneTransition` (#27770)
+- perf(install): keep parsed npm package info in memory cache (#28636)
+- perf(install): only read initialized file if we care about the tags (#28242)
 - perf(lsp): make auto-imports a little faster (#28106)
 
 ### 2.1.10 / 2025.02.13

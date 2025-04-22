@@ -31,6 +31,7 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
 const { ObjectDefineProperties } = primordials;
 
@@ -164,8 +165,9 @@ const unstableIds = {
   process: 11,
   temporal: 12,
   unsafeProto: 13,
-  webgpu: 14,
-  workerOptions: 15,
+  vsock: 14,
+  webgpu: 15,
+  workerOptions: 16,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -220,6 +222,12 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
+ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
+  webgpu: core.propWritableLazyLoaded(
+    (webgpu) => webgpu.denoNsWebGPU,
+    loadWebGPU,
+  ),
+});
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 

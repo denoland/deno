@@ -131,7 +131,7 @@ export function assert(cond, msg = "Assertion failed.") {
 /** @type {Map<string, ts.SourceFile>} */
 export const SOURCE_FILE_CACHE = new Map();
 
-/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; isClassicScript?: boolean; }>} */
 export const SCRIPT_SNAPSHOT_CACHE = new Map();
 
 /** @type {Map<string, number>} */
@@ -171,6 +171,15 @@ export const LAST_REQUEST_SCOPE = {
   get: () => lastRequestScope,
   set: (scope) => {
     lastRequestScope = scope;
+  },
+};
+
+/** @type {string | null} */
+let lastRequestNotebookUri = null;
+export const LAST_REQUEST_NOTEBOOK_URI = {
+  get: () => lastRequestNotebookUri,
+  set: (notebookUri) => {
+    lastRequestNotebookUri = notebookUri;
   },
 };
 
@@ -379,14 +388,15 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
+/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
   // @ts-ignore Will be set later.
   unscoped: null,
   byScope: new Map(),
+  byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
+/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -668,16 +678,22 @@ const hostImpl = {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope } = ops.op_script_names();
+      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
         unscoped,
         byScope: new Map(Object.entries(byScope)),
+        byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
     const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
-      : null) ?? SCRIPT_NAMES_CACHE.unscoped;
+    const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
+    return (lastRequestNotebookUri
+      ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
+      : null) ??
+      (lastRequestScope
+        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+        : null) ??
+      SCRIPT_NAMES_CACHE.unscoped;
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -714,13 +730,14 @@ const hostImpl = {
     }
     let scriptSnapshot = SCRIPT_SNAPSHOT_CACHE.get(specifier);
     if (scriptSnapshot == undefined) {
-      /** @type {{ data: string, version: string, isCjs: boolean }} */
+      /** @type {{ data: string, version: string, isCjs: boolean, isClassicScript: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
         return undefined;
       }
       scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
       scriptSnapshot.isCjs = fileInfo.isCjs;
+      scriptSnapshot.isClassicScript = fileInfo.isClassicScript;
       SCRIPT_SNAPSHOT_CACHE.set(specifier, scriptSnapshot);
       SCRIPT_VERSION_CACHE.set(specifier, fileInfo.version);
     }
@@ -794,6 +811,13 @@ export function filterMapDiagnostic(diagnostic) {
     (diagnostic.file == null || !isNodeSourceFile(diagnostic.file))
   ) {
     return false;
+  }
+  const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
+  if (isClassicScript) {
+    // Top-level-await.
+    if (diagnostic.code == 1375) {
+      return false;
+    }
   }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {

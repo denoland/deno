@@ -369,3 +369,6 @@ pre.prettyprint {
 .push {
   height: 48px;
 }
+.overflow-auto {
+  overflow: auto;
+}
