@@ -441,6 +441,8 @@ fn run_step(
   if step.output.ends_with(".out") {
     let test_output_path = cwd.join(&step.output);
     output.assert_matches_file(test_output_path);
+  } else if step.output.len() > 100 {
+    panic!("The \"output\" property in your __test__.jsonc file was too long. Please extract this to an `.out` file to improve readability.")
   } else {
     output.assert_matches_text(&step.output);
   }

@@ -368,21 +368,7 @@ impl<
             })
         }
       },
-      Err(err) => {
-        if self.bare_node_builtins && err.is_unmapped_bare_specifier() {
-          // attempt to resolve as an unmapped bare specifier
-          if let Some(n) = self.node_and_npm_resolver.as_ref() {
-            if n.node_resolver.is_builtin_node_module(raw_specifier) {
-              return Ok(DenoResolution {
-                url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
-                maybe_diagnostic,
-                found_package_json_dep,
-              });
-            }
-          }
-        }
-        Err(err.into())
-      }
+      Err(err) => Err(err.into()),
     };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
@@ -415,7 +401,7 @@ impl<
       Ok(specifier) => {
         if specifier.scheme() == "node" {
           let module_name = specifier.path();
-          return if node_resolver.is_builtin_node_module(&module_name) {
+          return if node_resolver.is_builtin_node_module(module_name) {
             Ok(DenoResolution {
               url: specifier,
               maybe_diagnostic,
@@ -524,11 +510,26 @@ impl<
                   found_package_json_dep,
                 })
               }
-              NodeResolution::BuiltIn(_) => {
-                // don't resolve bare specifiers for built-in modules via node resolution
+              NodeResolution::BuiltIn(ref _module) => {
+                if self.bare_node_builtins {
+                  return Ok(DenoResolution {
+                    url: res.into_url()?,
+                    maybe_diagnostic,
+                    found_package_json_dep,
+                  });
+                }
               }
             }
           }
+        } else if self.bare_node_builtins
+          && matches!(err.as_kind(), DenoResolveErrorKind::MappedResolution(err) if err.is_unmapped_bare_specifier())
+          && node_resolver.is_builtin_node_module(raw_specifier)
+        {
+          return Ok(DenoResolution {
+            url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
+            maybe_diagnostic,
+            found_package_json_dep,
+          });
         }
 
         Err(err)
