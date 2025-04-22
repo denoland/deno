@@ -409,6 +409,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub coverage_raw_data_only: bool,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -1195,10 +1196,10 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
+                         Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+                         Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
-                         Possible values: "system", "mozilla".
-                          <p(245)>(defaults to "mozilla")</>
   <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
                           <p(245)>(module downloads, fetch)</>
@@ -1411,7 +1412,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
-      "install" => install_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m, app)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
@@ -3103,13 +3104,13 @@ fn task_subcommand() -> Command {
   command(
     "task",
     cstr!(
-      "Run a task defined in the configuration file.
+      "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks:
+List all available tasks (from config files in the current and ancestor directories):
   <p(245)>deno task</>
 
-Evaluate a task from string
+Evaluate a task from string:
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
@@ -3237,7 +3238,15 @@ or <c>**/__tests__/**</>:
           .conflicts_with("inspect")
           .conflicts_with("inspect-wait")
           .conflicts_with("inspect-brk")
-          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'")
+          .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
+  <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("coverage-raw-data-only")
+          .long("coverage-raw-data-only")
+          .help("Only collect raw coverage data, without generating a report")
+          .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -4950,6 +4959,7 @@ fn info_parse(
 fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, false)?;
 
@@ -4987,6 +4997,13 @@ fn install_parse(
     .remove_many("cmd")
     .map(|packages| add_parse_inner(matches, Some(packages)))
   {
+    if matches!(flags.config_flag, ConfigFlag::Disabled) {
+      return Err(app.override_usage("deno install [OPTIONS] [PACKAGE]...").error(
+        clap::error::ErrorKind::ArgumentConflict,
+        format!("deno install can't be used to add packages if `--no-config` is passed.\n{} to cache the packages without adding to a config, pass the `--entrypoint` flag", deno_terminal::colors::cyan("hint:")),
+      ));
+    }
+
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
     ))
@@ -5455,6 +5472,7 @@ fn test_parse(
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
@@ -6054,7 +6072,6 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
-  flags.unstable_config.lockfile_v5 = matches.get_flag("unstable-lockfile-v5");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -9399,6 +9416,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          coverage_raw_data_only: false,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9483,6 +9501,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9526,6 +9545,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9663,6 +9683,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9699,6 +9720,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9734,6 +9756,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9771,6 +9794,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,

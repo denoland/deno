@@ -710,7 +710,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
-        lockfile_v5: self.cli_options.unstable_lockfile_v5(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,

@@ -404,22 +404,14 @@ impl CliFactory {
         let workspace_directory = workspace_factory.workspace_directory()?;
         let maybe_external_import_map =
           self.workspace_external_import_map_loader()?.get_or_load()?;
-        let provider = self.npm_registry_info_provider()?.clone();
-        let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
-          provider.as_npm_registry_api(),
-        ));
+        let adapter = self.lockfile_npm_package_info_provider()?;
 
-        let use_lockfile_v5 = crate::args::unstable_lockfile_v5(
-          &self.flags,
-          &workspace_directory.workspace,
-        );
         let maybe_lock_file = CliLockfile::discover(
           &self.sys(),
           &self.flags,
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
           &adapter,
-          use_lockfile_v5,
         )
         .await?
         .map(Arc::new);
@@ -665,6 +657,7 @@ impl CliFactory {
             .map(|p| p.to_path_buf()),
           cli_options.lifecycle_scripts_config(),
           cli_options.npm_system_info(),
+          self.workspace_npm_patch_packages()?.clone(),
         )))
       })
       .await
@@ -685,6 +678,15 @@ impl CliFactory {
       })
   }
 
+  pub fn lockfile_npm_package_info_provider(
+    &self,
+  ) -> Result<crate::npm::NpmPackageInfoApiAdapter, AnyError> {
+    Ok(crate::npm::NpmPackageInfoApiAdapter::new(
+      Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
+      self.workspace_npm_patch_packages()?.clone(),
+    ))
+  }
+
   pub async fn npm_resolution_initializer(
     &self,
   ) -> Result<&Arc<NpmResolutionInitializer>, AnyError> {
@@ -693,7 +695,6 @@ impl CliFactory {
       .npm_resolution_initializer
       .get_or_try_init_async(async move {
         Ok(Arc::new(NpmResolutionInitializer::new(
-          self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
           self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
@@ -1272,6 +1273,7 @@ impl CliFactory {
       } else {
         None
       },
+      None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
       self.maybe_inspector_server()?.clone(),
