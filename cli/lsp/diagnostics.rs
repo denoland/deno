@@ -1185,10 +1185,12 @@ pub enum DenoDiagnostic {
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
-  /// A remote jsr package reference was not found in the cache.
+  /// A jsr package reference was not found in the cache.
   NotInstalledJsr(PackageReq, ModuleSpecifier),
-  /// A remote npm package reference was not found in the cache.
+  /// An npm package reference was not found in the cache.
   NotInstalledNpm(PackageReq, ModuleSpecifier),
+  /// An npm package reference was not exported by its package.
+  NoExportNpm(NpmPackageReqReference),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// An error occurred when resolving the specifier string.
@@ -1209,6 +1211,7 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NotInstalledJsr(_, _) => "not-installed-jsr",
       Self::NotInstalledNpm(_, _) => "not-installed-npm",
+      Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
       Self::ResolutionError(err) => {
         if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
@@ -1451,6 +1454,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NoExportNpm(pkg_ref) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{}\" does not define an export \"{}\".", pkg_ref.req(), pkg_ref.sub_path().unwrap_or(".")), None),
       Self::NoLocal(specifier) => {
         let sloppy_resolution = sloppy_imports_resolve(specifier, deno_resolver::workspace::ResolutionKind::Execution, CliSys::default());
         let data = sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| {
@@ -1632,10 +1636,21 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          let req = pkg_ref.into_inner().req;
-          if !npm_resolver.is_pkg_req_folder_cached(&req) {
-            diagnostics
-              .push(DenoDiagnostic::NotInstalledNpm(req, specifier.clone()));
+          let req = pkg_ref.req();
+          if !npm_resolver.is_pkg_req_folder_cached(req) {
+            diagnostics.push(DenoDiagnostic::NotInstalledNpm(
+              req.clone(),
+              specifier.clone(),
+            ));
+          } else if scoped_resolver
+            .npm_to_file_url(
+              &pkg_ref,
+              &referrer_module.specifier,
+              referrer_module.resolution_mode,
+            )
+            .is_none()
+          {
+            diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
