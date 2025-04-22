@@ -85,7 +85,7 @@ async fn get_infos(
       Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
         deno_lockfile::Lockfile5NpmInfo {
           tarball_url: version_info.dist.as_ref().and_then(|d| {
-            if d.tarball == DefaultTarballUrl.default_tarball_url(&v) {
+            if d.tarball == DefaultTarballUrl.default_tarball_url(v) {
               None
             } else {
               Some(d.tarball.clone())
