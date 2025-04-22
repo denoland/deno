@@ -116,7 +116,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v22.10.0";
+export const version = "v22.14.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
