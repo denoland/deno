@@ -127,7 +127,7 @@ export const version = "v22.14.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "22.10.0",
+  node: "22.14.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",
