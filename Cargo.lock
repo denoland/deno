@@ -2924,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "2.2.11"
+version = "2.3.0-rc.1"
 dependencies = [
  "async-trait",
  "bincode",
