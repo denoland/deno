@@ -71,6 +71,9 @@ Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
         socket.close();
       });
     });
+    socket1.on("message", (msg) => {
+      resolve(msg.toString());
+    });
   });
   socket0.on("message", (msg) => {
     resolve(msg.toString());
