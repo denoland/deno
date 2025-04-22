@@ -2,7 +2,7 @@
 
 import { assertEquals } from "@std/assert";
 import { execCode } from "../unit/test_util.ts";
-import { createSocket } from "node:dgram";
+import { createSocket, type Socket } from "node:dgram";
 
 const listenPort = 4503;
 const listenPort2 = 4504;
@@ -61,7 +61,7 @@ Deno.test("[node/dgram] udp unref", {
 Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   const { promise, resolve } = Promise.withResolvers<string>();
   const socket0 = createSocket({ type: "udp4", reuseAddr: true });
-  let socket1: any;
+  let socket1: Socket | undefined;
   socket0.bind(0, "0.0.0.0", () => {
     const port = socket0.address().port;
     socket1 = createSocket({ type: "udp4", reuseAddr: true });
