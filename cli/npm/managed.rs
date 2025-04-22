@@ -124,21 +124,6 @@ pub struct ResolveSnapshotError {
   source: SnapshotFromLockfileError,
 }
 
-impl ResolveSnapshotError {
-  pub fn maybe_integrity_check_error(
-    &self,
-  ) -> Option<&deno_npm::resolution::IntegrityCheckFailedError> {
-    match &self.source {
-      SnapshotFromLockfileError::SnapshotFromLockfile(
-        deno_npm::resolution::SnapshotFromLockfileError::IntegrityCheckFailed(
-          err,
-        ),
-      ) => Some(err),
-      _ => None,
-    }
-  }
-}
-
 fn resolve_snapshot(
   snapshot: CliNpmResolverManagedSnapshotOption,
   patch_packages: &WorkspaceNpmPatchPackages,
@@ -171,20 +156,22 @@ pub enum SnapshotFromLockfileError {
 pub(crate) struct DefaultTarballUrl;
 
 impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
-  fn default_tarball_url(&self, id: &deno_npm::NpmPackageId) -> String {
-    let scope = id.nv.scope();
+  fn default_tarball_url(
+    &self,
+    nv: &deno_semver::package::PackageNv,
+  ) -> String {
+    let scope = nv.scope();
     let package_name = if let Some(scope) = scope {
-      id.nv
-        .name
+      nv.name
         .strip_prefix(scope)
-        .unwrap_or(&id.nv.name)
+        .unwrap_or(&nv.name)
         .trim_start_matches('/')
     } else {
-      &id.nv.name
+      &nv.name
     };
     format!(
       "https://registry.npmjs.org/{}/-/{}-{}.tgz",
-      id.nv.name, package_name, id.nv.version
+      nv.name, package_name, nv.version
     )
   }
 }
@@ -193,8 +180,8 @@ fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
-  let snapshot = deno_npm::resolution::snapshot_from_lockfile_v5(
-    deno_npm::resolution::SnapshotFromLockfileV5Params {
+  let snapshot = deno_npm::resolution::snapshot_from_lockfile(
+    deno_npm::resolution::SnapshotFromLockfileParams {
       patch_packages: &patch_packages.0,
       lockfile: &lockfile.lock(),
       default_tarball_url: &DefaultTarballUrl,
