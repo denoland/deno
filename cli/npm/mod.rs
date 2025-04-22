@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_config::workspace::Workspace;
-use deno_core::anyhow::anyhow;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
@@ -20,7 +19,6 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
-use deno_npm::NpmPackageId;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -37,7 +35,6 @@ use thiserror::Error;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
-pub use self::managed::ResolveSnapshotError;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::managed::DefaultTarballUrl;
@@ -56,7 +53,77 @@ pub type CliNpmResolverCreateOptions =
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
 
-pub struct NpmPackageInfoApiAdapter(pub Arc<dyn NpmRegistryApi + Send + Sync>);
+pub struct NpmPackageInfoApiAdapter {
+  api: Arc<dyn NpmRegistryApi + Send + Sync>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+}
+
+impl NpmPackageInfoApiAdapter {
+  pub fn new(
+    api: Arc<dyn NpmRegistryApi + Send + Sync>,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  ) -> Self {
+    Self {
+      api,
+      workspace_patch_packages,
+    }
+  }
+}
+async fn get_infos(
+  info_provider: &(dyn NpmRegistryApi + Send + Sync),
+  workspace_patch_packages: &WorkspaceNpmPatchPackages,
+  values: &[PackageNv],
+) -> Result<
+  Vec<deno_lockfile::Lockfile5NpmInfo>,
+  Box<dyn std::error::Error + Send + Sync>,
+> {
+  let futs = values
+    .iter()
+    .map(|v| async move {
+      let info = info_provider.package_info(v.name.as_str()).await?;
+      let version_info = info.version_info(v, &workspace_patch_packages.0)?;
+      Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+        deno_lockfile::Lockfile5NpmInfo {
+          tarball_url: version_info.dist.as_ref().and_then(|d| {
+            if d.tarball == DefaultTarballUrl.default_tarball_url(v) {
+              None
+            } else {
+              Some(d.tarball.clone())
+            }
+          }),
+          optional_dependencies: version_info
+            .optional_dependencies
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<std::collections::BTreeMap<_, _>>(),
+          cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
+          os: version_info.os.iter().map(|s| s.to_string()).collect(),
+          deprecated: version_info.deprecated.is_some(),
+          has_bin: version_info.bin.is_some(),
+          has_scripts: version_info.scripts.contains_key("preinstall")
+            || version_info.scripts.contains_key("install")
+            || version_info.scripts.contains_key("postinstall"),
+          optional_peers: version_info
+            .peer_dependencies_meta
+            .iter()
+            .filter_map(|(k, v)| {
+              if v.optional {
+                version_info
+                  .peer_dependencies
+                  .get(k)
+                  .map(|v| (k.to_string(), v.to_string()))
+              } else {
+                None
+              }
+            })
+            .collect::<std::collections::BTreeMap<_, _>>(),
+        },
+      )
+    })
+    .collect::<FuturesOrdered<_>>();
+  let package_infos = futs.try_collect::<Vec<_>>().await?;
+  Ok(package_infos)
+}
 
 #[async_trait::async_trait(?Send)]
 impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
@@ -67,62 +134,19 @@ impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
     Vec<deno_lockfile::Lockfile5NpmInfo>,
     Box<dyn std::error::Error + Send + Sync>,
   > {
-    let futs = values
-      .iter()
-      .map(|v| async move {
-        let info = self.0.package_info(v.name.as_str()).await?;
-        let version_info = info.versions.get(&v.version).ok_or_else(|| {
-          anyhow!("Version {} not found for package {}", v.version, v.name)
-        })?;
-        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
-          deno_lockfile::Lockfile5NpmInfo {
-            tarball_url: version_info.dist.as_ref().and_then(|d| {
-              if d.tarball
-                == DefaultTarballUrl.default_tarball_url(&NpmPackageId {
-                  nv: v.clone(),
-                  // TODO(nathanwhit): this function takes an `NpmPackageId`
-                  // but it should take a `PackageNv`. For now just
-                  // use default here.
-                  peer_dependencies: Default::default(),
-                })
-              {
-                None
-              } else {
-                Some(d.tarball.clone())
-              }
-            }),
-            optional_dependencies: version_info
-              .optional_dependencies
-              .iter()
-              .map(|(k, v)| (k.to_string(), v.to_string()))
-              .collect::<std::collections::BTreeMap<_, _>>(),
-            cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
-            os: version_info.os.iter().map(|s| s.to_string()).collect(),
-            deprecated: version_info.deprecated.is_some(),
-            has_bin: version_info.bin.is_some(),
-            has_scripts: version_info.scripts.contains_key("preinstall")
-              || version_info.scripts.contains_key("install")
-              || version_info.scripts.contains_key("postinstall"),
-            optional_peers: version_info
-              .peer_dependencies_meta
-              .iter()
-              .filter_map(|(k, v)| {
-                if v.optional {
-                  version_info
-                    .peer_dependencies
-                    .get(k)
-                    .map(|v| (k.to_string(), v.to_string()))
-                } else {
-                  None
-                }
-              })
-              .collect::<std::collections::BTreeMap<_, _>>(),
-          },
-        )
-      })
-      .collect::<FuturesOrdered<_>>();
-    let package_infos = futs.try_collect::<Vec<_>>().await?;
-    Ok(package_infos)
+    let package_infos =
+      get_infos(&*self.api, &self.workspace_patch_packages, values).await;
+
+    match package_infos {
+      Ok(package_infos) => Ok(package_infos),
+      Err(err) => {
+        if self.api.mark_force_reload() {
+          get_infos(&*self.api, &self.workspace_patch_packages, values).await
+        } else {
+          Err(err)
+        }
+      }
+    }
   }
 }
 

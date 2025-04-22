@@ -1,0 +1,24 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "denort_helper"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Helpers for denort."
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_error.workspace = true
+deno_path_util.workspace = true
+sys_traits = { features = ["getrandom", "real"], workspace = true }
+thiserror.workspace = true
+twox-hash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

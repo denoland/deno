@@ -4,3 +4,4 @@ test ... ok ([WILDCARD])
 
 ok | 1 passed | 0 failed ([WILDCARD])
 
+Error generating coverage report: No covered files included in the report

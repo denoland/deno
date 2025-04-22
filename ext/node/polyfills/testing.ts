@@ -4,10 +4,44 @@ import { primordials } from "ext:core/mod.js";
 const {
   PromisePrototypeThen,
   ArrayPrototypePush,
+  ArrayPrototypeForEach,
   SafePromiseAll,
   SafePromisePrototypeFinally,
 } = primordials;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import assert from "node:assert";
+
+const methodsToCopy = [
+  "deepEqual",
+  "deepStrictEqual",
+  "doesNotMatch",
+  "doesNotReject",
+  "doesNotThrow",
+  "equal",
+  "fail",
+  "ifError",
+  "match",
+  "notDeepEqual",
+  "notDeepStrictEqual",
+  "notEqual",
+  "notStrictEqual",
+  "partialDeepStrictEqual",
+  "rejects",
+  "strictEqual",
+  "throws",
+];
+
+/** `assert` object available via t.assert */
+let assertObject = undefined;
+function getAssertObject() {
+  if (assertObject === undefined) {
+    assertObject = { __proto__: null };
+    ArrayPrototypeForEach(methodsToCopy, (method) => {
+      assertObject[method] = assert[method];
+    });
+  }
+  return assertObject;
+}
 
 export function run() {
   notImplemented("test.run");
@@ -20,6 +54,10 @@ class NodeTestContext {
 
   constructor(t: Deno.TestContext) {
     this.#denoContext = t;
+  }
+
+  get assert() {
+    return getAssertObject();
   }
 
   get signal() {
