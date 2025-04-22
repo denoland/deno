@@ -57,7 +57,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::npm::ResolveSnapshotError;
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -417,22 +416,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
-  let mut error_code = 1;
-
   if let Some(CoreError::Js(e)) =
     any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
     error_string = format_js_error(e);
-  } else if let Some(e @ ResolveSnapshotError { .. }) =
-    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
-  {
-    if let Some(e) = e.maybe_integrity_check_error() {
-      error_string = e.to_string();
-      error_code = 10;
-    }
   }
 
-  exit_with_message(&error_string, error_code);
+  exit_with_message(&error_string, 1);
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
