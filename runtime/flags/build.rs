@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#![allow(clippy::disallowed_methods)]
+
 mod rust_list;
 
 use rust_list::UnstableFlagKind;
@@ -22,7 +24,7 @@ export const unstableIds = {
   );
 
   for flag in UNSTABLE_FLAGS {
-    let camel = camel_case(&flag.name);
+    let camel = camel_case(flag.name);
     if matches!(flag.kind, UnstableFlagKind::Runtime) {
       js_list += &format!("  {}: {},\n", camel, flag.id);
     }
