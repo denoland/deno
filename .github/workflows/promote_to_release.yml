@@ -56,7 +56,7 @@ jobs:
           # Patch denort.exe
           Move-Item -Path "denort.exe" -Destination "denort_original.exe"
           patchver "denort_original.exe" "denort.exe" $CHANNEL
-          
+
           # Rename files to match expected pattern
           Move-Item -Path "deno.exe" -Destination "deno-x86_64-pc-windows-msvc-$CHANNEL.exe"
           Move-Item -Path "denort.exe" -Destination "denort-x86_64-pc-windows-msvc-$CHANNEL.exe"

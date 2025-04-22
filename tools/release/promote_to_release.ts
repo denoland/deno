@@ -22,7 +22,7 @@ const DENO_BINARIES = [
 
 // Target platform filtering
 const NON_WINDOWS_TARGETS = SUPPORTED_TARGETS.filter(
-  target => !target.includes("windows")
+  (target) => !target.includes("windows"),
 );
 
 const CHANNEL = Deno.args[0];
