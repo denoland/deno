@@ -137,7 +137,8 @@ async fn uv_read_start(
     tokio::task::yield_now().await;
   }
 
-  Err(JsErrorBox::new("Interrupted", "Read interrupted"))
+  // Err(JsErrorBox::new("Interrupted", "Read interrupted"))
+  Ok(())
 }
 
 impl GarbageCollected for StreamWrap {}

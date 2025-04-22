@@ -166,32 +166,8 @@ export class LibuvStreamWrap extends HandleWrap {
       return;
     }
 
-    this.readPromise = this.streamWrap.readStart(this.#buf, (nread) => {
-      nread ??= codeMap.get("EOF")!;
-
-      streamBaseState[kReadBytesOrError] = nread;
-
-      if (nread > 0) {
-        this.bytesRead += nread;
-      }
-
-      const buf = this.#buf.slice(0, nread);
-
-      streamBaseState[kArrayBufferOffset] = 0;
-
-      try {
-        this.onread!(buf, nread);
-      } catch {
-        // swallow callback errors.
-      }
-    });
-
-    if (this.#unrefed) {
-      core.unrefOpPromise(this.readPromise);
-    }
-
-    this.readPromise
-      .catch((e) => {
+    const onread = (nread, e) => {
+      if (e) {
         // Try to read again if the underlying stream resource
         // changed. This can happen during TLS upgrades (eg. STARTTLS)
         if (
@@ -214,17 +190,37 @@ export class LibuvStreamWrap extends HandleWrap {
           this[ownerSymbol].destroy(e);
           return;
         }
+      }
 
-        nread ??= codeMap.get("EOF")!;
+      nread ??= codeMap.get("EOF")!;
 
-        streamBaseState[kReadBytesOrError] = nread;
+      streamBaseState[kReadBytesOrError] = nread;
 
-        try {
-          this.onread!(new Uint8Array(0), nread);
-        } catch {
-          // swallow callback errors.
-        }
-      });
+      if (nread > 0) {
+        this.bytesRead += nread;
+      }
+
+      const buf = this.#buf.slice(0, nread);
+
+      streamBaseState[kArrayBufferOffset] = 0;
+
+      console.log("onread", buf, nread);
+      try {
+        this.onread!(buf, nread);
+      } catch {
+        // swallow callback errors.
+      }
+    }
+
+    this.readPromise = this.streamWrap.readStart(this.#buf, onread);
+
+    if (this.#unrefed) {
+      core.unrefOpPromise(this.readPromise);
+    }
+
+    this.readPromise
+      .then(onread)
+      .catch(e => onread(null, e));
 
     return 0;
   }
