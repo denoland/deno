@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.3.0-rc.0"
+version = "2.3.0-rc.1"
 dependencies = [
  "anstream",
  "async-trait",
