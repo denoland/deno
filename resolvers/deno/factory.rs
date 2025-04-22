@@ -8,7 +8,7 @@ use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::DenoDirResolutionError;
 use deno_cache_dir::GlobalHttpCacheRc;
-use deno_cache_dir::HttpCacheRc;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
@@ -253,11 +253,12 @@ impl<
 {
 }
 
-pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
+pub struct WorkspaceFactory<TSys: WorkspaceFactorySys + sys_traits::ThreadSleep>
+{
   sys: TSys,
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
-  http_cache: Deferred<HttpCacheRc>,
+  http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
@@ -440,7 +441,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
-  pub fn http_cache(&self) -> Result<&HttpCacheRc, HttpCacheCreateError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&deno_cache_dir::GlobalOrLocalHttpCache<TSys>, HttpCacheCreateError>
+  {
     self.http_cache.get_or_try_init(|| {
       let global_cache = self.global_http_cache()?.clone();
       match self.workspace_directory()?.workspace.vendor_dir_path() {
@@ -450,9 +454,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             global_cache,
             deno_cache_dir::GlobalToLocalCopy::Allow,
           );
-          Ok(new_rc(local_cache))
+          Ok(new_rc(local_cache).into())
         }
-        None => Ok(global_cache),
+        None => Ok(global_cache.into()),
       }
     })
   }

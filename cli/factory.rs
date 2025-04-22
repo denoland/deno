@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
@@ -69,7 +70,6 @@ use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
@@ -511,7 +511,9 @@ impl CliFactory {
     Ok(self.workspace_factory()?.global_http_cache()?)
   }
 
-  pub fn http_cache(&self) -> Result<&Arc<dyn HttpCache>, AnyError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&GlobalOrLocalHttpCache<CliSys>, AnyError> {
     Ok(self.workspace_factory()?.http_cache()?)
   }
 
