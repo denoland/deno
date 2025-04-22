@@ -36,7 +36,7 @@ use crate::UrlOrPathRef;
 pub enum CjsAnalysis<'a> {
   /// File was found to be an ES module and the translator should
   /// load the code as ESM.
-  Esm(Cow<'a, str>),
+  Esm(Cow<'a, str>, Option<CjsAnalysisExports>),
   Cjs(CjsAnalysisExports),
 }
 
@@ -44,6 +44,13 @@ pub enum CjsAnalysis<'a> {
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
+}
+
+/// What parts of an ES module should be analyzed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EsmAnalysisMode {
+  SourceOnly,
+  SourceImportsAndExports,
 }
 
 /// Code analyzer for CJS and ESM files.
@@ -60,31 +67,33 @@ pub trait CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     maybe_source: Option<Cow<'a, str>>,
+    esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum TranslateCjsToEsmError {
-  #[class(inherit)]
-  #[error(transparent)]
-  CjsCodeAnalysis(JsErrorBox),
-  #[class(inherit)]
-  #[error(transparent)]
-  ExportAnalysis(JsErrorBox),
+pub enum ResolvedCjsAnalysis<'a> {
+  Esm(Cow<'a, str>),
+  Cjs(BTreeSet<String>),
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
-pub struct CjsAnalysisCouldNotLoadError {
-  reexport: String,
-  reexport_specifier: Url,
-  referrer: Url,
-  #[source]
-  source: JsErrorBox,
-}
+#[allow(clippy::disallowed_types)]
+pub type CjsModuleExportAnalyzerRc<
+  TCjsCodeAnalyzer,
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  CjsModuleExportAnalyzer<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
 
-pub struct NodeCodeTranslator<
+pub struct CjsModuleExportAnalyzer<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
@@ -111,7 +120,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: FsCanonicalize + FsMetadata + FsRead,
   >
-  NodeCodeTranslator<
+  CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -142,35 +151,23 @@ impl<
     }
   }
 
-  /// Translates given CJS module into ESM. This function will perform static
-  /// analysis on the file to find defined exports and reexports.
-  ///
-  /// For all discovered reexports the analysis will be performed recursively.
-  ///
-  /// If successful a source code for equivalent ES module is returned.
-  pub async fn translate_cjs_to_esm<'a>(
+  pub async fn analyze_all_exports<'a>(
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let mut temp_var_count = 0;
-
+  ) -> Result<ResolvedCjsAnalysis<'a>, TranslateCjsToEsmError> {
     let analysis = self
       .cjs_code_analyzer
-      .analyze_cjs(entry_specifier, source)
+      .analyze_cjs(entry_specifier, source, EsmAnalysisMode::SourceOnly)
       .await
       .map_err(TranslateCjsToEsmError::CjsCodeAnalysis)?;
 
     let analysis = match analysis {
-      CjsAnalysis::Esm(source) => return Ok(source),
+      CjsAnalysis::Esm(source, _) => {
+        return Ok(ResolvedCjsAnalysis::Esm(source))
+      }
       CjsAnalysis::Cjs(analysis) => analysis,
     };
-
-    let mut source = vec![
-      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
-      const require = __internalCreateRequire(import.meta.url);"#
-        .to_string(),
-    ];
 
     // use a BTreeSet to make the output deterministic for v8's code cache
     let mut all_exports = analysis.exports.into_iter().collect::<BTreeSet<_>>();
@@ -193,37 +190,7 @@ impl<
       }
     }
 
-    source.push(format!(
-      r#"let mod;
-      if (import.meta.main) {{
-        mod = __internalModule._load("{0}", null, true)
-      }} else {{
-        mod = require("{0}");
-      }}"#,
-      url_to_file_path(entry_specifier)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .replace('\\', "\\\\")
-        .replace('\'', "\\\'")
-        .replace('\"', "\\\"")
-    ));
-
-    for export in &all_exports {
-      if export.as_str() != "default" {
-        add_export(
-          &mut source,
-          export,
-          &format!("mod[{}]", to_double_quote_string(export)),
-          &mut temp_var_count,
-        );
-      }
-    }
-
-    source.push("export default mod;".to_string());
-
-    let translated_source = source.join("\n");
-    Ok(Cow::Owned(translated_source))
+    Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
   #[allow(clippy::needless_lifetimes)]
@@ -238,7 +205,6 @@ impl<
   ) {
     struct Analysis {
       reexport_specifier: url::Url,
-      referrer: url::Url,
       analysis: CjsAnalysis<'static>,
     }
 
@@ -287,7 +253,11 @@ impl<
           let referrer = referrer.clone();
           let future = async move {
             let analysis = cjs_code_analyzer
-              .analyze_cjs(&reexport_specifier, None)
+              .analyze_cjs(
+                &reexport_specifier,
+                None,
+                EsmAnalysisMode::SourceImportsAndExports,
+              )
               .await
               .map_err(|source| {
                 JsErrorBox::from_err(CjsAnalysisCouldNotLoadError {
@@ -300,7 +270,6 @@ impl<
 
             Ok(Analysis {
               reexport_specifier,
-              referrer,
               analysis,
             })
           }
@@ -320,7 +289,6 @@ impl<
       // 2. Look at the analysis result and resolve its exports and re-exports
       let Analysis {
         reexport_specifier,
-        referrer,
         analysis,
       } = match analysis_result {
         Ok(analysis) => analysis,
@@ -330,14 +298,7 @@ impl<
         }
       };
       match analysis {
-        CjsAnalysis::Esm(_) => {
-          // todo(dsherret): support this once supporting requiring ES modules
-          errors.push(JsErrorBox::generic(format!(
-            "Cannot require ES module '{}' from '{}'",
-            reexport_specifier, referrer,
-          )));
-        }
-        CjsAnalysis::Cjs(analysis) => {
+        CjsAnalysis::Cjs(analysis) | CjsAnalysis::Esm(_, Some(analysis)) => {
           if !analysis.reexports.is_empty() {
             handle_reexports(
               reexport_specifier.clone(),
@@ -353,6 +314,10 @@ impl<
               .into_iter()
               .filter(|e| e.as_str() != "default"),
           );
+        }
+        CjsAnalysis::Esm(_, None) => {
+          // should not hit this due to EsmAnalysisMode::SourceImportsAndExports
+          debug_assert!(false);
         }
       }
     }
@@ -522,6 +487,137 @@ impl<
       typ: "module",
       suggested_ext: None,
     }))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TranslateCjsToEsmError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CjsCodeAnalysis(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  ExportAnalysis(JsErrorBox),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
+pub struct CjsAnalysisCouldNotLoadError {
+  reexport: String,
+  reexport_specifier: Url,
+  referrer: Url,
+  #[source]
+  source: JsErrorBox,
+}
+
+pub struct NodeCodeTranslator<
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+> {
+  module_export_analyzer: CjsModuleExportAnalyzerRc<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+}
+
+impl<
+    TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TInNpmPackageChecker: InNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  >
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
+{
+  pub fn new(
+    module_export_analyzer: CjsModuleExportAnalyzerRc<
+      TCjsCodeAnalyzer,
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  ) -> Self {
+    Self {
+      module_export_analyzer,
+    }
+  }
+
+  /// Translates given CJS module into ESM. This function will perform static
+  /// analysis on the file to find defined exports and reexports.
+  ///
+  /// For all discovered reexports the analysis will be performed recursively.
+  ///
+  /// If successful a source code for equivalent ES module is returned.
+  pub async fn translate_cjs_to_esm<'a>(
+    &self,
+    entry_specifier: &Url,
+    source: Option<Cow<'a, str>>,
+  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
+    let analysis = self
+      .module_export_analyzer
+      .analyze_all_exports(entry_specifier, source)
+      .await?;
+
+    let all_exports = match analysis {
+      ResolvedCjsAnalysis::Esm(source) => return Ok(source),
+      ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
+    };
+
+    // todo(dsherret): use capacity_builder here to remove all these heap
+    // allocations and make the string writing faster
+    let mut temp_var_count = 0;
+    let mut source = vec![
+      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
+      const require = __internalCreateRequire(import.meta.url);"#
+        .to_string(),
+    ];
+
+    source.push(format!(
+      r#"let mod;
+      if (import.meta.main) {{
+        mod = __internalModule._load("{0}", null, true)
+      }} else {{
+        mod = require("{0}");
+      }}"#,
+      url_to_file_path(entry_specifier)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('\\', "\\\\")
+        .replace('\'', "\\\'")
+        .replace('\"', "\\\"")
+    ));
+
+    for export in &all_exports {
+      if !matches!(export.as_str(), "default" | "module.exports") {
+        add_export(
+          &mut source,
+          export,
+          &format!("mod[{}]", to_double_quote_string(export)),
+          &mut temp_var_count,
+        );
+      }
+    }
+
+    source.push("export default mod;".to_string());
+    add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
+
+    let translated_source = source.join("\n");
+    Ok(Cow::Owned(translated_source))
   }
 }
 

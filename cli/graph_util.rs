@@ -6,6 +6,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -428,7 +429,7 @@ impl ModuleGraphCreator {
         specifier: &deno_ast::ModuleSpecifier,
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
-        if specifier.scheme() == "bun" {
+        if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
           return Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
@@ -767,6 +768,8 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           imports: maybe_imports,
+          skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
+            && graph.graph_kind() == GraphKind::CodeOnly,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
@@ -795,7 +798,7 @@ impl ModuleGraphBuilder {
     // opted into using a node_modules directory
     if self
       .cli_options
-      .node_modules_dir()?
+      .specified_node_modules_dir()?
       .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
     {
@@ -1168,6 +1171,13 @@ fn get_resolution_error_bare_specifier(
 }
 
 fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  // not exact, but ok because this is just a hint
+  let media_type =
+    MediaType::from_specifier_and_headers(&error.range().specifier, None);
+  if media_type == MediaType::Wasm {
+    return None;
+  }
+
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },

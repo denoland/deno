@@ -2,7 +2,7 @@
 
 [package]
 name = "napi_sym"
-version = "0.123.0"
+version = "0.132.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

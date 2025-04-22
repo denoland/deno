@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.180.0"
+version = "0.189.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ cranelift-native.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_permissions.workspace = true
+denort_helper.workspace = true
 dlopen2.workspace = true
 libffi.workspace = true
 libffi-sys.workspace = true

@@ -49,7 +49,7 @@ pub fn create_runtime_snapshot(
     deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
-    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+    deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(None),
     deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops_and_esm(),
     deno_kv::deno_kv::init_ops_and_esm(
@@ -59,7 +59,7 @@ pub fn create_runtime_snapshot(
     deno_cron::deno_cron::init_ops_and_esm(
       deno_cron::local::LocalCronHandler::new(),
     ),
-    deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
+    deno_napi::deno_napi::init_ops_and_esm::<Permissions>(None),
     deno_http::deno_http::init_ops_and_esm(deno_http::Options::default()),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),

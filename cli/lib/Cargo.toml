@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_lib"
-version = "0.9.0"
+version = "0.18.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

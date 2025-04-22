@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.131.0"
+version = "0.140.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,6 +41,7 @@ deno_process.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
+dotenvy.workspace = true
 dsa.workspace = true
 ecb.workspace = true
 ecdsa.workspace = true
@@ -57,7 +58,6 @@ idna.workspace = true
 ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
-libsqlite3-sys.workspace = true
 libz-sys.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
@@ -90,6 +90,7 @@ sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld.workspace = true
+tower-service.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true
@@ -98,7 +99,7 @@ x509-parser.workspace = true
 yoke.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-errno = "0.3.8"
+errno = "0.3.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

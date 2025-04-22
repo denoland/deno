@@ -57,9 +57,9 @@ pub struct StandaloneData {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
-) -> Result<Option<StandaloneData>, AnyError> {
+) -> Result<StandaloneData, AnyError> {
   let Some(data) = libsui::find_section("d3n0l4nd") else {
-    return Ok(None);
+    bail!("Could not find standalone binary section.")
   };
 
   let root_path = {
@@ -80,10 +80,7 @@ pub fn extract_standalone(
     modules_store: remote_modules,
     vfs_root_entries,
     vfs_files_data,
-  } = match deserialize_binary_data_section(&root_url, data)? {
-    Some(data_section) => data_section,
-    None => return Ok(None),
-  };
+  } = deserialize_binary_data_section(&root_url, data)?;
 
   let cli_args = cli_args.into_owned();
   metadata.argv.reserve(cli_args.len() - 1);
@@ -106,7 +103,7 @@ pub fn extract_standalone(
       metadata.vfs_case_sensitivity,
     ))
   };
-  Ok(Some(StandaloneData {
+  Ok(StandaloneData {
     metadata,
     modules: Arc::new(StandaloneModules {
       modules: remote_modules,
@@ -115,7 +112,7 @@ pub fn extract_standalone(
     npm_snapshot,
     root_path,
     vfs,
-  }))
+  })
 }
 
 pub struct DeserializedDataSection {
@@ -129,7 +126,7 @@ pub struct DeserializedDataSection {
 pub fn deserialize_binary_data_section(
   root_dir_url: &Url,
   data: &'static [u8],
-) -> Result<Option<DeserializedDataSection>, AnyError> {
+) -> Result<DeserializedDataSection, AnyError> {
   fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
     if input.len() < MAGIC_BYTES.len() {
       bail!("Unexpected end of data. Could not find magic bytes.");
@@ -143,7 +140,7 @@ pub fn deserialize_binary_data_section(
 
   let (input, found) = read_magic_bytes(data)?;
   if !found {
-    return Ok(None);
+    bail!("Did not find magic bytes.");
   }
 
   // 1. Metadata
@@ -190,13 +187,13 @@ pub fn deserialize_binary_data_section(
     remote_modules_store,
   );
 
-  Ok(Some(DeserializedDataSection {
+  Ok(DeserializedDataSection {
     metadata,
     npm_snapshot,
     modules_store,
     vfs_root_entries,
     vfs_files_data,
-  }))
+  })
 }
 
 struct SpecifierStore {
@@ -357,7 +354,11 @@ impl<'a> DenoCompileModuleData<'a> {
         (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }
       // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+      MediaType::Css
+      | MediaType::Html
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => {
         (ModuleType::JavaScript, DenoCompileModuleSource::Bytes(data))
       }
     };
@@ -549,9 +550,11 @@ fn deserialize_npm_snapshot(
         dist: Default::default(),
         dependencies,
         optional_dependencies: Default::default(),
-        bin: None,
-        scripts: Default::default(),
-        deprecated: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        has_bin: false,
+        has_scripts: false,
+        is_deprecated: false,
+        extra: Default::default(),
       },
     ))
   }

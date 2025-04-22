@@ -22,7 +22,6 @@ pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::LintConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
@@ -31,6 +30,7 @@ pub use deno_config::deno_json::TsConfig;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
@@ -386,29 +386,18 @@ impl LintOptions {
   }
 
   pub fn resolve(
-    dir_path: PathBuf,
-    lint_config: LintConfig,
+    lint_config: WorkspaceDirLintConfig,
     lint_flags: &LintFlags,
   ) -> Result<Self, AnyError> {
     let rules = resolve_lint_rules_options(
-      lint_config.options.rules,
+      lint_config.rules,
       lint_flags.maybe_rules_tags.clone(),
       lint_flags.maybe_rules_include.clone(),
       lint_flags.maybe_rules_exclude.clone(),
     );
 
-    let plugins = {
-      let plugin_specifiers = lint_config.options.plugins;
-      let mut plugins = Vec::with_capacity(plugin_specifiers.len());
-      for plugin in &plugin_specifiers {
-        // TODO(bartlomieju): handle import-mapped specifiers
-        let url = resolve_url_or_path(plugin, &dir_path)?;
-        plugins.push(url);
-      }
-      // ensure stability for hasher
-      plugins.sort_unstable();
-      plugins
-    };
+    let mut plugins = lint_config.plugins;
+    plugins.sort_unstable();
 
     Ok(Self {
       files: lint_config.files,
@@ -454,7 +443,6 @@ pub struct CliOptions {
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
-  maybe_lockfile: Option<Arc<CliLockfile>>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
 
@@ -463,7 +451,6 @@ impl CliOptions {
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_lockfile: Option<Arc<CliLockfile>>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -486,33 +473,23 @@ impl CliOptions {
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
       start_dir,
     })
   }
 
   pub fn from_flags(
-    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let maybe_lock_file = CliLockfile::discover(
-      sys,
-      &flags,
-      &start_dir.workspace,
-      maybe_external_import_map.as_ref().map(|v| &v.value),
-    )?;
-
     log::debug!("Finished config loading.");
 
-    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+    Self::new(flags, initial_cwd, start_dir)
   }
 
   #[inline(always)]
@@ -599,8 +576,16 @@ impl CliOptions {
     }
   }
 
+  pub fn eszip(&self) -> bool {
+    self.flags.eszip
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
+  }
+
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
   }
 
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
@@ -697,7 +682,10 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  pub fn node_modules_dir(
+  /// Gets the explicitly specified NodeModulesDir setting.
+  ///
+  /// Use `WorkspaceFactory.node_modules_dir_mode()` to get the resolved value.
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<
     Option<NodeModulesDirMode>,
@@ -730,10 +718,6 @@ impl CliOptions {
       host,
       DENO_VERSION_INFO.user_agent,
     )?))
-  }
-
-  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
-    self.maybe_lockfile.as_ref()
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -781,7 +765,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(ctx.dir_path(), config, lint_flags)?;
+      let options = LintOptions::resolve(config, lint_flags)?;
       result.push((ctx, options));
     }
     Ok(result)
@@ -854,7 +838,7 @@ impl CliOptions {
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -1112,43 +1096,52 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_lazy_dynamic_imports(&self) -> bool {
+    self.flags.unstable_config.lazy_dynamic_imports
+      || self.workspace().has_unstable("lazy-dynamic-imports")
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace().unstable_features().to_vec();
-
-    self
-      .flags
-      .unstable_config
-      .features
+    let from_config_file = self.workspace().unstable_features();
+    let unstable_features = from_config_file
       .iter()
-      .for_each(|feature| {
-        if !from_config_file.contains(feature) {
-          from_config_file.push(feature.to_string());
-        }
-      });
+      .chain(
+        self
+          .flags
+          .unstable_config
+          .features
+          .iter()
+          .filter(|f| !from_config_file.contains(f)),
+      )
+      .map(|f| f.to_owned())
+      .collect::<Vec<_>>();
 
-    if !from_config_file.is_empty() {
+    if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
         .iter()
         .map(|granular_flag| granular_flag.name)
         .chain([
-          "sloppy-imports",
           "byonm",
           "bare-node-builtins",
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
-          "lazy-npm-caching",
+          "lazy-dynamic-imports",
+          "npm-lazy-caching",
+          "npm-patch",
+          "sloppy-imports",
+          "lockfile-v5",
         ])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
-      for unstable_value_from_config_file in &from_config_file {
+      for unstable_value_from_config_file in &unstable_features {
         if !all_valid_unstable_flags
           .contains(&unstable_value_from_config_file.as_str())
         {
@@ -1161,7 +1154,7 @@ impl CliOptions {
       }
     }
 
-    from_config_file
+    unstable_features
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {
@@ -1228,7 +1221,15 @@ impl CliOptions {
   }
 
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
-    if self.flags.unstable_config.npm_lazy_caching {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+      )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      NpmCachingStrategy::Manual
+    } else if self.flags.unstable_config.npm_lazy_caching {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_os"
-version = "0.10.0"
+version = "0.19.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,9 +27,9 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "sysinfoapi", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3.17"
-signal-hook-registry = "1.4.0"
+signal-hook-registry = "1.4.2"

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.185.0"
+version = "0.194.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -30,3 +30,6 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+tokio-vsock.workspace = true

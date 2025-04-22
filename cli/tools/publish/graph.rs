@@ -46,7 +46,7 @@ impl GraphDiagnosticsCollector {
        resolution: &ResolutionResolved| {
         if visited.insert(resolution.specifier.clone()) {
           match resolution.specifier.scheme() {
-            "file" | "data" | "node" | "bun" => {}
+            "file" | "data" | "node" | "bun" | "virtual" | "cloudflare" => {}
             "jsr" => {
               skip_specifiers.insert(resolution.specifier.clone());
 

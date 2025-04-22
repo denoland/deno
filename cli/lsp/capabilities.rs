@@ -37,6 +37,46 @@ fn code_action_capabilities(
     .unwrap_or(CodeActionProviderCapability::Simple(true))
 }
 
+pub fn semantic_tokens_registration_options(
+) -> SemanticTokensRegistrationOptions {
+  const LANGUAGES: [&str; 4] = [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+  ];
+  const SCHEMES: [&str; 5] = [
+    "file",
+    "untitled",
+    "deno",
+    "vscode-notebook-cell",
+    "deno-notebook-cell",
+  ];
+  let mut document_filters =
+    Vec::with_capacity(LANGUAGES.len() * SCHEMES.len());
+  for language in &LANGUAGES {
+    for scheme in &SCHEMES {
+      document_filters.push(DocumentFilter {
+        language: Some(language.to_string()),
+        scheme: Some(scheme.to_string()),
+        pattern: None,
+      });
+    }
+  }
+  SemanticTokensRegistrationOptions {
+    text_document_registration_options: TextDocumentRegistrationOptions {
+      document_selector: Some(document_filters),
+    },
+    semantic_tokens_options: SemanticTokensOptions {
+      legend: get_legend(),
+      range: Some(true),
+      full: Some(SemanticTokensFullOptions::Bool(true)),
+      ..Default::default()
+    },
+    static_registration_options: Default::default(),
+  }
+}
+
 pub fn server_capabilities(
   client_capabilities: &ClientCapabilities,
 ) -> ServerCapabilities {
@@ -126,43 +166,21 @@ pub fn server_capabilities(
       ..Default::default()
     }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
-    semantic_tokens_provider: Some(
-      SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
-        SemanticTokensRegistrationOptions {
-          text_document_registration_options: TextDocumentRegistrationOptions {
-            document_selector: Some(vec![
-              DocumentFilter {
-                language: Some("javascript".to_string()),
-                scheme: None,
-                pattern: None,
-              },
-              DocumentFilter {
-                language: Some("javascriptreact".to_string()),
-                scheme: None,
-                pattern: None,
-              },
-              DocumentFilter {
-                language: Some("typescript".to_string()),
-                scheme: None,
-                pattern: None,
-              },
-              DocumentFilter {
-                language: Some("typescriptreact".to_string()),
-                scheme: None,
-                pattern: None,
-              },
-            ]),
-          },
-          semantic_tokens_options: SemanticTokensOptions {
-            legend: get_legend(),
-            range: Some(true),
-            full: Some(SemanticTokensFullOptions::Bool(true)),
-            ..Default::default()
-          },
-          static_registration_options: Default::default(),
-        },
-      ),
-    ),
+    semantic_tokens_provider: if client_capabilities
+      .text_document
+      .as_ref()
+      .and_then(|t| t.semantic_tokens.as_ref())
+      .and_then(|s| s.dynamic_registration)
+      .unwrap_or_default()
+    {
+      None
+    } else {
+      Some(
+        SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
+          semantic_tokens_registration_options(),
+        ),
+      )
+    },
     workspace: Some(WorkspaceServerCapabilities {
       workspace_folders: Some(WorkspaceFoldersServerCapabilities {
         supported: Some(true),
@@ -182,6 +200,25 @@ pub fn server_capabilities(
     diagnostic_provider: None,
     inline_value_provider: None,
     inline_completion_provider: None,
-    notebook_document_sync: None,
+    notebook_document_sync: Some(OneOf::Left(NotebookDocumentSyncOptions {
+      notebook_selector: vec![NotebookSelector::ByCells {
+        notebook: None,
+        cells: vec![
+          NotebookCellSelector {
+            language: "javascript".to_string(),
+          },
+          NotebookCellSelector {
+            language: "javascriptreact".to_string(),
+          },
+          NotebookCellSelector {
+            language: "typescript".to_string(),
+          },
+          NotebookCellSelector {
+            language: "typescriptreact".to_string(),
+          },
+        ],
+      }],
+      save: Some(true),
+    })),
   }
 }

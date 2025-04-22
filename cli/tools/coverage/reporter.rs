@@ -42,7 +42,7 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
 
 pub trait CoverageReporter {
   fn done(
-    &mut self,
+    &self,
     coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   );
@@ -105,7 +105,7 @@ pub trait CoverageReporter {
   }
 }
 
-struct SummaryCoverageReporter {}
+pub struct SummaryCoverageReporter {}
 
 #[allow(clippy::print_stdout)]
 impl SummaryCoverageReporter {
@@ -172,7 +172,7 @@ impl SummaryCoverageReporter {
 #[allow(clippy::print_stdout)]
 impl CoverageReporter for SummaryCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -206,17 +206,30 @@ impl CoverageReporter for SummaryCoverageReporter {
   }
 }
 
-struct LcovCoverageReporter {}
+pub struct LcovCoverageReporter {}
 
 impl CoverageReporter for LcovCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
     });
+    if let Some((report, _)) = file_reports.first() {
+      if let Some(ref output) = report.output {
+        if let Ok(path) = output.canonicalize() {
+          let url = Url::from_file_path(path).unwrap();
+          log::info!("Lcov coverage report has been generated at {}", url);
+        } else {
+          log::error!(
+            "Failed to resolve the output path of Lcov report: {}",
+            output.display()
+          );
+        }
+      }
+    }
   }
 }
 
@@ -226,7 +239,7 @@ impl LcovCoverageReporter {
   }
 
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     _file_text: &str,
   ) -> Result<(), AnyError> {
@@ -320,7 +333,7 @@ struct DetailedCoverageReporter {}
 
 impl CoverageReporter for DetailedCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -337,7 +350,7 @@ impl DetailedCoverageReporter {
   }
 
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     file_text: &str,
   ) -> Result<(), AnyError> {
@@ -398,11 +411,11 @@ impl DetailedCoverageReporter {
   }
 }
 
-struct HtmlCoverageReporter {}
+pub struct HtmlCoverageReporter {}
 
 impl CoverageReporter for HtmlCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -497,7 +510,7 @@ impl HtmlCoverageReporter {
         <body>
           <div class='wrapper'>
             {header}
-            <div class='pad1'>
+            <div class='pad1 overflow-auto'>
               {main_content}
             </div>
             <div class='push'></div>

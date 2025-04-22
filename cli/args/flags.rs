@@ -40,6 +40,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
+use deno_telemetry::OtelPropagators;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -85,10 +86,17 @@ impl FileFlags {
   }
 }
 
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub enum DefaultRegistry {
+  Npm,
+  Jsr,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub default_registry: Option<DefaultRegistry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -127,6 +135,8 @@ pub struct CompileFlags {
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub eszip: bool,
 }
 
 impl CompileFlags {
@@ -203,6 +213,7 @@ pub struct EvalFlags {
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
+  pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
   pub indent_width: Option<NonZeroU8>,
@@ -295,6 +306,7 @@ pub struct LintFlags {
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
+  pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
@@ -397,6 +409,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub coverage_raw_data_only: bool,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -682,6 +695,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub eszip: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -927,6 +941,13 @@ impl Flags {
     args
   }
 
+  pub fn no_legacy_abort(&self) -> bool {
+    self
+      .unstable_config
+      .features
+      .contains(&String::from("no-legacy-abort"))
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     let has_unstable_flag = self
       .unstable_config
@@ -936,24 +957,49 @@ impl Flags {
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.to_lowercase() == "true" => Some(true),
       Ok(s) if s.to_lowercase() == "false" => Some(false),
-      _ => None,
+      Ok(_) => {
+        log::warn!("'{name}' env var value not recognized, only 'true' and 'false' are accepted");
+        None
+      }
+      Err(_) => None,
     };
 
     let disabled =
       !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
     let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
 
+    let propagators = if default {
+      if let Ok(propagators) = std::env::var("OTEL_PROPAGATORS") {
+        propagators
+          .split(',')
+          .filter_map(|p| match p.trim() {
+            "tracecontext" => Some(OtelPropagators::TraceContext),
+            "baggage" => Some(OtelPropagators::Baggage),
+            _ => None,
+          })
+          .collect()
+      } else {
+        HashSet::from([OtelPropagators::TraceContext, OtelPropagators::Baggage])
+      }
+    } else {
+      HashSet::default()
+    };
+
     OtelConfig {
       tracing_enabled: !disabled
         && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
       metrics_enabled: !disabled
         && otel_var("OTEL_DENO_METRICS").unwrap_or(default),
+      propagators,
       console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
         Ok(_) if disabled => OtelConsoleConfig::Ignore,
         Ok("ignore") => OtelConsoleConfig::Ignore,
         Ok("capture") => OtelConsoleConfig::Capture,
         Ok("replace") => OtelConsoleConfig::Replace,
-        _ => {
+        res => {
+          if res.is_ok() {
+            log::warn!("'OTEL_DENO_CONSOLE' env var value not recognized, only 'ignore', 'capture', or 'replace' are accepted");
+          }
           if default {
             OtelConsoleConfig::Capture
           } else {
@@ -961,9 +1007,18 @@ impl Flags {
           }
         }
       },
-      deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+      deterministic_prefix: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
         .as_deref()
-        == Ok("1"),
+        .map(u8::from_str)
+        .map(|x| match x {
+          Ok(x) => Some(x),
+          Err(_) => {
+            log::warn!("'DENO_UNSTABLE_OTEL_DETERMINISTIC' env var value not recognized, only integers are accepted");
+            None
+          }
+        })
+        .ok()
+        .flatten(),
     }
   }
 
@@ -1146,10 +1201,12 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
+  <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
+                         Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+                         Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
-                         Possible values: "system", "mozilla".
-                          <p(245)>(defaults to "mozilla")</>
+  <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
                           <p(245)>(module downloads, fetch)</>
   <g>HTTPS_PROXY</>            Proxy address for HTTPS requests
@@ -1361,7 +1418,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
-      "install" => install_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m, app)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
@@ -1696,7 +1753,23 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .args(default_registry_args())
   })
+}
+
+fn default_registry_args() -> [Arg; 2] {
+  [
+    Arg::new("npm")
+      .long("npm")
+      .help("assume unprefixed package names are npm packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("jsr"),
+    Arg::new("jsr")
+      .long("jsr")
+      .help("assume unprefixed package names are jsr packages")
+      .action(ArgAction::SetTrue)
+      .conflicts_with("npm"),
+  ]
 }
 
 fn remove_subcommand() -> Command {
@@ -1774,12 +1847,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .help("Cache bench modules, but don't run benchmarks")
           .action(ArgAction::SetTrue),
       )
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no bench files were found")
-          .action(ArgAction::SetTrue)
-      )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -1902,7 +1970,6 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(
           Arg::new("file")
             .num_args(1..)
-            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
@@ -1926,7 +1993,7 @@ Under the hood, it bundles a slimmed down version of the Deno runtime along with
 JavaScript or TypeScript code.
 
 Cross-compiling to different target architectures is supported using the <c>--target</> flag.
-On the first invocation with deno will download the proper binary and cache it in <c>$DENO_DIR</>.
+On the first invocation of `deno compile`, Deno will download the relevant binary and cache it in <c>$DENO_DIR</>.
 
 <y>Read more:</> <c>https://docs.deno.com/go/compile</>
 "),
@@ -1943,6 +2010,18 @@ On the first invocation with deno will download the proper binary and cache it i
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
   fails to load in the executable or to embed a file or directory in the executable.
   This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("exclude")
+          .long("exclude")
+          .help(
+            cstr!("Excludes a file/directory in the compiled executable.
+  <p(245)>Use this flag to exclude a specific file or directory within the included files.
+  For example, to exclude a certain folder in the bundled node_modules directory.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -2342,6 +2421,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -2623,6 +2703,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
     })
 }
 
@@ -2909,6 +2990,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(permit_no_files_arg())
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -3051,13 +3133,13 @@ fn task_subcommand() -> Command {
   command(
     "task",
     cstr!(
-      "Run a task defined in the configuration file.
+      "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks:
+List all available tasks (from config files in the current and ancestor directories):
   <p(245)>deno task</>
 
-Evaluate a task from string
+Evaluate a task from string:
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
@@ -3157,13 +3239,7 @@ or <c>**/__tests__/**</>:
           .value_name("N")
           .value_parser(value_parser!(NonZeroUsize))
           .help_heading(TEST_HEADING))
-      .arg(
-        Arg::new("permit-no-files")
-          .long("permit-no-files")
-          .help("Don't return an error code if no test files were found")
-          .action(ArgAction::SetTrue)
-          .help_heading(TEST_HEADING),
-      )
+      .arg(permit_no_files_arg().help_heading(TEST_HEADING))
       .arg(
         Arg::new("filter")
           .allow_hyphen_values(true)
@@ -3191,7 +3267,15 @@ or <c>**/__tests__/**</>:
           .conflicts_with("inspect")
           .conflicts_with("inspect-wait")
           .conflicts_with("inspect-brk")
-          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'")
+          .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
+  <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("coverage-raw-data-only")
+          .long("coverage-raw-data-only")
+          .help("Only collect raw coverage data, without generating a report")
+          .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -3861,6 +3945,14 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
+    .arg(eszip_arg())
+}
+
+fn eszip_arg() -> Arg {
+  Arg::new("eszip-internal-do-not-use")
+    .hide(true)
+    .long("eszip-internal-do-not-use")
+    .action(ArgAction::SetTrue)
 }
 
 fn allow_import_arg() -> Arg {
@@ -4142,6 +4234,13 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn permit_no_files_arg() -> Arg {
+  Arg::new("permit-no-files")
+    .long("permit-no-files")
+    .help("Don't return an error code if no files were found")
+    .action(ArgAction::SetTrue)
+}
+
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .long("watch-exclude")
@@ -4230,7 +4329,7 @@ fn config_arg() -> Arg {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting
+    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting.
   <p(245)>Typically the configuration file will be called `deno.json` or `deno.jsonc` and
   automatically detected; in that case this flag is not necessary.
   Docs: https://docs.deno.com/go/config</>"))
@@ -4396,6 +4495,20 @@ impl CommandExt for Command {
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
     ).arg(
+      Arg::new("unstable-lazy-dynamic-imports")
+      .long("unstable-lazy-dynamic-imports")
+      .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
+      .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+      .hide(true)
+      .long_help(match cfg {
+        UnstableArgsConfig::None => None,
+        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+      })
+      .help_heading(UNSTABLE_HEADING)
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4418,6 +4531,16 @@ impl CommandExt for Command {
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-lockfile-v5")
+        .long("unstable-lockfile-v5")
+        .help("Enable unstable lockfile v5")
+        .env("DENO_UNSTABLE_LOCKFILE_V5")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(UNSTABLE_HEADING)
+        .hide(true)
         .display_order(next_display_order()),
     );
 
@@ -4484,7 +4607,18 @@ fn add_parse_inner(
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
   let dev = matches.get_flag("dev");
-  AddFlags { packages, dev }
+  let default_registry = if matches.get_flag("npm") {
+    Some(DefaultRegistry::Npm)
+  } else if matches.get_flag("jsr") {
+    Some(DefaultRegistry::Jsr)
+  } else {
+    None
+  };
+  AddFlags {
+    packages,
+    dev,
+    default_registry,
+  }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4536,8 +4670,6 @@ fn bench_parse(
   flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
-  let permit_no_files = matches.get_flag("permit-no-files");
-
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f
       .flat_map(flat_escape_split_commas)
@@ -4566,7 +4698,7 @@ fn bench_parse(
     filter,
     json,
     no_run,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     watch: watch_arg_parse(matches)?,
   });
 
@@ -4599,7 +4731,10 @@ fn check_parse(
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   frozen_lockfile_arg_parse(flags, matches);
-  let files = matches.remove_many::<String>("file").unwrap().collect();
+  let files = match matches.remove_many::<String>("file") {
+    Some(f) => f.collect(),
+    None => vec![".".to_string()], // default
+  };
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
@@ -4644,10 +4779,15 @@ fn compile_parse(
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
-  let include = match matches.remove_many::<String>("include") {
-    Some(f) => f.collect(),
-    None => vec![],
-  };
+  let eszip = matches.get_flag("eszip-internal-do-not-use");
+  let include = matches
+    .remove_many::<String>("include")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let exclude = matches
+    .remove_many::<String>("exclude")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4660,6 +4800,8 @@ fn compile_parse(
     no_terminal,
     icon,
     include,
+    exclude,
+    eszip,
   });
 
   Ok(())
@@ -4857,6 +4999,7 @@ fn fmt_parse(
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
     files: FileFlags { include, ignore },
+    permit_no_files: permit_no_files_parse(matches),
     use_tabs,
     line_width,
     indent_width,
@@ -4938,6 +5081,7 @@ fn info_parse(
 fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, false)?;
 
@@ -4975,6 +5119,13 @@ fn install_parse(
     .remove_many("cmd")
     .map(|packages| add_parse_inner(matches, Some(packages)))
   {
+    if matches!(flags.config_flag, ConfigFlag::Disabled) {
+      return Err(app.override_usage("deno install [OPTIONS] [PACKAGE]...").error(
+        clap::error::ErrorKind::ArgumentConflict,
+        format!("deno install can't be used to add packages if `--no-config` is passed.\n{} to cache the packages without adding to a config, pass the `--entrypoint` flag", deno_terminal::colors::cyan("hint:")),
+      ));
+    }
+
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
     ))
@@ -5151,6 +5302,7 @@ fn lint_parse(
     maybe_rules_tags,
     maybe_rules_include,
     maybe_rules_exclude,
+    permit_no_files: permit_no_files_parse(matches),
     json,
     compact,
     watch: watch_arg_parse(matches)?,
@@ -5382,8 +5534,6 @@ fn test_parse(
   let no_run = matches.get_flag("no-run");
   let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
-  #[allow(clippy::print_stderr)]
-  let permit_no_files = matches.get_flag("permit-no-files");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -5444,12 +5594,13 @@ fn test_parse(
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
     shuffle,
-    permit_no_files,
+    permit_no_files: permit_no_files_parse(matches),
     concurrent_jobs,
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches)?,
@@ -5757,7 +5908,14 @@ fn runtime_args_parse(
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
+  eszip_arg_parse(flags, matches);
   Ok(())
+}
+
+fn eszip_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("eszip-internal-do-not-use") {
+    flags.eszip = true;
+  }
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5944,6 +6102,10 @@ fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   }
 }
 
+fn permit_no_files_parse(matches: &mut ArgMatches) -> bool {
+  matches.get_flag("permit-no-files")
+}
+
 fn watch_arg_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<Option<WatchFlags>> {
@@ -6025,6 +6187,8 @@ fn unstable_args_parse(
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
+  flags.unstable_config.lazy_dynamic_imports =
+    matches.get_flag("unstable-lazy-dynamic-imports");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
@@ -6841,6 +7005,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6855,7 +7020,8 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "fmt", "--check"]);
+    let r =
+      flags_from_vec(svec!["deno", "fmt", "--permit-no-files", "--check"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6865,6 +7031,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: true,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6889,6 +7056,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6913,6 +7081,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6947,6 +7116,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -6982,6 +7152,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7006,6 +7177,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7038,6 +7210,7 @@ mod tests {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7075,6 +7248,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(true),
           line_width: Some(NonZeroU32::new(60).unwrap()),
           indent_width: Some(NonZeroU8::new(4).unwrap()),
@@ -7106,6 +7280,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: Some(false),
           line_width: None,
           indent_width: None,
@@ -7132,6 +7307,7 @@ mod tests {
             include: vec!["./**".to_string()],
             ignore: vec![],
           },
+          permit_no_files: false,
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -7164,6 +7340,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7175,6 +7352,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--permit-no-files",
       "--allow-import",
       "--watch",
       "script_1.ts",
@@ -7193,6 +7371,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: true,
           json: false,
           compact: false,
           watch: Some(Default::default()),
@@ -7226,6 +7405,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Some(WatchFlags {
@@ -7257,6 +7437,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7279,6 +7460,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7306,6 +7488,7 @@ mod tests {
           maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7334,6 +7517,7 @@ mod tests {
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
+          permit_no_files: false,
           json: false,
           compact: false,
           watch: Default::default(),
@@ -7356,6 +7540,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7385,6 +7570,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: true,
           compact: false,
           watch: Default::default(),
@@ -7415,6 +7601,7 @@ mod tests {
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
+          permit_no_files: false,
           json: false,
           compact: true,
           watch: Default::default(),
@@ -7459,6 +7646,21 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["."],
           doc: false,
           doc_only: false,
         }),
@@ -9335,6 +9537,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          coverage_raw_data_only: false,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9419,6 +9622,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9462,6 +9666,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9599,6 +9804,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9635,6 +9841,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9670,6 +9877,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9707,6 +9915,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
@@ -10344,7 +10553,9 @@ mod tests {
           target: None,
           no_terminal: false,
           icon: None,
-          include: vec![]
+          include: Default::default(),
+          exclude: Default::default(),
+          eszip: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10356,7 +10567,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10368,7 +10579,9 @@ mod tests {
           target: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
-          include: vec![]
+          include: vec!["include.txt".to_string()],
+          exclude: vec!["exclude.txt".to_string()],
+          eszip: false
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -11291,6 +11504,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which"],
           dev: false,
+          default_registry: None,
         }) // default is false
       );
 
@@ -11300,6 +11514,7 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          default_registry: None,
         })
       );
 
@@ -11309,8 +11524,29 @@ mod tests {
         mk_flags(AddFlags {
           packages: svec!["npm:chalk"],
           dev: true,
+          default_registry: None,
         }),
       );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--npm", "chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["chalk"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Npm),
+        }),
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--jsr", "@std/fs"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["@std/fs"],
+          dev: false,
+          default_registry: Some(DefaultRegistry::Jsr),
+        })
+      )
     }
   }
 

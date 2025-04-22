@@ -649,7 +649,7 @@ fn lock_file_lock_write() {
 
   temp_dir.write("deno.json", "{}");
   let lock_file_content = r#"{
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:cowsay@1.5.0": "1.5.0"
   },
@@ -835,6 +835,10 @@ fn lock_file_lock_write() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
+  eprintln!(
+    "output: {}",
+    String::from_utf8(output.stderr.clone()).unwrap()
+  );
   assert!(output.status.success());
   assert_eq!(output.status.code(), Some(0));
 
@@ -859,13 +863,14 @@ fn auto_discover_lock_file() {
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
-        "integrity": "sha512-foobar"
+        "integrity": "sha512-foobar",
+        "tarball": "http://localhost:4260/@denotest/bin/1.0.0.tgz"
       }
     }
   }"#;
@@ -877,106 +882,16 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4260/@denotest%2fbin
-error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
-is the same as when the lockfile was generated.
+r#"Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+error: Failed caching npm package '@denotest/bin@1.0.0'
 
-Actual: sha512-[WILDCARD]
-Expected: sha512-foobar
-
-This could be caused by:
-  * the lock file may be corrupt
-  * the source itself may be corrupt
-
-Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
+Caused by:
+    Tarball checksum did not match what was provided by npm registry for @denotest/bin@1.0.0.
+    
+    Expected: foobar
+    Actual: [WILDCARD]
 "#)
-    .assert_exit_code(10);
-}
-
-#[test]
-fn peer_deps_with_copied_folders_and_lockfile() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
-    .cwd("npm/peer_deps_with_copied_folders")
-    .build();
-
-  let deno_dir = context.deno_dir();
-  let temp_dir = context.temp_dir();
-  let temp_dir_sub_path =
-    temp_dir.path().join("npm/peer_deps_with_copied_folders");
-
-  // write empty config file
-  temp_dir.write("npm/peer_deps_with_copied_folders/deno.json", "{}");
-
-  let output = context.new_command().args("run -A main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
-
-  assert!(temp_dir_sub_path.join("deno.lock").exists());
-  let grandchild_path = deno_dir
-    .path()
-    .join("npm")
-    .join("localhost_4260")
-    .join("@denotest")
-    .join("peer-dep-test-grandchild");
-  assert!(grandchild_path.join("1.0.0").exists());
-  assert!(grandchild_path.join("1.0.0_1").exists()); // copy folder, which is hardlinked
-
-  // run again
-  let output = context.new_command().args("run -A main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_text("1\n2\n");
-
-  // run with reload
-  let output = context.new_command().args("run -A --reload main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
-
-  // now run with local node modules
-  let output = context
-    .new_command()
-    .args("run -A --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules.out",
-  );
-
-  let deno_folder = temp_dir_sub_path.join("node_modules").join(".deno");
-  assert!(deno_folder
-    .join("@denotest+peer-dep-test-grandchild@1.0.0")
-    .exists());
-  assert!(deno_folder
-    .join("@denotest+peer-dep-test-grandchild@1.0.0_1")
-    .exists()); // copy folder
-
-  // now again run with local node modules
-  let output = context
-    .new_command()
-    .args("run -A --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_text("1\n2\n");
-
-  // now ensure it works with reloading
-  let output = context
-    .new_command()
-    .args("run -A --reload --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
-  );
-
-  // now ensure it works with reloading and no lockfile
-  let output = context
-    .new_command()
-    .args("run -A --reload --node-modules-dir=auto --no-lock main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
-  );
+    .assert_exit_code(1);
 }
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`

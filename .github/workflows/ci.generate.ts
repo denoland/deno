@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 43;
+const cacheVersion = 53;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -701,13 +701,13 @@ const ci = {
           name: "Check tracing build",
           if:
             "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing ",
+          run: "cargo check -p deno --features=lsp-tracing",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -730,7 +730,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --all-targets --features=panic-trace",
             "df -h",
           ].join("\n"),
         },
@@ -753,6 +753,22 @@ const ci = {
             'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
         },
         {
+          name: "Generate symcache",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          run: [
+            "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
+            "du -h deno.symcache",
+            "du -h target/release/deno",
+          ].join("\n"),
+          env: {
+            NO_COLOR: 1,
+          },
+        },
+        {
           name: "Upload PR artifact (linux)",
           if: [
             "matrix.job == 'test' &&",
@@ -772,15 +788,17 @@ const ci = {
           name: "Pre-release (linux)",
           if: [
             "matrix.os == 'linux' &&",
-            "matrix.job == 'test' &&",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
             "cd target/release",
+            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
+            "strip ./deno",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-            "strip denort",
+            "strip ./denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "./deno types > lib.deno.d.ts",
@@ -799,6 +817,8 @@ const ci = {
             "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
           },
           run: [
+            "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
+            "strip -x -S target/release/deno",
             'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
             "rcodesign sign target/release/deno " +
             "--code-signature-flags=runtime " +
@@ -808,7 +828,7 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "strip denort",
+            "strip -x -S ./denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
@@ -828,6 +848,7 @@ const ci = {
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
+            "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
           ].join("\n"),
         },
         {
@@ -841,6 +862,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
@@ -865,7 +887,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -878,8 +900,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -892,7 +914,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked",
+          run: "cargo test --release --locked --features=panic-trace",
         },
         {
           name: "Configure hosts file for WPT",
@@ -1025,6 +1047,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
@@ -1042,6 +1065,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {

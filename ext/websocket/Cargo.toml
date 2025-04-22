@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.198.0"
+version = "0.207.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

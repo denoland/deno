@@ -52,8 +52,7 @@ use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::workspace::WorkspaceResolver;
 use indexmap::IndexMap;
-use node_resolver::analyze::CjsAnalysis;
-use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::ResolvedCjsAnalysis;
 
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
@@ -61,7 +60,7 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
 use crate::http_util::HttpClientProvider;
-use crate::node::CliCjsCodeAnalyzer;
+use crate::node::CliCjsModuleExportAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -185,12 +184,13 @@ pub struct WriteBinOptions<'a> {
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
-  pub include_files: &'a [ModuleSpecifier],
+  pub include_paths: &'a [ModuleSpecifier],
+  pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
-  cjs_code_analyzer: CliCjsCodeAnalyzer,
+  cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
@@ -204,7 +204,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cjs_code_analyzer: CliCjsCodeAnalyzer,
+    cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
@@ -215,7 +215,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      cjs_code_analyzer,
+      cjs_module_export_analyzer,
       cjs_tracker,
       cli_options,
       deno_dir,
@@ -366,7 +366,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       display_output_filename,
       graph,
       entrypoint,
-      include_files,
+      include_paths,
+      exclude_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -377,6 +378,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
+    for path in exclude_paths {
+      vfs.add_exclude_path(path);
+    }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         let snapshot = managed
@@ -394,10 +398,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         None
       }
     };
-    for include_file in include_files {
+    for include_file in include_paths {
       let path = deno_path_util::url_to_file_path(include_file)?;
       vfs
-        .add_file_at_path(&path)
+        .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();
@@ -423,16 +427,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               m.is_script,
             )? {
               let cjs_analysis = self
-                .cjs_code_analyzer
-                .analyze_cjs(
+                .cjs_module_export_analyzer
+                .analyze_all_exports(
                   module.specifier(),
                   Some(Cow::Borrowed(m.source.as_ref())),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
-                CjsAnalysis::Esm(_) => CjsExportAnalysisEntry::Esm,
-                CjsAnalysis::Cjs(exports) => {
-                  CjsExportAnalysisEntry::Cjs(exports)
+                ResolvedCjsAnalysis::Esm(_) => CjsExportAnalysisEntry::Esm,
+                ResolvedCjsAnalysis::Cjs(exports) => {
+                  CjsExportAnalysisEntry::Cjs(
+                    exports.into_iter().collect::<Vec<_>>(),
+                  )
                 }
               });
             } else {
@@ -483,6 +489,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 maybe_transpiled,
                 maybe_source_map,
                 maybe_cjs_export_analysis,
+                mtime: file_path
+                  .metadata()
+                  .ok()
+                  .and_then(|m| m.modified().ok()),
               },
             )
             .with_context(|| {
@@ -544,26 +554,24 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .file_bytes(file.offset)
           .map(|text| String::from_utf8_lossy(text));
         let cjs_analysis_result = self
-          .cjs_code_analyzer
-          .analyze_cjs(&specifier, maybe_source)
+          .cjs_module_export_analyzer
+          .analyze_all_exports(&specifier, maybe_source)
           .await;
-        let maybe_analysis = match cjs_analysis_result {
-          Ok(CjsAnalysis::Esm(_)) => Some(CjsExportAnalysisEntry::Esm),
-          Ok(CjsAnalysis::Cjs(exports)) => {
-            Some(CjsExportAnalysisEntry::Cjs(exports))
+        let analysis = match cjs_analysis_result {
+          Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
+          Ok(ResolvedCjsAnalysis::Cjs(exports)) => {
+            CjsExportAnalysisEntry::Cjs(exports.into_iter().collect::<Vec<_>>())
           }
           Err(err) => {
             log::debug!(
-              "Ignoring cjs export analysis for '{}': {}",
+              "Had cjs export analysis error for '{}': {}",
               specifier,
               err
             );
-            None
+            CjsExportAnalysisEntry::Error(err.to_string())
           }
         };
-        if let Some(analysis) = &maybe_analysis {
-          to_add.push((file_path, bincode::serialize(analysis)?));
-        }
+        to_add.push((file_path, bincode::serialize(&analysis)?));
       }
     }
     for (file_path, analysis) in to_add {
@@ -698,9 +706,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         legacy_flag_enabled: false,
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
-        sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
+        lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
+        sloppy_imports: self.cli_options.unstable_sloppy_imports(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,

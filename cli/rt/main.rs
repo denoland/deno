@@ -71,7 +71,7 @@ fn main() {
   let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
-      Ok(Some(data)) => {
+      Ok(data) => {
         deno_runtime::deno_telemetry::init(
           otel_runtime_config(),
           data.metadata.otel_config.clone(),
@@ -85,7 +85,6 @@ fn main() {
         let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
-      Ok(None) => Ok(()),
       Err(err) => {
         init_logging(None, None);
         Err(err)
@@ -93,7 +92,9 @@ fn main() {
     }
   };
 
-  unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
+  unwrap_or_exit::<()>(create_and_run_current_thread_with_maybe_metrics(
+    future,
+  ));
 }
 
 fn init_logging(

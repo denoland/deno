@@ -13,7 +13,6 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
@@ -24,6 +23,7 @@ use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -54,16 +54,19 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
+use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
 use super::lsp_custom;
+use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
 use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
+use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
@@ -821,20 +824,13 @@ impl WorkspaceSettings {
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
   pub unscoped: Arc<WorkspaceSettings>,
-  pub by_workspace_folder:
-    BTreeMap<ModuleSpecifier, Option<Arc<WorkspaceSettings>>>,
-  pub first_folder: Option<ModuleSpecifier>,
+  pub by_workspace_folder: BTreeMap<Arc<Url>, Option<Arc<WorkspaceSettings>>>,
+  pub first_folder: Option<Arc<Url>>,
 }
 
 impl Settings {
-  /// Returns `None` if the value should be deferred to the presence of a
-  /// `deno.json` file.
-  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
-    let Ok(path) = url_to_file_path(specifier) else {
-      // Non-file URLs are not disabled by these settings.
-      return Some(true);
-    };
-    let (settings, mut folder_uri) = self.get_for_specifier(specifier);
+  pub fn path_enabled(&self, path: &Path) -> Option<bool> {
+    let (settings, mut folder_uri) = self.get_for_path(path);
     folder_uri = folder_uri.or(self.first_folder.as_ref());
     let mut disable_paths = vec![];
     let mut enable_paths = None;
@@ -859,7 +855,7 @@ impl Settings {
     } else if let Some(enable_paths) = &enable_paths {
       for enable_path in enable_paths {
         // Also enable if the checked path is a dir containing an enabled path.
-        if path.starts_with(enable_path) || enable_path.starts_with(&path) {
+        if path.starts_with(enable_path) || enable_path.starts_with(path) {
           return Some(true);
         }
       }
@@ -869,17 +865,24 @@ impl Settings {
     }
   }
 
+  /// Returns `None` if the value should be deferred to the presence of a
+  /// `deno.json` file.
+  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
+    let Ok(path) = url_to_file_path(specifier) else {
+      // Non-file URLs are not disabled by these settings.
+      return Some(true);
+    };
+    self.path_enabled(&path)
+  }
+
   pub fn get_unscoped(&self) -> &WorkspaceSettings {
     &self.unscoped
   }
 
-  pub fn get_for_specifier(
+  pub fn get_for_path(
     &self,
-    specifier: &ModuleSpecifier,
-  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
-    let Ok(path) = url_to_file_path(specifier) else {
-      return (&self.unscoped, self.first_folder.as_ref());
-    };
+    path: &Path,
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       if let Some(settings) = settings {
         let Ok(folder_path) = url_to_file_path(folder_uri) else {
@@ -891,6 +894,23 @@ impl Settings {
       }
     }
     (&self.unscoped, self.first_folder.as_ref())
+  }
+
+  pub fn get_for_uri(
+    &self,
+    uri: &Uri,
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
+    self.get_for_specifier(&uri_to_url(uri))
+  }
+
+  pub fn get_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return (&self.unscoped, self.first_folder.as_ref());
+    };
+    self.get_for_path(&path)
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
@@ -917,7 +937,7 @@ impl Settings {
 pub struct Config {
   pub client_capabilities: Arc<ClientCapabilities>,
   pub settings: Arc<Settings>,
-  pub workspace_folders: Arc<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  pub workspace_folders: Arc<Vec<(Arc<Url>, lsp::WorkspaceFolder)>>,
   pub tree: ConfigTree,
 }
 
@@ -933,7 +953,7 @@ impl Config {
       let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
-        root_url,
+        Arc::new(root_url),
         lsp::WorkspaceFolder {
           uri: root_uri,
           name,
@@ -946,7 +966,7 @@ impl Config {
 
   pub fn set_workspace_folders(
     &mut self,
-    folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
+    folders: Vec<(Arc<Url>, lsp::WorkspaceFolder)>,
   ) {
     self.settings = Arc::new(Settings {
       unscoped: self.settings.unscoped.clone(),
@@ -962,7 +982,7 @@ impl Config {
   pub fn set_workspace_settings(
     &mut self,
     unscoped: WorkspaceSettings,
-    folder_settings: Vec<(ModuleSpecifier, WorkspaceSettings)>,
+    folder_settings: Vec<(Arc<Url>, WorkspaceSettings)>,
   ) {
     let mut by_folder = folder_settings.into_iter().collect::<HashMap<_, _>>();
     self.settings = Arc::new(Settings {
@@ -979,6 +999,10 @@ impl Config {
 
   pub fn workspace_settings(&self) -> &WorkspaceSettings {
     self.settings.get_unscoped()
+  }
+
+  pub fn workspace_settings_for_uri(&self, uri: &Uri) -> &WorkspaceSettings {
+    self.settings.get_for_uri(uri).0
   }
 
   pub fn workspace_settings_for_specifier(
@@ -1008,7 +1032,9 @@ impl Config {
       MediaType::Json
       | MediaType::Wasm
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => None,
     }
   }
@@ -1032,15 +1058,32 @@ impl Config {
       || settings.inlay_hints.enum_member_values.enabled
   }
 
-  pub fn root_uri(&self) -> Option<&Url> {
+  pub fn root_url(&self) -> Option<&Arc<Url>> {
     self.workspace_folders.first().map(|p| &p.0)
   }
 
+  pub fn uri_enabled(&self, uri: &Uri) -> bool {
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+      return true;
+    }
+    self.specifier_enabled(&uri_to_url(uri))
+  }
+
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if self.tree.in_global_npm_cache(specifier) {
+      return true;
+    }
     let data = self.tree.data_for_specifier(specifier);
     if let Some(data) = &data {
       if let Ok(path) = specifier.to_file_path() {
-        if data.exclude_files.matches_path(&path) {
+        // deno_config's exclusion checks exclude vendor dirs invariably. We
+        // don't want that behavior here.
+        if data.exclude_files.matches_path(&path)
+          && !data
+            .vendor_dir
+            .as_ref()
+            .is_some_and(|p| path.starts_with(p))
+        {
           return false;
         }
       }
@@ -1199,7 +1242,7 @@ pub struct ConfigData {
   pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
-  pub lint_config: Arc<LintConfig>,
+  pub lint_config: Arc<WorkspaceDirLintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub linter: Arc<CliLinter>,
@@ -1219,15 +1262,18 @@ impl ConfigData {
   #[allow(clippy::too_many_arguments)]
   async fn load(
     specified_config: Option<&Path>,
-    scope: &ModuleSpecifier,
+    scope: &Arc<Url>,
     settings: &Settings,
     file_fetcher: &Arc<CliFileFetcher>,
     // sync requirement is because the lsp requires sync
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
-    let scope = Arc::new(scope.clone());
+    let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
       Ok(scope_dir_path) => {
         let paths = [scope_dir_path];
@@ -1259,7 +1305,14 @@ impl ConfigData {
     };
     match discover_result {
       Ok(member_dir) => {
-        Self::load_inner(member_dir, scope, settings, Some(file_fetcher)).await
+        Self::load_inner(
+          member_dir,
+          scope,
+          settings,
+          Some(file_fetcher),
+          lockfile_package_info_provider,
+        )
+        .await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
@@ -1273,6 +1326,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
+          lockfile_package_info_provider,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1315,6 +1369,9 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1401,8 +1458,10 @@ impl ConfigData {
           lsp_warn!("  Couldn't read lint configuration: {}", err)
         })
         .ok()
-        .unwrap_or_else(|| {
-          LintConfig::new_with_base(default_file_pattern_base.clone())
+        .unwrap_or_else(|| WorkspaceDirLintConfig {
+          rules: Default::default(),
+          plugins: Default::default(),
+          files: FilePatterns::new_with_base(default_file_pattern_base.clone()),
         }),
     );
 
@@ -1457,7 +1516,12 @@ impl ConfigData {
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
-    let lockfile = resolve_lockfile_from_workspace(&member_dir).map(Arc::new);
+    let lockfile = resolve_lockfile_from_workspace(
+      &member_dir,
+      lockfile_package_info_provider,
+    )
+    .await
+    .map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1626,14 +1690,13 @@ impl ConfigData {
     let resolver = Arc::new(resolver);
     let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
 
-    let lint_options = LintOptions::resolve(
-      member_dir.dir_path(),
-      (*lint_config).clone(),
-      &LintFlags::default(),
-    )
-    .inspect_err(|err| lsp_warn!("  Failed to resolve linter options: {}", err))
-    .ok()
-    .unwrap_or_default();
+    let lint_options =
+      LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
+        .inspect_err(|err| {
+          lsp_warn!("  Failed to resolve linter options: {}", err)
+        })
+        .ok()
+        .unwrap_or_default();
     let mut plugin_runner = None;
     if !lint_options.plugins.is_empty() {
       fn logger_printer(msg: &str, _is_err: bool) {
@@ -1721,14 +1784,12 @@ impl ConfigData {
 
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
-  scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
+  scopes: Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>>,
+  global_npm_cache_url: Option<Arc<Url>>,
 }
 
 impl ConfigTree {
-  pub fn scope_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&ModuleSpecifier> {
+  pub fn scope_for_specifier(&self, specifier: &Url) -> Option<&Arc<Url>> {
     self
       .scopes
       .iter()
@@ -1745,15 +1806,13 @@ impl ConfigTree {
       .and_then(|s| self.scopes.get(s))
   }
 
-  pub fn data_by_scope(
-    &self,
-  ) -> &Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>> {
+  pub fn data_by_scope(&self) -> &Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>> {
     &self.scopes
   }
 
   pub fn workspace_dir_for_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Option<&WorkspaceDirectory> {
     self
       .data_for_specifier(specifier)
@@ -1776,10 +1835,7 @@ impl ConfigTree {
       .collect()
   }
 
-  pub fn fmt_config_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Arc<FmtConfig> {
+  pub fn fmt_config_for_specifier(&self, specifier: &Url) -> Arc<FmtConfig> {
     self
       .data_for_specifier(specifier)
       .map(|d| d.fmt_config.clone())
@@ -1789,8 +1845,8 @@ impl ConfigTree {
   /// Returns (scope_url, type).
   pub fn watched_file_type(
     &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<(&ModuleSpecifier, ConfigWatchedFileType)> {
+    specifier: &Url,
+  ) -> Option<(&Arc<Url>, ConfigWatchedFileType)> {
     for (scope_url, data) in self.scopes.iter() {
       if let Some(typ) = data.watched_files.get(specifier) {
         return Some((scope_url, *typ));
@@ -1799,7 +1855,7 @@ impl ConfigTree {
     None
   }
 
-  pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn is_watched_file(&self, specifier: &Url) -> bool {
     let path = specifier.path();
     if path.ends_with("/deno.json")
       || path.ends_with("/deno.jsonc")
@@ -1854,14 +1910,32 @@ impl ConfigTree {
         })
       })
       .collect();
-    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams { data }
+    let deno_dir_npm_folder_uri = self
+      .global_npm_cache_url
+      .as_ref()
+      .and_then(|s| url_to_uri(s).ok());
+    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams {
+      data,
+      deno_dir_npm_folder_uri,
+    }
+  }
+
+  pub fn in_global_npm_cache(&self, url: &Url) -> bool {
+    self
+      .global_npm_cache_url
+      .as_ref()
+      .is_some_and(|s| url.as_str().starts_with(s.as_str()))
   }
 
   pub async fn refresh(
     &mut self,
     settings: &Settings,
-    workspace_files: &IndexSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
+    deno_dir: &DenoDir,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1871,29 +1945,30 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_uri, ws_settings) in &settings.by_workspace_folder {
+    for (folder_url, ws_settings) in &settings.by_workspace_folder {
       let mut ws_settings = ws_settings.as_ref();
-      if Some(folder_uri) == settings.first_folder.as_ref() {
+      if Some(folder_url) == settings.first_folder.as_ref() {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
       }
       if let Some(ws_settings) = ws_settings {
         let config_file_path = (|| {
           let config_setting = ws_settings.config.as_ref()?;
-          let config_uri = folder_uri.join(config_setting).ok()?;
+          let config_uri = folder_url.join(config_setting).ok()?;
           url_to_file_path(&config_uri).ok()
         })();
         if config_file_path.is_some() || ws_settings.import_map.is_some() {
           scopes.insert(
-            folder_uri.clone(),
+            folder_url.clone(),
             Arc::new(
               ConfigData::load(
                 config_file_path.as_deref(),
-                folder_uri,
+                folder_url,
                 settings,
                 file_fetcher,
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
+                lockfile_package_info_provider,
               )
               .await,
             ),
@@ -1902,14 +1977,17 @@ impl ConfigTree {
       }
     }
 
-    for specifier in workspace_files {
-      if !(specifier.path().ends_with("/deno.json")
-        || specifier.path().ends_with("/deno.jsonc")
-        || specifier.path().ends_with("/package.json"))
+    for path in workspace_files {
+      let Ok(file_url) = Url::from_file_path(path) else {
+        continue;
+      };
+      if !(file_url.path().ends_with("/deno.json")
+        || file_url.path().ends_with("/deno.jsonc")
+        || file_url.path().ends_with("/package.json"))
       {
         continue;
       }
-      let Ok(scope) = specifier.join(".") else {
+      let Ok(scope) = file_url.join(".").map(Arc::new) else {
         continue;
       };
       if scopes.contains_key(&scope) {
@@ -1924,6 +2002,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          lockfile_package_info_provider,
         )
         .await,
       );
@@ -1940,21 +2019,32 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          lockfile_package_info_provider,
         )
         .await;
-        scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
+        scopes.insert(member_scope.clone(), Arc::new(member_data));
       }
     }
 
     self.scopes = Arc::new(scopes);
+    self.global_npm_cache_url =
+      Url::from_directory_path(deno_dir.npm_folder_path())
+        .ok()
+        .map(Arc::new);
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
+  pub async fn inject_config_file(
+    &mut self,
+    config_file: ConfigFile,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
-    let scope = config_file.specifier.join(".").unwrap();
+    let scope = Arc::new(config_file.specifier.join(".").unwrap());
     let json_text = serde_json::to_string(&config_file.json).unwrap();
     let memory_sys = sys_traits::impls::InMemorySys::default();
     let config_path = url_to_file_path(&config_file.specifier).unwrap();
@@ -1977,9 +2067,10 @@ impl ConfigTree {
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,
-        Arc::new(scope.clone()),
+        scope.clone(),
         &Default::default(),
         None,
+        lockfile_package_info_provider,
       )
       .await,
     );
@@ -1988,8 +2079,11 @@ impl ConfigTree {
   }
 }
 
-fn resolve_lockfile_from_workspace(
+async fn resolve_lockfile_from_workspace(
   workspace: &WorkspaceDirectory,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -2004,7 +2098,12 @@ fn resolve_lockfile_from_workspace(
     .root_deno_json()
     .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
     .unwrap_or(false);
-  resolve_lockfile_from_path(lockfile_path, frozen)
+  resolve_lockfile_from_path(
+    lockfile_path,
+    frozen,
+    lockfile_package_info_provider,
+  )
+  .await
 }
 
 fn resolve_node_modules_dir(
@@ -2037,9 +2136,12 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(
+async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
@@ -2048,7 +2150,10 @@ fn resolve_lockfile_from_path(
       frozen,
       skip_write: false,
     },
-  ) {
+    &**lockfile_package_info_provider,
+  )
+  .await
+  {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
@@ -2372,6 +2477,26 @@ mod tests {
     );
   }
 
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
+      &self,
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
+    }
+  }
+
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
+
   #[tokio::test]
   async fn config_enable_via_config_file_detection() {
     let root_uri = root_dir();
@@ -2382,6 +2507,7 @@ mod tests {
       .tree
       .inject_config_file(
         ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2439,6 +2565,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(
@@ -2464,6 +2591,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
 
@@ -2481,6 +2609,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(

@@ -8,10 +8,12 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_stderr_tty,
-  op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
   op_bootstrap_pid,
+  op_bootstrap_stderr_no_color,
+  op_bootstrap_stdout_no_color,
+  op_get_ext_import_meta_proto,
+  op_internal_log,
   op_main_module,
   op_ppid,
   op_set_format_exception_callback,
@@ -59,6 +61,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -112,6 +115,24 @@ ObjectDefineProperties(Symbol, {
     configurable: false,
   },
 });
+
+// https://docs.rs/log/latest/log/enum.Level.html
+const LOG_LEVELS = {
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+  trace: 5,
+};
+
+op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log(this.url, level, message);
+};
 
 let windowIsClosing = false;
 let globalThis_;
@@ -278,8 +299,8 @@ function importScripts(...urls) {
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
 setNoColorFns(
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+  () => op_bootstrap_stdout_no_color(),
+  () => op_bootstrap_stderr_no_color(),
 );
 
 function formatException(error) {
@@ -783,7 +804,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: serveIsMain,
       12: serveWorkerCount,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
@@ -819,8 +843,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (mode === executionModes.serve && !serve) {
           if (serveIsMain) {
             // Only error if main worker
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -833,8 +857,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
         if (serve) {
           if (mode === executionModes.run) {
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -978,8 +1002,8 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
-      14: closeOnIdle_,
     } = runtimeOptions;
+    closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -1031,7 +1055,6 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
-    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];

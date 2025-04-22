@@ -19,13 +19,10 @@ use std::thread;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context as _;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -36,6 +33,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -52,6 +50,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
@@ -69,14 +68,12 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-use super::analysis::CodeActionData;
 use super::code_lens;
+use super::code_lens::CodeLensData;
 use super::config;
 use super::config::LspTsConfig;
-use super::documents::AssetOrDocument;
-use super::documents::Document;
-use super::documents::DocumentsFilter;
-use super::documents::ASSET_DOCUMENTS;
+use super::documents::DocumentModule;
+use super::documents::DocumentText;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::logging::lsp_log;
@@ -92,8 +89,6 @@ use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use super::urls::INVALID_SPECIFIER;
-use super::urls::INVALID_URI;
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::logging::lsp_warn;
@@ -122,7 +117,8 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   TscRequest,
-  Option<ModuleSpecifier>,
+  Option<Arc<Url>>,
+  Option<Arc<Uri>>,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
@@ -245,9 +241,11 @@ pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   pub specifier_map: Arc<TscSpecifierMap>,
+  inspector_server_addr: Mutex<Option<String>>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
   enable_tracing: Arc<AtomicBool>,
+  start_once: std::sync::Once,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -257,7 +255,9 @@ impl std::fmt::Debug for TsServer {
       .field("sender", &self.sender)
       .field("receiver", &self.receiver)
       .field("specifier_map", &self.specifier_map)
+      .field("inspector_server_addr", &self.inspector_server_addr.lock())
       .field("inspector_server", &self.inspector_server.lock().is_some())
+      .field("start_once", &self.start_once)
       .finish()
   }
 }
@@ -294,7 +294,8 @@ impl Serialize for ChangeKind {
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
-  pub new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+  pub new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+  pub new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -330,11 +331,29 @@ impl<'a> ToV8<'a> for PendingChange {
       } else {
         v8::null(scope).into()
       };
+    let new_notebook_scopes =
+      if let Some(new_notebook_scopes) = self.new_notebook_scopes {
+        serde_v8::to_v8(
+          scope,
+          new_notebook_scopes.into_iter().collect::<Vec<_>>(),
+        )
+        .unwrap_or_else(|err| {
+          lsp_warn!("Couldn't serialize ts configs: {err}");
+          v8::null(scope).into()
+        })
+      } else {
+        v8::null(scope).into()
+      };
 
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[modified_scripts, project_version, new_configs_by_scope],
+        &[
+          modified_scripts,
+          project_version,
+          new_configs_by_scope,
+          new_notebook_scopes,
+        ],
       )
       .into(),
     )
@@ -346,12 +365,16 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
     if let Some(new_configs_by_scope) = new_configs_by_scope {
       self.new_configs_by_scope = Some(new_configs_by_scope);
+    }
+    if let Some(new_notebook_scopes) = new_notebook_scopes {
+      self.new_notebook_scopes = Some(new_notebook_scopes);
     }
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
@@ -391,9 +414,6 @@ impl PendingChange {
   }
 }
 
-pub type DiagnosticsMap = IndexMap<String, Vec<crate::tsc::Diagnostic>>;
-pub type ScopedAmbientModules =
-  HashMap<Option<ModuleSpecifier>, MaybeAmbientModules>;
 pub type MaybeAmbientModules = Option<Vec<String>>;
 
 impl TsServer {
@@ -404,9 +424,11 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
+      inspector_server_addr: Mutex::new(None),
       inspector_server: Mutex::new(None),
       pending_change: Mutex::new(None),
       enable_tracing: Default::default(),
+      start_once: std::sync::Once::new(),
     }
   }
 
@@ -416,47 +438,61 @@ impl TsServer {
       .store(enabled, std::sync::atomic::Ordering::Relaxed);
   }
 
-  pub fn start(
-    &self,
-    inspector_server_addr: Option<String>,
-  ) -> Result<(), AnyError> {
-    let maybe_inspector_server = match inspector_server_addr {
-      Some(addr) => {
-        let addr: SocketAddr = addr.parse().with_context(|| {
-          format!("Invalid inspector server address \"{}\"", &addr)
-        })?;
-        let server = InspectorServer::new(addr, "deno-lsp-tsc")?;
-        Some(Arc::new(server))
-      }
-      None => None,
-    };
-    self
-      .inspector_server
-      .lock()
-      .clone_from(&maybe_inspector_server);
-    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
-    // on the `TsServer` struct.
-    let receiver = self.receiver.lock().take().unwrap();
-    let performance = self.performance.clone();
-    let specifier_map = self.specifier_map.clone();
-    let enable_tracing = self.enable_tracing.clone();
-    let _join_handle = thread::spawn(move || {
-      run_tsc_thread(
-        receiver,
-        performance,
-        specifier_map,
-        maybe_inspector_server,
-        enable_tracing,
-      )
+  /// This should be called before `self.ensure_started()`.
+  pub fn set_inspector_server_addr(&self, addr: Option<String>) {
+    *self.inspector_server_addr.lock() = addr;
+  }
+
+  pub fn ensure_started(&self) {
+    self.start_once.call_once(|| {
+      let maybe_inspector_server = self
+        .inspector_server_addr
+        .lock()
+        .as_ref()
+        .and_then(|addr| {
+          addr
+            .parse::<SocketAddr>()
+            .inspect_err(|err| {
+              lsp_warn!("Invalid inspector server address: {:#}", err);
+            })
+            .ok()
+        })
+        .map(|addr| {
+          Arc::new(InspectorServer::new(addr, "deno-lsp-tsc").unwrap())
+        });
+      self
+        .inspector_server
+        .lock()
+        .clone_from(&maybe_inspector_server);
+      // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+      // on the `TsServer` struct.
+      let receiver = self.receiver.lock().take().unwrap();
+      let performance = self.performance.clone();
+      let specifier_map = self.specifier_map.clone();
+      let enable_tracing = self.enable_tracing.clone();
+      let _join_handle = thread::spawn(move || {
+        run_tsc_thread(
+          receiver,
+          performance,
+          specifier_map,
+          maybe_inspector_server,
+          enable_tracing,
+        )
+      });
+      lsp_log!("TS server started.");
     });
-    Ok(())
+  }
+
+  pub fn is_started(&self) -> bool {
+    self.start_once.is_completed()
   }
 
   pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
-    new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+    modified_scripts: impl IntoIterator<Item = (&'a Url, ChangeKind)>,
+    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     let modified_scripts = modified_scripts
       .into_iter()
@@ -468,6 +504,7 @@ impl TsServer {
           snapshot.project_version,
           modified_scripts,
           new_configs_by_scope,
+          new_notebook_scopes,
         );
       }
       pending => {
@@ -475,6 +512,7 @@ impl TsServer {
           modified_scripts,
           project_version: snapshot.project_version,
           new_configs_by_scope,
+          new_notebook_scopes,
         };
         *pending = Some(pending_change);
       }
@@ -485,162 +523,103 @@ impl TsServer {
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifiers: Vec<ModuleSpecifier>,
+    specifiers: impl IntoIterator<Item = &Url>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
-  ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
-    let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
-    let mut specifiers_by_scope = BTreeMap::new();
-    for specifier in specifiers {
-      let scope = if snapshot.documents.is_valid_file_referrer(&specifier) {
-        snapshot
-          .config
-          .tree
-          .scope_for_specifier(&specifier)
-          .cloned()
-      } else {
-        snapshot
-          .documents
-          .get(&specifier)
-          .and_then(|d| d.scope().cloned())
-      };
-      let specifiers = specifiers_by_scope.entry(scope).or_insert(vec![]);
-      specifiers.push(self.specifier_map.denormalize(&specifier));
-    }
-    let mut results = FuturesOrdered::new();
-    for (scope, specifiers) in specifiers_by_scope {
-      let req =
-        TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
-      results.push_back(
-        self
-          .request::<(DiagnosticsMap, MaybeAmbientModules)>(
-            snapshot.clone(),
-            req,
-            scope.clone(),
-            token,
-          )
-          .map(|res| (scope, res)),
-      );
-    }
-    let mut ambient_modules_by_scope = HashMap::with_capacity(2);
-    while let Some((scope, raw_diagnostics)) = results.next().await {
-      if let Some(err) = raw_diagnostics.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!("Error generating TypeScript diagnostics: {err}");
-        }
-      }
-      let (raw_diagnostics, ambient_modules) =
-        raw_diagnostics.unwrap_or_default();
-      for (mut specifier, mut diagnostics) in raw_diagnostics {
-        specifier = self.specifier_map.normalize(&specifier)?.to_string();
-        for diagnostic in &mut diagnostics {
+  ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
+  {
+    let specifiers = specifiers
+      .into_iter()
+      .map(|s| self.specifier_map.denormalize(s))
+      .collect();
+    let req =
+      TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
+    self
+      .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
+      .await
+      .and_then(|(mut diagnostics, ambient_modules)| {
+        for diagnostic in diagnostics.iter_mut().flatten() {
           if token.is_cancelled() {
             return Err(anyhow!("request cancelled"));
           }
           normalize_diagnostic(diagnostic, &self.specifier_map)?;
         }
-        diagnostics_map.insert(specifier, diagnostics);
-      }
-      ambient_modules_by_scope.insert(scope, ambient_modules);
-    }
-    Ok((diagnostics_map, ambient_modules_by_scope))
+        Ok((diagnostics, ambient_modules))
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      let req = TscRequest::CleanupSemanticCache;
-      self
-        .request::<()>(
-          snapshot.clone(),
-          req,
-          scope.cloned(),
-          &Default::default(),
-        )
-        .await
-        .map_err(|err| {
-          log::error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })
-        .ok();
+    if !self.is_started() {
+      return;
     }
+    let req = TscRequest::CleanupSemanticCache;
+    self
+      .request::<()>(snapshot.clone(), req, None, None, &Default::default())
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
     let req = TscRequest::FindReferences((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<ReferencedSymbol>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
+    self
+      .request::<Option<Vec<ReferencedSymbol>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
         token,
-      ));
-    }
-    let mut all_symbols = IndexSet::new();
-    while let Some(symbols) = results.next().await {
-      let symbols = symbols
-        .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get references from TypeScript: {err}");
+      )
+      .await
+      .and_then(|mut symbols| {
+        for symbol in symbols.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
           }
-        })
-        .unwrap_or_default();
-      let Some(mut symbols) = symbols else {
-        continue;
-      };
-      for symbol in &mut symbols {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
+          symbol.normalize(&self.specifier_map)?;
         }
-        symbol.normalize(&self.specifier_map)?;
-      }
-      all_symbols.extend(symbols);
-    }
-    if all_symbols.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_symbols.into_iter().collect()))
+        Ok(symbols)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigation_tree(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    scope: Option<ModuleSpecifier>,
+    specifier: &Url,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
-      .denormalize(&specifier),));
-    self.request(snapshot, req, scope, token).await
+      .denormalize(specifier),));
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -650,7 +629,7 @@ impl TsServer {
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
     self
-      .request(snapshot, req, None, &Default::default())
+      .request(snapshot, req, None, None, &Default::default())
       .await
       .map_err(|err| {
         log::error!("Unable to get fixable diagnostics: {}", err);
@@ -662,16 +641,19 @@ impl TsServer {
   pub async fn get_quick_info(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<QuickInfo>, AnyError> {
     let req = TscRequest::GetQuickInfoAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -679,16 +661,17 @@ impl TsServer {
   pub async fn get_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
     codes: Vec<i32>,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CodeFixAction>, AnyError> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       range.start,
       range.end,
       codes,
@@ -696,7 +679,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<Vec<CodeFixAction>>(snapshot, req, scope, token)
+      .request::<Vec<CodeFixAction>>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut actions| {
         for action in &mut actions {
@@ -711,12 +694,13 @@ impl TsServer {
   pub async fn get_applicable_refactors(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
     preferences: Option<UserPreferences>,
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
@@ -725,14 +709,14 @@ impl TsServer {
       _ => unreachable!(),
     });
     let req = TscRequest::GetApplicableRefactors(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       range.into(),
       preferences.unwrap_or_default(),
       trigger_kind,
       only,
     )));
     self
-      .request(snapshot, req, scope, token)
+      .request(snapshot, req, scope, notebook_uri, token)
       .await
       .map_err(|err| {
         log::error!("Failed to request to tsserver {}", err);
@@ -741,26 +725,29 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
-    code_action_data: &CodeActionData,
+    specifier: &Url,
+    fix_id: &str,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<CombinedCodeActions, AnyError> {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
         r#type: "file",
-        file_name: self.specifier_map.denormalize(&code_action_data.specifier),
+        file_name: self.specifier_map.denormalize(specifier),
       },
-      code_action_data.fix_id.clone(),
+      fix_id.to_string(),
       format_code_settings,
       preferences,
     )));
     self
-      .request::<CombinedCodeActions>(snapshot, req, scope, token)
+      .request::<CombinedCodeActions>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut actions| {
         actions.normalize(&self.specifier_map)?;
@@ -773,17 +760,18 @@ impl TsServer {
   pub async fn get_edits_for_refactor(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     format_code_settings: FormatCodeSettings,
     range: Range<u32>,
     refactor_name: String,
     action_name: String,
     preferences: Option<UserPreferences>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<RefactorEditInfo, AnyError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       format_code_settings,
       range.into(),
       refactor_name,
@@ -791,7 +779,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<RefactorEditInfo>(snapshot, req, scope, token)
+      .request::<RefactorEditInfo>(snapshot, req, scope, notebook_uri, token)
       .await
       .and_then(|mut info| {
         info.normalize(&self.specifier_map)?;
@@ -800,101 +788,94 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
-    old_specifier: ModuleSpecifier,
-    new_specifier: ModuleSpecifier,
+    old_specifier: &Url,
+    new_specifier: &Url,
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
-      self.specifier_map.denormalize(&old_specifier),
-      self.specifier_map.denormalize(&new_specifier),
+      self.specifier_map.denormalize(old_specifier),
+      self.specifier_map.denormalize(new_specifier),
       format_code_settings,
       user_preferences,
     )));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<FileTextChanges>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
+    self
+      .request::<Vec<FileTextChanges>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
         token,
-      ));
-    }
-    let mut all_changes = IndexSet::new();
-    while let Some(changes) = results.next().await {
-      if let Some(err) = changes.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!(
-            "Unable to get edits for file rename from TypeScript: {err}"
-          );
-        }
-      }
-      let mut changes = changes.unwrap_or_default();
-      for changes in &mut changes {
-        changes.normalize(&self.specifier_map)?;
-        for text_changes in &mut changes.text_changes {
-          if token.is_cancelled() {
-            return Err(anyhow!("request cancelled"));
+      )
+      .await
+      .and_then(|mut changes| {
+        for changes in &mut changes {
+          changes.normalize(&self.specifier_map)?;
+          for text_changes in &mut changes.text_changes {
+            if token.is_cancelled() {
+              return Err(anyhow!("request cancelled"));
+            }
+            text_changes.new_text =
+              to_percent_decoded_str(&text_changes.new_text);
           }
-          text_changes.new_text =
-            to_percent_decoded_str(&text_changes.new_text);
         }
-      }
-      all_changes.extend(changes);
-    }
-    Ok(all_changes.into_iter().collect())
+        Ok(changes)
+      })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     files_to_search: Vec<ModuleSpecifier>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DocumentHighlights>>, AnyError> {
     let req = TscRequest::GetDocumentHighlights(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       files_to_search
         .into_iter()
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<_>>(),
     )));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, AnyError> {
     let req = TscRequest::GetDefinitionAndBoundSpan((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
       .request::<Option<DefinitionInfoAndBoundSpan>>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|mut info| {
@@ -909,17 +890,24 @@ impl TsServer {
   pub async fn get_type_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DefinitionInfo>>, AnyError> {
     let req = TscRequest::GetTypeDefinitionAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
-      .request::<Option<Vec<DefinitionInfo>>>(snapshot, req, scope, token)
+      .request::<Option<Vec<DefinitionInfo>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut infos| {
         for info in infos.iter_mut().flatten() {
@@ -937,21 +925,28 @@ impl TsServer {
   pub async fn get_completions(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       options,
       format_code_settings,
     )));
     self
-      .request::<Option<CompletionInfo>>(snapshot, req, scope, token)
+      .request::<Option<CompletionInfo>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut info| {
         if let Some(info) = &mut info {
@@ -962,24 +957,38 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
-    args: GetCompletionDetailsArgs,
-    scope: Option<ModuleSpecifier>,
+    specifier: &Url,
+    position: u32,
+    name: String,
+    format_code_settings: Option<FormatCodeSettings>,
+    source: Option<String>,
+    preferences: Option<UserPreferences>,
+    data: Option<Value>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
-      self.specifier_map.denormalize(&args.specifier),
-      args.position,
-      args.name,
-      args.format_code_settings.unwrap_or_default(),
-      args.source,
-      args.preferences,
-      args.data,
+      self.specifier_map.denormalize(specifier),
+      position,
+      name,
+      format_code_settings.unwrap_or_default(),
+      source,
+      preferences,
+      data,
     )));
     self
-      .request::<Option<CompletionEntryDetails>>(snapshot, req, scope, token)
+      .request::<Option<CompletionEntryDetails>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut details| {
         if let Some(details) = &mut details {
@@ -993,135 +1002,106 @@ impl TsServer {
   pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
     let req = TscRequest::GetImplementationAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<ImplementationLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
+    self
+      .request::<Option<Vec<ImplementationLocation>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
         token,
-      ));
-    }
-    let mut all_locations = IndexSet::new();
-    while let Some(locations) = results.next().await {
-      let locations = locations
-        .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get implementations from TypeScript: {err}");
+      )
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
           }
-        })
-        .unwrap_or_default();
-      let Some(mut locations) = locations else {
-        continue;
-      };
-      for location in &mut locations {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
+          location.normalize(&self.specifier_map)?;
         }
-        location.normalize(&self.specifier_map)?;
-      }
-      all_locations.extend(locations);
-    }
-    if all_locations.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_locations.into_iter().collect()))
+        Ok(locations)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_outlining_spans(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    scope: Option<ModuleSpecifier>,
+    specifier: &Url,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<OutliningSpan>, AnyError> {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
-      .denormalize(&specifier),));
-    self.request(snapshot, req, scope, token).await
+      .denormalize(specifier),));
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<CallHierarchyIncomingCall>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
+    self
+      .request::<Vec<CallHierarchyIncomingCall>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
         token,
-      ));
-    }
-    let mut all_calls = IndexSet::new();
-    while let Some(calls) = results.next().await {
-      if let Some(err) = calls.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
+      )
+      .await
+      .and_then(|mut calls| {
+        for call in &mut calls {
+          call.normalize(&self.specifier_map)?;
         }
-      }
-      let mut calls = calls.unwrap_or_default();
-      for call in &mut calls {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        call.normalize(&self.specifier_map)?;
-      }
-      all_calls.extend(calls)
-    }
-    Ok(all_calls.into_iter().collect())
+        Ok(calls)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyOutgoingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyOutgoingCalls((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
-      .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req, scope, token)
+      .request::<Vec<CallHierarchyOutgoingCall>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut calls| {
         for call in &mut calls {
@@ -1138,18 +1118,23 @@ impl TsServer {
   pub async fn prepare_call_hierarchy(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, AnyError> {
     let req = TscRequest::PrepareCallHierarchy((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
       .request::<Option<OneOrMany<CallHierarchyItem>>>(
-        snapshot, req, scope, token,
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
+        token,
       )
       .await
       .and_then(|mut items| {
@@ -1168,203 +1153,178 @@ impl TsServer {
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     user_preferences: UserPreferences,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       false,
       false,
       user_preferences,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<RenameLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
+    self
+      .request::<Option<Vec<RenameLocation>>>(
+        snapshot,
+        req,
+        scope,
+        notebook_uri,
         token,
-      ));
-    }
-    let mut all_locations = IndexSet::new();
-    while let Some(locations) = results.next().await {
-      if let Some(err) = locations.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+      )
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
           }
+          location.normalize(&self.specifier_map)?;
         }
-      }
-      let locations = locations.unwrap_or_default();
-      let Some(mut locations) = locations else {
-        continue;
-      };
-      for symbol in &mut locations {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        symbol.normalize(&self.specifier_map)?;
-      }
-      all_locations.extend(locations);
-    }
-    if all_locations.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_locations.into_iter().collect()))
+        Ok(locations)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_smart_selection_range(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<SelectionRange, AnyError> {
     let req = TscRequest::GetSmartSelectionRange((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_encoded_semantic_classifications(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Classifications, AnyError> {
     let req = TscRequest::GetEncodedSemanticClassifications((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       TextSpan {
         start: range.start,
         length: range.end - range.start,
       },
       "2020",
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     options: SignatureHelpItemsOptions,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<SignatureHelpItems>, AnyError> {
     let req = TscRequest::GetSignatureHelpItems((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       options,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
     snapshot: Arc<StateSnapshot>,
-    args: GetNavigateToItemsArgs,
+    search: String,
+    max_result_count: Option<u32>,
+    file: Option<String>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
-      args.search,
-      args.max_result_count,
-      args.file.map(|f| match resolve_url(&f) {
+      search,
+      max_result_count,
+      file.map(|f| match resolve_url(&f) {
         Ok(s) => self.specifier_map.denormalize(&s),
         Err(_) => f,
       }),
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<NavigateToItem>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_items = IndexSet::new();
-    while let Some(items) = results.next().await {
-      if let Some(err) = items.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!("Unable to get 'navigate to' items from TypeScript: {err}");
+    self
+      .request::<Vec<NavigateToItem>>(snapshot, req, scope, notebook_uri, token)
+      .await
+      .and_then(|mut items| {
+        for item in &mut items {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          item.normalize(&self.specifier_map)?;
         }
-      }
-      let mut items = items.unwrap_or_default();
-      for item in &mut items {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        item.normalize(&self.specifier_map)?;
-      }
-      all_items.extend(items)
-    }
-    Ok(all_items.into_iter().collect())
+        Ok(items)
+      })
   }
 
+  #[allow(clippy::too_many_arguments)]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     text_span: TextSpan,
     user_preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<InlayHint>>, AnyError> {
     let req = TscRequest::ProvideInlayHints((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       text_span,
       user_preferences,
     ));
-    self.request(snapshot, req, scope, token).await
+    self
+      .request(snapshot, req, scope, notebook_uri, token)
+      .await
   }
 
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
+    notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: de::DeserializeOwned,
   {
     use super::trace::SpanExt;
+    self.ensure_started();
     let context = super::trace::Span::current().context();
     let mark = self
       .performance
@@ -1376,7 +1336,8 @@ impl TsServer {
       .sender
       .send((
         req,
-        scope,
+        scope.cloned(),
+        notebook_uri.cloned(),
         snapshot,
         tx,
         token.clone(),
@@ -1404,12 +1365,13 @@ impl TsServer {
 
 fn get_tag_body_text(
   tag: &JsDocTagInfo,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts, language_server);
+    let text = display_parts_to_string(display_parts, module, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -1433,6 +1395,7 @@ fn get_tag_body_text(
 
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> String {
   match tag.name.as_str() {
@@ -1440,7 +1403,8 @@ fn get_tag_documentation(
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = display_parts_to_string(display_parts, language_server);
+        let text =
+          display_parts_to_string(display_parts, module, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -1460,7 +1424,7 @@ fn get_tag_documentation(
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, language_server);
+  let maybe_text = get_tag_body_text(tag, module, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{label}  \n{text}")
@@ -1780,6 +1744,7 @@ struct Link {
 /// to the their source location.
 fn display_parts_to_string(
   parts: &[SymbolDisplayPart],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> String {
   let mut out = Vec::<String>::new();
@@ -1790,7 +1755,7 @@ fn display_parts_to_string(
       "link" => {
         if let Some(link) = current_link.as_mut() {
           if let Some(target) = &link.target {
-            if let Some(specifier) = target.to_target(language_server) {
+            if let Some(specifier) = target.to_target(module, language_server) {
               let link_text = link.text.clone().unwrap_or_else(|| {
                 link
                   .name
@@ -1889,42 +1854,47 @@ fn display_parts_to_string(
 impl QuickInfo {
   pub fn to_hover(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::Hover {
-    let mut parts = Vec::<lsp::MarkedString>::new();
+    let mut parts = Vec::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p, language_server))
+      .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_language_code(
-        "typescript".to_string(),
-        display_string,
-      ));
+      if !display_string.is_empty() {
+        parts.push(format!("```typescript\n{}\n```", display_string));
+      }
     }
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p, language_server))
+      .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_markdown(documentation));
+      if !documentation.is_empty() {
+        parts.push(documentation);
+      }
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(|tag_info| get_tag_documentation(tag_info, language_server))
+        .map(|tag_info| {
+          get_tag_documentation(tag_info, module, language_server)
+        })
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{tags_preview}"
-        )));
+        parts.push(tags_preview);
       }
     }
+    let value = parts.join("\n\n");
     lsp::Hover {
-      contents: lsp::HoverContents::Array(parts),
-      range: Some(self.text_span.to_range(line_index)),
+      contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value,
+      }),
+      range: Some(self.text_span.to_range(module.line_index.clone())),
     }
   }
 }
@@ -1953,42 +1923,39 @@ impl DocumentSpan {
 impl DocumentSpan {
   pub fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-    let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = target_asset_or_doc.file_referrer();
-    let target_uri = language_server
-      .url_map
-      .specifier_to_uri(&target_specifier, file_referrer)
-      .ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          context_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(target_module.line_index.clone()),
         )
       } else {
         (
-          self.text_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          self.text_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(target_module.line_index.clone()),
         )
       };
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
-        Some(original_context_span.to_range(line_index))
+        Some(original_context_span.to_range(module.line_index.clone()))
       } else {
-        self
-          .original_text_span
-          .as_ref()
-          .map(|original_text_span| original_text_span.to_range(line_index))
+        self.original_text_span.as_ref().map(|original_text_span| {
+          original_text_span.to_range(module.line_index.clone())
+        })
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri,
+      target_uri: target_module.uri.as_ref().clone(),
       target_range,
       target_selection_range,
     };
@@ -2000,19 +1967,18 @@ impl DocumentSpan {
   /// links to markdown links.
   fn to_target(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
-    let specifier = resolve_url(&self.file_name).ok()?;
-    let asset_or_doc =
-      language_server.get_maybe_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
-    let range = self.text_span.to_range(line_index);
-    let file_referrer = asset_or_doc.file_referrer();
-    let target_uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer)
-      .ok()?;
-    let mut target = uri_to_url(&target_uri);
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
+    let range = self.text_span.to_range(target_module.line_index.clone());
+    let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
       "L{},{}",
       range.start.line + 1,
@@ -2062,19 +2028,18 @@ impl NavigateToItem {
 impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
+    scope: Option<&Url>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
-    let specifier = resolve_url(&self.file_name).ok()?;
-    let asset_or_doc =
-      language_server.get_asset_or_document(&specifier).ok()?;
-    let line_index = asset_or_doc.line_index();
-    let file_referrer = asset_or_doc.file_referrer();
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer)
-      .ok()?;
-    let range = self.text_span.to_range(line_index);
-    let location = lsp::Location { uri, range };
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_for_specifier(&target_specifier, scope)?;
+    let range = self.text_span.to_range(target_module.line_index.clone());
+    let location = lsp::Location {
+      uri: target_module.uri.as_ref().clone(),
+      range,
+    };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
@@ -2108,29 +2073,28 @@ pub struct InlayHintDisplayPart {
 impl InlayHintDisplayPart {
   pub fn to_lsp(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::InlayHintLabelPart {
-    let location = self.file.as_ref().map(|f| {
-      let specifier =
-        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-      let file_referrer =
-        language_server.documents.get_file_referrer(&specifier);
-      let uri = language_server
-        .url_map
-        .specifier_to_uri(&specifier, file_referrer.as_deref())
-        .unwrap_or_else(|_| INVALID_URI.clone());
+    let location = self.file.as_ref().and_then(|f| {
+      let target_specifier = resolve_url(f).ok()?;
+      let target_module = language_server
+        .document_modules
+        .inspect_module_for_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )?;
       let range = self
         .span
         .as_ref()
-        .and_then(|s| {
-          let asset_or_doc =
-            language_server.get_asset_or_document(&specifier).ok()?;
-          Some(s.to_range(asset_or_doc.line_index()))
-        })
+        .map(|s| s.to_range(target_module.line_index.clone()))
         .unwrap_or_else(|| {
           lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
         });
-      lsp::Location { uri, range }
+      Some(lsp::Location {
+        uri: target_module.uri.as_ref().clone(),
+        range,
+      })
     });
     lsp::InlayHintLabelPart {
       value: self.text.clone(),
@@ -2172,16 +2136,16 @@ pub struct InlayHint {
 impl InlayHint {
   pub fn to_lsp(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::InlayHint {
     lsp::InlayHint {
-      position: line_index.position_utf16(self.position.into()),
+      position: module.line_index.position_utf16(self.position.into()),
       label: if let Some(display_parts) = &self.display_parts {
         lsp::InlayHintLabel::LabelParts(
           display_parts
             .iter()
-            .map(|p| p.to_lsp(language_server))
+            .map(|p| p.to_lsp(module, language_server))
             .collect(),
         )
       } else {
@@ -2212,8 +2176,8 @@ impl NavigationTree {
   pub fn to_code_lens(
     &self,
     line_index: Arc<LineIndex>,
-    specifier: &ModuleSpecifier,
-    source: &code_lens::CodeLensSource,
+    uri: &Uri,
+    source: code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
@@ -2226,9 +2190,9 @@ impl NavigationTree {
     lsp::CodeLens {
       range,
       command: None,
-      data: Some(json!({
-        "specifier": specifier,
-        "source": source
+      data: Some(json!(CodeLensData {
+        source,
+        uri: uri.clone(),
       })),
     }
   }
@@ -2392,30 +2356,12 @@ impl ImplementationLocation {
     Ok(())
   }
 
-  pub fn to_location(
-    &self,
-    line_index: Arc<LineIndex>,
-    language_server: &language_server::Inner,
-  ) -> lsp::Location {
-    let specifier = resolve_url(&self.document_span.file_name)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| INVALID_URI.clone());
-    lsp::Location {
-      uri,
-      range: self.document_span.text_span.to_range(line_index),
-    }
-  }
-
   pub fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    self.document_span.to_link(line_index, language_server)
+    self.document_span.to_link(module, language_server)
   }
 }
 
@@ -2438,52 +2384,45 @@ impl RenameLocation {
   }
 }
 
-pub struct RenameLocations {
-  pub locations: Vec<RenameLocation>,
-}
-
-impl RenameLocations {
-  pub fn into_workspace_edit(
-    self,
+impl RenameLocation {
+  pub fn collect_into_workspace_edit(
+    locations_with_modules: impl IntoIterator<
+      Item = (RenameLocation, Arc<DocumentModule>),
+    >,
     new_name: &str,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map = IndexMap::new();
     let mut includes_non_files = false;
-    for location in self.locations.iter() {
+    for (location, module) in locations_with_modules {
       if token.is_cancelled() {
         return Err(anyhow!("request cancelled"));
       }
-      let specifier = resolve_url(&location.document_span.file_name)?;
-      if specifier.scheme() != "file" {
+      let target_specifier = resolve_url(&location.document_span.file_name)?;
+      if target_specifier.scheme() != "file" {
         includes_non_files = true;
         continue;
       }
-      let file_referrer =
-        language_server.documents.get_file_referrer(&specifier);
-      let uri = language_server
-        .url_map
-        .specifier_to_uri(&specifier, file_referrer.as_deref())?;
-      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
-
-      // ensure TextDocumentEdit for `location.file_name`.
-      if !text_document_edit_map.contains_key(&uri) {
-        text_document_edit_map.insert(
-          uri.clone(),
-          lsp::TextDocumentEdit {
-            text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-              uri: uri.clone(),
-              version: asset_or_doc.document_lsp_version(),
-            },
-            edits:
-              Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
+      let Some(target_module) = language_server
+        .document_modules
+        .inspect_module_for_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )
+      else {
+        continue;
+      };
+      let document_edit = text_document_edit_map
+        .entry(target_module.uri.clone())
+        .or_insert_with(|| lsp::TextDocumentEdit {
+          text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+            uri: target_module.uri.as_ref().clone(),
+            version: target_module.open_data.as_ref().map(|d| d.version),
           },
-        );
-      }
-
-      // push TextEdit for ensured `TextDocumentEdit.edits`.
-      let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
+          edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
+          ),
+        });
       let new_text = [
         location.prefix_text.as_deref(),
         Some(new_name),
@@ -2497,7 +2436,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(asset_or_doc.line_index()),
+          .to_range(target_module.line_index.clone()),
         new_text,
       }));
     }
@@ -2579,7 +2518,7 @@ impl DefinitionInfoAndBoundSpan {
 
   pub fn to_definition(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
@@ -2589,10 +2528,7 @@ impl DefinitionInfoAndBoundSpan {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        if let Some(link) = di
-          .document_span
-          .to_link(line_index.clone(), language_server)
-        {
+        if let Some(link) = di.document_span.to_link(module, language_server) {
           location_links.push(link);
         }
       }
@@ -2681,19 +2617,43 @@ impl FileTextChanges {
 
   pub fn to_text_document_edit(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = resolve_url(&self.file_name)?;
-    let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
+  ) -> Option<lsp::TextDocumentEdit> {
+    let is_new_file = self.is_new_file.unwrap_or(false);
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = if is_new_file {
+      None
+    } else {
+      Some(
+        language_server
+          .document_modules
+          .inspect_module_for_specifier(
+            &target_specifier,
+            module.scope.as_deref(),
+          )?,
+      )
+    };
+    let target_uri = target_module
+      .as_ref()
+      .map(|m| m.uri.clone())
+      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
+    let line_index = target_module
+      .as_ref()
+      .map(|m| m.line_index.clone())
+      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(asset_or_doc.line_index()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
       .collect();
-    Ok(lsp::TextDocumentEdit {
+    Some(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: url_to_uri(&specifier)?,
-        version: asset_or_doc.document_lsp_version(),
+        uri: target_uri.as_ref().clone(),
+        version: target_module
+          .as_ref()
+          .and_then(|m| m.open_data.as_ref())
+          .map(|d| d.version),
       },
       edits,
     })
@@ -2701,25 +2661,37 @@ impl FileTextChanges {
 
   pub fn to_text_document_change_ops(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
+  ) -> Option<Vec<lsp::DocumentChangeOperation>> {
+    let is_new_file = self.is_new_file.unwrap_or(false);
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
-    let specifier = resolve_url(&self.file_name)?;
-    let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
-      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
-      Some(asset_or_doc)
-    } else {
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = if is_new_file {
       None
+    } else {
+      Some(
+        language_server
+          .document_modules
+          .inspect_module_for_specifier(
+            &target_specifier,
+            module.scope.as_deref(),
+          )?,
+      )
     };
-    let line_index = maybe_asset_or_document
+    let target_uri = target_module
       .as_ref()
-      .map(|d| d.line_index())
+      .map(|m| m.uri.clone())
+      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
+    let line_index = target_module
+      .as_ref()
+      .map(|m| m.line_index.clone())
       .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
-    if self.is_new_file.unwrap_or(false) {
+    if is_new_file {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
         lsp::CreateFile {
-          uri: url_to_uri(&specifier)?,
+          uri: target_uri.as_ref().clone(),
           options: Some(lsp::CreateFileOptions {
             ignore_if_exists: Some(true),
             overwrite: None,
@@ -2736,13 +2708,16 @@ impl FileTextChanges {
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: url_to_uri(&specifier)?,
-        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
+        uri: target_uri.as_ref().clone(),
+        version: target_module
+          .as_ref()
+          .and_then(|m| m.open_data.as_ref())
+          .map(|d| d.version),
       },
       edits,
     }));
 
-    Ok(ops)
+    Some(ops)
   }
 }
 
@@ -2886,7 +2861,7 @@ pub struct ApplicableRefactorInfo {
 impl ApplicableRefactorInfo {
   pub fn to_code_actions(
     &self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
     range: &lsp::Range,
     token: &CancellationToken,
   ) -> Result<Vec<lsp::CodeAction>, AnyError> {
@@ -2897,7 +2872,7 @@ impl ApplicableRefactorInfo {
         return Err(anyhow!("request cancelled"));
       }
       code_actions
-        .push(self.as_inline_code_action(action, specifier, range, &self.name));
+        .push(self.as_inline_code_action(action, uri, range, &self.name));
     }
     Ok(code_actions)
   }
@@ -2905,7 +2880,7 @@ impl ApplicableRefactorInfo {
   fn as_inline_code_action(
     &self,
     action: &RefactorActionInfo,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
     range: &lsp::Range,
     refactor_name: &str,
   ) -> lsp::CodeAction {
@@ -2922,7 +2897,7 @@ impl ApplicableRefactorInfo {
       disabled,
       data: Some(
         serde_json::to_value(RefactorCodeActionData {
-          specifier: specifier.clone(),
+          uri: uri.clone(),
           range: *range,
           refactor_name: refactor_name.to_owned(),
           action_name: action.name.clone(),
@@ -2934,22 +2909,21 @@ impl ApplicableRefactorInfo {
   }
 }
 
-pub fn file_text_changes_to_workspace_edit(
-  changes: &[FileTextChanges],
+pub fn file_text_changes_to_workspace_edit<'a>(
+  changes_with_modules: impl IntoIterator<
+    Item = (&'a FileTextChanges, &'a Arc<DocumentModule>),
+  >,
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> LspResult<Option<lsp::WorkspaceEdit>> {
   let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
-  for change in changes {
+  for (change, module) in changes_with_modules {
     if token.is_cancelled() {
       return Err(LspError::request_cancelled());
     }
-    let ops = match change.to_text_document_change_ops(language_server) {
-      Ok(op) => op,
-      Err(err) => {
-        error!("Unable to convert changes to edits: {}", err);
-        return Err(LspError::internal_error());
-      }
+    let Some(ops) = change.to_text_document_change_ops(module, language_server)
+    else {
+      continue;
     };
     all_ops.extend(ops);
   }
@@ -2981,10 +2955,15 @@ impl RefactorEditInfo {
 
   pub fn to_workspace_edit(
     &self,
+    module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {
-    file_text_changes_to_workspace_edit(&self.edits, language_server, token)
+    file_text_changes_to_workspace_edit(
+      self.edits.iter().map(|c| (c, module)),
+      language_server,
+      token,
+    )
   }
 }
 
@@ -3143,20 +3122,27 @@ impl ReferenceEntry {
 impl ReferenceEntry {
   pub fn to_location(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
-  ) -> lsp::Location {
-    let specifier = resolve_url(&self.document_span.file_name)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| INVALID_URI.clone());
-    lsp::Location {
-      uri,
-      range: self.document_span.text_span.to_range(line_index),
-    }
+  ) -> Option<lsp::Location> {
+    let target_specifier = resolve_url(&self.document_span.file_name).ok()?;
+    let target_module = if target_specifier == *module.specifier {
+      module.clone()
+    } else {
+      language_server
+        .document_modules
+        .inspect_module_for_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )?
+    };
+    Some(lsp::Location {
+      uri: target_module.uri.as_ref().clone(),
+      range: self
+        .document_span
+        .text_span
+        .to_range(target_module.line_index.clone()),
+    })
   }
 }
 
@@ -3185,54 +3171,42 @@ impl CallHierarchyItem {
 
   pub fn try_resolve_call_hierarchy_item(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let target_specifier = resolve_url(&self.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
-    Some(self.to_call_hierarchy_item(
-      target_asset_or_doc.line_index(),
-      language_server,
-      maybe_root_path,
-    ))
+    let (item, _) =
+      self.to_call_hierarchy_item(module, language_server, maybe_root_path)?;
+    Some(item)
   }
 
-  pub fn to_call_hierarchy_item(
+  fn to_call_hierarchy_item(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> lsp::CallHierarchyItem {
-    let target_specifier =
-      resolve_url(&self.file).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&target_specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| INVALID_URI.clone());
+  ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
+    let target_specifier = resolve_url(&self.file).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
-    {
-      url_to_file_path(&uri_to_url(&uri)).ok()
-    } else {
-      None
-    };
+    let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
-      if let Some(file_path) = maybe_file_path.as_ref() {
+      if let Some(file_path) = &maybe_file_path {
         file_path.file_name().unwrap().to_string_lossy().to_string()
       } else {
-        uri.as_str().to_string()
+        target_module.uri.to_string()
       }
     } else {
       self.name.clone()
     };
     let detail = if use_file_name {
-      if let Some(file_path) = maybe_file_path.as_ref() {
+      if let Some(file_path) = &maybe_file_path {
         // TODO: update this to work with multi root workspaces
         let parent_dir = file_path.parent().unwrap();
         if let Some(root_path) = maybe_root_path {
@@ -3259,16 +3233,21 @@ impl CallHierarchyItem {
       }
     }
 
-    lsp::CallHierarchyItem {
-      name,
-      tags,
-      uri,
-      detail: Some(detail),
-      kind: self.kind.clone().into(),
-      range: self.span.to_range(line_index.clone()),
-      selection_range: self.selection_span.to_range(line_index),
-      data: None,
-    }
+    Some((
+      lsp::CallHierarchyItem {
+        name,
+        tags,
+        uri: target_module.uri.as_ref().clone(),
+        detail: Some(detail),
+        kind: self.kind.clone().into(),
+        range: self.span.to_range(target_module.line_index.clone()),
+        selection_range: self
+          .selection_span
+          .to_range(target_module.line_index.clone()),
+        data: None,
+      },
+      target_module,
+    ))
   }
 
   fn is_source_file_item(&self) -> bool {
@@ -3296,23 +3275,21 @@ impl CallHierarchyIncomingCall {
 
   pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let target_specifier = resolve_url(&self.from.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
+    let (from, target_module) = self.from.to_call_hierarchy_item(
+      module,
+      language_server,
+      maybe_root_path,
+    )?;
     Some(lsp::CallHierarchyIncomingCall {
-      from: self.from.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
-        language_server,
-        maybe_root_path,
-      ),
+      from,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_asset_or_doc.line_index()))
+        .map(|span| span.to_range(target_module.line_index.clone()))
         .collect(),
     })
   }
@@ -3336,24 +3313,21 @@ impl CallHierarchyOutgoingCall {
 
   pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let target_specifier = resolve_url(&self.to.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
+    let (to, _) = self.to.to_call_hierarchy_item(
+      module,
+      language_server,
+      maybe_root_path,
+    )?;
     Some(lsp::CallHierarchyOutgoingCall {
-      to: self.to.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
-        language_server,
-        maybe_root_path,
-      ),
+      to,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(line_index.clone()))
+        .map(|span| span.to_range(module.line_index.clone()))
         .collect(),
     })
   }
@@ -3364,8 +3338,7 @@ impl CallHierarchyOutgoingCall {
 fn parse_code_actions(
   maybe_code_actions: Option<&Vec<CodeAction>>,
   data: &CompletionItemData,
-  specifier: &ModuleSpecifier,
-  language_server: &language_server::Inner,
+  module: &DocumentModule,
 ) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
   if let Some(code_actions) = maybe_code_actions {
     let mut additional_text_edits: Vec<lsp::TextEdit> = Vec::new();
@@ -3375,12 +3348,10 @@ fn parse_code_actions(
         has_remaining_commands_or_edits = true;
       }
 
-      let asset_or_doc =
-        language_server.get_asset_or_document(&data.specifier)?;
       for change in &ts_action.changes {
-        if data.specifier.as_str() == change.file_name {
+        if module.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
-            let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
+            let mut text_edit = tc.as_text_edit(module.line_index.clone());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
               let specifier_index = text_edit
                 .new_text
@@ -3420,7 +3391,7 @@ fn parse_code_actions(
             .changes
             .clone()
             .into_iter()
-            .filter(|ch| ch.file_name == data.specifier.as_str())
+            .filter(|ch| ch.file_name == module.specifier.as_str())
             .collect();
           json!({
             "commands": ca.commands,
@@ -3432,7 +3403,10 @@ fn parse_code_actions(
       command = Some(lsp::Command {
         title: "".to_string(),
         command: "_typescript.applyCompletionCodeAction".to_string(),
-        arguments: Some(vec![json!(specifier.to_string()), json!(actions)]),
+        arguments: Some(vec![
+          json!(module.specifier.to_string()),
+          json!(actions),
+        ]),
       });
     }
 
@@ -3524,7 +3498,7 @@ impl CompletionEntryDetails {
     &self,
     original_item: &lsp::CompletionItem,
     data: &CompletionItemData,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Result<lsp::CompletionItem, AnyError> {
     let detail = if original_item.detail.is_some() {
@@ -3532,6 +3506,7 @@ impl CompletionEntryDetails {
     } else if !self.display_parts.is_empty() {
       Some(replace_links(display_parts_to_string(
         &self.display_parts,
+        module,
         language_server,
       )))
     } else {
@@ -3539,11 +3514,13 @@ impl CompletionEntryDetails {
     };
     let documentation = if let Some(parts) = &self.documentation {
       // NOTE: similar as `QuickInfo::to_hover()`
-      let mut value = display_parts_to_string(parts, language_server);
+      let mut value = display_parts_to_string(parts, module, language_server);
       if let Some(tags) = &self.tags {
         let tags_preview = tags
           .iter()
-          .map(|tag_info| get_tag_documentation(tag_info, language_server))
+          .map(|tag_info| {
+            get_tag_documentation(tag_info, module, language_server)
+          })
           .collect::<Vec<String>>()
           .join("  \n\n");
         if !tags_preview.is_empty() {
@@ -3614,12 +3591,8 @@ impl CompletionEntryDetails {
         .join("\n\n"),
     )
     .filter(|s| !s.is_empty());
-    let (command, additional_text_edits) = parse_code_actions(
-      self.code_actions.as_ref(),
-      data,
-      specifier,
-      language_server,
-    )?;
+    let (command, additional_text_edits) =
+      parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
     let insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
@@ -3687,7 +3660,7 @@ impl CompletionInfo {
     &self,
     line_index: Arc<LineIndex>,
     settings: &config::CompletionSettings,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     position: u32,
     language_server: &language_server::Inner,
     token: &CancellationToken,
@@ -3705,7 +3678,7 @@ impl CompletionInfo {
         line_index.clone(),
         self,
         settings,
-        specifier,
+        module,
         position,
         language_server,
         &mut cache,
@@ -3742,7 +3715,7 @@ pub struct CompletionSpecifierRewrite {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
-  pub specifier: ModuleSpecifier,
+  pub uri: Uri,
   pub position: u32,
   pub name: String,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -3768,6 +3741,13 @@ struct CompletionEntryDataAutoImport {
 pub struct CompletionNormalizedAutoImportData {
   raw: CompletionEntryDataAutoImport,
   normalized: ModuleSpecifier,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ResolutionLookup {
+  PrettySpecifier(String),
+  Preserve,
+  Invalid,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -3802,6 +3782,8 @@ pub struct CompletionEntry {
   is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
+  #[serde(flatten)]
+  other: serde_json::Map<String, Value>,
   /// This is not from tsc, we add it for convenience during normalization.
   /// Represents `self.data.file_name`, but normalized.
   #[serde(skip)]
@@ -3885,11 +3867,37 @@ impl CompletionEntry {
     }
   }
 
-  fn get_filter_text(&self) -> Option<String> {
+  // https://github.com/microsoft/vscode/blob/52eae268f764fd41d69705eb629010f4c0e28ae9/extensions/typescript-language-features/src/languageFeatures/completions.ts#L391-L425
+  fn get_filter_text(
+    &self,
+    context: Option<(&DocumentModule, u32)>,
+  ) -> Option<String> {
     if self.name.starts_with('#') {
       if let Some(insert_text) = &self.insert_text {
         if insert_text.starts_with("this.#") {
-          return Some(insert_text.replace("this.#", ""));
+          let prefix_starts_with_hash = context
+            .map(|(module, position)| {
+              for (_, c) in module
+                .text
+                .char_indices()
+                .rev()
+                .skip_while(|(i, _)| *i as u32 >= position)
+              {
+                if c == '#' {
+                  return true;
+                }
+                if !c.is_ascii_alphanumeric() && c != '_' && c != '$' {
+                  break;
+                }
+              }
+              false
+            })
+            .unwrap_or(false);
+          if prefix_starts_with_hash {
+            return Some(insert_text.clone());
+          } else {
+            return Some(insert_text.replace("this.#", ""));
+          }
         } else {
           return Some(insert_text.clone());
         }
@@ -3915,27 +3923,25 @@ impl CompletionEntry {
   }
 
   #[allow(clippy::too_many_arguments)]
-  pub fn as_completion_item(
+  fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     position: u32,
     language_server: &language_server::Inner,
-    resolution_cache: &mut HashMap<(ModuleSpecifier, ModuleSpecifier), String>,
+    resolution_lookup_cache: &mut HashMap<
+      (ModuleSpecifier, Arc<ModuleSpecifier>),
+      ResolutionLookup,
+    >,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
       Some(self.kind.clone().into());
     let mut specifier_rewrite = None;
-
-    let mut sort_text = if self.source.is_some() {
-      format!("\u{ffff}{}", self.sort_text)
-    } else {
-      self.sort_text.clone()
-    };
+    let mut sort_text = self.sort_text.clone();
 
     let preselect = self.is_recommended;
     let use_code_snippet = settings.complete_function_calls
@@ -3948,7 +3954,7 @@ impl CompletionEntry {
       _ => None,
     };
     let range = self.replacement_span.clone();
-    let mut filter_text = self.get_filter_text();
+    let mut filter_text = self.get_filter_text(Some((module, position)));
     let mut tags = None;
     let mut detail = None;
 
@@ -3983,42 +3989,60 @@ impl CompletionEntry {
       }
     }
     if let Some(source) = &self.source {
-      let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
+        sort_text = format!("\u{ffff}{}", self.sort_text);
+        let mut display_source = source.clone();
         let import_mapper =
-          language_server.get_ts_response_import_mapper(specifier);
-        let maybe_cached = resolution_cache
-          .get(&(import_data.normalized.clone(), specifier.clone()))
-          .cloned();
-        if let Some(mut new_specifier) = maybe_cached
-          .or_else(|| {
-            import_mapper.check_specifier(&import_data.normalized, specifier)
-          })
-          .or_else(|| relative_specifier(specifier, &import_data.normalized))
-          .or_else(|| {
-            ModuleSpecifier::parse(&import_data.raw.module_specifier)
-              .is_ok()
-              .then(|| import_data.normalized.to_string())
-          })
+          language_server.get_ts_response_import_mapper(module);
+        let resolution_lookup = resolution_lookup_cache
+          .entry((import_data.normalized.clone(), module.specifier.clone()))
+          .or_insert_with(|| {
+            if let Some(specifier) = import_mapper
+              .check_specifier(&import_data.normalized, &module.specifier)
+            {
+              return ResolutionLookup::PrettySpecifier(specifier);
+            }
+            if language_server
+              .resolver
+              .in_node_modules(&import_data.normalized)
+              || language_server
+                .cache
+                .in_cache_directory(&import_data.normalized)
+              || import_data
+                .normalized
+                .as_str()
+                .starts_with(jsr_url().as_str())
+            {
+              return ResolutionLookup::Invalid;
+            }
+            if let Some(specifier) =
+              relative_specifier(&module.specifier, &import_data.normalized)
+            {
+              return ResolutionLookup::PrettySpecifier(specifier);
+            }
+            if Url::parse(&import_data.raw.module_specifier).is_ok() {
+              return ResolutionLookup::PrettySpecifier(
+                import_data.normalized.to_string(),
+              );
+            }
+            ResolutionLookup::Preserve
+          });
+        if let ResolutionLookup::Invalid = resolution_lookup {
+          return None;
+        }
+        if let ResolutionLookup::PrettySpecifier(new_specifier) =
+          resolution_lookup
         {
-          resolution_cache.insert(
-            (import_data.normalized.clone(), specifier.clone()),
-            new_specifier.clone(),
-          );
-          if new_specifier.contains("/node_modules/") {
-            return None;
-          }
+          let mut new_specifier = new_specifier.clone();
           let mut new_deno_types_specifier = None;
           if let Some(code_specifier) = language_server
             .resolver
-            .deno_types_to_code_resolution(
-              &import_data.normalized,
-              Some(specifier),
-            )
+            .get_scoped_resolver(module.scope.as_deref())
+            .deno_types_to_code_resolution(&import_data.normalized)
             .and_then(|s| {
               import_mapper
-                .check_specifier(&s, specifier)
-                .or_else(|| relative_specifier(specifier, &s))
+                .check_specifier(&s, &module.specifier)
+                .or_else(|| relative_specifier(&module.specifier, &s))
             })
           {
             new_deno_types_specifier =
@@ -4034,20 +4058,18 @@ impl CompletionEntry {
               new_deno_types_specifier,
             });
           }
-        } else if source.starts_with(jsr_url().as_str()) {
-          return None;
         }
+        // We want relative or bare (import-mapped or otherwise) specifiers to
+        // appear at the top.
+        if resolve_url(&display_source).is_err() {
+          sort_text += "_0";
+        } else {
+          sort_text += "_1";
+        }
+        label_details
+          .get_or_insert_with(Default::default)
+          .description = Some(display_source);
       }
-      // We want relative or bare (import-mapped or otherwise) specifiers to
-      // appear at the top.
-      if resolve_url(&display_source).is_err() {
-        sort_text += "_0";
-      } else {
-        sort_text += "_1";
-      }
-      label_details
-        .get_or_insert_with(Default::default)
-        .description = Some(display_source);
     }
 
     let text_edit =
@@ -4064,7 +4086,7 @@ impl CompletionEntry {
       };
 
     let tsc = CompletionItemData {
-      specifier: specifier.clone(),
+      uri: module.uri.as_ref().clone(),
       position,
       name: self.name.clone(),
       source: self.source.clone(),
@@ -4200,6 +4222,7 @@ pub struct SignatureHelpItems {
 impl SignatureHelpItems {
   pub fn into_signature_help(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
@@ -4210,7 +4233,7 @@ impl SignatureHelpItems {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        Ok(item.into_signature_information(language_server))
+        Ok(item.into_signature_information(module, language_server))
       })
       .collect::<Result<_, _>>()?;
     Ok(lsp::SignatureHelp {
@@ -4236,22 +4259,29 @@ pub struct SignatureHelpItem {
 impl SignatureHelpItem {
   pub fn into_signature_information(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureInformation {
-    let prefix_text =
-      display_parts_to_string(&self.prefix_display_parts, language_server);
+    let prefix_text = display_parts_to_string(
+      &self.prefix_display_parts,
+      module,
+      language_server,
+    );
     let params_text = self
       .parameters
       .iter()
       .map(|param| {
-        display_parts_to_string(&param.display_parts, language_server)
+        display_parts_to_string(&param.display_parts, module, language_server)
       })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text =
-      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let suffix_text = display_parts_to_string(
+      &self.suffix_display_parts,
+      module,
+      language_server,
+    );
     let documentation =
-      display_parts_to_string(&self.documentation, language_server);
+      display_parts_to_string(&self.documentation, module, language_server);
     lsp::SignatureInformation {
       label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -4264,7 +4294,9 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| param.into_parameter_information(language_server))
+          .map(|param| {
+            param.into_parameter_information(module, language_server)
+          })
           .collect(),
       ),
       active_parameter: None,
@@ -4284,13 +4316,15 @@ pub struct SignatureHelpParameter {
 impl SignatureHelpParameter {
   pub fn into_parameter_information(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::ParameterInformation {
     let documentation =
-      display_parts_to_string(&self.documentation, language_server);
+      display_parts_to_string(&self.documentation, module, language_server);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
+        module,
         language_server,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -4396,7 +4430,8 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  last_scope: Option<ModuleSpecifier>,
+  last_scope: Option<Arc<Url>>,
+  last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4419,6 +4454,7 @@ impl State {
       state_snapshot,
       specifier_map,
       last_scope: None,
+      last_notebook_uri: None,
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
@@ -4433,36 +4469,18 @@ impl State {
       .load(std::sync::atomic::Ordering::Relaxed)
   }
 
-  fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    self
-      .state_snapshot
-      .documents
-      .get_or_load(specifier, self.last_scope.as_ref())
-  }
-
-  fn get_asset_or_document(
+  fn get_module(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<AssetOrDocument> {
-    if specifier.scheme() == "asset" {
-      ASSET_DOCUMENTS.get(specifier).map(AssetOrDocument::Asset)
-    } else {
-      let document = self.get_document(specifier);
-      document.map(AssetOrDocument::Document)
-    }
+  ) -> Option<Arc<DocumentModule>> {
+    self
+      .state_snapshot
+      .document_modules
+      .module_for_specifier(specifier, self.last_scope.as_deref())
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    if specifier.scheme() == "asset" {
-      if ASSET_DOCUMENTS.contains_key(specifier) {
-        Some("1".to_string())
-      } else {
-        None
-      }
-    } else {
-      let document = self.get_document(specifier);
-      document.map(|d| d.script_version())
-    }
+    self.get_module(specifier).map(|m| m.script_version.clone())
   }
 }
 
@@ -4512,10 +4530,11 @@ enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: deno_core::FastString,
+  data: DocumentText,
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
+  is_classic_script: bool,
 }
 
 #[op2]
@@ -4530,23 +4549,18 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  let asset_or_document = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER
-  {
+  let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else {
-    state.get_asset_or_document(&specifier)
+    state.get_module(&specifier)
   };
-  let maybe_load_response =
-    asset_or_document.as_ref().map(|doc| LoadResponse {
-      data: doc.text_fast_string(),
-      script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-      version: state.script_version(&specifier),
-      is_cjs: doc
-        .document()
-        .map(|d| d.resolution_mode())
-        .unwrap_or(ResolutionMode::Import)
-        == ResolutionMode::Require,
-    });
+  let maybe_load_response = module.as_ref().map(|m| LoadResponse {
+    data: m.text.clone(),
+    script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+    version: state.script_version(&specifier),
+    is_cjs: m.resolution_mode == ResolutionMode::Require,
+    is_classic_script: m.notebook_uri.is_some(),
+  });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
@@ -4563,7 +4577,10 @@ fn op_release(
     .performance
     .mark_with_args("tsc.op.op_release", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  state.state_snapshot.documents.release(&specifier);
+  state
+    .state_snapshot
+    .document_modules
+    .release(&specifier, state.last_scope.as_deref());
   state.performance.measure(mark);
   Ok(())
 }
@@ -4582,7 +4599,8 @@ fn op_resolve(
 
 struct TscRequestArray {
   request: TscRequest,
-  scope: Option<String>,
+  scope: Option<Arc<Url>>,
+  notebook_uri: Option<Arc<Uri>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
 }
@@ -4604,13 +4622,14 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let scope_url = serde_v8::to_v8(scope, self.scope)?;
+    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
 
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[id, method_name, args, scope_url, change],
+        &[id, method_name, args, scope_url, notebook_uri, change],
       )
       .into(),
     )
@@ -4631,8 +4650,16 @@ async fn op_poll_requests(
   // clear the resolution cache after each request
   NodeResolutionThreadLocalCache::clear();
 
-  let Some((request, scope, snapshot, response_tx, token, change, context)) =
-    pending_requests.recv().await
+  let Some((
+    request,
+    scope,
+    notebook_uri,
+    snapshot,
+    response_tx,
+    token,
+    change,
+    context,
+  )) = pending_requests.recv().await
   else {
     return None.into();
   };
@@ -4646,6 +4673,7 @@ async fn op_poll_requests(
   let id = state.last_id;
   state.last_id += 1;
   state.last_scope.clone_from(&scope);
+  state.last_notebook_uri.clone_from(&notebook_uri);
   let mark = state
     .performance
     .mark_with_args(format!("tsc.host.{}", request.method()), &request);
@@ -4654,7 +4682,8 @@ async fn op_poll_requests(
 
   Some(TscRequestArray {
     request,
-    scope: scope.map(|s| s.into()),
+    scope,
+    notebook_uri,
     id: Smi(id),
     change: change.into(),
   })
@@ -4672,8 +4701,8 @@ fn op_resolve_inner(
   let referrer = state.specifier_map.normalize(&args.base)?;
   let specifiers = state
     .state_snapshot
-    .documents
-    .resolve(&args.specifiers, &referrer, state.last_scope.as_ref())
+    .document_modules
+    .resolve(&args.specifiers, &referrer, state.last_scope.as_deref())
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4702,6 +4731,7 @@ fn op_respond(
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
   state.last_scope = None;
+  state.last_notebook_uri = None;
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
@@ -4784,7 +4814,8 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
   unscoped: IndexSet<String>,
-  by_scope: BTreeMap<ModuleSpecifier, IndexSet<String>>,
+  by_scope: BTreeMap<Arc<Url>, IndexSet<String>>,
+  by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
 #[op2]
@@ -4799,16 +4830,18 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     by_scope: BTreeMap::from_iter(
       state
         .state_snapshot
-        .config
-        .tree
-        .data_by_scope()
-        .keys()
-        .map(|s| (s.clone(), IndexSet::new())),
+        .document_modules
+        .scopes()
+        .into_iter()
+        .filter_map(|s| Some((s?, IndexSet::new()))),
     ),
+    by_notebook_uri: Default::default(),
   };
 
-  let scopes_with_node_specifier =
-    state.state_snapshot.documents.scopes_with_node_specifier();
+  let scopes_with_node_specifier = state
+    .state_snapshot
+    .document_modules
+    .scopes_with_node_specifier();
   if scopes_with_node_specifier.contains(&None) {
     result
       .unscoped
@@ -4822,23 +4855,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
   // inject these next because they're global
   for (scope, script_names) in &mut result.by_scope {
-    for (_, specifiers) in state
+    let scoped_resolver = state
       .state_snapshot
       .resolver
-      .graph_imports_by_referrer(scope)
-    {
+      .get_scoped_resolver(Some(scope));
+    for (_, specifiers) in scoped_resolver.graph_imports_by_referrer() {
       for specifier in specifiers {
         if let Ok(req_ref) =
           deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
         {
-          let Some((resolved, _)) =
-            state.state_snapshot.resolver.npm_to_file_url(
-              &req_ref,
-              scope,
-              ResolutionMode::Import,
-              Some(scope),
-            )
-          else {
+          let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
+            &req_ref,
+            scope,
+            ResolutionMode::Import,
+          ) else {
             lsp_log!("failed to resolve {req_ref} to file URL");
             continue;
           };
@@ -4850,33 +4880,71 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     }
   }
 
-  // finally include the documents
-  let docs = state
+  // roots for notebook scopes
+  for (notebook_uri, cell_uris) in state
     .state_snapshot
+    .document_modules
     .documents
-    .documents(DocumentsFilter::AllDiagnosable);
-  for doc in &docs {
-    let specifier = doc.specifier();
-    let is_open = doc.is_open();
-    if is_open
-      || (specifier.scheme() == "file"
-        && !state.state_snapshot.resolver.in_node_modules(specifier))
-    {
-      let script_names = doc
-        .scope()
-        .and_then(|s| result.by_scope.get_mut(s))
-        .unwrap_or(&mut result.unscoped);
+    .cells_by_notebook_uri()
+  {
+    let mut script_names = IndexSet::default();
+    let scope = state
+      .state_snapshot
+      .document_modules
+      .primary_scope(notebook_uri)
+      .flatten();
+
+    // Copy over the globals from the containing regular scopes.
+    let global_script_names = scope
+      .and_then(|s| result.by_scope.get(s))
+      .unwrap_or(&result.unscoped);
+    script_names.extend(global_script_names.iter().cloned());
+
+    // Add the cells as roots.
+    script_names.extend(cell_uris.iter().flat_map(|u| {
+      let document = state.state_snapshot.document_modules.documents.get(u)?;
+      let module = state
+        .state_snapshot
+        .document_modules
+        .module(&document, scope.map(|s| s.as_ref()))?;
+      Some(module.specifier.to_string())
+    }));
+
+    result
+      .by_notebook_uri
+      .insert(notebook_uri.clone(), script_names);
+  }
+
+  // finally include the documents
+  for (scope, modules) in state
+    .state_snapshot
+    .document_modules
+    .workspace_file_modules_by_scope()
+  {
+    let script_names = scope
+      .as_deref()
+      .and_then(|s| result.by_scope.get_mut(s))
+      .unwrap_or(&mut result.unscoped);
+    for module in modules {
+      let is_open = module.open_data.is_some();
       let types_specifier = (|| {
-        let documents = &state.state_snapshot.documents;
-        let types = doc.maybe_types_dependency().maybe_specifier()?;
-        let (types, _) = documents.resolve_dependency(
-          types,
-          specifier,
-          doc.resolution_mode(),
-          doc.file_referrer(),
-        )?;
-        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
-        Some(types_doc.specifier().clone())
+        let types_specifier = module
+          .types_dependency
+          .as_ref()?
+          .dependency
+          .maybe_specifier()?;
+        Some(
+          state
+            .state_snapshot
+            .document_modules
+            .resolve_dependency(
+              types_specifier,
+              &module.specifier,
+              module.resolution_mode,
+              module.scope.as_deref(),
+            )?
+            .0,
+        )
       })();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
@@ -4884,7 +4952,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         script_names.insert(types_specifier.to_string());
       }
       if types_specifier.is_none() || is_open {
-        script_names.insert(specifier.to_string());
+        script_names.insert(module.specifier.to_string());
       }
     }
   }
@@ -5403,43 +5471,6 @@ pub struct SignatureHelpTriggerReason {
   pub trigger_character: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetCompletionDetailsArgs {
-  pub specifier: ModuleSpecifier,
-  pub position: u32,
-  pub name: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub format_code_settings: Option<FormatCodeSettings>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub source: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub preferences: Option<UserPreferences>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub data: Option<Value>,
-}
-
-impl From<&CompletionItemData> for GetCompletionDetailsArgs {
-  fn from(item_data: &CompletionItemData) -> Self {
-    Self {
-      specifier: item_data.specifier.clone(),
-      position: item_data.position,
-      name: item_data.name.clone(),
-      source: item_data.source.clone(),
-      preferences: None,
-      format_code_settings: None,
-      data: item_data.data.clone(),
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct GetNavigateToItemsArgs {
-  pub search: String,
-  pub max_result_count: Option<u32>,
-  pub file: Option<String>,
-}
-
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct TscTextRange {
   pos: u32,
@@ -5672,7 +5703,7 @@ impl TscRequest {
       TscRequest::ProvideInlayHints(args) => {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
-      TscRequest::CleanupSemanticCache => ("cleanupSemanticCache", None),
+      TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
     };
 
     Ok(args)
@@ -5681,7 +5712,7 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
-      TscRequest::CleanupSemanticCache => "cleanupSemanticCache",
+      TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
       TscRequest::GetSupportedCodeFixes => "$getSupportedCodeFixes",
@@ -5731,10 +5762,30 @@ mod tests {
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
-  use crate::lsp::documents::Documents;
+  use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
+
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
+      &self,
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
+    }
+  }
+
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
 
   async fn setup(
     ts_config: Value,
@@ -5754,25 +5805,36 @@ mod tests {
           temp_dir.url().join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let mut documents = Documents::default();
-    documents.update_config(&config, &resolver, &cache, &Default::default());
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
+      &config,
+      &resolver,
+      &cache,
+      &Default::default(),
+    );
     for (relative_specifier, source, version, language_id) in sources {
       let specifier = temp_dir.url().join(relative_specifier).unwrap();
-      documents.open(specifier, *version, *language_id, (*source).into(), None);
+      document_modules.open_document(
+        url_to_uri(&specifier).unwrap(),
+        *version,
+        *language_id,
+        (*source).into(),
+        None,
+      );
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
-      documents: Arc::new(documents),
+      document_modules,
       config: Arc::new(config),
       resolver,
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance);
-    ts_server.start(None).unwrap();
     ts_server.project_changed(
       snapshot.clone(),
       [],
@@ -5785,6 +5847,7 @@ mod tests {
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
           .collect(),
       ),
+      None,
     );
     (temp_dir, ts_server, snapshot, cache)
   }
@@ -5836,30 +5899,34 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!({
-        specifier.clone(): [
-          {
-            "start": {
-              "line": 0,
-              "character": 0,
-            },
-            "end": {
-              "line": 0,
-              "character": 7
-            },
-            "fileName": specifier,
-            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
-            "sourceLine": "console.log(\"hello deno\");",
-            "category": 1,
-            "code": 2584
-          }
-        ]
-      })
+      json!([[
+        {
+          "start": {
+            "line": 0,
+            "character": 0,
+          },
+          "end": {
+            "line": 0,
+            "character": 7
+          },
+          "fileName": specifier,
+          "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
+          "sourceLine": "console.log(\"hello deno\");",
+          "category": 1,
+          "code": 2584
+        }
+      ]]),
     );
   }
 
@@ -5882,10 +5949,16 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
+    assert_eq!(json!(diagnostics), json!([[]]));
   }
 
   #[tokio::test]
@@ -5912,10 +5985,16 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
+    assert_eq!(json!(diagnostics), json!([[]]));
   }
 
   #[tokio::test]
@@ -5938,13 +6017,19 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!({
-        specifier.clone(): [{
+      json!([[
+        {
           "start": {
             "line": 1,
             "character": 8
@@ -5959,8 +6044,8 @@ mod tests {
           "category": 2,
           "code": 6133,
           "reportsUnnecessary": true,
-        }]
-      })
+        }
+      ]]),
     );
   }
 
@@ -5988,10 +6073,16 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
+    assert_eq!(json!(diagnostics), json!([[]]));
   }
 
   #[tokio::test]
@@ -6021,13 +6112,19 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!({
-        specifier.clone(): [{
+      json!([[
+        {
           "start": {
             "line": 1,
             "character": 8
@@ -6042,7 +6139,8 @@ mod tests {
           "category": 2,
           "code": 6192,
           "reportsUnnecessary": true,
-        }, {
+        },
+        {
           "start": {
             "line": 8,
             "character": 29
@@ -6056,8 +6154,8 @@ mod tests {
           "sourceLine": "        import * as test from",
           "category": 1,
           "code": 1109
-        }]
-      })
+        }
+      ]]),
     );
   }
 
@@ -6079,30 +6177,34 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
+        &Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!({
-        specifier.clone(): [
-          {
-            "start": {
-              "line": 0,
-              "character": 35,
-            },
-            "end": {
-              "line": 0,
-              "character": 35
-            },
-            "fileName": specifier,
-            "messageText": "Identifier expected.",
-            "sourceLine": "const url = new URL(\"b.js\", import.",
-            "category": 1,
-            "code": 1003,
-          }
-        ]
-      })
+      json!([[
+        {
+          "start": {
+            "line": 0,
+            "character": 35,
+          },
+          "end": {
+            "line": 0,
+            "character": 35
+          },
+          "fileName": specifier,
+          "messageText": "Identifier expected.",
+          "sourceLine": "const url = new URL(\"b.js\", import.",
+          "category": 1,
+          "code": 1003,
+        }
+      ]]),
     );
   }
 
@@ -6141,32 +6243,32 @@ mod tests {
     let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
-        vec![specifier.clone()],
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!({
-        specifier.clone(): [
-          {
-            "start": {
-              "line": 2,
-              "character": 16,
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            },
-            "fileName": specifier,
-            "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
-            "sourceLine": "          if (a.a === \"b\") {",
-            "code": 2339,
-            "category": 1,
-          }
-        ]
-      })
+      json!([[
+        {
+          "start": {
+            "line": 2,
+            "character": 16,
+          },
+          "end": {
+            "line": 2,
+            "character": 17
+          },
+          "fileName": specifier,
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+          "sourceLine": "          if (a.a === \"b\") {",
+          "code": 2339,
+          "category": 1,
+        }
+      ]]),
     );
     cache
       .global()
@@ -6176,6 +6278,14 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    snapshot.document_modules.release(
+      &specifier_dep,
+      snapshot
+        .config
+        .tree
+        .scope_for_specifier(&specifier)
+        .map(|s| s.as_ref()),
+    );
     let snapshot = {
       Arc::new(StateSnapshot {
         project_version: snapshot.project_version + 1,
@@ -6186,22 +6296,20 @@ mod tests {
       snapshot.clone(),
       [(&specifier_dep, ChangeKind::Opened)],
       None,
+      None,
     );
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
-        vec![specifier.clone()],
+        [&specifier],
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
       .unwrap();
-    assert_eq!(
-      json!(diagnostics),
-      json!({
-        specifier: []
-      })
-    );
+    assert_eq!(json!(diagnostics), json!([[]]),);
   }
 
   #[test]
@@ -6212,7 +6320,7 @@ mod tests {
       insert_text: Some("['foo']".to_string()),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some(".foo".to_string()));
 
     let fixture = CompletionEntry {
@@ -6220,7 +6328,7 @@ mod tests {
       name: "#abc".to_string(),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, None);
 
     let fixture = CompletionEntry {
@@ -6229,7 +6337,7 @@ mod tests {
       insert_text: Some("this.#abc".to_string()),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some("abc".to_string()));
   }
 
@@ -6262,7 +6370,7 @@ mod tests {
     let info = ts_server
       .get_completions(
         snapshot.clone(),
-        specifier.clone(),
+        &specifier,
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
@@ -6273,7 +6381,8 @@ mod tests {
           trigger_kind: None,
         },
         Default::default(),
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6283,16 +6392,15 @@ mod tests {
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
-        GetCompletionDetailsArgs {
-          specifier,
-          position,
-          name: "log".to_string(),
-          format_code_settings: None,
-          source: None,
-          preferences: None,
-          data: None,
-        },
-        Some(temp_dir.url()),
+        &specifier,
+        position,
+        "log".to_string(),
+        None,
+        None,
+        None,
+        None,
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6456,7 +6564,7 @@ mod tests {
     let info = ts_server
       .get_completions(
         snapshot.clone(),
-        specifier.clone(),
+        &specifier,
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
@@ -6468,7 +6576,8 @@ mod tests {
           ..Default::default()
         },
         FormatCodeSettings::from(&fmt_options_config),
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6482,21 +6591,18 @@ mod tests {
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
-        GetCompletionDetailsArgs {
-          specifier,
-          position,
-          name: entry.name.clone(),
-          format_code_settings: Some(FormatCodeSettings::from(
-            &fmt_options_config,
-          )),
-          source: entry.source.clone(),
-          preferences: Some(UserPreferences {
-            quote_preference: Some((&fmt_options_config).into()),
-            ..Default::default()
-          }),
-          data: entry.data.clone(),
-        },
-        Some(temp_dir.url()),
+        &specifier,
+        position,
+        entry.name.clone(),
+        Some(FormatCodeSettings::from(&fmt_options_config)),
+        entry.source.clone(),
+        Some(UserPreferences {
+          quote_preference: Some((&fmt_options_config).into()),
+          ..Default::default()
+        }),
+        entry.data.clone(),
+        snapshot.config.tree.scope_for_specifier(&specifier),
+        None,
         &Default::default(),
       )
       .await
@@ -6562,10 +6668,12 @@ mod tests {
     let changes = ts_server
       .get_edits_for_file_rename(
         snapshot,
-        temp_dir.url().join("b.ts").unwrap(),
-        temp_dir.url().join("🦕.ts").unwrap(),
+        &temp_dir.url().join("b.ts").unwrap(),
+        &temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
+        Some(&Arc::new(temp_dir.url())),
+        None,
         &Default::default(),
       )
       .await
@@ -6651,7 +6759,7 @@ mod tests {
     fn change<S: AsRef<str>>(
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
-      new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+      new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
     ) -> PendingChange {
       PendingChange {
         project_version,
@@ -6660,6 +6768,7 @@ mod tests {
           .map(|(s, c)| (s.as_ref().into(), c))
           .collect(),
         new_configs_by_scope,
+        new_notebook_scopes: None,
       }
     }
     let cases = [
@@ -6720,7 +6829,7 @@ mod tests {
 
     for (start, new, expected) in cases {
       let mut pending = start;
-      pending.coalesce(new.project_version, new.modified_scripts, None);
+      pending.coalesce(new.project_version, new.modified_scripts, None, None);
       assert_eq!(json!(pending), json!(expected));
     }
   }

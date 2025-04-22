@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
@@ -60,13 +61,19 @@ pub struct ReplLanguageServer {
 }
 
 impl ReplLanguageServer {
-  pub async fn new_initialized() -> Result<ReplLanguageServer, AnyError> {
+  pub async fn new_initialized(
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) -> Result<ReplLanguageServer, AnyError> {
     // downgrade info and warn lsp logging to debug
     super::logging::set_lsp_log_level(log::Level::Debug);
     super::logging::set_lsp_warn_level(log::Level::Debug);
 
-    let language_server =
-      super::language_server::LanguageServer::new(Client::new_for_repl());
+    let language_server = super::language_server::LanguageServer::new(
+      Client::new_for_repl(),
+      registry_provider,
+    );
 
     let cwd_uri = get_cwd_uri()?;
 

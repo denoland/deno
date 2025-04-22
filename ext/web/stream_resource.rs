@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::ffi::c_void;
+use std::future::poll_fn;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -28,7 +29,6 @@ use deno_core::RcLike;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use futures::future::poll_fn;
 use futures::TryFutureExt;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

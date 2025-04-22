@@ -200,6 +200,7 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,
@@ -208,8 +209,12 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker

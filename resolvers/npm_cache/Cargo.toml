@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_cache"
-version = "0.12.0"
+version = "0.21.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

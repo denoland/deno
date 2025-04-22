@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_bench_util"
-version = "0.187.0"
+version = "0.196.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

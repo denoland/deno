@@ -23,12 +23,27 @@
       "args": "run -A main.ts metric.ts",
       "output": "metric.out"
     },
+    "fetch": {
+      "args": "run -A main.ts fetch.ts",
+      "output": "fetch.out"
+    },
     "http_metric": {
       "envs": {
         "OTEL_METRIC_EXPORT_INTERVAL": "1000"
       },
       "args": "run -A main.ts http_metric.ts",
       "output": "http_metric.out"
+    },
+    "http_propagators": {
+      "args": "run -A main.ts http_propagators.ts",
+      "output": "http_propagators.out"
+    },
+    "node_http_metric": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts node_http_metric.ts",
+      "output": "node_http_metric.out"
     },
     "links": {
       "args": "run -A main.ts links.ts",
@@ -37,6 +52,14 @@
     "start_active_span": {
       "args": "run -A main.ts start_active_span.ts",
       "output": "start_active_span.out"
+    },
+    "node_http_request": {
+      "args": "run -A main.ts node_http_request.ts",
+      "output": "node_http_request.out"
+    },
+    "events": {
+      "args": "run -A main.ts events.ts",
+      "output": "events.out"
     }
   }
 }
