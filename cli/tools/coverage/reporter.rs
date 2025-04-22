@@ -510,7 +510,7 @@ impl HtmlCoverageReporter {
         <body>
           <div class='wrapper'>
             {header}
-            <div class='pad1'>
+            <div class='pad1 overflow-auto'>
               {main_content}
             </div>
             <div class='push'></div>
