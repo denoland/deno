@@ -52,6 +52,7 @@ pub use worker_bootstrap::WorkerLogLevel;
 
 pub mod shared;
 // TODO(bartlomieju): remove the `as` rename
+pub use deno_flags::UnstableFlagKind;
 pub use deno_flags::UNSTABLE_FLAGS as UNSTABLE_GRANULAR_FLAGS;
 pub use deno_os::exit;
 pub use shared::runtime;

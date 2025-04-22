@@ -38,6 +38,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::UnstableFlagKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -4438,19 +4439,26 @@ impl CommandExt for Command {
         .value_parser(FalseyValueParser::new())
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
-        // we don't render long help, so using it here as a sort of metadata
-        .long_help(if granular_flag.show_in_help {
-          match cfg {
-            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
-              None
-            }
-            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-          }
-        } else {
-          None
-        })
         .display_order(next_display_order());
 
+      // TODO(bartlomieju):
+      // Value of `.long_help()` is actuall a metadata. It should be rewritten to use
+      // Clap's `ArgExt` instead
+      let mut long_help_val = None;
+
+      if granular_flag.show_in_help {
+        if matches!(cfg, UnstableArgsConfig::ResolutionOnly)
+          && matches!(granular_flag.kind, UnstableFlagKind::Cli)
+        {
+          long_help_val = Some("true");
+        }
+
+        if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
+          long_help_val = Some("true");
+        }
+      }
+
+      arg = arg.long_help(long_help_val);
       if let Some(env_var_name) = granular_flag.env_var {
         arg = arg.env(env_var_name);
       }

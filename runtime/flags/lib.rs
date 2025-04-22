@@ -2,6 +2,7 @@
 
 mod rust_list;
 
+pub use rust_list::UnstableFlagKind;
 pub use rust_list::UNSTABLE_FLAGS;
 
 pub const JS_SOURCE: deno_core::FastStaticString =
