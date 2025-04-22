@@ -1857,23 +1857,24 @@ impl QuickInfo {
     module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::Hover {
-    let mut parts = Vec::<lsp::MarkedString>::new();
+    let mut parts = Vec::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_language_code(
-        "typescript".to_string(),
-        display_string,
-      ));
+      if !display_string.is_empty() {
+        parts.push(format!("```typescript\n{}\n```", display_string));
+      }
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_markdown(documentation));
+      if !documentation.is_empty() {
+        parts.push(documentation);
+      }
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
@@ -1884,13 +1885,15 @@ impl QuickInfo {
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{tags_preview}"
-        )));
+        parts.push(tags_preview);
       }
     }
+    let value = parts.join("\n\n");
     lsp::Hover {
-      contents: lsp::HoverContents::Array(parts),
+      contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value,
+      }),
       range: Some(self.text_span.to_range(module.line_index.clone())),
     }
   }
@@ -5751,9 +5754,6 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryApi;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -5770,16 +5770,20 @@ mod tests {
   struct DefaultRegistry;
 
   #[async_trait::async_trait(?Send)]
-  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
-    async fn package_info(
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
       &self,
-      _name: &str,
-    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-      Ok(Arc::new(NpmPackageInfo::default()))
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
     }
   }
 
-  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
     Arc::new(DefaultRegistry)
   }
 
