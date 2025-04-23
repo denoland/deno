@@ -30,6 +30,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
+pub(crate) use local::SetupCache;
 
 mod common;
 mod global;

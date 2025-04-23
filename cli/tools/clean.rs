@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -294,6 +295,9 @@ async fn clean_entrypoint(
   let mut node_modules_cleaned = CleanState::default();
 
   if let Some(dir) = node_modules_path {
+    // let npm_installer = factory.npm_installer_if_managed().await?.unwrap();
+    // npm_installer.
+    // let npm_installer = npm_installer.as_local().unwrap();
     clean_node_modules(
       &mut node_modules_cleaned,
       &node_modules_keep,
@@ -437,7 +441,8 @@ fn clean_node_modules(
   if !dir.ends_with("node_modules") || !dir.is_dir() {
     bail!("not a node_modules directory");
   }
-  if !dir.join(".deno").exists() {
+  let base = dir.join(".deno");
+  if !base.exists() {
     return Ok(());
   }
 
@@ -446,7 +451,11 @@ fn clean_node_modules(
     .map(|id| deno_resolver::npm::get_package_folder_id_folder_name(id))
     .collect::<HashSet<_>>();
 
-  let base = dir.join(".deno");
+  // TODO(nathanwhit): this probably shouldn't reach directly into this code
+  let mut setup_cache =
+    crate::npm::installer::SetupCache::load(base.join(".setup-cache.bin"));
+
+  // remove the actual packages from node_modules/.deno
   let entries = std::fs::read_dir(&base)?;
   for entry in entries {
     let entry = entry?;
@@ -459,48 +468,47 @@ fn clean_node_modules(
       continue;
     } else {
       if dry_run {
-        eprintln!("removing from node modules: {}", entry.path().display());
+        eprintln!(
+          "would remove dir from node modules: {}",
+          entry.path().display()
+        );
       } else {
         rm_rf(state, &entry.path())?;
       }
     }
   }
 
-  clean_node_modules_symlinks(state, &keep_names, dir, dry_run)?;
+  // remove top level symlinks from node_modules/<package> to node_modules/.deno/<package>
+  // where the target doesn't exist (because it was removed above)
+  clean_node_modules_symlinks(state, &keep_names, dir, dry_run, &mut |name| {
+    setup_cache.remove_root_symlink(name);
+  })?;
 
+  // remove symlinks from node_modules/.deno/node_modules/<package> to node_modules/.deno/<package>
+  // where the target doesn't exist (because it was removed above)
   clean_node_modules_symlinks(
     state,
     &keep_names,
     &base.join("node_modules"),
     dry_run,
+    &mut |name| {
+      setup_cache.remove_deno_symlink(name);
+    },
   )?;
-  let top_level = std::fs::read_dir(dir)?;
-  for entry in top_level {
-    let entry = entry?;
-    let ty = entry.file_type()?;
-
-    if ty.is_symlink() {
-      let target = std::fs::read_link(entry.path());
-      let remove = if let Ok(target) = target {
-        let path = dir.join(target);
-        !path.exists()
-      } else {
-        true
-      };
-      if remove {
-        if dry_run {
-          eprintln!(
-            "removing top level symlink from node modules: {}",
-            entry.path().display()
-          );
-        } else {
-          remove_file(state, &entry.path(), None)?;
-        }
-      }
-    }
+  if !dry_run {
+    setup_cache.save();
   }
 
   Ok(())
+}
+
+// node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
+fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<str>> {
+  path
+    .parent()?
+    .parent()?
+    .file_name()
+    .map(|name| name.to_string_lossy())
 }
 
 fn clean_node_modules_symlinks(
@@ -508,29 +516,25 @@ fn clean_node_modules_symlinks(
   keep_names: &HashSet<String>,
   dir: &Path,
   dry_run: bool,
+  on_remove: &mut dyn FnMut(&str),
 ) -> Result<(), AnyError> {
   for entry in std::fs::read_dir(dir)? {
     let entry = entry?;
     let ty = entry.file_type()?;
     if ty.is_symlink() {
       let target = std::fs::read_link(entry.path())?;
-      if !keep_names.contains(
-        &*target
-          .parent()
-          .unwrap()
-          .parent()
-          .unwrap()
-          .file_name()
-          .unwrap()
-          .to_string_lossy(),
-      ) {
-        if dry_run {
-          eprintln!(
-            "removing top level symlink from node modules: {}",
-            entry.path().display()
-          );
-        } else {
-          remove_file(state, &entry.path(), None)?;
+      let name = node_modules_package_actual_dir_to_name(&target);
+      if let Some(name) = name {
+        if !keep_names.contains(&*name) {
+          if dry_run {
+            eprintln!(
+              "would remove symlink from node modules: {}",
+              entry.path().display()
+            );
+          } else {
+            on_remove(&name);
+            remove_file(state, &entry.path(), None)?;
+          }
         }
       }
     }

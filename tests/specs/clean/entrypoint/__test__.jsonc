@@ -1,0 +1,42 @@
+{
+  "tempDir": true,
+
+  "tests": {
+    "npm": {
+      "steps": [
+        {
+          "envs": { "DENO_DIR": "./denodir" },
+          "args": "install --node-modules-dir npm:chalk npm:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A ./print-dir.ts --max-level=5 ./denodir --max-level=5 ./node_modules",
+          "output": "npm_init.out"
+        },
+        {
+          "envs": { "DENO_DIR": "./denodir" },
+          "args": "clean -e --node-modules-dir npm:@denotest/add",
+          "output": "Removed 21 files, [WILDCARD] from [WILDCARD]\n"
+        },
+        {
+          "args": "run -A ./print-dir.ts --max-level=5 ./denodir --max-level=5 ./node_modules",
+          "output": "npm_cleaned.out"
+        },
+        {
+          "envs": { "DENO_DIR": "./denodir" },
+          "args": "install --node-modules-dir npm:chalk npm:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A ./print-dir.ts --max-level=5 ./denodir --max-level=5 ./node_modules",
+          "output": "npm_init.out"
+        },
+        {
+          "envs": { "DENO_DIR": "./denodir" },
+          "args": "clean -e --node-modules-dir --dry-run npm:@denotest/add",
+          "output": "npm_clean_dry_run.out"
+        }
+      ]
+    }
+  }
+}

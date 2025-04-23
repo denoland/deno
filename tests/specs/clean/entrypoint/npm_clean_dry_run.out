@@ -1,0 +1,4 @@
+would remove dir: [WILDCARD]/denodir/npm/localhost_4260/chalk/5.0.1
+would remove dir: [WILDCARD]/denodir/remote/http
+would remove dir from node modules: [WILDCARD]/node_modules/.deno/chalk@5.0.1
+would remove symlink from node modules: [WILDCARD]/node_modules/chalk
