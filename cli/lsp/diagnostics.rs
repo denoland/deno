@@ -1185,18 +1185,14 @@ pub enum DenoDiagnostic {
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
-  /// A remote jsr package reference was not found in the cache.
+  /// A jsr package reference was not found in the cache.
   NotInstalledJsr(PackageReq, ModuleSpecifier),
-  /// A remote npm package reference was not found in the cache.
+  /// An npm package reference was not found in the cache.
   NotInstalledNpm(PackageReq, ModuleSpecifier),
+  /// An npm package reference was not exported by its package.
+  NoExportNpm(NpmPackageReqReference),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
-  /// The specifier resolved to a remote specifier that was redirected to
-  /// another specifier.
-  Redirect {
-    from: ModuleSpecifier,
-    to: ModuleSpecifier,
-  },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
   /// Invalid `node:` specifier.
@@ -1215,8 +1211,8 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NotInstalledJsr(_, _) => "not-installed-jsr",
       Self::NotInstalledNpm(_, _) => "not-installed-npm",
+      Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
-      Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => {
         if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
           "import-node-prefix-missing"
@@ -1458,6 +1454,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NoExportNpm(pkg_ref) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{}\" does not define an export \"{}\".", pkg_ref.req(), pkg_ref.sub_path().unwrap_or(".")), None),
       Self::NoLocal(specifier) => {
         let sloppy_resolution = sloppy_imports_resolve(specifier, deno_resolver::workspace::ResolutionKind::Execution, CliSys::default());
         let data = sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| {
@@ -1469,7 +1466,6 @@ impl DenoDiagnostic {
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => {
         let mut message;
         message = enhanced_resolution_error_message(err);
@@ -1589,32 +1585,6 @@ fn diagnose_resolution(
   referrer_module: &DocumentModule,
   import_map: Option<&ImportMap>,
 ) -> (Vec<DenoDiagnostic>, Vec<DenoDiagnostic>) {
-  fn check_redirect_diagnostic(
-    specifier: &ModuleSpecifier,
-    module: &DocumentModule,
-  ) -> Option<DenoDiagnostic> {
-    // If the module was redirected, we want to issue an informational
-    // diagnostic that indicates this. This then allows us to issue a code
-    // action to replace the specifier with the final redirected one.
-    if specifier.scheme() == "jsr" || specifier == module.specifier.as_ref() {
-      return None;
-    }
-    // don't bother warning about sloppy import redirects from .js to .d.ts
-    // because explaining how to fix this via a diagnostic involves using
-    // @ts-types and that's a bit complicated to explain
-    let is_sloppy_import_dts_redirect = module.specifier.scheme() == "file"
-      && module.media_type.is_declaration()
-      && !MediaType::from_specifier(specifier).is_declaration();
-    if is_sloppy_import_dts_redirect {
-      return None;
-    }
-
-    Some(DenoDiagnostic::Redirect {
-      from: specifier.clone(),
-      to: module.specifier.as_ref().clone(),
-    })
-  }
-
   let mut diagnostics = vec![];
   let mut deferred_diagnostics = vec![];
   match resolution {
@@ -1638,10 +1608,6 @@ fn diagnose_resolution(
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
           }
-        }
-        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &module)
-        {
-          diagnostics.push(diagnostic);
         }
         if module.media_type == MediaType::Json {
           match maybe_assert_type {
@@ -1670,10 +1636,21 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          let req = pkg_ref.into_inner().req;
-          if !npm_resolver.is_pkg_req_folder_cached(&req) {
-            diagnostics
-              .push(DenoDiagnostic::NotInstalledNpm(req, specifier.clone()));
+          let req = pkg_ref.req();
+          if !npm_resolver.is_pkg_req_folder_cached(req) {
+            diagnostics.push(DenoDiagnostic::NotInstalledNpm(
+              req.clone(),
+              specifier.clone(),
+            ));
+          } else if scoped_resolver
+            .npm_to_file_url(
+              &pkg_ref,
+              &referrer_module.specifier,
+              referrer_module.resolution_mode,
+            )
+            .is_none()
+          {
+            diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
