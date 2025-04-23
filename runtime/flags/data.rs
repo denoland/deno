@@ -4,229 +4,208 @@
 // actually used in the CLI.
 #![allow(dead_code)]
 
-#[derive(Debug)]
-pub enum UnstableFlagKind {
-  Cli,
-  Runtime,
+use crate::structs::UnstableFeatureKind;
+
+#[derive(Clone, Debug)]
+pub enum ConfigFileOption {
+  SameAsFlagName,
+  Renamed(&'static str),
 }
 
-#[derive(Debug)]
-pub struct UnstableFlagDefinition {
+#[derive(Clone, Debug)]
+pub struct UnstableFeatureDescription {
   pub name: &'static str,
-  pub flag_name: &'static str,
   pub help_text: &'static str,
+  // TODO(bartlomieju): is it needed?
   pub show_in_help: bool,
-  pub id: i32,
-  pub kind: UnstableFlagKind,
+  pub kind: UnstableFeatureKind,
   pub env_var: Option<&'static str>,
+  pub config_option: ConfigFileOption,
 }
 
-pub static UNSTABLE_FLAGS: &[UnstableFlagDefinition] = &[
-  UnstableFlagDefinition {
-    id: 0,
+pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
+  UnstableFeatureDescription {
     name: "bare-node-builtins",
-    flag_name: "unstable-bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
   },
-  UnstableFlagDefinition {
-    id: 1,
+  UnstableFeatureDescription {
     name: "broadcast-channel",
-    flag_name: "unstable-broadcast-channel",
     help_text: "Enable unstable `BroadcastChannel` API",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 2,
+  UnstableFeatureDescription {
     name: "byonm",
-    flag_name: "unstable-byonm",
     help_text: "",
     show_in_help: false,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 3,
+  UnstableFeatureDescription {
     name: "cron",
-    flag_name: "unstable-cron",
     help_text: "Enable unstable `Deno.cron` API",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 4,
+  UnstableFeatureDescription {
     name: "detect-cjs",
-    flag_name: "unstable-detect-cjs",
     help_text: "Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 5,
+  UnstableFeatureDescription {
     name: "ffi",
-    flag_name: "unstable-ffi",
     help_text: "Enable unstable FFI APIs",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 6,
+  UnstableFeatureDescription {
     name: "fs",
-    flag_name: "unstable-fs",
     help_text: "Enable unstable file system APIs",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 7,
+  UnstableFeatureDescription {
     name: "http",
-    flag_name: "unstable-http",
     help_text: "Enable unstable HTTP APIs",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 8,
+  UnstableFeatureDescription {
     name: "kv",
-    flag_name: "unstable-kv",
     help_text: "Enable unstable KV APIs",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 9,
+  UnstableFeatureDescription {
     name: "lazy-dynamic-imports",
-    flag_name: "unstable-lazy-dynamic-imports",
     help_text: "Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS"),
   },
-  UnstableFlagDefinition {
-    id: 10,
+  UnstableFeatureDescription {
     name: "lockfile-v5",
-    flag_name: "unstable-lockfile-v5",
     help_text: "Enable unstable lockfile v5",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_LOCKFILE_V5"),
   },
-  UnstableFlagDefinition {
-    id: 11,
+  UnstableFeatureDescription {
     name: "net",
-    flag_name: "unstable-net",
     help_text: "enable unstable net APIs",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 12,
+  UnstableFeatureDescription {
     name: "no-legacy-abort",
-    flag_name: "unstable-no-legacy-abort",
     help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 13,
+  UnstableFeatureDescription {
     name: "node-globals",
-    flag_name: "unstable-node-globals",
     help_text: "Expose Node globals everywhere",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 14,
+  UnstableFeatureDescription {
     name: "npm-lazy-caching",
-    flag_name: "unstable-npm-lazy-caching",
     help_text: "Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_NPM_LAZY_CACHING"),
   },
-  UnstableFlagDefinition {
-    id: 15,
+  UnstableFeatureDescription {
     name: "otel",
-    flag_name: "unstable-otel",
     help_text: "Enable unstable OpenTelemetry features",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 16,
+  UnstableFeatureDescription {
     name: "process",
-    flag_name: "unstable-process",
     help_text: "Enable unstable process APIs",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 17,
+  UnstableFeatureDescription {
     name: "sloppy-imports",
-    flag_name: "unstable-sloppy-imports",
     help_text: "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
     show_in_help: true,
-    kind: UnstableFlagKind::Cli,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_SLOPPY_IMPORTS"),
   },
-  UnstableFlagDefinition {
-    id: 18,
+  UnstableFeatureDescription {
     name: "temporal",
-    flag_name: "unstable-temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 19,
+  UnstableFeatureDescription {
     name: "unsafe-proto",
-    flag_name: "unstable-unsafe-proto",
     help_text: "Enable unsafe __proto__ support. This is a security risk.",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 20,
+  UnstableFeatureDescription {
     name: "vsock",
-    flag_name: "unstable-vsock",
     help_text: "Enable unstable VSOCK APIs",
     show_in_help: false,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 21,
+  UnstableFeatureDescription {
     name: "webgpu",
-    flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
-  UnstableFlagDefinition {
-    id: 22,
+  UnstableFeatureDescription {
     name: "worker-options",
-    flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    kind: UnstableFlagKind::Runtime,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
 ];

@@ -1,9 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod rust_list;
+mod gen;
+mod structs;
 
-pub use rust_list::UnstableFlagKind;
-pub use rust_list::UNSTABLE_FLAGS;
+pub use gen::UNSTABLE_FEATURES;
+pub use structs::UnstableFeatureKind;
 
 pub const JS_SOURCE: deno_core::FastStaticString =
-  deno_core::ascii_str_include!("./js_list.js");
+  deno_core::ascii_str_include!("./gen.js");

@@ -1122,9 +1122,9 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
         .iter()
-        .map(|granular_flag| granular_flag.name)
+        .map(|feature| feature.name)
         .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
         .collect();
 

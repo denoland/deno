@@ -38,7 +38,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
-use deno_runtime::UnstableFlagKind;
+use deno_runtime::UnstableFeatureKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -4431,10 +4431,10 @@ impl CommandExt for Command {
       .display_order(next_display_order())
     );
 
-    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-      let mut arg = Arg::new(granular_flag.flag_name)
-        .long(granular_flag.flag_name)
-        .help(granular_flag.help_text)
+    for feature in crate::UNSTABLE_FEATURES.iter() {
+      let mut arg = Arg::new(feature.flag_name)
+        .long(feature.flag_name)
+        .help(feature.help_text)
         .action(ArgAction::SetTrue)
         .value_parser(FalseyValueParser::new())
         .hide(true)
@@ -4446,9 +4446,9 @@ impl CommandExt for Command {
       // Clap's `ArgExt` instead
       let mut long_help_val = None;
 
-      if granular_flag.show_in_help {
+      if feature.show_in_help {
         if matches!(cfg, UnstableArgsConfig::ResolutionOnly)
-          && matches!(granular_flag.kind, UnstableFlagKind::Cli)
+          && matches!(feature.kind, UnstableFeatureKind::Cli)
         {
           long_help_val = Some("true");
         }
@@ -4459,7 +4459,7 @@ impl CommandExt for Command {
       }
 
       arg = arg.long_help(long_help_val);
-      if let Some(env_var_name) = granular_flag.env_var {
+      if let Some(env_var_name) = feature.env_var {
         arg = arg.env(env_var_name);
       }
 
@@ -6070,7 +6070,7 @@ fn unstable_args_parse(
     flags.unstable_config.legacy_flag_enabled = true;
   }
 
-  // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_GRANULAR_FLAGS
+  // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
@@ -6082,12 +6082,12 @@ fn unstable_args_parse(
     matches.get_flag("unstable-npm-lazy-caching");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-      if matches.get_flag(granular_flag.flag_name) {
+    for feature in crate::UNSTABLE_FEATURES {
+      if matches.get_flag(feature.flag_name) {
         flags
           .unstable_config
           .features
-          .push(granular_flag.name.to_string());
+          .push(feature.name.to_string());
       }
     }
   }
