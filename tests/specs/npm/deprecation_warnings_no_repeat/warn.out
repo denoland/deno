@@ -1,0 +1,13 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fesm-basic
+Download http://localhost:4260/@denotest%2fadd
+Download http://localhost:4260/@denotest%2fdeprecated-package
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+Initialize @denotest/esm-basic@1.0.0
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+Initialize @denotest/add@1.0.0
+Download http://localhost:4260/@denotest/deprecated-package/1.0.0.tgz
+Initialize @denotest/deprecated-package@1.0.0
+Warning The following packages are deprecated:
+┖─ npm:@denotest/deprecated-package@1.0.0 (Deprecated version)
+[UNORDERED_END]
