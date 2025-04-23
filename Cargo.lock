@@ -8494,6 +8494,7 @@ dependencies = [
  "jsonc-parser",
  "lazy-regex",
  "libc",
+ "libsui",
  "lsp-types",
  "monch",
  "nix 0.27.1",
@@ -8519,6 +8520,7 @@ dependencies = [
  "url",
  "win32job",
  "winapi",
+ "zip",
 ]
 
 [[package]]

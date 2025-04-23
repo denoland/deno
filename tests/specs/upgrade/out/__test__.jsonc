@@ -1,12 +1,18 @@
 {
   "tempDir": true,
+  "profile": "release",
+  "envs": {
+    "DENO_DONT_USE_INTERNAL_UPGRADE_TEST": "1"
+  },
   "steps": [
     {
+      "if": "mac",
       "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
       "exitCode": 0,
       "output": ""
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": "upgrade --force --version 1.43.2 --output ./deno_copy2",
       "output": "upgrade.out",
@@ -14,12 +20,14 @@
       "flaky": true
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": ["eval", "if (Deno.version.deno === '1.43.2') { Deno.exit(1); }"],
       "exitCode": 0,
       "output": ""
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy2",
       "args": "--version",
       "exitCode": 0,

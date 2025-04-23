@@ -1,17 +1,24 @@
 {
   "tempDir": true,
+  "profile": "release",
+  "envs": {
+    "DENO_DONT_USE_INTERNAL_UPGRADE_TEST": "1"
+  },
   "steps": [
     {
+      "if": "mac",
       "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
       "exitCode": 0,
       "output": ""
     },
     {
+      "if": "mac",
       "args": ["eval", "Deno.mkdirSync('space in cwd')"],
       "exitCode": 0,
       "output": "[WILDCARD]"
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": "upgrade --force --version 1.43.2",
       "envs": { "TMP": "./space in cwd" },
@@ -20,6 +27,7 @@
       "flaky": true
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": "--version",
       "exitCode": 0,
