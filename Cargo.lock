@@ -1909,6 +1909,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_features"
+version = "0.0.0"
+dependencies = [
+ "deno_core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deno_fetch"
 version = "0.226.0"
 dependencies = [
@@ -1968,15 +1977,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "winapi",
-]
-
-[[package]]
-name = "deno_flags"
-version = "0.0.0"
-dependencies = [
- "deno_core",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2571,9 +2571,9 @@ dependencies = [
  "deno_cron",
  "deno_crypto",
  "deno_error",
+ "deno_features",
  "deno_fetch",
  "deno_ffi",
- "deno_flags",
  "deno_fs",
  "deno_http",
  "deno_io",

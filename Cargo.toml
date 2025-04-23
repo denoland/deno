@@ -36,7 +36,7 @@ members = [
   "resolvers/node",
   "resolvers/npm_cache",
   "runtime",
-  "runtime/flags",
+  "runtime/features",
   "runtime/permissions",
   "tests",
   "tests/ffi",
