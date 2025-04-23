@@ -31,6 +31,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
+use deno_media_type::MediaType;
 use log::debug;
 use log::info;
 use log::warn;
@@ -321,11 +322,12 @@ fn format_markdown(
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
             codeblock_config.line_width = line_width;
-            dprint_plugin_typescript::format_text(
+            dprint_plugin_typescript::format_text_with_external_formatter(
               &fake_filename,
               None,
               text.to_string(),
               &codeblock_config,
+              Box::new(typescript_external_formatter),
             )
           }
         }
@@ -453,11 +455,12 @@ pub fn format_html(
           typescript_config_builder.file_indent_level(hints.indent_level);
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
-          dprint_plugin_typescript::format_text(
+          dprint_plugin_typescript::format_text_with_external_formatter(
             &path,
             None,
             text.to_string(),
             &typescript_config,
+            Box::new(typescript_external_formatter),
           )
           .map(|formatted| {
             if let Some(formatted) = formatted {
@@ -519,6 +522,108 @@ pub fn format_html(
   } else {
     Some(formatted_str)
   })
+}
+
+fn typescript_external_formatter(
+  media_type: MediaType,
+  text: String,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  match media_type {
+    MediaType::Css => format_embedded_css(&text, config),
+    MediaType::Html => format_embedded_html(&text, config),
+    MediaType::Sql => format_embedded_sql(&text, config),
+    _ => unreachable!(),
+  }
+}
+fn format_embedded_css(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  use malva::config;
+  let options = config::FormatOptions {
+    layout: config::LayoutOptions {
+      indent_width: config.indent_width as usize,
+      use_tabs: config.use_tabs,
+      ..Default::default()
+    },
+    ..Default::default()
+  };
+  // Wraps the text in a css block of `a { ... }`
+  // to make it valid css (scss)
+  let Ok(text) = malva::format_text(
+    &format!("a{{\n{}\n}}", text),
+    malva::Syntax::Scss,
+    &options,
+  ) else {
+    return None;
+  };
+  let mut buf = vec![];
+  for (i, l) in text.lines().enumerate() {
+    // skip the first line (a {)
+    if i == 0 {
+      continue;
+    }
+    // skip the last line (})
+    if l.starts_with("}") {
+      continue;
+    }
+    let mut chars = l.chars();
+    // drop the indentation
+    for _ in 0..config.indent_width {
+      chars.next();
+    }
+    buf.push(chars.as_str());
+  }
+  Some(buf.join("\n").to_string())
+}
+
+fn format_embedded_html(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  use markup_fmt::config;
+  let options = config::FormatOptions {
+    layout: config::LayoutOptions {
+      indent_width: config.indent_width as usize,
+      use_tabs: config.use_tabs,
+      ..Default::default()
+    },
+    ..Default::default()
+  };
+  let Ok(text) = markup_fmt::format_text(
+    text,
+    markup_fmt::Language::Html,
+    &options,
+    |code, _| Ok::<_, std::convert::Infallible>(code.into()),
+  ) else {
+    return None;
+  };
+  Some(text.to_string())
+}
+
+fn format_embedded_sql(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  let mut text = sqlformat::format(
+    text,
+    &sqlformat::QueryParams::None,
+    &sqlformat::FormatOptions {
+      ignore_case_convert: None,
+      indent: if config.use_tabs {
+        sqlformat::Indent::Tabs
+      } else {
+        sqlformat::Indent::Spaces(config.indent_width)
+      },
+      lines_between_queries: 2,
+      uppercase: Some(true),
+    },
+  );
+
+  // Add single new line to the end of file.
+  text.push('\n');
+  Some(text)
 }
 
 pub fn format_sql(
@@ -610,11 +715,12 @@ pub fn format_file(
     }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(
+      dprint_plugin_typescript::format_text_with_external_formatter(
         file_path,
         Some(&ext),
         file_text.to_string(),
         &config,
+        Box::new(typescript_external_formatter),
       )
     }
   }

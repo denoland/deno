@@ -209,7 +209,7 @@ quick-junit = "0.3.5"
 quinn = { version = "0.11.6", default-features = false }
 rand = "=0.8.5"
 rayon = "1.8.0"
-regex = "^1.7.0"
+regex = "^1.11.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.14"
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
@@ -516,3 +516,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+dprint-plugin-typescript = { git = "https://github.com/kt3k/dprint-plugin-typescript.git", branch = "html_css_templates_2" }
