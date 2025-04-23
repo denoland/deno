@@ -1,16 +1,16 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
-name = "deno_flags"
+name = "deno_features"
 version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Provides the deno flags implementation."
+description = "Provides definitions of Deno unstable features."
 
 [lib]
-name = "deno_flags"
+name = "deno_features"
 path = "lib.rs"
 
 [dependencies]
