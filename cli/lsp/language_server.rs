@@ -662,7 +662,7 @@ impl Inner {
   ) -> LspResult<Arc<tsc::NavigationTree>> {
     let mark = self.performance.mark_with_args(
       "lsp.get_navigation_tree",
-      json!({ "uri": &module.specifier }),
+      json!({ "specifier": &module.specifier }),
     );
     let result = module
       .navigation_tree
@@ -759,8 +759,8 @@ impl Inner {
     let global_cache_url = maybe_cache.and_then(|cache_str| {
       if let Ok(url) = Url::from_file_path(cache_str) {
         Some(url)
-      } else if let Some(root_uri) = self.config.root_url() {
-        root_uri.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
+      } else if let Some(root_url) = self.config.root_url() {
+        root_url.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
       } else {
         lsp_warn!(
           "The configured cache path \"{cache_str}\" is not resolvable outside of a workspace.",
@@ -774,7 +774,7 @@ impl Inner {
     let maybe_root_path = self
       .config
       .root_url()
-      .and_then(|uri| url_to_file_path(uri).ok());
+      .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -1422,6 +1422,7 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info().await;
+      self.diagnostics_server.invalidate(&[&document.uri]);
       let changed_specifier = self
         .document_modules
         .primary_specifier(&Document::Open(document.clone()))
@@ -1430,9 +1431,6 @@ impl Inner {
       // `self.project_changed()` so its module entries will be dropped.
       drop(document);
       self.project_changed(changed_specifier, ProjectScopesChange::None);
-      self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1459,7 +1457,7 @@ impl Inner {
             let specifier = self
               .document_modules
               .primary_specifier(&Document::Open((*d).clone()))?;
-            Some((specifier, ChangeKind::Closed))
+            Some((specifier, ChangeKind::Opened))
           })
           .collect::<Vec<_>>(),
         ProjectScopesChange::OpenNotebooks,
@@ -1568,23 +1566,27 @@ impl Inner {
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info().await;
-      self.project_changed(
-        diagnosable_documents
-          .iter()
-          .flat_map(|d| {
-            let specifier = self
-              .document_modules
-              .primary_specifier(&Document::Open((*d).clone()))?;
-            Some((specifier, ChangeKind::Closed))
-          })
-          .collect::<Vec<_>>(),
-        ProjectScopesChange::OpenNotebooks,
-      );
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
           .map(|d| d.uri.as_ref())
           .collect::<Vec<_>>(),
+      );
+      let changed_specifiers = diagnosable_documents
+        .iter()
+        .flat_map(|d| {
+          let specifier = self
+            .document_modules
+            .primary_specifier(&Document::Open((*d).clone()))?;
+          Some((specifier, ChangeKind::Closed))
+        })
+        .collect::<Vec<_>>();
+      // Invalidate the weak references of `documents` before calling
+      // `self.project_changed()` so their module entries will be dropped.
+      drop(documents);
+      self.project_changed(
+        changed_specifiers,
+        ProjectScopesChange::OpenNotebooks,
       );
       self.send_diagnostics_update();
     }
