@@ -137,6 +137,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
     let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
       denokv_sqlite::sqlite_retry_loop(|| {
+        if std::env::var("DENO_KV_FORCE_IN_MEMORY").unwrap_or_default() == "1" {
+          return Ok::<_, SqliteBackendError>((
+            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
+            None,
+          ));
+        }
+
         let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
         {
           (Some(":memory:"), _) | (None, None) => (
