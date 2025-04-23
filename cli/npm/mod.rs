@@ -154,7 +154,7 @@ impl WorkspaceNpmPatchPackages {
             log::warn!(
               "{} {}\n    at {}",
               colors::yellow("Warning"),
-              err.to_string(),
+              err,
               pkg_json.path.display(),
             );
           }

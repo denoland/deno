@@ -58,7 +58,9 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<StandaloneData, AnyError> {
-  let Some(data) = libsui::find_section("d3n0l4nd") else {
+  let Some(data) = libsui::find_section("d3n0l4nd")
+    .context("Failed reading standalone binary section.")?
+  else {
     bail!("Could not find standalone binary section.")
   };
 
