@@ -56,9 +56,9 @@ deno_core = { version = "0.343.0" }
 
 deno_cache_dir = "=0.18.0"
 deno_config = { version = "=0.52.0", features = ["workspace"] }
-deno_doc = "=0.171.1"
+deno_doc = "=0.172.0"
 deno_error = "=0.5.6"
-deno_graph = "=0.89.4"
+deno_graph = "=0.90.0"
 deno_lint = "=0.74.0"
 deno_lockfile = "=0.27.1"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
@@ -290,7 +290,7 @@ dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
 dprint-plugin-typescript = "=0.94.0"
 env_logger = "=0.11.6"
-eszip = "=0.85.0"
+eszip = "=0.86.0"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
 malva = "=0.11.2"

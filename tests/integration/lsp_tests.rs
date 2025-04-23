@@ -10173,7 +10173,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Unknown Node built-in module: non-existent"
+        "message": "No such built-in module: node:non-existent"
       }
     ])
   );
