@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -171,6 +172,7 @@ async fn clean_entrypoint(
   let main_graph_container = factory.main_module_graph_container().await?;
   let roots = main_graph_container.collect_specifiers(entrypoints)?;
   let http_cache = factory.global_http_cache()?;
+  let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?;
 
   let mut permit = main_graph_container.acquire_update_permit().await;
@@ -302,24 +304,34 @@ async fn clean_entrypoint(
 
   let mut vendor_cleaned = CleanState::default();
   if let Some(vendor_dir) = options.vendor_dir_path() {
-    let mut trie = PathTrie::new();
-    // let base_global_path = http_cache.dir_path();
-    add_jsr_meta_paths(&graph, &mut trie, jsr_url, &|_url| {
-      todo!("needs API change in deno_cache_dir")
-    })?;
-    for url in keep {
-      if url.scheme() == "http" || url.scheme() == "https" {
-        todo!("needs API change in deno_cache_dir")
+    if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
+      let mut trie = PathTrie::new();
+      let cache = cache.clone();
+      add_jsr_meta_paths(&graph, &mut trie, jsr_url, &|_url| {
+        if let Ok(Some(path)) = cache.local_path_for_url(_url) {
+          Ok(path)
+        } else {
+          panic!("should not happen")
+        }
+      })?;
+      for url in keep {
+        if url.scheme() == "http" || url.scheme() == "https" {
+          if let Ok(Some(path)) = cache.local_path_for_url(url) {
+            trie.insert(&path);
+          } else {
+            panic!("should not happen")
+          }
+        }
       }
-    }
 
-    walk_removing(
-      &mut vendor_cleaned,
-      WalkDir::new(vendor_dir).contents_first(false),
-      &trie,
-      &vendor_dir,
-      dry_run,
-    )?;
+      walk_removing(
+        &mut vendor_cleaned,
+        WalkDir::new(vendor_dir).contents_first(false),
+        &trie,
+        &vendor_dir,
+        dry_run,
+      )?;
+    }
   }
 
   if !dry_run {
