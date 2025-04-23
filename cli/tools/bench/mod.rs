@@ -192,6 +192,7 @@ async fn bench_specifier_inner(
       permissions_container,
       vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
+      None,
     )
     .await?;
 
@@ -477,8 +478,11 @@ pub async fn run_benchmarks(
   }
 
   let log_level = cli_options.log_level();
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory(Default::default())
+      .await?,
+  );
   bench_specifiers(
     worker_factory,
     &permissions,
@@ -591,8 +595,11 @@ pub async fn run_benchmarks_with_watch(
           bench_modules.clone()
         };
 
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let worker_factory = Arc::new(
+          factory
+            .create_cli_main_worker_factory(Default::default())
+            .await?,
+        );
 
         let specifiers = collected_bench_modules
           .into_iter()

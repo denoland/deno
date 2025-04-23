@@ -21,15 +21,18 @@ deno_core::extension!(
     op_bootstrap_stdout_no_color,
     op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
+    op_bootstrap_is_unconfigured,
     op_snapshot_options,
   ],
   options = {
     snapshot_options: Option<SnapshotOptions>,
+    is_unconfigured: bool,
   },
   state = |state, options| {
     if let Some(snapshot_options) = options.snapshot_options {
       state.put::<SnapshotOptions>(snapshot_options);
     }
+    state.put(IsUnconfigured(options.is_unconfigured));
   },
 );
 
@@ -40,6 +43,8 @@ pub struct SnapshotOptions {
   pub v8_version: &'static str,
   pub target: String,
 }
+
+struct IsUnconfigured(bool);
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
@@ -150,4 +155,9 @@ pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
   }
 
   !deno_terminal::is_stderr_tty() || !deno_terminal::colors::use_color()
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_unconfigured(state: &mut OpState) -> bool {
+  state.borrow::<IsUnconfigured>().0
 }

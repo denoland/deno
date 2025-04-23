@@ -156,7 +156,9 @@ async fn create_plugin_runner_inner(
   let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory(Default::default())
+    .await?;
 
   let worker = worker_factory
     .create_custom_worker(
@@ -166,6 +168,7 @@ async fn create_plugin_runner_inner(
       permissions,
       vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),
+      None,
     )
     .await?;
 

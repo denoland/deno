@@ -640,6 +640,7 @@ async fn configure_main_worker(
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
@@ -1619,8 +1620,11 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory(Default::default())
+      .await?,
+  );
 
   // Run tests
   test_specifiers(
@@ -1833,8 +1837,11 @@ pub async fn run_tests_with_watch(
           return Ok(());
         }
 
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let worker_factory = Arc::new(
+          factory
+            .create_cli_main_worker_factory(Default::default())
+            .await?,
+        );
 
         test_specifiers(
           worker_factory,

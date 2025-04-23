@@ -270,8 +270,11 @@ impl TestRun {
     let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
-    let worker_factory =
-      Arc::new(factory.create_cli_main_worker_factory().await?);
+    let worker_factory = Arc::new(
+      factory
+        .create_cli_main_worker_factory(Default::default())
+        .await?,
+    );
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();

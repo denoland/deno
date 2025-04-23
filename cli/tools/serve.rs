@@ -45,8 +45,11 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory(Default::default())
+      .await?,
+  );
 
   if serve_flags.open_site {
     let url = resolve_serve_url(serve_flags.host, serve_flags.port);
@@ -79,6 +82,7 @@ async fn do_serve(
         worker_count,
       },
       main_module.clone(),
+      None,
     )
     .await?;
   let worker_count = match worker_count {
@@ -136,6 +140,7 @@ async fn run_worker(
         worker_count: Some(worker_count),
       },
       main_module,
+      None,
     )
     .await?;
   if hmr {
@@ -173,8 +178,11 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let worker_factory =
-          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let worker_factory = Arc::new(
+          factory
+            .create_cli_main_worker_factory(Default::default())
+            .await?,
+        );
 
         do_serve(worker_factory, main_module.clone(), worker_count, hmr)
           .await?;

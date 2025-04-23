@@ -29,6 +29,7 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
@@ -1203,6 +1204,7 @@ impl CliFactory {
 
   pub async fn create_cli_main_worker_factory(
     &self,
+    roots: LibWorkerFactoryRoots,
   ) -> Result<CliMainWorkerFactory, AnyError> {
     let cli_options = self.cli_options()?;
     let fs = self.fs();
@@ -1286,6 +1288,7 @@ impl CliFactory {
       cli_options.resolve_storage_key_resolver(),
       self.sys(),
       self.create_lib_main_worker_options()?,
+      roots,
     );
 
     Ok(CliMainWorkerFactory::new(

@@ -357,6 +357,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
+    unconfigured: Option<deno_runtime::Unconfigured>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
@@ -365,6 +366,7 @@ impl CliMainWorkerFactory {
         self.root_permissions.clone(),
         vec![],
         Default::default(),
+        unconfigured,
       )
       .await
   }
@@ -376,6 +378,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
+    unconfigured: Option<deno_runtime::Unconfigured>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
@@ -432,6 +435,7 @@ impl CliMainWorkerFactory {
       permissions,
       custom_extensions,
       stdio,
+      unconfigured,
     )?;
 
     if self.needs_test_modules {
