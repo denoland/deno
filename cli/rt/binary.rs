@@ -60,6 +60,7 @@ pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<StandaloneData, AnyError> {
   let data = find_section()?;
+
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
     let current_exe_name = maybe_current_exe
