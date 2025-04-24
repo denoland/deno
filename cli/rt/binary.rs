@@ -158,18 +158,20 @@ fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
 
   let file_path = std::env::current_exe()?;
   let file = FILE.get_or_init(|| File::open(file_path).unwrap());
-  let mmap =
-    MMAP_FILE.get_or_init(|| unsafe { memmap2::Mmap::map(&*file).unwrap() });
+  let mmap = MMAP_FILE.get_or_init(|| {
+    // SAFETY: memory mapped file creation
+    unsafe { memmap2::Mmap::map(file).unwrap() }
+  });
 
   // the code in this file will cause this to appear twice in the binary,
   // so skip over the first one
-  let Some(marker_pos) = find_in_bytes(&mmap, RESOURCE_SECTION_HEADER_NAME)
+  let Some(marker_pos) = find_in_bytes(mmap, RESOURCE_SECTION_HEADER_NAME)
   else {
     bail!("Failed to find first section name.");
   };
   let next_bytes = &mmap[marker_pos + RESOURCE_SECTION_HEADER_NAME.len()..];
   let Some(marker_pos) =
-    find_in_bytes(&next_bytes, RESOURCE_SECTION_HEADER_NAME)
+    find_in_bytes(next_bytes, RESOURCE_SECTION_HEADER_NAME)
   else {
     bail!("Failed to find second section name.");
   };
