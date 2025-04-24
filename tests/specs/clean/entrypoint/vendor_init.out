@@ -1,6 +1,5 @@
 ./denodir
-- dep_analysis_cache_v2
-- gen
+[WILDCARD]- gen
 -- file
 [WILDCARD]--- vendor1.ts.js
 [WILDLINE]--- vendor2.ts.js
