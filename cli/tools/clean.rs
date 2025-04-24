@@ -122,10 +122,10 @@ impl PathTrie {
     }
   }
   fn insert(&mut self, s: &Path) {
-    let mut components = s.components().into_iter().map(|c| c.as_os_str());
+    let components = s.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
-    while let Some(component) = components.next() {
+    for component in components {
       if let Some(nd) = self.nodes[node].children.get(component).copied() {
         node = nd;
       } else {
@@ -142,10 +142,10 @@ impl PathTrie {
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
-    let mut components = s.components().into_iter().map(|c| c.as_os_str());
+    let components = s.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
-    while let Some(component) = components.next() {
+    for component in components {
       if let Some(nd) = self.nodes[node].children.get(component).copied() {
         node = nd;
       } else {
@@ -280,7 +280,7 @@ async fn clean_entrypoint(
   }
 
   let jsr_url = crate::args::jsr_url();
-  add_jsr_meta_paths(&graph, &mut keep_paths_trie, jsr_url, &|url| {
+  add_jsr_meta_paths(graph, &mut keep_paths_trie, jsr_url, &|url| {
     http_cache.local_path_for_url(url).map_err(Into::into)
   })?;
   walk_removing(
@@ -311,7 +311,7 @@ async fn clean_entrypoint(
     if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
       let mut trie = PathTrie::new();
       let cache = cache.clone();
-      add_jsr_meta_paths(&graph, &mut trie, jsr_url, &|_url| {
+      add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
         if let Ok(Some(path)) = cache.local_path_for_url(_url) {
           Ok(path)
         } else {
@@ -332,7 +332,7 @@ async fn clean_entrypoint(
         &mut vendor_cleaned,
         WalkDir::new(vendor_dir).contents_first(false),
         &trie,
-        &vendor_dir,
+        vendor_dir,
         dry_run,
       )?;
     }
@@ -415,17 +415,21 @@ fn walk_removing(
     }
     if entry.file_type().is_dir() {
       if dry_run {
-        eprintln!("would remove dir: {}", entry.path().display());
+        #[allow(clippy::print_stderr)]
+        {
+          eprintln!("would remove dir: {}", entry.path().display());
+        }
       } else {
         rm_rf(state, entry.path())?;
       }
       walker.skip_current_dir();
-    } else {
-      if dry_run {
+    } else if dry_run {
+      #[allow(clippy::print_stderr)]
+      {
         eprintln!("would remove file: {}", entry.path().display());
-      } else {
-        remove_file(state, entry.path(), Some(entry.metadata()?))?;
       }
+    } else {
+      remove_file(state, entry.path(), Some(entry.metadata()?))?;
     }
   }
 
@@ -448,7 +452,7 @@ fn clean_node_modules(
 
   let keep_names = keep_pkgs
     .iter()
-    .map(|id| deno_resolver::npm::get_package_folder_id_folder_name(id))
+    .map(deno_resolver::npm::get_package_folder_id_folder_name)
     .collect::<HashSet<_>>();
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
@@ -466,15 +470,16 @@ fn clean_node_modules(
     let file_name = file_name.to_string_lossy();
     if keep_names.contains(file_name.as_ref()) || file_name == "node_modules" {
       continue;
-    } else {
-      if dry_run {
+    } else if dry_run {
+      #[allow(clippy::print_stderr)]
+      {
         eprintln!(
           "would remove dir from node modules: {}",
           entry.path().display()
         );
-      } else {
-        rm_rf(state, &entry.path())?;
       }
+    } else {
+      rm_rf(state, &entry.path())?;
     }
   }
 
@@ -527,10 +532,13 @@ fn clean_node_modules_symlinks(
       if let Some(name) = name {
         if !keep_names.contains(&*name) {
           if dry_run {
-            eprintln!(
-              "would remove symlink from node modules: {}",
-              entry.path().display()
-            );
+            #[allow(clippy::print_stderr)]
+            {
+              eprintln!(
+                "would remove symlink from node modules: {}",
+                entry.path().display()
+              );
+            }
           } else {
             on_remove(&name);
             remove_file(state, &entry.path(), None)?;
