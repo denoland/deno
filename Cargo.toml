@@ -388,9 +388,6 @@ opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
 debug = "line-tables-only"
 
-[profile.dev]
-split-debuginfo = "unpacked"
-
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
 inherits = "release"
