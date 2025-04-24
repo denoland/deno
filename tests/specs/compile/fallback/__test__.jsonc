@@ -5,12 +5,16 @@
   "tempDir": true,
   "steps": [{
     "if": "windows",
-    "args": "compile --output bin main.ts",
+    "args": "run --allow-write setup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --no-check --output bin main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
     "commandName": "./bin",
     "args": [],
-    "output": "HI\n"
+    "output": "8192\n"
   }]
 }
