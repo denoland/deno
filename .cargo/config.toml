@@ -36,7 +36,3 @@ rustflags = [
   "--cfg",
   "tokio_unstable",
 ]
-
-
-[patch.crates-io]
-deno_cache_dir = { path = "../deno_cache_dir/rs_lib" }

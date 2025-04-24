@@ -13,6 +13,7 @@ use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::colors;
 use deno_semver::package::PackageReq;
+pub(crate) use local::SetupCache;
 use rustc_hash::FxHashSet;
 
 pub use self::common::NpmPackageFsInstaller;
@@ -30,7 +31,6 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
-pub(crate) use local::SetupCache;
 
 mod common;
 mod global;
