@@ -2946,6 +2946,7 @@ dependencies = [
  "indexmap 2.8.0",
  "libsui",
  "log",
+ "memmap2",
  "node_resolver",
  "serde",
  "serde_json",

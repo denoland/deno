@@ -55,6 +55,9 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+memmap2.workspace = true
+
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

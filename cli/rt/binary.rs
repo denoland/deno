@@ -4,10 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::BufRead;
-use std::io::BufReader;
 use std::io::ErrorKind;
-use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,7 +60,6 @@ pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<StandaloneData, AnyError> {
   let data = find_section()?;
-
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
     let current_exe_name = maybe_current_exe
@@ -118,19 +114,20 @@ pub fn extract_standalone(
 }
 
 fn find_section() -> Result<&'static [u8], AnyError> {
+  #[cfg(windows)]
   if std::env::var_os("DENO_INTERNAL_RT_USE_FILE_FALLBACK").is_some() {
     return read_from_file_fallback();
   }
+
   match libsui::find_section("d3n0l4nd")
     .context("Failed reading standalone binary section.")
   {
     Ok(Some(data)) => Ok(data),
     Ok(None) => bail!("Could not find standalone binary section."),
     Err(err) => {
-      if cfg!(windows) {
-        if let Ok(data) = read_from_file_fallback() {
-          return Ok(data);
-        }
+      #[cfg(windows)]
+      if let Ok(data) = read_from_file_fallback() {
+        return Ok(data);
       }
 
       Err(err)
@@ -140,93 +137,55 @@ fn find_section() -> Result<&'static [u8], AnyError> {
 
 /// This is a temporary hacky fallback until we can find
 /// a fix for https://github.com/denoland/deno/issues/28982
+#[cfg(windows)]
 fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
-  // search for DENOLAND in utf16
-  const MARKER: &[u8] = &[
+  use std::sync::OnceLock;
+
+  fn find_in_bytes(bytes: &[u8], needle: &[u8]) -> Option<usize> {
+    bytes.windows(needle.len()).position(|n| n == needle)
+  }
+
+  static FILE: OnceLock<std::fs::File> = OnceLock::new();
+  static MMAP_FILE: OnceLock<memmap2::Mmap> = OnceLock::new();
+
+  // DENOLAND in utf16
+  const RESOURCE_SECTION_HEADER_NAME: &[u8] = &[
     0x44, 0x00, 0x33, 0x00, 0x4E, 0x00, 0x30, 0x00, 0x4C, 0x00, 0x34, 0x00,
     0x4E, 0x00, 0x44, 0x00,
   ];
-  const ASCII_SENTINEL: &[u8] = b"d3n0l4nd";
+  const MAGIC_BYTES: &[u8] = b"d3n0l4nd";
+
   let file_path = std::env::current_exe()?;
-  const BUF_CAP: usize = 64 * 1024;
+  let file = FILE.get_or_init(|| File::open(file_path).unwrap());
+  let mmap =
+    MMAP_FILE.get_or_init(|| unsafe { memmap2::Mmap::map(&*file).unwrap() });
 
-  let file = File::open(file_path)?;
-  let mut r = BufReader::with_capacity(BUF_CAP, file);
+  // the code in this file will cause this to appear twice in the binary,
+  // so skip over the first one
+  let Some(marker_pos) = find_in_bytes(&mmap, RESOURCE_SECTION_HEADER_NAME)
+  else {
+    bail!("Failed to find first section name.");
+  };
+  let next_bytes = &mmap[marker_pos + RESOURCE_SECTION_HEADER_NAME.len()..];
+  let Some(marker_pos) =
+    find_in_bytes(&next_bytes, RESOURCE_SECTION_HEADER_NAME)
+  else {
+    bail!("Failed to find second section name.");
+  };
+  let next_bytes =
+    &next_bytes[marker_pos + RESOURCE_SECTION_HEADER_NAME.len()..];
+  let Some(ascii_pos) = find_in_bytes(next_bytes, MAGIC_BYTES) else {
+    bail!("Failed to find first magic bytes.");
+  };
+  let next_bytes = &next_bytes[ascii_pos..];
+  let Some(last_pos) = next_bytes
+    .windows(MAGIC_BYTES.len())
+    .rposition(|w| w == MAGIC_BYTES)
+  else {
+    bail!("Failed to find end magic bytes.")
+  };
 
-  fn scan<R: Read>(
-    reader: &mut BufReader<R>,
-    needle: &[u8],
-  ) -> std::io::Result<Option<Vec<u8>>> {
-    let mut overlap = Vec::<u8>::with_capacity(needle.len().saturating_sub(1));
-    let mut out = None;
-
-    loop {
-      let chunk = reader.fill_buf()?;
-      if chunk.is_empty() {
-        return Ok(out);
-      }
-
-      // search in overlap+chunk
-      let mut search_space = overlap.clone();
-      search_space.extend_from_slice(chunk);
-
-      if let Some(pos) =
-        search_space.windows(needle.len()).position(|w| w == needle)
-      {
-        // How far into `chunk` does the match **end**?
-        let bytes_before_chunk = overlap.len();
-        let match_end_in_chunk = pos + needle.len() - bytes_before_chunk;
-
-        // Consume up to the end of the needle
-        reader.consume(match_end_in_chunk);
-
-        // Everything *after* the match that is already in memory
-        let tail_in_mem = &search_space[pos..]; // begins with the needle
-        out = Some(tail_in_mem.to_vec());
-        break;
-      }
-
-      // Prepare next overlap (needle.len()-1 bytes)
-      overlap.clear();
-      let keep = needle.len().saturating_sub(1);
-      if search_space.len() >= keep {
-        overlap.extend_from_slice(&search_space[search_space.len() - keep..]);
-      } else {
-        overlap.extend_from_slice(&search_space);
-      }
-
-      let chunk_len = chunk.len(); // prevent multiple borrow
-      reader.consume(chunk_len);
-    }
-
-    Ok(out)
-  }
-
-  // skip up to and including MARKER
-  if scan(&mut r, MARKER)?.is_none() {
-    bail!("Failed to find.");
-  }
-
-  // collect from ASCII_SENTINEL onward
-  let mut result = scan(&mut r, ASCII_SENTINEL)?.ok_or_else(|| {
-    std::io::Error::new(
-      std::io::ErrorKind::UnexpectedEof,
-      "ASCII sentinel not found",
-    )
-  })?;
-
-  r.read_to_end(&mut result)?;
-
-  if let Some(last_pos) = result
-    .windows(ASCII_SENTINEL.len())
-    .rposition(|w| w == ASCII_SENTINEL)
-  {
-    result.truncate(last_pos + ASCII_SENTINEL.len());
-  } else {
-    bail!("Failed to find.");
-  }
-
-  Ok(Box::leak(result.into_boxed_slice()))
+  Ok(&next_bytes[..last_pos + MAGIC_BYTES.len()])
 }
 
 pub struct DeserializedDataSection {
@@ -292,7 +251,7 @@ pub fn deserialize_binary_data_section(
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
   if !found {
-    bail!("Could not find magic bytes at the end of the data.");
+    bail!("Could not find magic bytes at end of data.");
   }
 
   let modules_store = RemoteModulesStore::new(
