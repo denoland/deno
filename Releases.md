@@ -8,16 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 2.2.12 / 2025.04.24
 
-- fix(compile): don't rebuild resource table on Windows (#29010)
-- fix(compile): downgrade editpe to 0.1.0 (#29011)
-- fix(compile): error when cannot extract binary section (#28986)
-- fix(compile): read resource name in executable as uppercase on Windows
-  (#29005)
-- fix(compile): revert multi-icon support in compile (#28997)
-- fix(compile): temporarily fallback to reading resource data from file on
-  windows (#29024)
-- fix(compile): use a memory mapped file for fallback (#29039)
 - fix: correctly style rust logs with colors (#29040)
+- fix(compile): temporary fallback for reading resource data from file on
+  Windows (#29010, #29011, #28986, #29005, #28997, #29024, #29039)
 
 ### 2.2.11 / 2025.04.18
 
