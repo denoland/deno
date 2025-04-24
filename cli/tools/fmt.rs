@@ -524,6 +524,7 @@ pub fn format_html(
   })
 }
 
+/// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn typescript_external_formatter(
   media_type: MediaType,
   text: String,
@@ -536,6 +537,17 @@ fn typescript_external_formatter(
     _ => unreachable!(),
   }
 }
+
+/// Formats embedded CSS code blocks in JavaScript and TypeScript.
+///
+/// This function supports properties only CSS expressions, like:
+/// ```css
+/// margin: 10px;
+/// padding: 10px;
+/// ```
+///
+/// To support this scenario, this function first wraps the text with `a { ... }`,
+/// and then strips it off after formatting with malva.
 fn format_embedded_css(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
@@ -578,6 +590,7 @@ fn format_embedded_css(
   Some(buf.join("\n").to_string())
 }
 
+/// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
@@ -602,28 +615,33 @@ fn format_embedded_html(
   Some(text.to_string())
 }
 
+/// Formats the embedded SQL code blocks in JavaScript and TypeScript.
 fn format_embedded_sql(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> Option<String> {
+  Some(format_sql_text(text, config.use_tabs, config.indent_width))
+}
+
+fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {
   let mut text = sqlformat::format(
     text,
     &sqlformat::QueryParams::None,
     &sqlformat::FormatOptions {
       ignore_case_convert: None,
-      indent: if config.use_tabs {
+      indent: if use_tabs {
         sqlformat::Indent::Tabs
       } else {
-        sqlformat::Indent::Spaces(config.indent_width)
+        sqlformat::Indent::Spaces(indent_width)
       },
+      // leave one blank line between queries.
       lines_between_queries: 2,
       uppercase: Some(true),
     },
   );
-
-  // Add single new line to the end of file.
+  // Add single new line to the end of text.
   text.push('\n');
-  Some(text)
+  text
 }
 
 pub fn format_sql(
@@ -645,24 +663,11 @@ pub fn format_sql(
     return Ok(None);
   }
 
-  let mut formatted_str = sqlformat::format(
+  let formatted_str = format_sql_text(
     file_text,
-    &sqlformat::QueryParams::None,
-    &sqlformat::FormatOptions {
-      ignore_case_convert: None,
-      indent: if fmt_options.use_tabs.unwrap_or_default() {
-        sqlformat::Indent::Tabs
-      } else {
-        sqlformat::Indent::Spaces(fmt_options.indent_width.unwrap_or(2))
-      },
-      // leave one blank line between queries.
-      lines_between_queries: 2,
-      uppercase: Some(true),
-    },
+    fmt_options.use_tabs.unwrap_or_default(),
+    fmt_options.indent_width.unwrap_or(2),
   );
-
-  // Add single new line to the end of file.
-  formatted_str.push('\n');
 
   Ok(if formatted_str == file_text {
     None
