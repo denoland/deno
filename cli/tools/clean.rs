@@ -585,7 +585,6 @@ fn remove_file(
 mod tests {
   use super::Found::*;
 
-  #[cfg(unix)]
   #[test]
   fn path_trie() {
     use std::path::Path;
