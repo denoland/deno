@@ -481,7 +481,11 @@ module.exports = {
   hasCrypto: true,
   hasIntl: true,
   hasMultiLocalhost() {
-    return false;
+    // Note: Should also work on macOS but you need
+    // to manually create alias.
+    //
+    // ifconfig lo0 alias 127.0.0.2
+    return isLinux;
   },
   invalidArgTypeHelper,
   mustCall,

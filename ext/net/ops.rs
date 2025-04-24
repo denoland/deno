@@ -36,6 +36,7 @@ use socket2::Domain;
 use socket2::Protocol;
 use socket2::Socket;
 use socket2::Type;
+use tokio::net::TcpSocket;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
@@ -55,9 +56,12 @@ pub struct TlsHandshakeInfo {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
+  pub local_address: Option<String>,
+  pub local_port: Option<u16>,
 }
 
 impl From<SocketAddr> for IpAddr {
@@ -65,6 +69,8 @@ impl From<SocketAddr> for IpAddr {
     Self {
       hostname: addr.ip().to_string(),
       port: addr.port(),
+      local_address: None,
+      local_port: None,
     }
   }
 }
@@ -451,11 +457,34 @@ where
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(&addr).await?;
+  let tcp_stream = if let Some(local_addr) = addr.local_address {
+    let s_addr =
+      resolve_addr(&local_addr, addr.local_port.unwrap_or(addr.port))
+        .await?
+        .next()
+        .ok_or_else(|| NetError::NoResolvedAddress)?;
+
+    let socket = if s_addr.is_ipv4() {
+      TcpSocket::new_v4()?
+    } else {
+      TcpSocket::new_v6()?
+    };
+
+    socket.bind(s_addr)?;
+
+    let addr = resolve_addr(&addr.hostname, addr.port)
+      .await?
+      .next()
+      .ok_or_else(|| NetError::NoResolvedAddress)?;
+    socket.connect(addr).await?
+  } else {
+    let addr = resolve_addr(&addr.hostname, addr.port)
+      .await?
+      .next()
+      .ok_or_else(|| NetError::NoResolvedAddress)?;
+    TcpStream::connect(&addr).await?
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -1361,6 +1390,8 @@ mod tests {
     let ip_addr = IpAddr {
       hostname: String::from(server_addr[0]),
       port: server_addr[1].parse().unwrap(),
+      local_address: None,
+      local_port: None,
     };
 
     let mut connect_fut =
