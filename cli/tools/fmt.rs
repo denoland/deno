@@ -302,10 +302,12 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             format_css(&fake_filename, text, fmt_options)
           }
-          "html" => format_html(&fake_filename, text, fmt_options),
+          "html" => {
+            format_html(&fake_filename, text, fmt_options, unstable_options)
+          }
           "svelte" | "vue" | "astro" | "vto" | "njk" => {
             if unstable_options.component {
-              format_html(&fake_filename, text, fmt_options)
+              format_html(&fake_filename, text, fmt_options, unstable_options)
             } else {
               Ok(None)
             }
@@ -327,7 +329,7 @@ fn format_markdown(
               None,
               text.to_string(),
               &codeblock_config,
-              Box::new(typescript_external_formatter),
+              create_external_formatter_for_typescript(unstable_options),
             )
           }
         }
@@ -403,6 +405,7 @@ pub fn format_html(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let format_result = markup_fmt::format_text(
     file_text,
@@ -460,7 +463,7 @@ pub fn format_html(
             None,
             text.to_string(),
             &typescript_config,
-            Box::new(typescript_external_formatter),
+            create_external_formatter_for_typescript(unstable_options),
           )
           .map(|formatted| {
             if let Some(formatted) = formatted {
@@ -525,17 +528,25 @@ pub fn format_html(
 }
 
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
-fn typescript_external_formatter(
-  media_type: MediaType,
-  text: String,
-  config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
-  match media_type {
-    MediaType::Css => format_embedded_css(&text, config),
-    MediaType::Html => format_embedded_html(&text, config),
-    MediaType::Sql => format_embedded_sql(&text, config),
-    _ => unreachable!(),
-  }
+fn create_external_formatter_for_typescript(
+  unstable_options: &UnstableFmtOptions,
+) -> dprint_plugin_typescript::ExternalFormatter {
+  let unstable_sql = unstable_options.sql;
+  Box::new(move |media_type, text, config| {
+    match media_type {
+      MediaType::Css => format_embedded_css(&text, config),
+      MediaType::Html => format_embedded_html(&text, config),
+      MediaType::Sql => {
+        if unstable_sql {
+          format_embedded_sql(&text, config)
+        } else {
+          None
+        }
+      }
+      // dprint-plugin-typescript only detects css, html, and sql for now
+      _ => unreachable!(),
+    }
+  })
 }
 
 /// Formats embedded CSS code blocks in JavaScript and TypeScript.
@@ -696,10 +707,10 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       format_css(file_path, file_text, fmt_options)
     }
-    "html" => format_html(file_path, file_text, fmt_options),
+    "html" => format_html(file_path, file_text, fmt_options, unstable_options),
     "svelte" | "vue" | "astro" | "vto" | "njk" => {
       if unstable_options.component {
-        format_html(file_path, file_text, fmt_options)
+        format_html(file_path, file_text, fmt_options, unstable_options)
       } else {
         Ok(None)
       }
@@ -725,7 +736,7 @@ pub fn format_file(
         Some(&ext),
         file_text.to_string(),
         &config,
-        Box::new(typescript_external_formatter),
+        create_external_formatter_for_typescript(unstable_options),
       )
     }
   }

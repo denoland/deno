@@ -20,4 +20,9 @@ htmlString = html`
   </body>
 `;
 
-query = sql`SELECT   ${table}.${field}    FROM  ${table};`;
+query = sql`
+  SELECT
+    ${table}.${field}
+  FROM
+    ${table};
+`;
