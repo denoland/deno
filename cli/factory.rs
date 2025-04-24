@@ -1463,6 +1463,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Clean(_)
     ),
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,

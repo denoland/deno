@@ -1,6 +1,5 @@
 ./denodir
-- dep_analysis_cache_v2
-- npm
+[WILDCARD]- npm
 -- localhost_4260
 --- @denotest
 ---- add
@@ -13,7 +12,8 @@
 - remote
 -- http
 --- localhost_PORT4260
-----[WILDCARD]
+---- http://localhost:4260/chalk ([WILDLINE])
+---- http://localhost:4260/@denotest%2fadd ([WILDLINE])
 
 ./node_modules
 - .bin
