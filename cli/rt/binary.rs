@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -157,7 +156,7 @@ fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
   const MAGIC_BYTES: &[u8] = b"d3n0l4nd";
 
   let file_path = std::env::current_exe()?;
-  let file = FILE.get_or_init(|| File::open(file_path).unwrap());
+  let file = FILE.get_or_init(|| std::fs::File::open(file_path).unwrap());
   let mmap = MMAP_FILE.get_or_init(|| {
     // SAFETY: memory mapped file creation
     unsafe { memmap2::Mmap::map(file).unwrap() }
