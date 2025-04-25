@@ -22,4 +22,4 @@
 ---- http://127.0.0.1:4250/@std/http/1.0.0_meta.json ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/meta.json ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/1.0.0_meta.json ([WILDLINE])
-- v8_code_cache_v2
+- v8_code_cache_v2[WILDCARD]

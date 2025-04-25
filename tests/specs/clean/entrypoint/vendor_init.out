@@ -10,7 +10,7 @@
 ---- 5552028e702144b8ef1fc0b0c45082c0feb18f16783148d34065125a2a0781c1.js
 ---- 8a0715852e7a15af94225fad9f5d82c2c1e8671a11c5eda17958d5f0b150fffd.js
 ---- 91a2012425b2db2e55f27a6c5ba916f923f86f7288685c03865fce38186aea4a.js
-- node_analysis_cache_v2
+- node_analysis_cache_v2[WILDCARD]
 - npm
 -- localhost_4260
 --- @denotest
@@ -39,7 +39,7 @@
 -------- index.d.ts
 -------- index.js
 ---- registry.json
-- v8_code_cache_v2
+- v8_code_cache_v2[WILDCARD]
 
 ./node_modules
 - .bin
