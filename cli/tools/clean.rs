@@ -576,8 +576,21 @@ fn remove_file(
   }
   state.files_removed += 1;
   state.update_progress();
-  std::fs::remove_file(path)
-    .with_context(|| format!("Failed to remove file: {}", path.display()))?;
+  if let Err(e) = std::fs::remove_file(path)
+    .with_context(|| format!("Failed to remove file: {}", path.display()))
+  {
+    if cfg!(windows) {
+      if path.metadata()?.is_symlink() {
+        std::fs::remove_dir(path).with_context(|| {
+          format!("Failed to remove symlink: {}", path.display())
+        })?;
+      } else {
+        return Err(e.into());
+      }
+    } else {
+      return Err(e.into());
+    }
+  }
   Ok(())
 }
 
