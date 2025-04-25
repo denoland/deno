@@ -14,7 +14,7 @@ if (Deno.args.some((a) => a === "--rc")) {
   const cliVersion = semver.parse(cliCrate.version)!;
 
   if (cliVersion.prerelease[0] != "rc") {
-    cliVersion.increment("major");
+    cliVersion.increment("minor");
   }
   cliVersion.increment("pre", "rc");
 
