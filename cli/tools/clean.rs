@@ -585,10 +585,10 @@ fn remove_file(
           format!("Failed to remove symlink: {}", path.display())
         })?;
       } else {
-        return Err(e.into());
+        return Err(e);
       }
     } else {
-      return Err(e.into());
+      return Err(e);
     }
   }
   Ok(())
