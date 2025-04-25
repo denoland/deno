@@ -16,28 +16,26 @@ pub struct EmitCache {
   disk_cache: DiskCache,
   emit_failed_flag: AtomicFlag,
   file_serializer: EmitFileSerializer,
-  behavior: Behavior,
+  mode: Mode,
 }
 
 #[derive(Debug)]
-enum Behavior {
+enum Mode {
   Normal,
   Disable,
 }
 
 impl EmitCache {
   pub fn new(disk_cache: DiskCache) -> Self {
-    let behavior = match std::env::var("DENO_EMIT_CACHE_BEHAVIOR")
+    let mode = match std::env::var("DENO_EMIT_CACHE_MODE")
       .unwrap_or_default()
       .as_str()
     {
-      "normal" | "" => Behavior::Normal,
-      "disable" => Behavior::Disable,
+      "normal" | "" => Mode::Normal,
+      "disable" => Mode::Disable,
       _ => {
-        log::warn!(
-          "Unknown DENO_EMIT_CACHE_BEHAVIOR value, defaulting to normal"
-        );
-        Behavior::Normal
+        log::warn!("Unknown DENO_EMIT_CACHE_MODE value, defaulting to normal");
+        Mode::Normal
       }
     };
 
@@ -47,7 +45,7 @@ impl EmitCache {
       file_serializer: EmitFileSerializer {
         cli_version: DENO_VERSION_INFO.deno,
       },
-      behavior,
+      mode,
     }
   }
 
@@ -64,7 +62,7 @@ impl EmitCache {
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
   ) -> Option<String> {
-    if matches!(self.behavior, Behavior::Disable) {
+    if matches!(self.mode, Mode::Disable) {
       return None;
     }
 
@@ -96,9 +94,7 @@ impl EmitCache {
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
-    if matches!(self.behavior, Behavior::Disable)
-      || self.emit_failed_flag.is_raised()
-    {
+    if matches!(self.mode, Mode::Disable) || self.emit_failed_flag.is_raised() {
       log::debug!("Skipped emit cache save of {}", specifier);
       return Ok(());
     }
@@ -202,7 +198,7 @@ mod test {
         cli_version: "1.0.0",
       },
       emit_failed_flag: Default::default(),
-      behavior: Behavior::Normal,
+      mode: Mode::Normal,
     };
 
     let specifier1 =
@@ -232,7 +228,7 @@ mod test {
         cli_version: "2.0.0",
       },
       emit_failed_flag: Default::default(),
-      behavior: Behavior::Normal,
+      mode: Mode::Normal,
     };
     assert_eq!(cache.get_emit_code(&specifier1, 10), None);
     cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
@@ -244,7 +240,7 @@ mod test {
         cli_version: "2.0.0",
       },
       emit_failed_flag: Default::default(),
-      behavior: Behavior::Normal,
+      mode: Mode::Normal,
     };
     assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
 
