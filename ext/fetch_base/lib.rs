@@ -81,6 +81,7 @@ pub trait FetchHandler: 'static {
     type Options;
 
     fn fetch(
+        scope: &mut v8::HandleScope,
         state: &mut deno_core::OpState,
         method: ByteString,
         url: String,
@@ -116,10 +117,11 @@ pub struct FetchReturn {
   pub cancel_handle_rid: Option<ResourceId>,
 }
 
-#[op2(reentrant, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FH>(
+  scope: &mut v8::HandleScope,
   state: &mut OpState,
   #[serde] method: ByteString,
   #[string] url: String,
@@ -133,6 +135,7 @@ where
   FH: FetchHandler + 'static
 {
   FH::fetch(
+    scope,
     state,
     method,
     url,
@@ -163,7 +166,7 @@ pub struct FetchResponse {
   pub error: Option<(String, String)>,
 }
 
-#[op2(async, reentrant)]
+#[op2(async)]
 #[serde]
 pub async fn op_fetch_send<FH>(
   state: Rc<RefCell<OpState>>,

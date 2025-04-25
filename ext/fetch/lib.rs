@@ -152,6 +152,7 @@ impl <FP: FetchPermissions + 'static> FetchHandler for DenoFetchHandler<FP> {
     type Options = Options;
 
     fn fetch(
+        _scope: &mut v8::HandleScope,
         state: &mut deno_core::OpState,
         method: ByteString,
         url: String,
