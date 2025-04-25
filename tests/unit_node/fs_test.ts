@@ -21,6 +21,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { readFile } from "node:fs/promises";
 import {
   constants as fsPromiseConstants,
   copyFile,
@@ -289,4 +290,15 @@ Deno.test("[node/fs] statSync throws ENOENT for invalid path containing colon in
     statSync("jsr:@std/assert");
   });
   assertEquals(err.code, "ENOENT");
+});
+
+Deno.test("[node/fs] readFile aborted with signal", async () => {
+  const src = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+  await writeFile(src, "Hello");
+  const signal = AbortSignal.abort();
+  await assertRejects(
+    () => readFile(src, { signal }),
+    DOMException,
+    "The signal has been aborted",
+  );
 });
