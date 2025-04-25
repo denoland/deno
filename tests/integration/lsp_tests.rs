@@ -8871,6 +8871,84 @@ fn lsp_npm_reexport_from_non_export() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28676.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_import_map_no_duplicate_completions() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "chalk": "npm:chalk"
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"
+      import {} from "chalk";
+      const colorInfo: ColorInfo = false;
+      console.log(colorInfo);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  client.read_diagnostics();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (2, 32),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  // Get all matching entries, then assert that there's only one and it has the
+  // correct auto-import edit.
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "ColorInfo")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "ColorInfo",
+        "labelDetails": { "description": "chalk" },
+        "kind": 6,
+        "detail": "Update import from \"chalk\"\n\n(alias) type ColorInfo = false | ColorSupport\nexport ColorInfo",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 13 },
+              "end": { "line": 1, "character": 15 },
+            },
+            "newText": "{ ColorInfo }",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_completions_using_decl() {
@@ -10173,7 +10251,7 @@ fn lsp_completions_node_builtin() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Unknown Node built-in module: non-existent"
+        "message": "No such built-in module: node:non-existent"
       }
     ])
   );

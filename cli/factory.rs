@@ -613,7 +613,6 @@ impl CliFactory {
           Ok(Arc::new(CliNpmGraphResolver::new(
             self.npm_installer_if_managed().await?.cloned(),
             self.services.found_pkg_json_dep_flag.clone(),
-            cli_options.unstable_bare_node_builtins(),
             cli_options.default_npm_caching_strategy(),
           )))
         }
@@ -1143,9 +1142,9 @@ impl CliFactory {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
-      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&granular_flag.name.to_string()) {
-          checker.enable_feature(granular_flag.name);
+      for feature in crate::UNSTABLE_FEATURES {
+        if unstable_features.contains(&feature.name.to_string()) {
+          checker.enable_feature(feature.name);
         }
       }
 
@@ -1406,6 +1405,7 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
+          bare_node_builtins: self.flags.unstable_config.bare_node_builtins,
           unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
           package_json_cache: Some(Arc::new(
             node_resolver::PackageJsonThreadLocalCache,
