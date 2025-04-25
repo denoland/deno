@@ -3,13 +3,11 @@ import sqlite, { DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as path from "node:path";
 
-// Choose the correct extension based on the platform
 const extensionPath = (() => {
   const isWindows = Deno.build.os === "windows";
   const isMac = Deno.build.os === "darwin";
   const isLinux = Deno.build.os === "linux";
 
-  // Get the path to the target directory
   const currentDir = new URL(".", import.meta.url).pathname;
   const denoDir = path.resolve(currentDir, "..");
 
@@ -33,11 +31,10 @@ const extensionPath = (() => {
 })();
 
 Deno.test({
-  name: "[node/sqlite] DatabaseSync loadExtension with allowExtension enabled",
-  name: "[node/sqlite] DatabaseSync loadExtension option handling",
+  name: "[node/sqlite] DatabaseSync loadExtension",
   permissions: { read: true, write: true, ffi: true },
   fn() {
-    // Check if the extension file exists - if not, skip the test
+    // skip the test if the extension is not found
     try {
       Deno.statSync(extensionPath);
     } catch (e) {
@@ -45,16 +42,13 @@ Deno.test({
       return;
     }
 
-    // DatabaseSync with allowExtension: true should work
     const db = new DatabaseSync(":memory:", {
       allowExtension: true,
       readOnly: false,
     });
 
-    // Load the extension
     db.loadExtension(extensionPath);
 
-    // Test that the function is accessible
     const stmt = db.prepare("SELECT test_func('Hello, World!') AS result");
     const { result } = stmt.get();
     assertEquals(result, "Hello, World!");
@@ -67,7 +61,6 @@ Deno.test({
   name: "[node/sqlite] DatabaseSync loadExtension with FFI permission denied",
   permissions: { read: true, write: true, ffi: false },
   fn() {
-    // Even creating a DB with allowExtension: true should throw when FFI permission is denied
     assertThrows(() => {
       new DatabaseSync(":memory:", {
         allowExtension: true,
