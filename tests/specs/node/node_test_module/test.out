@@ -1,5 +1,5 @@
 [WILDCARD]
-running 66 tests from ./test.js
+running 67 tests from ./test.js
 sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
@@ -92,6 +92,7 @@ suite ...
     nested test 2 ... ok ([WILDLINE])
   sub suite 2 ... FAILED (due to 1 failed step) ([WILDLINE])
 suite ... FAILED (due to 3 failed steps) ([WILDLINE])
+assertions available via text context ... ok ([WILDLINE])
 unhandled rejection - passes but warns ...
 Uncaught error from ./test.js FAILED
 unhandled rejection - passes but warns ... cancelled ([WILDCARD])
@@ -227,6 +228,6 @@ suite ... sub suite 1 ... nested test 2 => ./test.js:[WILDLINE]
 suite ... sub suite 2 ... nested test 1 => ./test.js:[WILDLINE]
 ./test.js (uncaught error)
 
-FAILED | 11 passed (21 steps) | 52 failed (5 steps) | 4 ignored [WILDCARD]
+FAILED | 12 passed (21 steps) | 52 failed (5 steps) | 4 ignored [WILDCARD]
 
 error: Test failed

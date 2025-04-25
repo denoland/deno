@@ -51,8 +51,14 @@ const server = Deno.serve(
                 });
               }
             }
+            if ("sum" in metric) {
+              for (const dataPoint of metric.sum.dataPoints) {
+                dataPoint.attributes.sort((a, b) => {
+                  return a.key.localeCompare(b.key);
+                });
+              }
+            }
           }
-
           console.log(JSON.stringify(data, null, 2));
         });
     },

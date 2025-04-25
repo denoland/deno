@@ -295,32 +295,24 @@ class InnerRequest {
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
+    const method = this.#methodAndUri[0];
+    const scheme = this.#methodAndUri[5] !== undefined
+      ? `${this.#methodAndUri[5]}://`
+      : this.#context.scheme;
+    const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
     const path = this.#methodAndUri[2];
 
     // * is valid for OPTIONS
-    if (path === "*") {
-      return (this.#urlValue = "*");
-    }
-
-    // If the path is empty, return the authority (valid for CONNECT)
-    if (path == "") {
-      return (this.#urlValue = this.#methodAndUri[1]);
+    if (method === "OPTIONS" && path === "*") {
+      return (this.#urlValue = scheme + authority + "/" + path);
     }
 
     // CONNECT requires an authority
-    if (this.#methodAndUri[0] == "CONNECT") {
-      return (this.#urlValue = this.#methodAndUri[1]);
+    if (method === "CONNECT") {
+      return (this.#urlValue = scheme + this.#methodAndUri[1]);
     }
 
-    const hostname = this.#methodAndUri[1];
-    if (hostname) {
-      // Construct a URL from the scheme, the hostname, and the path
-      return (this.#urlValue = this.#context.scheme + hostname + path);
-    }
-
-    // Construct a URL from the scheme, the fallback hostname, and the path
-    return (this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path);
+    return this.#urlValue = scheme + authority + path;
   }
 
   get completed() {
@@ -776,20 +768,40 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const { 0: overrideUnixPath, 1: overrideHost, 2: overridePort } =
+  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
     op_http_serve_address_override();
-  if (overrideUnixPath) {
-    options.path = overrideUnixPath;
-    delete options.port;
-    delete options.host;
-  } else {
-    if (overrideHost) {
-      options.hostname = overrideHost;
+  switch (overrideKind) {
+    case 1: {
+      // TCP
+      options = {
+        ...options,
+        hostname: overrideHost,
+        port: overridePort,
+      };
       delete options.path;
+      delete options.cid;
+      break;
     }
-    if (overridePort) {
-      options.port = overridePort;
+    case 2: {
+      // Unix
+      options = {
+        ...options,
+        path: overrideHost,
+      };
+      delete options.hostname;
+      delete options.port;
+      break;
+    }
+    case 3: {
+      // Vsock
+      options = {
+        ...options,
+        cid: Number(overrideHost),
+        port: overridePort,
+      };
+      delete options.hostname;
       delete options.path;
+      break;
     }
   }
 
