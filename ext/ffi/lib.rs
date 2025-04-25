@@ -23,6 +23,8 @@ use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
 pub use callback::CallbackError;
 use deno_permissions::PermissionCheckError;
+pub use denort_helper::DenoRtNativeAddonLoader;
+pub use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlfcn::op_ffi_load;
 pub use dlfcn::DlfcnError;
 use dlfcn::ForeignFunction;
@@ -106,4 +108,12 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
+  options = {
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
+  },
+  state = |state, options| {
+    if let Some(loader) = options.deno_rt_native_addon_loader {
+      state.put(loader);
+    }
+  },
 );

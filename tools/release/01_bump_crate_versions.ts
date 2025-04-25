@@ -10,6 +10,25 @@ const denoRtCrate = workspace.getDenoRtCrate();
 const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
+if (Deno.args.some((a) => a === "--rc")) {
+  const cliVersion = semver.parse(cliCrate.version)!;
+
+  if (cliVersion.prerelease[0] != "rc") {
+    cliVersion.increment("minor");
+  }
+  cliVersion.increment("pre", "rc");
+
+  const version = cliVersion.toString();
+
+  await cliCrate.setVersion(version);
+  await denoRtCrate.setVersion(version);
+  await denoLibCrate.setVersion(version);
+  // Force lockfile update
+  await workspace.getCliCrate().cargoUpdate("--workspace");
+
+  Deno.exit(0);
+}
+
 await bumpCiCacheVersion();
 
 // increment the cli version
@@ -23,8 +42,8 @@ if (Deno.args.some((a) => a === "--patch")) {
   await cliCrate.promptAndIncrement();
 }
 
-denoRtCrate.setVersion(cliCrate.version);
-denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
+await denoRtCrate.setVersion(cliCrate.version);
+await denoLibCrate.setVersion(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {

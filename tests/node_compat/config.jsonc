@@ -916,6 +916,7 @@
       "test-process-beforeexit.js",
       "test-process-binding-internalbinding-allowlist.js",
       "test-process-binding.js",
+      "test-process-cpuUsage.js",
       "test-process-dlopen-undefined-exports.js",
       "test-process-domain-segfault.js",
       "test-process-emitwarning.js",
@@ -1365,7 +1366,6 @@
       "test-heapsnapshot-near-heap-limit-big.js",
       "test-net-many-clients.js",
       "test-net-pingpong-delay.js",
-      "test-process-cpuUsage.js",
       "test-stream-pipe-multi.js"
     ],
     "sequential": [

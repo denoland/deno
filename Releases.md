@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.12 / 2025.04.24
+
+- fix: correctly style rust logs with colors (#29040)
+- fix(compile): temporary fallback for reading resource data from file to fix
+  `deno compile` on Windows (#29010, #29011, #28986, #29005, #28997, #29024,
+  #29039)
+
+### 2.2.11 / 2025.04.18
+
+- fix(ext/node): Fix `Writable.toWeb()` (#28914)
+- fix(ext/node): add `assert` property to test context object (#28904)
+- fix(install/global): do not append `bin` to `DENO_INSTALL_ROOT` when ends with
+  `bin` (#26446)
+- fix(npm): panic when using tag with patched package (#28900)
+- fix(task): document source of tasks, fix punctuation (#28413)
+- fix: better cjs vs esm module detection and upgrade swc (#28810)
+- fix: remove unnecessary whitespace in prompt function (#28868)
+- fix: resolve shebang parse error in deno doc --test (#26079)
+- perf(npm): don't try to cache npm packages we've already cached (#28938)
+
+### 2.2.10 / 2025.04.14
+
+- fix: enable explicit resource management for JavaScript (#28119)
+- feat(unstable): support linux vsock (#28725)
+- fix(ext/node): add basic support of suite/describe in node:test (#28847)
+- fix(ext/node): export test as property of default export (#28881)
+- fix(ext/node): querystring fallback to default decoder (#28838)
+- fix(ext/node): upgrade `node:stream` (#28855)
+- fix(fmt): upgrade malva to 0.11.2 (#28871)
+- fix(install): read extra package info from node_modules and fallback to
+  registry (#28893)
+- fix(unstable): vsock nits (#28851)
+
 ### 2.2.9 / 2025.04.11
 
 - fix(build): upgrade libffi to 4.0.0 (#28816)
