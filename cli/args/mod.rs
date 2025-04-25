@@ -66,12 +66,6 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
-
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";

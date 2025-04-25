@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.12 / 2025.04.24
+
+- fix: correctly style rust logs with colors (#29040)
+- fix(compile): temporary fallback for reading resource data from file to fix
+  `deno compile` on Windows (#29010, #29011, #28986, #29005, #28997, #29024,
+  #29039)
+
 ### 2.2.11 / 2025.04.18
 
 - fix(ext/node): Fix `Writable.toWeb()` (#28914)

@@ -488,11 +488,11 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
+  init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
-  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {

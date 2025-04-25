@@ -704,7 +704,6 @@ impl<'a> GraphDisplayContext<'a> {
             }
           }
           Jsr(_) => "(loading error)",
-          NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",
           TooManyRedirects => "(too many redirects error)",
         };

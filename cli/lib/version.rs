@@ -24,6 +24,8 @@ const IS_RC: bool = option_env!("DENO_RC").is_some();
 pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
   std::sync::LazyLock::new(|| {
     let release_channel = libsui::find_section("denover")
+      .ok()
+      .flatten()
       .and_then(|buf| std::str::from_utf8(buf).ok())
       .and_then(|str_| ReleaseChannel::deserialize(str_).ok())
       .unwrap_or({
