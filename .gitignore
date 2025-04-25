@@ -4,6 +4,7 @@
 .env
 
 /.cargo_home/
+/.direnv
 /.idea/
 /.vs/
 /.vscode/
