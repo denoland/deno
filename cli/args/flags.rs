@@ -1569,7 +1569,7 @@ where
     // causing strings with common prefix >=10 to be considered perfectly similar
     .map(|pv| (strsim::jaro(v, pv.as_ref()), pv.as_ref().to_owned()))
     // Confidence of 0.7 so that bar -> baz is suggested
-    .filter(|(confidence, _)| *confidence > 0.7)
+    .filter(|(confidence, _)| *confidence > 0.8)
     .collect();
   candidates
     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));

@@ -246,7 +246,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 cmd.build();
                 let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
                 let suggestions = args::did_you_mean(&run_flags.script, command_names);
-                if !suggestions.is_empty() {
+                if !suggestions.is_empty() && !run_flags.script.contains('.') {
                   let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
