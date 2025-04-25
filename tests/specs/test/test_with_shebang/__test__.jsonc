@@ -1,0 +1,5 @@
+{
+  "args": "test --doc main.ts markdown.md",
+  "exitCode": 0,
+  "output": "main.out"
+}

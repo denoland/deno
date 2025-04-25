@@ -170,7 +170,7 @@ pub async fn run(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = factory.root_permissions_container()?;
-  let npm_installer = factory.npm_installer_if_managed()?.cloned();
+  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
   let tsconfig_resolver = factory.tsconfig_resolver()?;
@@ -200,6 +200,7 @@ pub async fn run(
     worker,
     main_module.clone(),
     test_event_receiver,
+    Arc::new(factory.lockfile_npm_package_info_provider()?),
   )
   .await?;
   let rustyline_channel = rustyline_channel();

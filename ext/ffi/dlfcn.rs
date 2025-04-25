@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -49,6 +50,9 @@ pub enum DlfcnError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -151,16 +155,23 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  let path = {
+  let (path, denort_helper) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_with_path(&args.path)?
+    (
+      permissions.check_partial_with_path(&args.path)?,
+      state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
+    )
   };
 
-  let lib = Library::open(&path).map_err(|e| {
+  let real_path = match denort_helper {
+    Some(loader) => loader.load_and_resolve_path(&path)?,
+    None => Cow::Borrowed(path.as_ref()),
+  };
+  let lib = Library::open(real_path.as_ref()).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
-      format_error(e, &path),
+      format_error(e, &real_path),
     ))
   })?;
   let mut resource = DynamicLibraryResource {

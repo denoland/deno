@@ -950,6 +950,7 @@ pub async fn run(
     inspect_wait: false,
     strace_ops: None,
     is_inspecting: false,
+    is_standalone: true,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
@@ -971,6 +972,7 @@ pub async fn run(
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     code_cache.map(|c| c.for_deno_core()),
+    Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
     None,

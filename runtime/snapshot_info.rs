@@ -150,6 +150,15 @@ impl deno_net::NetPermissions for Permissions {
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_vsock(
+    &mut self,
+    _cid: u32,
+    _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_fs::FsPermissions for Permissions {
@@ -283,7 +292,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
-    deno_ffi::deno_ffi::init_ops::<Permissions>(),
+    deno_ffi::deno_ffi::init_ops::<Permissions>(None),
     deno_net::deno_net::init_ops::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops(),
     deno_kv::deno_kv::init_ops(
@@ -291,7 +300,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       deno_kv::KvConfig::builder().build(),
     ),
     deno_cron::deno_cron::init_ops(deno_cron::local::LocalCronHandler::new()),
-    deno_napi::deno_napi::init_ops::<Permissions>(),
+    deno_napi::deno_napi::init_ops::<Permissions>(None),
     deno_http::deno_http::init_ops(deno_http::Options::default()),
     deno_io::deno_io::init_ops(Some(Default::default())),
     deno_fs::deno_fs::init_ops::<Permissions>(fs.clone()),

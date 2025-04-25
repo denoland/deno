@@ -50,7 +50,6 @@ use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 pub use crate::args::NpmCachingStrategy;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -429,7 +428,7 @@ impl ModuleGraphCreator {
         specifier: &deno_ast::ModuleSpecifier,
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
-        if specifier.scheme() == "bun" {
+        if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
           return Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
@@ -903,7 +902,6 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(self.npm_graph_resolver.as_ref()),
         workspace_fast_check: options.workspace_fast_check,
       },
     );
@@ -1001,11 +999,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let maybe_hint = if let Some(specifier) =
     get_resolution_error_bare_node_specifier(error)
   {
-    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
-    } else {
-      None
-    }
+    Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(

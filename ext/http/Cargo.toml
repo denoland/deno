@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.197.0"
+version = "0.201.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -42,6 +42,7 @@ hyper.workspace = true
 hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 itertools.workspace = true
+log.workspace = true
 memchr.workspace = true
 mime.workspace = true
 once_cell.workspace = true

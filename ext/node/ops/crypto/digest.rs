@@ -200,8 +200,12 @@ impl Hash {
     output_length: Option<usize>,
   ) -> Result<Self, HashError> {
     match algorithm_name {
-      "shake128" => return Ok(Shake128(Default::default(), output_length)),
-      "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "shake128" | "shake-128" => {
+        return Ok(Shake128(Default::default(), output_length))
+      }
+      "shake256" | "shake-256" => {
+        return Ok(Shake256(Default::default(), output_length))
+      }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
         if let Some(length) = output_length {

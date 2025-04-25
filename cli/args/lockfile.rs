@@ -12,6 +12,7 @@ use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -117,11 +118,12 @@ impl CliLockfile {
     Ok(())
   }
 
-  pub fn discover(
+  pub async fn discover(
     sys: &CliSys,
     flags: &Flags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
+    api: &(dyn NpmPackageInfoProvider + Send + Sync),
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -148,7 +150,6 @@ impl CliLockfile {
         })
         .collect()
     }
-
     fn deno_json_deps(
       maybe_deno_json: Option<&ConfigFile>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -156,7 +157,6 @@ impl CliLockfile {
         .map(crate::args::deno_json::deno_json_deps)
         .unwrap_or_default()
     }
-
     if flags.no_lock
       || matches!(
         flags.subcommand,
@@ -166,7 +166,6 @@ impl CliLockfile {
     {
       return Ok(None);
     }
-
     let file_path = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match workspace.resolve_lockfile_path()? {
@@ -174,9 +173,7 @@ impl CliLockfile {
         None => return Ok(None),
       },
     };
-
     let root_folder = workspace.root_folder_configs();
-    // CLI flag takes precedence over the config
     let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
       root_folder
         .deno_json
@@ -184,7 +181,6 @@ impl CliLockfile {
         .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
         .unwrap_or(false)
     });
-
     let lockfile = Self::read_from_path(
       sys,
       CliLockfileReadFromPathOptions {
@@ -192,9 +188,9 @@ impl CliLockfile {
         frozen,
         skip_write: flags.internal.lockfile_skip_write,
       },
-    )?;
-
-    // initialize the lockfile with the workspace's configuration
+      api,
+    )
+    .await?;
     let root_url = workspace.root_dir();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
@@ -291,20 +287,26 @@ impl CliLockfile {
       no_config: flags.config_flag == super::ConfigFlag::Disabled,
       config,
     });
-
     Ok(Some(lockfile))
   }
 
-  pub fn read_from_path(
+  pub async fn read_from_path(
     sys: &CliSys,
     opts: CliLockfileReadFromPathOptions,
+    api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
-      Ok(text) => Lockfile::new(deno_lockfile::NewLockfileOptions {
-        file_path: opts.file_path,
-        content: &text,
-        overwrite: false,
-      })?,
+      Ok(text) => {
+        Lockfile::new(
+          deno_lockfile::NewLockfileOptions {
+            file_path: opts.file_path,
+            content: &text,
+            overwrite: false,
+          },
+          api,
+        )
+        .await?
+      }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
         Lockfile::new_empty(opts.file_path, false)
       }

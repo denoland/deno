@@ -184,7 +184,8 @@ pub struct WriteBinOptions<'a> {
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
-  pub include_files: &'a [ModuleSpecifier],
+  pub include_paths: &'a [ModuleSpecifier],
+  pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
 
@@ -266,6 +267,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -285,6 +287,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved denort: {}", binary_path.display());
 
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
@@ -365,7 +368,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       display_output_filename,
       graph,
       entrypoint,
-      include_files,
+      include_paths,
+      exclude_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -376,6 +380,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
+    for path in exclude_paths {
+      vfs.add_exclude_path(path);
+    }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         let snapshot = managed
@@ -393,10 +400,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         None
       }
     };
-    for include_file in include_files {
+    for include_file in include_paths {
       let path = deno_path_util::url_to_file_path(include_file)?;
       vfs
-        .add_file_at_path(&path)
+        .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();

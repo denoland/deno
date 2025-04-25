@@ -30,6 +30,7 @@ path = "node_compat/test_runner.rs"
 
 [dev-dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_bench_util.workspace = true
@@ -60,6 +61,7 @@ rustls-tokio-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
+tempfile.workspace = true
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true

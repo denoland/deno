@@ -4,15 +4,17 @@ changes:
  4 | -    "npm:@denotest/add@1": "1.0.0"
  4 | +    "npm:@denotest/add@1": "1.0.0",
  5 | +    "npm:@denotest/bin@0.7.0": "0.7.0"
- 9 | -    }
-10 | +    },
-11 | +    "@denotest/bin@0.7.0": {
-12 | +      "integrity": "[WILDLINE]"
-13 | +    }
-14 | +  },
-15 | +  "workspace": {
-16 | +    "packageJson": {
-17 | +      "dependencies": [
-18 | +        "npm:@denotest/bin@0.7.0"
-19 | +      ]
-20 | +    }
+10 | -    }
+11 | +    },
+12 | +    "@denotest/bin@0.7.0": {
+13 | +      "integrity": "sha512-RAE7sQrdTUuV4KdDAshObhsULXb2QjTjfRg/KbzE9asZV8dUmwbPZy2kfmE2CunPo8+6DvwPklXFJ4PQi0Usuw==",
+14 | +      "hasBin": true,
+15 | +      "tarball": "http://localhost:4260/@denotest/bin/0.7.0.tgz"
+16 | +    }
+17 | +  },
+18 | +  "workspace": {
+19 | +    "packageJson": {
+20 | +      "dependencies": [
+21 | +        "npm:@denotest/bin@0.7.0"
+22 | +      ]
+23 | +    }

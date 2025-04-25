@@ -3,6 +3,7 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt;
 use std::io::Read;
@@ -449,6 +450,7 @@ pub struct VfsBuilder {
   /// The minimum root directory that should be included in the VFS.
   min_root_dir: Option<WindowsSystemRootablePath>,
   case_sensitivity: FileSystemCaseSensitivity,
+  exclude_paths: HashSet<PathBuf>,
 }
 
 impl Default for VfsBuilder {
@@ -476,6 +478,7 @@ impl VfsBuilder {
       } else {
         FileSystemCaseSensitivity::Sensitive
       },
+      exclude_paths: Default::default(),
     }
   }
 
@@ -489,6 +492,10 @@ impl VfsBuilder {
 
   pub fn file_bytes(&self, offset: OffsetWithLength) -> Option<&[u8]> {
     self.files.file_bytes(offset)
+  }
+
+  pub fn add_exclude_path(&mut self, path: PathBuf) {
+    self.exclude_paths.insert(path);
   }
 
   /// Add a directory that might be the minimum root directory
@@ -539,6 +546,9 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     self.add_dir_raw(path);
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
@@ -552,34 +562,55 @@ impl VfsBuilder {
     for entry in dir_entries {
       let file_type = entry.file_type()?;
       let path = entry.path();
+      self.add_path_with_file_type(&path, file_type)?;
+    }
 
-      if file_type.is_dir() {
-        self.add_dir_recursive_not_symlink(&path)?;
-      } else if file_type.is_file() {
-        self.add_file_at_path_not_symlink(&path)?;
-      } else if file_type.is_symlink() {
-        match self.add_symlink(&path) {
-          Ok(target) => match target {
-            SymlinkTarget::File(target) => {
-              self.add_file_at_path_not_symlink(&target)?
-            }
-            SymlinkTarget::Dir(target) => {
-              self.add_dir_recursive_not_symlink(&target)?;
-            }
-          },
-          Err(err) => {
-            log::warn!(
+    Ok(())
+  }
+
+  pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let file_type = path.metadata()?.file_type();
+    self.add_path_with_file_type(path, file_type)
+  }
+
+  fn add_path_with_file_type(
+    &mut self,
+    path: &Path,
+    file_type: std::fs::FileType,
+  ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
+    if file_type.is_dir() {
+      self.add_dir_recursive_not_symlink(path)
+    } else if file_type.is_file() {
+      self.add_file_at_path_not_symlink(path)
+    } else if file_type.is_symlink() {
+      match self.add_symlink(path) {
+        Ok(target) => match target {
+          SymlinkTarget::File(target) => {
+            self.add_file_at_path_not_symlink(&target)
+          }
+          SymlinkTarget::Dir(target) => {
+            self.add_dir_recursive_not_symlink(&target)
+          }
+        },
+        Err(err) => {
+          log::warn!(
             "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
             colors::yellow("Warning"),
             path.display(),
             err
           );
-          }
+          Ok(())
         }
       }
+    } else {
+      // ignore
+      Ok(())
     }
-
-    Ok(())
   }
 
   fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {
@@ -644,6 +675,9 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
     self.add_file_with_data(
       path,
@@ -661,6 +695,9 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
     self.add_file_with_data_raw(path, file_bytes, mtime)
   }
