@@ -1909,6 +1909,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_features"
+version = "0.0.0"
+dependencies = [
+ "deno_core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deno_fetch"
 version = "0.227.0"
 dependencies = [
@@ -2562,6 +2571,7 @@ dependencies = [
  "deno_cron",
  "deno_crypto",
  "deno_error",
+ "deno_features",
  "deno_fetch",
  "deno_ffi",
  "deno_fs",

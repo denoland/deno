@@ -96,8 +96,10 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   let mut flags = Vec::with_capacity(options.unstable_features.len());
-  for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-    if options.unstable_features.contains(&granular_flag.id) {
+  for unstable_feature in &options.unstable_features {
+    if let Some(granular_flag) =
+      deno_features::UNSTABLE_FEATURES.get((*unstable_feature) as usize)
+    {
       flags.push(format!("--unstable-{}", granular_flag.name));
     }
   }
