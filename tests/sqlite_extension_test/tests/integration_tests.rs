@@ -35,10 +35,7 @@ fn sqlite_extension_test() {
   build_extension();
 
   let extension_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let extension_test_file = extension_dir
-    .join("..")
-    .join("unit_node")
-    .join("sqlite_extension_test.ts");
+  let extension_test_file = extension_dir.join("sqlite_extension_test.ts");
 
   let output = deno_cmd()
     .arg("test")
