@@ -58,6 +58,7 @@ import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
+import { headerListFromHeaders } from "ext:deno_fetch/20_headers.js";
 import {
   abortRequest,
   fromInnerRequest,
@@ -500,8 +501,15 @@ function fastSyncResponseOrStream(
     return;
   }
 
-  const stream = respBody.streamOrStatic;
-  const body = stream.body;
+  let stream;
+  let body;
+  if (respBody.streamOrStatic) {
+    stream = respBody.streamOrStatic;
+    body = stream.body;
+  } else {
+    stream = respBody;
+    body = respBody;
+  }
   if (body !== undefined) {
     // We ensure the response has not been consumed yet in the caller of this
     // function.
@@ -632,8 +640,19 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    const status = inner.status;
-    const headers = inner.headerList;
+    let status;
+    let headers;
+    let body;
+    if (inner) {
+      status = inner.status;
+      headers = inner.headerList;
+      body = inner.body;
+    } else {
+      status = response.status;
+      headers = headerListFromHeaders(response.headers);
+      body = response.body;
+    }
+
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
@@ -642,7 +661,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    fastSyncResponseOrStream(req, body, status, innerRequest);
   };
 
   if (TRACING_ENABLED) {
