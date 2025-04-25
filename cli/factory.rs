@@ -1142,9 +1142,9 @@ impl CliFactory {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
-      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&granular_flag.name.to_string()) {
-          checker.enable_feature(granular_flag.name);
+      for feature in crate::UNSTABLE_FEATURES {
+        if unstable_features.contains(&feature.name.to_string()) {
+          checker.enable_feature(feature.name);
         }
       }
 
