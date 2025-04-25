@@ -58,6 +58,7 @@ use super::resolver::SingleReferrerGraphResolver;
 use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
+use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
@@ -73,6 +74,7 @@ pub struct OpenDocument {
   pub line_index: Arc<LineIndex>,
   pub version: i32,
   pub language_id: LanguageId,
+  pub notebook_uri: Option<Arc<Uri>>,
   pub fs_version_on_open: Option<String>,
 }
 
@@ -82,6 +84,7 @@ impl OpenDocument {
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
+    notebook_uri: Option<Arc<Uri>>,
   ) -> Self {
     let line_index = Arc::new(LineIndex::new(&text));
     let fs_version_on_open = uri_to_file_path(&uri)
@@ -93,6 +96,7 @@ impl OpenDocument {
       line_index,
       version,
       language_id,
+      notebook_uri,
       fs_version_on_open,
     }
   }
@@ -130,6 +134,7 @@ impl OpenDocument {
       line_index,
       version,
       language_id: self.language_id,
+      notebook_uri: self.notebook_uri.clone(),
       fs_version_on_open: self.fs_version_on_open.clone(),
     })
   }
@@ -480,6 +485,7 @@ impl Document {
 pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
+  cells_by_notebook_uri: BTreeMap<Arc<Uri>, Vec<Arc<Uri>>>,
   file_like_uris_by_url: Arc<DashMap<Url, Arc<Uri>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
   /// maps. We want to be able to discard old documents from here but keep these
@@ -489,16 +495,22 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn open(
+  fn open(
     &mut self,
     uri: Uri,
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
+    notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
     self.server.remove(&uri);
-    let doc =
-      Arc::new(OpenDocument::new(uri.clone(), version, language_id, text));
+    let doc = Arc::new(OpenDocument::new(
+      uri.clone(),
+      version,
+      language_id,
+      text,
+      notebook_uri,
+    ));
     self.open.insert(uri, doc.clone());
     if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
       let url = uri_to_url(&doc.uri);
@@ -509,7 +521,7 @@ impl Documents {
     doc
   }
 
-  pub fn change(
+  fn change(
     &mut self,
     uri: &Uri,
     version: i32,
@@ -532,9 +544,9 @@ impl Documents {
     Ok(doc)
   }
 
-  pub fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
+  fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
     self.file_like_uris_by_url.retain(|_, u| u.as_ref() != uri);
-    self.open.shift_remove(uri).ok_or_else(|| {
+    let doc = self.open.shift_remove(uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -542,8 +554,134 @@ impl Documents {
           uri.as_str()
         ),
       )
-      .into()
-    })
+    })?;
+    Ok(doc)
+  }
+
+  fn open_notebook(
+    &mut self,
+    uri: Uri,
+    cells: Vec<lsp::TextDocumentItem>,
+  ) -> Vec<Arc<OpenDocument>> {
+    let uri = Arc::new(uri);
+    let mut documents = Vec::with_capacity(cells.len());
+    for cell in cells {
+      let language_id = cell.language_id.parse().unwrap_or_else(|err| {
+        lsp_warn!("{:#}", err);
+        LanguageId::Unknown
+      });
+      if language_id == LanguageId::Unknown {
+        lsp_warn!(
+          "Unsupported language id \"{}\" received for document \"{}\".",
+          cell.language_id,
+          cell.uri.as_str()
+        );
+      }
+      let document = self.open(
+        cell.uri.clone(),
+        cell.version,
+        language_id,
+        cell.text.into(),
+        Some(uri.clone()),
+      );
+      documents.push(document);
+    }
+    self
+      .cells_by_notebook_uri
+      .insert(uri, documents.iter().map(|d| d.uri.clone()).collect());
+    documents
+  }
+
+  pub fn change_notebook(
+    &mut self,
+    uri: &Uri,
+    structure: Option<lsp::NotebookDocumentCellChangeStructure>,
+    content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
+  ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
+    let uri = Arc::new(uri.clone());
+    let mut documents_with_change_kinds = Vec::new();
+    if let Some(structure) = structure {
+      if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
+        cells.splice(
+          structure.array.start as usize
+            ..(structure.array.start + structure.array.delete_count) as usize,
+          structure
+            .array
+            .cells
+            .into_iter()
+            .flatten()
+            .map(|c| Arc::new(c.document)),
+        );
+      }
+      for closed in structure.did_close.into_iter().flatten() {
+        let document = match self.close(&closed.uri) {
+          Ok(d) => d,
+          Err(err) => {
+            lsp_warn!("{:#}", err);
+            continue;
+          }
+        };
+        documents_with_change_kinds.push((document, ChangeKind::Closed));
+      }
+      for opened in structure.did_open.into_iter().flatten() {
+        let language_id = opened.language_id.parse().unwrap_or_else(|err| {
+          lsp_warn!("{:#}", err);
+          LanguageId::Unknown
+        });
+        if language_id == LanguageId::Unknown {
+          lsp_warn!(
+            "Unsupported language id \"{}\" received for document \"{}\".",
+            opened.language_id,
+            opened.uri.as_str()
+          );
+        }
+        let document = self.open(
+          opened.uri,
+          opened.version,
+          language_id,
+          opened.text.into(),
+          Some(uri.clone()),
+        );
+        documents_with_change_kinds.push((document, ChangeKind::Opened));
+      }
+    }
+    for changed in content.into_iter().flatten() {
+      let document = match self.change(
+        &changed.document.uri,
+        changed.document.version,
+        changed.changes,
+      ) {
+        Ok(d) => d,
+        Err(err) => {
+          lsp_warn!("{:#}", err);
+          continue;
+        }
+      };
+      documents_with_change_kinds.push((document, ChangeKind::Modified));
+    }
+    documents_with_change_kinds
+  }
+
+  pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri) else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        uri.as_str(),
+      );
+      return Default::default();
+    };
+    let mut documents = Vec::with_capacity(cell_uris.len());
+    for cell_uri in cell_uris {
+      let document = match self.close(&cell_uri) {
+        Ok(d) => d,
+        Err(err) => {
+          lsp_warn!("{:#}", err);
+          continue;
+        }
+      };
+      documents.push(document);
+    }
+    documents
   }
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
@@ -629,6 +767,10 @@ impl Documents {
     }
   }
 
+  pub fn cells_by_notebook_uri(&self) -> &BTreeMap<Arc<Uri>, Vec<Arc<Uri>>> {
+    &self.cells_by_notebook_uri
+  }
+
   pub fn open_docs(&self) -> impl Iterator<Item = &Arc<OpenDocument>> {
     self.open.values()
   }
@@ -684,6 +826,7 @@ pub struct DocumentModuleOpenData {
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
   pub open_data: Option<DocumentModuleOpenData>,
+  pub notebook_uri: Option<Arc<Uri>>,
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
@@ -718,10 +861,11 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
+    let open_document = document.open();
     let media_type = resolve_media_type(
       &specifier,
       headers.as_ref(),
-      document.open().map(|d| d.language_id),
+      open_document.map(|d| d.language_id),
     );
     let (parsed_source, maybe_module, resolution_mode) =
       if media_type_is_diagnosable(media_type) {
@@ -748,10 +892,11 @@ impl DocumentModule {
       get_maybe_test_module_fut(parsed_source.as_ref(), config);
     DocumentModule {
       uri: document.uri().clone(),
-      open_data: document.open().map(|d| DocumentModuleOpenData {
+      open_data: open_document.map(|d| DocumentModuleOpenData {
         version: d.version,
         parsed_source,
       }),
+      notebook_uri: open_document.and_then(|d| d.notebook_uri.clone()),
       script_version: document.script_version(),
       specifier,
       scope,
@@ -935,9 +1080,12 @@ impl DocumentModules {
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
+    notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
     self.dep_info_by_scope = Default::default();
-    self.documents.open(uri, version, language_id, text)
+    self
+      .documents
+      .open(uri, version, language_id, text, notebook_uri)
   }
 
   pub fn change_document(
@@ -968,11 +1116,60 @@ impl DocumentModules {
     Ok(document)
   }
 
+  pub fn open_notebook_document(
+    &mut self,
+    uri: Uri,
+    cells: Vec<lsp::TextDocumentItem>,
+  ) -> Vec<Arc<OpenDocument>> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.open_notebook(uri, cells)
+  }
+
+  pub fn change_notebook_document(
+    &mut self,
+    uri: &Uri,
+    structure: Option<lsp::NotebookDocumentCellChangeStructure>,
+    content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
+  ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.change_notebook(uri, structure, content)
+  }
+
+  pub fn close_notebook_document(
+    &mut self,
+    uri: &Uri,
+  ) -> Vec<Arc<OpenDocument>> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.close_notebook(uri)
+  }
+
   pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
     let Some(module) = self.module_for_specifier(specifier, scope) else {
       return;
     };
     self.documents.remove_server_doc(&module.uri);
+  }
+
+  fn infer_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+    if let Some(document) = document.server() {
+      match &document.kind {
+        ServerDocumentKind::Fs { .. } => {}
+        ServerDocumentKind::RemoteUrl { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::DataUrl { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
+      }
+    }
+    let uri = document.uri();
+    let url = uri_to_url(uri);
+    if url.scheme() != "file" {
+      return None;
+    }
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+      if let Some(remote_specifier) = self.cache.unvendored_specifier(&url) {
+        return Some(Arc::new(remote_specifier));
+      }
+    }
+    Some(Arc::new(url))
   }
 
   fn module_inner(
@@ -987,35 +1184,7 @@ impl DocumentModules {
     }
     let specifier = specifier
       .cloned()
-      .or_else(|| {
-        if let Some(document) = document.server() {
-          match &document.kind {
-            ServerDocumentKind::Fs { .. } => {}
-            ServerDocumentKind::RemoteUrl { url, .. } => {
-              return Some(url.clone())
-            }
-            ServerDocumentKind::DataUrl { url, .. } => {
-              return Some(url.clone())
-            }
-            ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
-          }
-        }
-        None
-      })
-      .or_else(|| {
-        let uri = document.uri();
-        let url = uri_to_url(uri);
-        if url.scheme() != "file" {
-          return None;
-        }
-        if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-          if let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
-          {
-            return Some(Arc::new(remote_specifier));
-          }
-        }
-        Some(Arc::new(url))
-      })?;
+      .or_else(|| self.infer_specifier(document))?;
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
@@ -1110,8 +1279,12 @@ impl DocumentModules {
       if modules_with_scopes.contains_key(uri) {
         continue;
       }
+      let open_document = document.open();
+      if open_document.is_some_and(|d| d.notebook_uri.is_some()) {
+        continue;
+      }
       let url = uri_to_url(uri);
-      if document.open().is_none()
+      if open_document.is_none()
         && (url.scheme() != "file"
           || !self.config.specifier_enabled(&url)
           || self.resolver.in_node_modules(&url)
@@ -1169,23 +1342,6 @@ impl DocumentModules {
     self.modules_unscoped.get(document)
   }
 
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_modules_by_scope(
-    &self,
-    document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
-    let mut result = BTreeMap::new();
-    for (scope, modules) in self.modules_by_scope.iter() {
-      if let Some(module) = modules.get(document) {
-        result.insert(Some(scope.clone()), module);
-      }
-    }
-    if let Some(module) = self.modules_unscoped.get(document) {
-      result.insert(None, module);
-    }
-    result
-  }
-
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
   pub fn inspect_or_temp_modules_by_scope(
@@ -1230,13 +1386,20 @@ impl DocumentModules {
     }
   }
 
-  fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
+  pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
       let scope = self.config.tree.scope_for_specifier(&url);
       return Some(scope);
     }
     None
+  }
+
+  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+    self
+      .inspect_primary_module(document)
+      .map(|m| m.specifier.clone())
+      .or_else(|| self.infer_specifier(document))
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1823,7 +1986,6 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => {
       let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
-      let npm_resolver = scoped_resolver.as_graph_npm_resolver();
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let config_data = scoped_resolver.as_config_data();
@@ -1852,7 +2014,6 @@ fn analyze_module(
             file_system: &deno_graph::source::NullFileSystem,
             jsr_url_provider: &CliJsrUrlProvider,
             maybe_resolver: Some(&resolver),
-            maybe_npm_resolver: Some(npm_resolver.as_ref()),
           },
         )),
         module_resolution_mode,
@@ -1891,9 +2052,6 @@ mod tests {
   use deno_config::deno_json::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryApi;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -1903,16 +2061,20 @@ mod tests {
   struct DefaultRegistry;
 
   #[async_trait::async_trait(?Send)]
-  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
-    async fn package_info(
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
       &self,
-      _name: &str,
-    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-      Ok(Arc::new(NpmPackageInfo::default()))
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
     }
   }
 
-  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
     Arc::new(DefaultRegistry)
   }
 
@@ -1945,6 +2107,7 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
+      None,
     );
     let document = document_modules
       .documents
@@ -1975,6 +2138,7 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
+      None,
     );
     document_modules
       .change_document(
@@ -2043,6 +2207,7 @@ console.log(b, "hello deno");
       1,
       LanguageId::TypeScript,
       "import {} from 'test';".into(),
+      None,
     );
 
     // set the initial import map and point to file 2
