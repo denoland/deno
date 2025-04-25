@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-import sqlite, { DatabaseSync } from "node:sqlite";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { DatabaseSync } from "node:sqlite";
+import { assertEquals, assertThrows } from "@std/assert";
 import * as path from "node:path";
 
 const extensionPath = (() => {
@@ -37,8 +37,7 @@ Deno.test({
     // skip the test if the extension is not found
     try {
       Deno.statSync(extensionPath);
-    } catch (e) {
-      console.log(`Extension not found at ${extensionPath}, skipping test`);
+    } catch {
       return;
     }
 

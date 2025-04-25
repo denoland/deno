@@ -421,7 +421,6 @@ impl DatabaseSync {
   // to be granted and allowExtension must be set to true when opening the database.
   fn load_extension(
     &self,
-    state: &mut OpState,
     #[string] path: &str,
     #[string] entry_point: Option<String>,
   ) -> Result<(), SqliteError> {

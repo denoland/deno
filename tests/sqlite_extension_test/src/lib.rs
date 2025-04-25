@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::macro_metavars_in_unsafe)]
 
 use std::os::raw::c_char;
 use std::os::raw::c_int;
@@ -27,7 +29,7 @@ unsafe extern "C" fn test_func(
   if argc != 1 {
     sqlite3_result_error(
       context,
-      b"test_func() requires exactly 1 argument\0".as_ptr() as *const c_char,
+      c"test_func() requires exactly 1 argument".as_ptr() as *const c_char,
       -1,
     );
     return;
@@ -45,9 +47,9 @@ pub unsafe extern "C" fn sqlite3_extension_init(
 ) -> c_int {
   SQLITE3_EXTENSION_INIT2!(p_api);
 
-  let rc = sqlite3_create_function_v2(
+  sqlite3_create_function_v2(
     db,
-    b"test_func\0".as_ptr() as *const c_char,
+    c"test_func".as_ptr() as *const c_char,
     1,
     SQLITE_UTF8 | SQLITE_DETERMINISTIC,
     std::ptr::null_mut(),
@@ -55,7 +57,5 @@ pub unsafe extern "C" fn sqlite3_extension_init(
     None,
     None,
     None,
-  );
-
-  rc
+  )
 }
