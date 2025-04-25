@@ -2125,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lib"
-version = "0.19.0"
+version = "2.3.0-rc.3"
 dependencies = [
  "capacity_builder",
  "deno_error",
