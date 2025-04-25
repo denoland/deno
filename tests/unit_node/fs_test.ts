@@ -295,15 +295,9 @@ Deno.test("[node/fs] statSync throws ENOENT for invalid path containing colon in
 Deno.test("[node/fs] readFile aborted with signal", async () => {
   const src = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
   await writeFile(src, "Hello");
-  const controller = new AbortController();
-  const signal = controller.signal;
+  const signal = AbortSignal.abort();
   await assertRejects(
-    async () => {
-      await Promise.all([
-        readFile(src, { signal }),
-        controller.abort(),
-      ]);
-    },
+    () => readFile(src, { signal }),
     DOMException,
     "The signal has been aborted",
   );
