@@ -16554,6 +16554,61 @@ fn lsp_npm_workspace() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28865.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_workspace_npm_reqs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+    })
+    .to_string(),
+  );
+  temp_dir.write("member/deno.json", json!({}).to_string());
+  temp_dir.write("member/mod.ts", "export { say } from \"npm:cowsay\";\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import { say } from "./member/mod.ts";
+      const foo: number = say({ text: "hello" });
+      console.log(foo);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.url()],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 2, "character": 12 },
+          "end": { "line": 2, "character": 15 },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'string' is not assignable to type 'number'.",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {

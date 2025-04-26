@@ -1390,10 +1390,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.document_modules.dep_info_by_scope();
-    self
-      .resolver
-      .set_dep_info_by_scope(&dep_info_by_scope)
-      .await;
+    self.resolver.set_dep_info_by_scope(&dep_info_by_scope);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -4584,17 +4581,13 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(dep_info) = self
-      .document_modules
-      .dep_info_by_scope()
-      .get(&scope)
-      .cloned()
-    {
+    } else {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
+      let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
       roots.extend(
-        dep_info
-          .npm_reqs
+        scoped_resolver
+          .npm_reqs()
           .iter()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );
