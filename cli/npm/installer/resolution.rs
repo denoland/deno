@@ -308,7 +308,7 @@ fn populate_lockfile_from_snapshot(
         if dist.tarball
           == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
             &crate::npm::managed::DefaultTarballUrl,
-            &pkg.id,
+            &pkg.id.nv,
           )
         {
           None

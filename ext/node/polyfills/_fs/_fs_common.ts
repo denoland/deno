@@ -86,6 +86,18 @@ export function getEncoding(
   return encoding;
 }
 
+export function getSignal(optOrCallback?: FileOptions): AbortSignal | null {
+  if (!optOrCallback || typeof optOrCallback === "function") {
+    return null;
+  }
+
+  const signal = typeof optOrCallback === "object" && optOrCallback.signal
+    ? optOrCallback.signal
+    : null;
+
+  return signal;
+}
+
 export function checkEncoding(encoding: Encodings | null): Encodings | null {
   if (!encoding) return null;
 

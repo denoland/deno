@@ -267,6 +267,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -286,6 +287,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved denort: {}", binary_path.display());
 
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))

@@ -49,7 +49,7 @@ use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -57,7 +57,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::npm::ResolveSnapshotError;
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -417,22 +416,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
-  let mut error_code = 1;
-
   if let Some(CoreError::Js(e)) =
     any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
     error_string = format_js_error(e);
-  } else if let Some(e @ ResolveSnapshotError { .. }) =
-    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
-  {
-    if let Some(e) = e.maybe_integrity_check_error() {
-      error_string = e.to_string();
-      error_code = 10;
-    }
   }
 
-  exit_with_message(&error_string, error_code);
+  exit_with_message(&error_string, 1);
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
@@ -498,11 +488,11 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
+  init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
-  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
