@@ -324,12 +324,16 @@ fn format_markdown(
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
             codeblock_config.line_width = line_width;
-            dprint_plugin_typescript::format_text_with_external_formatter(
-              &fake_filename,
-              None,
-              text.to_string(),
-              &codeblock_config,
-              create_external_formatter_for_typescript(unstable_options),
+            dprint_plugin_typescript::format_text(
+              dprint_plugin_typescript::FormatTextOptions {
+                path: &fake_filename,
+                extension: None,
+                text: text.to_string(),
+                config: &codeblock_config,
+                external_formatter: Some(
+                  &create_external_formatter_for_typescript(unstable_options),
+                ),
+              },
             )
           }
         }
@@ -458,12 +462,16 @@ pub fn format_html(
           typescript_config_builder.file_indent_level(hints.indent_level);
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
-          dprint_plugin_typescript::format_text_with_external_formatter(
-            &path,
-            None,
-            text.to_string(),
-            &typescript_config,
-            create_external_formatter_for_typescript(unstable_options),
+          dprint_plugin_typescript::format_text(
+            dprint_plugin_typescript::FormatTextOptions {
+              path: &path,
+              extension: None,
+              text: text.to_string(),
+              config: &typescript_config,
+              external_formatter: Some(
+                &create_external_formatter_for_typescript(unstable_options),
+              ),
+            },
           )
           .map(|formatted| {
             if let Some(formatted) = formatted {
@@ -530,9 +538,13 @@ pub fn format_html(
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
-) -> dprint_plugin_typescript::ExternalFormatter {
+) -> impl Fn(
+  MediaType,
+  String,
+  &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
   let unstable_sql = unstable_options.sql;
-  Box::new(move |media_type, text, config| {
+  move |media_type, text, config| {
     match media_type {
       MediaType::Css => format_embedded_css(&text, config),
       MediaType::Html => format_embedded_html(&text, config),
@@ -546,7 +558,7 @@ fn create_external_formatter_for_typescript(
       // dprint-plugin-typescript only detects css, html, and sql for now
       _ => unreachable!(),
     }
-  })
+  }
 }
 
 /// Formats embedded CSS code blocks in JavaScript and TypeScript.
@@ -731,12 +743,16 @@ pub fn format_file(
     }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text_with_external_formatter(
-        file_path,
-        Some(&ext),
-        file_text.to_string(),
-        &config,
-        create_external_formatter_for_typescript(unstable_options),
+      dprint_plugin_typescript::format_text(
+        dprint_plugin_typescript::FormatTextOptions {
+          path: file_path,
+          extension: Some(&ext),
+          text: file_text.to_string(),
+          config: &config,
+          external_formatter: Some(&create_external_formatter_for_typescript(
+            unstable_options,
+          )),
+        },
       )
     }
   }
@@ -745,10 +761,12 @@ pub fn format_file(
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
+    Some(&create_external_formatter_for_typescript(unstable_options))
   )
 }
 
