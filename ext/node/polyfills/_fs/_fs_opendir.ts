@@ -1,8 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { Buffer } from "node:buffer";
 import {
@@ -15,6 +12,11 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  StringPrototypeToString,
+} = primordials;
 
 /** These options aren't functionally used right now, as `Dir` doesn't yet support them.
  * However, these values are still validated.
@@ -38,7 +40,7 @@ export function opendir(
   callback = typeof options === "function" ? options : callback;
   _validateFunction(callback);
 
-  path = getValidatedPath(path).toString();
+  path = StringPrototypeToString(getValidatedPath(path));
 
   let err, dir;
   try {
@@ -72,7 +74,7 @@ export function opendirSync(
   path: string | Buffer | URL,
   options?: Options,
 ): Dir {
-  path = getValidatedPath(path).toString();
+  path = StringPrototypeToString(getValidatedPath(path));
 
   const { bufferSize } = getOptions(options, {
     encoding: "utf8",
