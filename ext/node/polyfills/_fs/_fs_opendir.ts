@@ -16,6 +16,7 @@ import { primordials } from "ext:core/mod.js";
 
 const {
   StringPrototypeToString,
+  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
 /** These options aren't functionally used right now, as `Dir` doesn't yet support them.
@@ -31,6 +32,16 @@ function _validateFunction(callback: unknown): asserts callback is Callback {
   validateFunction(callback, "callback");
 }
 
+function getPathString(
+  path: string | Buffer | URL,
+): string {
+  if (ObjectPrototypeIsPrototypeOf(Buffer.prototype, path)) {
+    return path.toString();
+  }
+
+  return StringPrototypeToString(path);
+}
+
 /** @link https://nodejs.org/api/fs.html#fsopendirsyncpath-options */
 export function opendir(
   path: string | Buffer | URL,
@@ -40,7 +51,7 @@ export function opendir(
   callback = typeof options === "function" ? options : callback;
   _validateFunction(callback);
 
-  path = StringPrototypeToString(getValidatedPath(path));
+  path = getPathString(getValidatedPath(path));
 
   let err, dir;
   try {
@@ -74,7 +85,7 @@ export function opendirSync(
   path: string | Buffer | URL,
   options?: Options,
 ): Dir {
-  path = StringPrototypeToString(getValidatedPath(path));
+  path = getPathString(getValidatedPath(path));
 
   const { bufferSize } = getOptions(options, {
     encoding: "utf8",
