@@ -169,7 +169,7 @@ fn json_module_check_then_error() {
 
   temp_dir.write(
     "main.ts",
-    "import test from './test.json' assert { type: 'json' }; console.log(test.foo);\n",
+    "import test from './test.json' with { type: 'json' }; console.log(test.foo);\n",
   );
   temp_dir.write("test.json", correct_code);
 
@@ -183,6 +183,7 @@ fn json_module_check_then_error() {
     .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
+
 struct TestNpmPackageInfoProvider;
 
 #[async_trait::async_trait(?Send)]

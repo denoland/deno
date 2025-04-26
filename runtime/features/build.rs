@@ -2,6 +2,8 @@
 
 #![allow(clippy::disallowed_methods)]
 
+use std::path::Path;
+
 mod data;
 mod structs;
 
@@ -81,8 +83,15 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
   js_list += "};\n";
   rs_list += "];\n";
 
-  std::fs::write(crate_dir.join("gen.js"), js_list).unwrap();
-  std::fs::write(crate_dir.join("gen.rs"), rs_list).unwrap();
+  write_if_changed(&crate_dir.join("gen.js"), &js_list);
+  write_if_changed(&crate_dir.join("gen.rs"), &rs_list);
+}
+
+fn write_if_changed(path: &Path, new_text: &str) {
+  let current_text = std::fs::read_to_string(path).unwrap_or_default();
+  if current_text != new_text {
+    std::fs::write(path, new_text).unwrap();
+  }
 }
 
 fn camel_case(name: &str) -> String {

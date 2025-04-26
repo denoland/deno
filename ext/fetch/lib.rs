@@ -12,6 +12,7 @@ use std::cmp::min;
 use std::convert::From;
 use std::future;
 use std::future::Future;
+use std::net::IpAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -317,6 +318,7 @@ pub fn create_client_from_options(
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: options.client_builder_hook,
     },
   )
@@ -883,6 +885,7 @@ pub struct CreateHttpClientArgs {
   http2: bool,
   #[serde(default)]
   allow_host: bool,
+  local_address: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -942,6 +945,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
     },
   )?;
@@ -964,6 +968,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
@@ -980,6 +985,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: None,
     }
   }
@@ -992,6 +998,8 @@ pub enum HttpClientCreateError {
   Tls(deno_tls::TlsError),
   #[error("Illegal characters in User-Agent: received {0}")]
   InvalidUserAgent(String),
+  #[error("Invalid address: {0}")]
+  InvalidAddress(String),
   #[error("invalid proxy url")]
   InvalidProxyUrl,
   #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
@@ -1033,6 +1041,12 @@ pub fn create_http_client(
   let mut http_connector =
     HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
+  if let Some(local_address) = options.local_address {
+    let local_addr = local_address
+      .parse::<IpAddr>()
+      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
+    http_connector.set_local_address(Some(local_addr));
+  }
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
