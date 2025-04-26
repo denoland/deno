@@ -36,6 +36,7 @@ function getPathString(
   path: string | Buffer | URL,
 ): string {
   if (ObjectPrototypeIsPrototypeOf(Buffer.prototype, path)) {
+    // deno-lint-ignore prefer-primordials
     return path.toString();
   }
 
