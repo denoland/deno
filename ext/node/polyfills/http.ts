@@ -1836,6 +1836,10 @@ export class IncomingMessageForServer extends NodeReadable {
     return this.#headers;
   }
 
+  set headers(val) {
+    this.#headers = val;
+  }
+
   get rawHeaders() {
     const entries = headersEntries(this[kRawHeaders]);
     const out = new Array(entries.length * 2);
@@ -1844,10 +1848,6 @@ export class IncomingMessageForServer extends NodeReadable {
       out[i * 2 + 1] = entries[i][1];
     }
     return out;
-  }
-
-  set headers(val) {
-    this.#headers = val;
   }
 
   // connection is deprecated, but still tested in unit test.
