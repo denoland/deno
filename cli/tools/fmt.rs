@@ -766,7 +766,7 @@ pub fn format_parsed_source(
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(unstable_options))
+    Some(&create_external_formatter_for_typescript(unstable_options)),
   )
 }
 
