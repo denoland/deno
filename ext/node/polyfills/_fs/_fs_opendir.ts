@@ -16,7 +16,6 @@ import { primordials } from "ext:core/mod.js";
 
 const {
   StringPrototypeToString,
-  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
 /** These options aren't functionally used right now, as `Dir` doesn't yet support them.
@@ -35,7 +34,7 @@ function _validateFunction(callback: unknown): asserts callback is Callback {
 function getPathString(
   path: string | Buffer | URL,
 ): string {
-  if (ObjectPrototypeIsPrototypeOf(Buffer.prototype, path)) {
+  if (Buffer.isBuffer(path)) {
     // deno-lint-ignore prefer-primordials
     return path.toString();
   }
