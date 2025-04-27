@@ -21,6 +21,6 @@ Deno.test("[node/assert] deepStrictEqual(0, -0)", () => {
   assert.throws(
     () => {
       assert.deepStrictEqual(0, -0);
-    }
+    },
   );
 });
