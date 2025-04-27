@@ -546,6 +546,9 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     self.add_dir_raw(path);
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
@@ -577,6 +580,9 @@ impl VfsBuilder {
     path: &Path,
     file_type: std::fs::FileType,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     if file_type.is_dir() {
       self.add_dir_recursive_not_symlink(path)
     } else if file_type.is_file() {

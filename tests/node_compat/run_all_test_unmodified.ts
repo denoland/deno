@@ -9,6 +9,12 @@ import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
+import {
+  parseFlags,
+  RUN_ARGS,
+  TEST_ARGS,
+  usesNodeTestModule,
+} from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
@@ -223,20 +229,41 @@ type ErrorUnexpected = {
   message: string;
 };
 
+function getV8Flags(source: string): string[] {
+  const v8Flags = [] as string[];
+  const flags = parseFlags(source);
+  flags.forEach((flag) => {
+    switch (flag) {
+      case "--expose_externalize_string":
+        v8Flags.push("--expose-externalize-string");
+        break;
+      case "--expose-gc":
+        v8Flags.push("--expose-gc");
+        break;
+      default:
+        break;
+    }
+  });
+  return v8Flags;
+}
+
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
  * @param testPath Relative path to the test file
  */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
+  let cmd: Deno.ChildProcess | undefined;
+  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
-    const cmd = new Deno.Command(Deno.execPath(), {
+    const source = await Deno.readTextFile(testPath_);
+    const usesNodeTest = usesNodeTestModule(source);
+    const v8Flags = getV8Flags(source);
+    cmd = new Deno.Command(Deno.execPath(), {
       args: [
-        "-A",
-        "--quiet",
-        "--unstable-bare-node-builtins",
-        "--unstable-node-globals",
-        "tests/node_compat/runner/suite/test/" + testPath,
+        ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
+        ...(v8Flags.length > 0 ? ["--v8-flags=" + v8Flags.join(",")] : []),
+        testPath_,
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
@@ -245,9 +272,8 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       },
       stdout: "piped",
       stderr: "piped",
-      signal: AbortSignal.timeout(TIMEOUT),
-    });
-    const result = await deadline(cmd.output(), TIMEOUT + 1000);
+    }).spawn();
+    const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
       return [true];
     } else {
@@ -258,6 +284,11 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
+      try {
+        cmd?.kill();
+      } catch {
+        // ignore
+      }
       return [false, { timeout: TIMEOUT }];
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)

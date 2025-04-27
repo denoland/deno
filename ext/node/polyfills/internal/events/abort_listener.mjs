@@ -41,4 +41,6 @@ function addAbortListener(signal, listener) {
   };
 }
 
+export default { addAbortListener };
+
 export { addAbortListener };

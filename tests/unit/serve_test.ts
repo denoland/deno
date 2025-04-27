@@ -948,7 +948,7 @@ function createUrlTest(
   name: string,
   methodAndPath: string,
   host: string | null,
-  expected: string,
+  expected: string | number,
 ) {
   Deno.test(`httpServerUrl${name}`, async () => {
     const listeningDeferred = Promise.withResolvers<number>();
@@ -978,11 +978,19 @@ function createUrlTest(
     assertEquals(body.length, writeResult);
 
     try {
-      const expectedResult = expected.replace("HOST", "localhost").replace(
-        "PORT",
-        `${port}`,
-      );
-      assertEquals(await urlDeferred.promise, expectedResult);
+      if (typeof expected === "number") {
+        const buf = new Uint8Array(128);
+        const n = await conn.read(buf);
+        assert(n != null);
+        const response = new TextDecoder().decode(buf.subarray(0, n));
+        assert(response.startsWith(`HTTP/1.1 ${expected}`));
+      } else {
+        const expectedResult = expected.replace("HOST", "localhost").replace(
+          "PORT",
+          `${port}`,
+        );
+        assertEquals(await urlDeferred.promise, expectedResult);
+      }
     } finally {
       ac.abort();
       await server.finished;
@@ -1029,22 +1037,27 @@ createUrlTest(
   "http://localhost:1234/path",
 );
 
-createUrlTest("WithAsterisk", "OPTIONS *", null, "*");
+createUrlTest("WithAsterisk", "OPTIONS *", null, "http://localhost:PORT/*");
 createUrlTest(
   "WithAuthorityForm",
   "CONNECT deno.land:80",
   null,
-  "deno.land:80",
+  "http://deno.land:80",
 );
 
-// TODO(mmastrac): These should probably be 400 errors
-createUrlTest("WithInvalidAsterisk", "GET *", null, "*");
-createUrlTest("WithInvalidNakedPath", "GET path", null, "path");
+createUrlTest("WithInvalidAsterisk", "GET *", null, 400);
+createUrlTest("WithInvalidNakedPath", "GET path", null, 400);
 createUrlTest(
   "WithInvalidNakedAuthority",
   "GET deno.land:1234",
   null,
-  "deno.land:1234",
+  400,
+);
+createUrlTest(
+  "WithInvalidConnectAuthority",
+  "CONNECT /path",
+  null,
+  400,
 );
 
 Deno.test(
@@ -4040,6 +4053,58 @@ Deno.test(
       "hello world!",
       await curlRequest(["--unix-socket", filePath, "http://localhost"]),
     );
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockSocket() {
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const ac = new AbortController();
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8000,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr.transport, "vsock");
+        assertEquals(remoteAddr.cid, 1);
+        assertEquals(remoteAddr.port, conn.localAddr.port);
+        return new Response("hello world!");
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8000);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8000,
+    });
+    await conn.write(
+      new TextEncoder().encode("GET / HTTP/1.1\r\nhost: example.com\r\n\r\n"),
+    );
+    const data = new Uint8Array(512);
+    const n = await conn.read(data);
+    const body = new TextDecoder().decode(data.subarray(0, n!));
+
+    assertEquals(
+      "hello world!",
+      body.split("\r\n").at(-1),
+    );
+
+    await conn.close();
     ac.abort();
     await server.finished;
   },

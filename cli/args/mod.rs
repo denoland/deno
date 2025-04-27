@@ -66,12 +66,6 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
-
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";
@@ -838,7 +832,7 @@ impl CliOptions {
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -1089,10 +1083,6 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
-  pub fn unstable_lockfile_v5(&self) -> bool {
-    unstable_lockfile_v5(&self.flags, self.workspace())
-  }
-
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1126,21 +1116,10 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
         .iter()
-        .map(|granular_flag| granular_flag.name)
-        .chain([
-          "byonm",
-          "bare-node-builtins",
-          "detect-cjs",
-          "fmt-component",
-          "fmt-sql",
-          "lazy-dynamic-imports",
-          "npm-lazy-caching",
-          "npm-patch",
-          "sloppy-imports",
-          "lockfile-v5",
-        ])
+        .map(|feature| feature.name)
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
@@ -1225,19 +1204,20 @@ impl CliOptions {
   }
 
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
-    if self.flags.unstable_config.npm_lazy_caching {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+      )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      NpmCachingStrategy::Manual
+    } else if self.flags.unstable_config.npm_lazy_caching {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager
     }
   }
-}
-
-pub(crate) fn unstable_lockfile_v5(
-  flags: &Flags,
-  workspace: &Workspace,
-) -> bool {
-  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(

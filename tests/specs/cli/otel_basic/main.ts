@@ -45,14 +45,44 @@ const server = Deno.serve(
           data.metrics.sort((a, b) => a.name.localeCompare(b.name));
           for (const metric of data.metrics) {
             if ("histogram" in metric) {
+              metric.histogram.dataPoints.sort((a, b) => {
+                const aKey = a.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                const bKey = b.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                return aKey.localeCompare(bKey);
+              });
+
               for (const dataPoint of metric.histogram.dataPoints) {
                 dataPoint.attributes.sort((a, b) => {
                   return a.key.localeCompare(b.key);
                 });
               }
             }
-          }
+            if ("sum" in metric) {
+              metric.sum.dataPoints.sort((a, b) => {
+                const aKey = a.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                const bKey = b.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                return aKey.localeCompare(bKey);
+              });
 
+              for (const dataPoint of metric.sum.dataPoints) {
+                dataPoint.attributes.sort((a, b) => {
+                  return a.key.localeCompare(b.key);
+                });
+              }
+            }
+          }
           console.log(JSON.stringify(data, null, 2));
         });
     },

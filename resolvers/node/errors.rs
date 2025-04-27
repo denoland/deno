@@ -27,6 +27,7 @@ pub enum NodeJsErrorCode {
   ERR_UNSUPPORTED_DIR_IMPORT,
   ERR_UNSUPPORTED_ESM_URL_SCHEME,
   ERR_INVALID_FILE_URL_PATH,
+  ERR_UNKNOWN_BUILTIN_MODULE,
   /// Deno specific since Node doesn't support TypeScript.
   ERR_TYPES_NOT_FOUND,
 }
@@ -52,6 +53,7 @@ impl NodeJsErrorCode {
       ERR_UNSUPPORTED_ESM_URL_SCHEME => "ERR_UNSUPPORTED_ESM_URL_SCHEME",
       ERR_TYPES_NOT_FOUND => "ERR_TYPES_NOT_FOUND",
       ERR_INVALID_FILE_URL_PATH => "ERR_INVALID_FILE_URL_PATH",
+      ERR_UNKNOWN_BUILTIN_MODULE => "ERR_UNKNOWN_BUILTIN_MODULE",
     }
   }
 }
@@ -243,6 +245,7 @@ impl PackageSubpathResolveErrorKind {
             | PackageTargetResolveErrorKind::InvalidPackageTarget(_)
             | PackageTargetResolveErrorKind::InvalidModuleSpecifier(_)
             | PackageTargetResolveErrorKind::PackageResolve(_)
+            | PackageTargetResolveErrorKind::UnknownBuiltInNodeModule(_)
             | PackageTargetResolveErrorKind::UrlToFilePath(_) => None,
           }
         }
@@ -300,6 +303,7 @@ impl NodeJsErrorCoded for PackageTargetResolveError {
       PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
       PackageTargetResolveErrorKind::PackageResolve(e) => e.code(),
       PackageTargetResolveErrorKind::TypesNotFound(e) => e.code(),
+      PackageTargetResolveErrorKind::UnknownBuiltInNodeModule(e) => e.code(),
       PackageTargetResolveErrorKind::UrlToFilePath(_) => {
         NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       }
@@ -327,6 +331,9 @@ pub enum PackageTargetResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   TypesNotFound(#[from] TypesNotFoundError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UnknownBuiltInNodeModule(#[from] UnknownBuiltInNodeModuleError),
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
@@ -583,6 +590,9 @@ pub enum NodeResolveErrorKind {
   TypesNotFound(#[from] TypesNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
+  UnknownBuiltInNodeModule(#[from] UnknownBuiltInNodeModuleError),
+  #[class(inherit)]
+  #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
@@ -601,6 +611,7 @@ impl NodeResolveErrorKind {
       | NodeResolveErrorKind::FinalizeResolution(_)
       | NodeResolveErrorKind::RelativeJoin(_)
       | NodeResolveErrorKind::PathToUrl(_)
+      | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
       | NodeResolveErrorKind::UrlToFilePath(_) => None,
     }
   }
@@ -829,6 +840,20 @@ pub enum ResolveBinaryCommandsError {
   #[class(generic)]
   #[error("'{}' did not have a name", pkg_json_path.display())]
   MissingPkgJsonName { pkg_json_path: PathBuf },
+}
+
+#[derive(Error, Debug, Clone, deno_error::JsError)]
+#[class("NotFound")]
+#[error("No such built-in module: node:{module_name}")]
+pub struct UnknownBuiltInNodeModuleError {
+  /// Name of the invalid module.
+  pub module_name: String,
+}
+
+impl NodeJsErrorCoded for UnknownBuiltInNodeModuleError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+  }
 }
 
 #[cfg(test)]
