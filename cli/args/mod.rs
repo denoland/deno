@@ -66,12 +66,6 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
-
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";
@@ -1122,21 +1116,10 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
         .iter()
-        .map(|granular_flag| granular_flag.name)
-        .chain([
-          "byonm",
-          "bare-node-builtins",
-          "detect-cjs",
-          "fmt-component",
-          "fmt-sql",
-          "lazy-dynamic-imports",
-          "npm-lazy-caching",
-          "npm-patch",
-          "sloppy-imports",
-          "lockfile-v5",
-        ])
+        .map(|feature| feature.name)
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by

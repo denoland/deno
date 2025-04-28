@@ -1195,8 +1195,8 @@ pub enum DenoDiagnostic {
   NoLocal(ModuleSpecifier),
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
-  /// Invalid `node:` specifier.
-  InvalidNodeSpecifier(ModuleSpecifier),
+  /// Unknown `node:` specifier.
+  UnknownNodeSpecifier(ModuleSpecifier),
   /// Bare specifier is used for `node:` specifier
   BareNodeSpecifier(String),
 }
@@ -1235,7 +1235,7 @@ impl DenoDiagnostic {
           }
         }
       }
-      Self::InvalidNodeSpecifier(_) => "resolver-error",
+      Self::UnknownNodeSpecifier(_) => "resolver-error",
       Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
   }
@@ -1485,7 +1485,7 @@ impl DenoDiagnostic {
         graph_util::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
       )},
-      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
+      Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
       Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
@@ -1657,7 +1657,7 @@ fn diagnose_resolution(
       {
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
-            .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
+            .push(DenoDiagnostic::UnknownNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
           let mut is_mapped = false;
           if let Some(import_map) = import_map {

@@ -282,14 +282,6 @@ fn req_host<'a>(
   addr_type: NetworkStreamType,
   port: u32,
 ) -> Option<Cow<'a, str>> {
-  // Unix sockets always use the socket address
-  #[cfg(unix)]
-  if addr_type == NetworkStreamType::Unix
-    || addr_type == NetworkStreamType::Vsock
-  {
-    return None;
-  }
-
   // It is rare that an authority will be passed, but if it does, it takes priority
   if let Some(auth) = uri.authority() {
     match addr_type {
