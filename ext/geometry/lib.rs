@@ -198,11 +198,11 @@ impl DOMPointReadOnly {
     #[webidl] value: DOMMatrixInit,
   ) -> Result<DOMPointReadOnly, GeometryError> {
     let matrix = DOMMatrixReadOnly::from_matrix_inner(value)?;
-    let out = DOMPointReadOnly {
+    let ro = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
-    matrix_transform_point(&matrix, self, &out);
-    Ok(out)
+    matrix_transform_point(&matrix, self, &ro);
+    Ok(ro)
   }
 }
 

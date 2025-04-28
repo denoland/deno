@@ -7,18 +7,9 @@ import {
   op_bootstrap_user_agent,
 } from "ext:core/ops";
 const {
-  ArrayPrototypeMap,
-  ArrayPrototypeSome,
-  Float64Array,
-  Number,
-  NumberIsNaN,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
-  SafeRegExp,
-  StringPrototypeMatch,
-  StringPrototypeSplit,
   SymbolFor,
-  TypeError,
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
