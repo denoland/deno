@@ -580,18 +580,19 @@ fn remove_file(
     .with_context(|| format!("Failed to remove file: {}", path.display()))
   {
     if cfg!(windows) {
-      if path.metadata()?.is_symlink() {
-        std::fs::remove_dir(path).with_context(|| {
-          format!("Failed to remove symlink: {}", path.display())
-        })?;
-      } else {
-        return Err(e);
+      if let Ok(meta) = path.symlink_metadata() {
+        if meta.is_symlink() {
+          std::fs::remove_dir(path).with_context(|| {
+            format!("Failed to remove symlink: {}", path.display())
+          })?;
+          return Ok(());
+        }
       }
-    } else {
-      return Err(e);
     }
+    Err(e)
+  } else {
+    Ok(())
   }
-  Ok(())
 }
 
 #[cfg(test)]
