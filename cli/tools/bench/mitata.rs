@@ -110,7 +110,7 @@ pub mod cpu {
 
     sysctl.arg("-n");
     sysctl.arg("machdep.cpu.brand_string");
-    return std::str::from_utf8(
+    std::str::from_utf8(
       &sysctl
         .output()
         .map(|x| x.stdout)
@@ -118,7 +118,7 @@ pub mod cpu {
     )
     .unwrap()
     .trim()
-    .to_string();
+    .to_string()
   }
 
   pub fn windows() -> String {
@@ -128,14 +128,14 @@ pub mod cpu {
     wmi.arg("get");
     wmi.arg("name");
 
-    return match wmi.output() {
+    match wmi.output() {
       Err(_) => String::from("unknown"),
 
       Ok(x) => {
         let x = String::from_utf8_lossy(&x.stdout);
-        return x.lines().nth(1).unwrap_or("unknown").trim().to_string();
+        x.lines().nth(1).unwrap_or("unknown").trim().to_string()
       }
-    };
+    }
   }
 
   pub fn linux() -> String {

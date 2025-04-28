@@ -888,3 +888,13 @@ impl GPUDeviceLostInfo {
     "device was lost"
   }
 }
+
+#[op2(fast)]
+pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_start_capture(device.id);
+}
+
+#[op2(fast)]
+pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_stop_capture(device.id);
+}

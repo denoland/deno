@@ -88,6 +88,7 @@ impl GPUAdapter {
       GPUSupportedFeatures::new(scope, features)
     })
   }
+
   #[getter]
   #[global]
   fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
@@ -95,11 +96,6 @@ impl GPUAdapter {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
     })
-  }
-  #[getter]
-  fn is_fallback_adapter(&self) -> bool {
-    // TODO(lucacasonato): report correctly from wgpu
-    false
   }
 
   #[async_method(fake)]
@@ -474,5 +470,11 @@ impl GPUAdapterInfo {
   #[getter]
   fn subgroup_max_size(&self) -> u32 {
     self.subgroup_max_size
+  }
+
+  #[getter]
+  fn is_fallback_adapter(&self) -> bool {
+    // TODO(lucacasonato): report correctly from wgpu
+    false
   }
 }

@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/say-hello@*": "1.0.0"
+  },
+  "npm": {
+    "@denotest/say-hello@1.0.0": {
+      "integrity": "sha512-hgZvkHYIZK+rZP7SzHh5ga5HChPhQUzTs56XZT1v23oE1ZZCTgb3kW38BcBQud8SNfbQCIvoUdbcjjl02vzFfw==",
+      "hasBin": true,
+      "tarball": "http://localhost:4260/@denotest/say-hello/1.0.0.tgz"
+    }
+  }
+}

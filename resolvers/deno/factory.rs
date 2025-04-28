@@ -23,9 +23,9 @@ use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
+use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonResolverRc;
@@ -559,12 +559,14 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
 #[derive(Debug, Default)]
 pub struct ResolverFactoryOptions {
-  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
   pub npm_system_info: NpmSystemInfo,
+  pub node_resolver_options: NodeResolverOptions,
   pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
+  /// Whether to resolve bare node builtins (ex. "path" as "node:path").
+  pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
 }
 
@@ -636,6 +638,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
+            bare_node_builtins: self.bare_node_builtins()?,
             is_byonm: self.use_byonm()?,
             maybe_vendor_dir: self
               .workspace_factory
@@ -691,7 +694,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
         self.sys.clone(),
-        self.options.conditions_from_resolution_mode.clone(),
+        self.options.node_resolver_options.clone(),
       )))
     })
   }
@@ -798,11 +801,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             },
             specified_import_map,
             sloppy_imports_options: if self.options.unstable_sloppy_imports
-              || self
-                .workspace_factory
-                .workspace_directory()?
-                .workspace
-                .has_unstable("sloppy-imports")
+              || workspace.has_unstable("sloppy-imports")
             {
               SloppyImportsOptions::Enabled
             } else {
@@ -834,6 +833,17 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
+  }
+
+  pub fn bare_node_builtins(&self) -> Result<bool, anyhow::Error> {
+    Ok(
+      self.options.bare_node_builtins
+        || self
+          .workspace_factory
+          .workspace_directory()?
+          .workspace
+          .has_unstable("bare-node-builtins"),
+    )
   }
 
   pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {

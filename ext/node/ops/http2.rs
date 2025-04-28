@@ -3,12 +3,12 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::poll_fn;
 use std::rc::Rc;
 use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::error::ResourceError;
-use deno_core::futures::future::poll_fn;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;

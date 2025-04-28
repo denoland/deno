@@ -386,6 +386,7 @@ fn should_run_step(step: &StepMetaData) -> bool {
       "unix" => cfg!(unix),
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
+      "notCI" => std::env::var_os("CI").is_none(),
       value => panic!("Unknown if condition: {}", value),
     }
   } else {
@@ -441,6 +442,10 @@ fn run_step(
     let test_output_path = cwd.join(&step.output);
     output.assert_matches_file(test_output_path);
   } else {
+    assert!(
+      step.output.len() <= 160,
+      "The \"output\" property in your __test__.jsonc file is too long. Please extract this to an `.out` file to improve readability."
+    );
     output.assert_matches_text(&step.output);
   }
   output.assert_exit_code(step.exit_code);
