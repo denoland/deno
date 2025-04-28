@@ -155,7 +155,7 @@ impl DOMPointReadOnly {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_point<'a>(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+  pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
     DOMPointReadOnly::from_point_inner(init)
   }
 
@@ -209,7 +209,7 @@ impl DOMPointReadOnly {
 
   // TODO(petamoriken): returns (DOMPointReadOnly, DOMPoint)
   #[cppgc]
-  pub fn matrix_transform<'a>(
+  pub fn matrix_transform(
     &self,
     #[webidl] value: DOMMatrixInit,
   ) -> Result<DOMPointReadOnly, GeometryError> {
@@ -251,7 +251,7 @@ impl DOMPoint {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_point<'a>(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+  pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
     let ro = DOMPointReadOnly::from_point_inner(init);
     ro
   }
@@ -396,7 +396,7 @@ impl DOMRectReadOnly {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_rect<'a>(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+  pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
     DOMRectReadOnly::from_rect_inner(init)
   }
 
@@ -524,7 +524,7 @@ impl DOMRect {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_rect<'a>(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+  pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
     let ro = DOMRectReadOnly::from_rect_inner(init);
     ro
   }
@@ -958,7 +958,7 @@ impl DOMMatrixReadOnly {
     }
   }
 
-  fn from_matrix_inner<'a>(
+  fn from_matrix_inner(
     init: DOMMatrixInit,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     macro_rules! fixup {
@@ -1510,8 +1510,8 @@ impl DOMMatrixReadOnly {
         Transform::RotateY(angle) => {
           self.rotate_axis_angle_self_inner(
             0.0,
-            0.0,
             1.0,
+            0.0,
             angle.to_radians().into(),
           );
         }
@@ -2681,23 +2681,26 @@ impl DOMMatrix {
     }
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn translate_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] tx: Option<webidl::UnrestrictedDouble>,
     #[webidl] ty: Option<webidl::UnrestrictedDouble>,
     #[webidl] tz: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
     ro.translate_self_inner(tx, ty, tz);
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn scale_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
     #[webidl] sy: Option<webidl::UnrestrictedDouble>,
     #[webidl] sz: Option<webidl::UnrestrictedDouble>,
@@ -2705,7 +2708,7 @@ impl DOMMatrix {
     #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
     let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
@@ -2717,17 +2720,19 @@ impl DOMMatrix {
     } else {
       ro.scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
     }
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn scale3d_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] scale: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
@@ -2739,16 +2744,18 @@ impl DOMMatrix {
         scale, scale, scale, origin_x, origin_y, origin_z,
       );
     }
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn rotate_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let (roll_deg, pitch_deg, yaw_deg) =
       if rotate_y.is_none() && rotate_z.is_none() {
@@ -2765,54 +2772,63 @@ impl DOMMatrix {
       pitch_deg.to_radians(),
       yaw_deg.to_radians(),
     );
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn rotate_from_vector_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     ro.rotate_from_vector_self_inner(x, y);
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn rotate_axis_angle_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
     #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     ro.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn skew_x_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     ro.skew_x_self_inner(x_deg.to_radians());
+    this
   }
 
-  // TODO(petamoriken): returns self
+  #[global]
   pub fn skew_y_self(
     &self,
+    #[this] this: v8::Global<v8::Object>,
     #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
-  ) {
+  ) -> v8::Global<v8::Object> {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     ro.skew_y_self_inner(y_deg.to_radians());
+    this
   }
 
   // TODO(petamoriken): Maybe proc-macro bug
@@ -2882,10 +2898,14 @@ impl DOMMatrix {
   //   Ok(())
   // }
 
-  // TODO(petamoriken): returns self
-  #[fast]
-  pub fn invert_self(&self, #[proto] ro: &DOMMatrixReadOnly) {
+  #[global]
+  pub fn invert_self(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) -> v8::Global<v8::Object> {
     ro.invert_self_inner();
+    this
   }
 }
 
