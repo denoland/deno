@@ -62,7 +62,7 @@ pub async fn kernel(
 
   let factory = CliFactory::from_flags(flags);
   let registry_provider =
-    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api());
+    Arc::new(factory.lockfile_npm_package_info_provider()?);
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())

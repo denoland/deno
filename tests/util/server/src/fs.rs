@@ -20,6 +20,8 @@ use serde::Serialize;
 use url::Url;
 
 use crate::assertions::assert_wildcard_match;
+use crate::lsp::source_file;
+use crate::lsp::SourceFile;
 use crate::testdata_path;
 
 /// Characters that are left unencoded in a `Url` path but will be encoded in a
@@ -93,6 +95,15 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
   Uri::from_str(&input).map_err(|err| {
     anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
   })
+}
+
+pub fn url_to_notebook_cell_uri(url: &Url) -> Uri {
+  let uri = url_to_uri(url).unwrap();
+  Uri::from_str(&format!(
+    "vscode-notebook-cell:{}",
+    uri.as_str().strip_prefix("file:").unwrap()
+  ))
+  .unwrap()
 }
 
 /// Represents a path on the file system, which can be used
@@ -582,6 +593,15 @@ impl TempDir {
 
   pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<[u8]>) {
     self.target_path().join(path).write(text)
+  }
+
+  pub fn source_file(
+    &self,
+    path: impl AsRef<Path>,
+    text: impl AsRef<str>,
+  ) -> SourceFile {
+    let path = self.target_path().join(path);
+    source_file(path, text)
   }
 
   pub fn symlink_dir(

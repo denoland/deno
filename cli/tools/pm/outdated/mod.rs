@@ -479,12 +479,9 @@ async fn update(
       };
 
       log::info!(
-        " - {}{} {}{} -> {}{}",
-        format!(
-          "{}{}",
-          colors::gray(package_name[0..4].to_string()),
-          package_name[4..].to_string()
-        ),
+        " - {}{}{} {}{} -> {}{}",
+        colors::gray(package_name[0..4].to_string()),
+        &package_name[4..],
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),

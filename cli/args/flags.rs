@@ -38,6 +38,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_runtime::UnstableFeatureKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -135,6 +136,7 @@ pub struct CompileFlags {
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub eszip: bool,
 }
 
@@ -410,6 +412,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub coverage_raw_data_only: bool,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -1189,17 +1192,21 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                          to use when fetching remote modules from private repositories
                           <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+  <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
   <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>               Set the cache directory
   <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
                           <p(245)>(defaults to $HOME/.deno/bin)</>
+  <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
+                         database.
+  <g>DENO_EMIT_CACHE_MODE</>   Control is the transpiled sources should be cached.
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
+                         Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
+                         Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
-                         Possible values: "system", "mozilla".
-                          <p(245)>(defaults to "mozilla")</>
   <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
                           <p(245)>(module downloads, fetch)</>
@@ -1412,7 +1419,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m)?,
       "info" => info_parse(&mut flags, &mut m)?,
-      "install" => install_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m, app)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
@@ -1568,7 +1575,7 @@ where
     // causing strings with common prefix >=10 to be considered perfectly similar
     .map(|pv| (strsim::jaro(v, pv.as_ref()), pv.as_ref().to_owned()))
     // Confidence of 0.7 so that bar -> baz is suggested
-    .filter(|(confidence, _)| *confidence > 0.7)
+    .filter(|(confidence, _)| *confidence > 0.8)
     .collect();
   candidates
     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -1981,6 +1988,18 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
   <p(245)>Use this flag if a dynamically imported module or a web worker main module
   fails to load in the executable or to embed a file or directory in the executable.
   This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("exclude")
+          .long("exclude")
+          .help(
+            cstr!("Excludes a file/directory in the compiled executable.
+  <p(245)>Use this flag to exclude a specific file or directory within the included files.
+  For example, to exclude a certain folder in the bundled node_modules directory.</>",
           ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
@@ -3097,13 +3116,13 @@ fn task_subcommand() -> Command {
   command(
     "task",
     cstr!(
-      "Run a task defined in the configuration file.
+      "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks:
+List all available tasks (from config files in the current and ancestor directories):
   <p(245)>deno task</>
 
-Evaluate a task from string
+Evaluate a task from string:
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
@@ -3231,7 +3250,15 @@ or <c>**/__tests__/**</>:
           .conflicts_with("inspect")
           .conflicts_with("inspect-wait")
           .conflicts_with("inspect-brk")
-          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'")
+          .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
+  <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("coverage-raw-data-only")
+          .long("coverage-raw-data-only")
+          .help("Only collect raw coverage data, without generating a report")
+          .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -4413,114 +4440,41 @@ impl CommandExt for Command {
       .action(ArgAction::SetTrue)
       .hide(matches!(cfg, UnstableArgsConfig::None))
       .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-bare-node-builtins")
-        .long("unstable-bare-node-builtins")
-        .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .long_help(match cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-detect-cjs")
-        .long("unstable-detect-cjs")
-        .help("Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .long_help(match cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-byonm")
-        .long("unstable-byonm")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-lazy-dynamic-imports")
-      .long("unstable-lazy-dynamic-imports")
-      .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
-      .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-      .hide(true)
-      .long_help(match cfg {
-        UnstableArgsConfig::None => None,
-        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
-      })
-      .help_heading(UNSTABLE_HEADING)
-      .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-sloppy-imports")
-      .long("unstable-sloppy-imports")
-      .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
-      .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-      .hide(true)
-      .long_help(match cfg {
-        UnstableArgsConfig::None => None,
-        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
-      })
-      .help_heading(UNSTABLE_HEADING)
-      .display_order(next_display_order())
-    ).arg(
-      Arg::new("unstable-npm-lazy-caching")
-        .long("unstable-npm-lazy-caching")
-        .help("Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed")
-        .env("DENO_UNSTABLE_NPM_LAZY_CACHING")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        .display_order(next_display_order()),
-    ).arg(
-      Arg::new("unstable-lockfile-v5")
-        .long("unstable-lockfile-v5")
-        .help("Enable unstable lockfile v5")
-        .env("DENO_UNSTABLE_LOCKFILE_V5")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .help_heading(UNSTABLE_HEADING)
-        .hide(true)
-        .display_order(next_display_order()),
     );
 
-    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-      cmd = cmd.arg(
-        Arg::new(format!("unstable-{}", granular_flag.name))
-          .long(format!("unstable-{}", granular_flag.name))
-          .help(granular_flag.help_text)
-          .action(ArgAction::SetTrue)
-          .hide(true)
-          .help_heading(UNSTABLE_HEADING)
-          // we don't render long help, so using it here as a sort of metadata
-          .long_help(if granular_flag.show_in_help {
-            match cfg {
-              UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
-                None
-              }
-              UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-            }
-          } else {
-            None
-          })
-          .display_order(next_display_order()),
-      );
+    for feature in crate::UNSTABLE_FEATURES.iter() {
+      let mut arg = Arg::new(feature.flag_name)
+        .long(feature.flag_name)
+        .help(feature.help_text)
+        .action(ArgAction::SetTrue)
+        .value_parser(FalseyValueParser::new())
+        .hide(true)
+        .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order());
+
+      // TODO(bartlomieju):
+      // Value of `.long_help()` is actuall a metadata. It should be rewritten to use
+      // Clap's `ArgExt` instead
+      let mut long_help_val = None;
+
+      if feature.show_in_help {
+        if matches!(cfg, UnstableArgsConfig::ResolutionOnly)
+          && matches!(feature.kind, UnstableFeatureKind::Cli)
+        {
+          long_help_val = Some("true");
+        }
+
+        if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
+          long_help_val = Some("true");
+        }
+      }
+
+      arg = arg.long_help(long_help_val);
+      if let Some(env_var_name) = feature.env_var {
+        arg = arg.env(env_var_name);
+      }
+
+      cmd = cmd.arg(arg);
     }
 
     cmd
@@ -4723,10 +4677,14 @@ fn compile_parse(
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
-  let include = match matches.remove_many::<String>("include") {
-    Some(f) => f.collect(),
-    None => vec![],
-  };
+  let include = matches
+    .remove_many::<String>("include")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let exclude = matches
+    .remove_many::<String>("exclude")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4739,6 +4697,7 @@ fn compile_parse(
     no_terminal,
     icon,
     include,
+    exclude,
     eszip,
   });
 
@@ -5019,6 +4978,7 @@ fn info_parse(
 fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, false)?;
 
@@ -5056,6 +5016,13 @@ fn install_parse(
     .remove_many("cmd")
     .map(|packages| add_parse_inner(matches, Some(packages)))
   {
+    if matches!(flags.config_flag, ConfigFlag::Disabled) {
+      return Err(app.override_usage("deno install [OPTIONS] [PACKAGE]...").error(
+        clap::error::ErrorKind::ArgumentConflict,
+        format!("deno install can't be used to add packages if `--no-config` is passed.\n{} to cache the packages without adding to a config, pass the `--entrypoint` flag", deno_terminal::colors::cyan("hint:")),
+      ));
+    }
+
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
     ))
@@ -5526,6 +5493,7 @@ fn test_parse(
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
@@ -6115,6 +6083,7 @@ fn unstable_args_parse(
     flags.unstable_config.legacy_flag_enabled = true;
   }
 
+  // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
@@ -6124,15 +6093,14 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
-  flags.unstable_config.lockfile_v5 = matches.get_flag("unstable-lockfile-v5");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-      if matches.get_flag(&format!("unstable-{}", granular_flag.name)) {
+    for feature in crate::UNSTABLE_FEATURES {
+      if matches.get_flag(feature.flag_name) {
         flags
           .unstable_config
           .features
-          .push(granular_flag.name.to_string());
+          .push(feature.name.to_string());
       }
     }
   }
@@ -9469,6 +9437,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          coverage_raw_data_only: false,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9553,6 +9522,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9596,6 +9566,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9733,6 +9704,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9769,6 +9741,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9804,6 +9777,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9841,6 +9815,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
@@ -10478,7 +10453,8 @@ mod tests {
           target: None,
           no_terminal: false,
           icon: None,
-          include: vec![],
+          include: Default::default(),
+          exclude: Default::default(),
           eszip: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -10491,7 +10467,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10503,7 +10479,8 @@ mod tests {
           target: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
-          include: vec![],
+          include: vec!["include.txt".to_string()],
+          exclude: vec!["exclude.txt".to_string()],
           eszip: false
         }),
         import_map_path: Some("import_map.json".to_string()),
@@ -11717,7 +11694,7 @@ mod tests {
         unstable_config: UnstableConfig {
           bare_node_builtins: true,
           sloppy_imports: false,
-          features: svec!["ffi", "worker-options"],
+          features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()
         },
         ..Flags::default()

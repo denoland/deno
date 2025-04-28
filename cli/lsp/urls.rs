@@ -132,8 +132,7 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     }
     Url::parse(&format!(
       "file:///{}",
-      &uri.as_str()[uri.path_bounds.0 as usize..uri.path_bounds.1 as usize]
-        .trim_start_matches('/'),
+      &uri.as_str()[uri.path_bounds.0 as usize..].trim_start_matches('/'),
     ))
     .ok()
     .map(normalize_url)
@@ -161,9 +160,15 @@ fn normalize_url(url: Url) -> Url {
     return url;
   };
   let normalized_path = normalize_path(&path);
-  let Ok(normalized_url) = Url::from_file_path(&normalized_path) else {
+  let Ok(mut normalized_url) = Url::from_file_path(&normalized_path) else {
     return url;
   };
+  if let Some(query) = url.query() {
+    normalized_url.set_query(Some(query));
+  }
+  if let Some(fragment) = url.fragment() {
+    normalized_url.set_fragment(Some(fragment));
+  }
   normalized_url
 }
 

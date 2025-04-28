@@ -1,0 +1,20 @@
+{
+  "envs": {
+    "DENO_INTERNAL_RT_USE_FILE_FALLBACK": "1"
+  },
+  "tempDir": true,
+  "steps": [{
+    "if": "windows",
+    "args": "run --allow-write setup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --no-check --output bin main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./bin",
+    "args": [],
+    "output": "8192\n"
+  }]
+}
