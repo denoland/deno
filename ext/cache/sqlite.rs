@@ -36,46 +36,60 @@ pub struct SqliteBackedCache {
   pub cache_storage_dir: PathBuf,
 }
 
+#[derive(Debug)]
+enum Mode {
+  Disk,
+  InMemory,
+}
+
 impl SqliteBackedCache {
   pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
+    let mode = match std::env::var("DENO_CACHE_DB_MODE")
+      .unwrap_or_default()
+      .as_str()
     {
-      let env_var_val =
-        std::env::var("DENO_CACHE_FORCE_IN_MEMORY").unwrap_or_default();
-      let connection = if env_var_val == "1" {
-        rusqlite::Connection::open_in_memory()
-          .unwrap_or_else(|_| panic!("failed to open in-memory cache db"))
-      } else {
-        std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
-          CacheError::CacheStorageDirectory {
-            dir: cache_storage_dir.clone(),
-            source,
-          }
-        })?;
+      "disk" | "" => Mode::Disk,
+      "memory" => Mode::InMemory,
+      _ => {
+        log::warn!("Unknown DENO_CACHE_DB_MODE value, defaulting to disk");
+        Mode::Disk
+      }
+    };
 
-        let path = cache_storage_dir.join("cache_metadata.db");
-        let connection =
-          rusqlite::Connection::open(&path).unwrap_or_else(|_| {
-            panic!("failed to open cache db at {}", path.display())
-          });
-        // Enable write-ahead-logging mode.
-        let initial_pragmas = "
+    let connection = if matches!(mode, Mode::InMemory) {
+      rusqlite::Connection::open_in_memory()
+        .unwrap_or_else(|_| panic!("failed to open in-memory cache db"))
+    } else {
+      std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
+        CacheError::CacheStorageDirectory {
+          dir: cache_storage_dir.clone(),
+          source,
+        }
+      })?;
+
+      let path = cache_storage_dir.join("cache_metadata.db");
+      let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
+        panic!("failed to open cache db at {}", path.display())
+      });
+      // Enable write-ahead-logging mode.
+      let initial_pragmas = "
         -- enable write-ahead-logging mode
         PRAGMA journal_mode=WAL;
         PRAGMA synchronous=NORMAL;
         PRAGMA optimize;
       ";
-        connection.execute_batch(initial_pragmas)?;
-        connection
-      };
+      connection.execute_batch(initial_pragmas)?;
+      connection
+    };
 
-      connection.execute(
-        "CREATE TABLE IF NOT EXISTS cache_storage (
+    connection.execute(
+      "CREATE TABLE IF NOT EXISTS cache_storage (
                     id              INTEGER PRIMARY KEY,
                     cache_name      TEXT NOT NULL UNIQUE
                 )",
-        (),
-      )?;
-      connection
+      (),
+    )?;
+    connection
         .execute(
           "CREATE TABLE IF NOT EXISTS request_response_list (
                     id                     INTEGER PRIMARY KEY,
@@ -93,11 +107,10 @@ impl SqliteBackedCache {
                 )",
           (),
         )?;
-      Ok(SqliteBackedCache {
-        connection: Arc::new(Mutex::new(connection)),
-        cache_storage_dir,
-      })
-    }
+    Ok(SqliteBackedCache {
+      connection: Arc::new(Mutex::new(connection)),
+      cache_storage_dir,
+    })
   }
 }
 
