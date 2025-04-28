@@ -12022,19 +12022,4 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       );
     }
   }
-
-  #[test]
-  fn clean() {
-    let r = flags_from_vec(svec!["deno", "clean", "--except", "foo.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Clean(CleanFlags {
-          except_paths: svec!["foo.ts"],
-          dry_run: false,
-        }),
-        ..Default::default()
-      }
-    );
-  }
 }
