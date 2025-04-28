@@ -11610,6 +11610,74 @@ fn lsp_untitled_file_diagnostics() {
   client.shutdown();
 }
 
+#[test]
+#[timeout(300_000)]
+fn lsp_non_normalized_uri_diagnostics_and_completions() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      // Drive letters are not uppercase in our normalized URI representation.
+      "uri": "file:///C:/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const foo: string = 1;
+        console.log(foo);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        // Accordingly, the drive letter returned here is lowercase.
+        // Spec-compliant language clients must deal with that. See:
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
+        "uri": "file:///c%3A/file.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 14 },
+              "end": { "line": 1, "character": 17 },
+            },
+            "severity": 1,
+            "code": 2322,
+            "source": "deno-ts",
+            "message": "Type 'number' is not assignable to type 'string'.",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+  let list = client.get_completion_list(
+    "file:///C:/file.ts",
+    (2, 23),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|i| i.label == "foo").unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "foo",
+      "kind": 6,
+      "sortText": "11",
+      "data": {
+        "tsc": {
+          "uri": "file:///c%3A/file.ts",
+          "position": 55,
+          "name": "foo",
+          "useCodeSnippet": false,
+        },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
