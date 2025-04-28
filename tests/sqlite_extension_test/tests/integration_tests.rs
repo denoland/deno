@@ -31,6 +31,10 @@ fn build_extension() {
     "cargo build output: {}",
     String::from_utf8_lossy(&build_plugin_output.stdout)
   );
+  println!(
+    "cargo build error: {}",
+    String::from_utf8_lossy(&build_plugin_output.stderr)
+  );
   assert!(build_plugin_output.status.success());
 }
 
