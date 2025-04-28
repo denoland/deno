@@ -10,9 +10,9 @@ import {
   DOMRect,
   DOMRectReadOnly,
   op_geometry_get_enable_window_features,
+  op_geometry_matrix_set_matrix_value,
   op_geometry_matrix_to_buffer,
   op_geometry_matrix_to_string,
-  op_geometry_set_matrix_value,
 } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
@@ -188,7 +188,7 @@ if (op_geometry_get_enable_window_features()) {
   ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
     __proto__: null,
     value: function setMatrixValue(transformList) {
-      op_geometry_set_matrix_value(this, transformList);
+      op_geometry_matrix_set_matrix_value(this, transformList);
     },
     writable: true,
     enumerable: true,

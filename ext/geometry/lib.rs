@@ -38,9 +38,9 @@ deno_core::extension!(
   deps = [deno_webidl, deno_web, deno_console],
   ops = [
     op_geometry_get_enable_window_features,
+    op_geometry_matrix_set_matrix_value,
     op_geometry_matrix_to_buffer,
     op_geometry_matrix_to_string,
-    op_geometry_set_matrix_value,
   ],
   objects = [
     DOMPointReadOnly,
@@ -747,6 +747,7 @@ impl DOMQuad {
     self.p4.get(scope, |_| unreachable!())
   }
 
+  // TODO(petamoriken): returns (DOMRectReadOnly, DOMRect)
   #[cppgc]
   pub fn get_bounds(&self, scope: &mut v8::HandleScope) -> DOMRectReadOnly {
     #[inline]
@@ -772,12 +773,13 @@ impl DOMQuad {
     let top = minimum(minimum(p1.y, p2.y), minimum(p3.y, p4.y));
     let right = maximum(maximum(p1.x, p2.x), maximum(p3.x, p4.x));
     let bottom = maximum(maximum(p1.y, p2.y), maximum(p3.y, p4.y));
-    DOMRectReadOnly {
+    let ro = DOMRectReadOnly {
       x: Cell::new(left),
       y: Cell::new(top),
       width: Cell::new(right - left),
       height: Cell::new(bottom - top),
-    }
+    };
+    ro
   }
 
   #[rename("toJSON")]
@@ -924,13 +926,14 @@ impl DOMMatrixReadOnly {
     }
 
     // DOMString
-    if let Some(value) = value.to_string(scope) {
+    if value.is_string() {
       let state = state.borrow_mut::<State>();
       if !state.enable_window_features {
         return Err(GeometryError::DisallowWindowFeatures);
       }
+      let value = value.to_string(scope).unwrap();
       let matrix = DOMMatrixReadOnly::identity();
-      matrix.set_matrix_value(&value.to_rust_string_lossy(scope))?;
+      matrix.set_matrix_value_inner(&value.to_rust_string_lossy(scope))?;
       return Ok(matrix);
     }
 
@@ -1044,6 +1047,7 @@ impl DOMMatrixReadOnly {
     }
   }
 
+  #[inline]
   fn identity() -> DOMMatrixReadOnly {
     DOMMatrixReadOnly {
       inner: RefCell::new(Matrix4::identity()),
@@ -1419,7 +1423,7 @@ impl DOMMatrixReadOnly {
       .all(|&item| item.is_finite())
   }
 
-  fn set_matrix_value(&self, input: &str) -> Result<(), GeometryError> {
+  fn set_matrix_value_inner(&self, input: &str) -> Result<(), GeometryError> {
     let Ok(transform_list) = TransformList::parse_string(input) else {
       return Err(GeometryError::FailedToParse);
     };
@@ -2831,72 +2835,69 @@ impl DOMMatrix {
     this
   }
 
-  // TODO(petamoriken): Maybe proc-macro bug
-  //   mismatched types
-  //   expected mutable reference `&mut HandleScope<'_>`
-  //     found mutable reference `&mut &mut Isolate
+  #[global]
+  pub fn multiply_self<'a>(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope<'a>,
+    other: v8::Local<'a, v8::Value>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) -> Result<v8::Global<v8::Object>, GeometryError> {
+    let result = DOMMatrixReadOnly {
+      inner: RefCell::new(Matrix4::zeros()),
+      is_2d: Cell::new(true),
+    };
+    if let Some(other) =
+      cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+    {
+      result.multiply_self_inner(ro, &other);
+    } else {
+      let other = DOMMatrixInit::convert(
+        scope,
+        other,
+        "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+        (|| Cow::Borrowed("Argument 1")).into(),
+        &Default::default(),
+      )?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      result.multiply_self_inner(ro, &other);
+    }
+    ro.inner.borrow_mut().copy_from(&result.inner.borrow());
+    ro.is_2d.set(result.is_2d.get());
+    Ok(this)
+  }
 
-  // #[fast]
-  // pub fn multiply_self<'a>(
-  //   &self,
-  //   scope: &mut v8::HandleScope<'a>,
-  //   other: v8::Local<'a, v8::Value>,
-  //   #[proto] ro: &DOMMatrixReadOnly,
-  // ) -> Result<(), GeometryError> {
-  //   let result = DOMMatrixReadOnly {
-  //     inner: RefCell::new(Matrix4::zeros()),
-  //     is_2d: Cell::new(true),
-  //   };
-  //   if let Some(other) =
-  //     cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
-  //   {
-  //     result.multiply_self_inner(ro, &other);
-  //   } else {
-  //     let other = DOMMatrixInit::convert(
-  //       scope,
-  //       other,
-  //       "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
-  //       (|| Cow::Borrowed("Argument 1")).into(),
-  //       &Default::default(),
-  //     )?;
-  //     let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
-  //     result.multiply_self_inner(ro, &other);
-  //   }
-  //   ro.inner.borrow_mut().copy_from(&result.inner.borrow());
-  //   ro.is_2d.set(result.is_2d.get());
-  //   Ok(())
-  // }
-
-  // #[fast]
-  // pub fn pre_multiply_self<'a>(
-  //   &self,
-  //   scope: &mut v8::HandleScope<'a>,
-  //   other: v8::Local<'a, v8::Value>,
-  //   #[proto] ro: &DOMMatrixReadOnly,
-  // ) -> Result<(), GeometryError> {
-  //   let result = DOMMatrixReadOnly {
-  //     inner: RefCell::new(Matrix4::zeros()),
-  //     is_2d: Cell::new(true),
-  //   };
-  //   if let Some(other) =
-  //     cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
-  //   {
-  //     result.multiply_self_inner(&other, ro);
-  //   } else {
-  //     let other = DOMMatrixInit::convert(
-  //       scope,
-  //       other,
-  //       "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
-  //       (|| Cow::Borrowed("Argument 1")).into(),
-  //       &Default::default(),
-  //     )?;
-  //     let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
-  //     result.multiply_self_inner(&other, ro);
-  //   }
-  //   ro.inner.borrow_mut().copy_from(&result.inner.borrow());
-  //   ro.is_2d.set(result.is_2d.get());
-  //   Ok(())
-  // }
+  #[global]
+  pub fn pre_multiply_self<'a>(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope<'a>,
+    other: v8::Local<'a, v8::Value>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) -> Result<v8::Global<v8::Object>, GeometryError> {
+    let result = DOMMatrixReadOnly {
+      inner: RefCell::new(Matrix4::zeros()),
+      is_2d: Cell::new(true),
+    };
+    if let Some(other) =
+      cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+    {
+      result.multiply_self_inner(&other, ro);
+    } else {
+      let other = DOMMatrixInit::convert(
+        scope,
+        other,
+        "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+        (|| Cow::Borrowed("Argument 1")).into(),
+        &Default::default(),
+      )?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      result.multiply_self_inner(&other, ro);
+    }
+    ro.inner.borrow_mut().copy_from(&result.inner.borrow());
+    ro.is_2d.set(result.is_2d.get());
+    Ok(this)
+  }
 
   #[global]
   pub fn invert_self(
@@ -2947,6 +2948,7 @@ fn minimum(a: f64, b: f64) -> f64 {
   }
 }
 
+#[inline]
 fn matrix_transform_point(
   matrix: &DOMMatrixReadOnly,
   point: &DOMPointReadOnly,
@@ -3021,7 +3023,7 @@ pub fn op_geometry_matrix_to_string<'a>(
 }
 
 #[op2]
-pub fn op_geometry_set_matrix_value<'a>(
+pub fn op_geometry_matrix_set_matrix_value<'a>(
   scope: &mut v8::HandleScope<'a>,
   input: v8::Local<'a, v8::Value>,
   #[string] transform_list: &str,
@@ -3032,7 +3034,7 @@ pub fn op_geometry_set_matrix_value<'a>(
   let matrix =
     cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
       .unwrap();
-  matrix.set_matrix_value(transform_list)?;
+  matrix.set_matrix_value_inner(transform_list)?;
   Ok(input)
 }
 
