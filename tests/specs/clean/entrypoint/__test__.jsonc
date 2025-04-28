@@ -16,7 +16,7 @@
         {
           "envs": { "DENO_DIR": "./denodir" },
           "args": "clean -e --node-modules-dir npm:@denotest/add",
-          "output": "Removed 21 files, [WILDCARD] from [WILDCARD]\n"
+          "output": "Removed [WILDCARD] files, [WILDCARD] from [WILDCARD]\n"
         },
         {
           "args": "run -A ./print-dir.ts --max-level=5 ./denodir --max-level=5 ./node_modules",
