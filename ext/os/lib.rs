@@ -28,6 +28,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   let mut set = HashSet::new();
   set.insert("NODE_DEBUG".to_string());
   set.insert("NODE_OPTIONS".to_string());
+  set.insert("FORCE_COLOR".to_string());
   set
 });
 
