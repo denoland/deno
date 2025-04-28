@@ -43,9 +43,6 @@
 
 // Adapted from https://github.com/mathiasbynens/punycode.js
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 // TODO(cmorten): migrate punycode logic to "icu" internal binding and/or "url"
 // internal module so there can be re-use within the "url" module etc.
 
@@ -55,6 +52,14 @@ import {
   op_node_idna_domain_to_ascii,
   op_node_idna_domain_to_unicode,
 } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypePush,
+  SafeArrayIterator,
+  StringFromCodePoint,
+  StringLength,
+  StringPrototypeCharCodeAt,
+} = primordials;
 
 /**
  * Creates an array containing the numeric code points of each Unicode
@@ -69,25 +74,28 @@ import {
 function ucs2decode(str: string) {
   const output = [];
   let counter = 0;
-  const length = str.length;
+  const length = StringLength(str);
 
   while (counter < length) {
-    const value = str.charCodeAt(counter++);
+    const value = StringPrototypeCharCodeAt(str, counter++);
 
     if (value >= 0xD800 && value <= 0xDBFF && counter < length) {
       // It's a high surrogate, and there is a next character.
-      const extra = str.charCodeAt(counter++);
+      const extra = StringPrototypeCharCodeAt(str, counter++);
 
       if ((extra & 0xFC00) == 0xDC00) { // Low surrogate.
-        output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
+        ArrayPrototypePush(
+          output,
+          ((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000,
+        );
       } else {
         // It's an unmatched surrogate; only append this code unit, in case the
         // next code unit is the high surrogate of a surrogate pair.
-        output.push(value);
+        ArrayPrototypePush(output, value);
         counter--;
       }
     } else {
-      output.push(value);
+      ArrayPrototypePush(output, value);
     }
   }
 
@@ -103,7 +111,7 @@ function ucs2decode(str: string) {
  * @returns The new Unicode string (UCS-2).
  */
 function ucs2encode(array: number[]) {
-  return String.fromCodePoint(...array);
+  return StringFromCodePoint(...new SafeArrayIterator(array));
 }
 
 export const ucs2 = {
