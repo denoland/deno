@@ -603,7 +603,8 @@ fn wait_for_start(
   Some(async move {
     use std::os::unix::ffi::OsStringExt;
 
-    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncBufReadExt;
+    use tokio::io::BufReader;
 
     init_v8(&Flags::default());
 
@@ -625,11 +626,11 @@ fn wait_for_start(
     socket.bind(&path)?;
     let listener = socket.listen(1)?;
 
-    let (mut stream, _) = listener.accept().await?;
+    let (stream, _) = listener.accept().await?;
+    let mut stream = BufReader::new(stream);
 
-    let mut buf = vec![0; 1024];
-    let n = stream.read(&mut buf).await?;
-    buf.truncate(n);
+    let mut buf = Vec::with_capacity(1024);
+    stream.read_until(b'\n', &mut buf).await?;
 
     #[derive(deno_core::serde::Deserialize)]
     struct Start {

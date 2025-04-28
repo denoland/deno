@@ -41,6 +41,6 @@ const data = JSON.stringify({
   env: [["A", "hello world"]].map(([k, v]) => [[...encode(k)], [...encode(v)]]),
 });
 
-await sock.write(encode(data));
+await sock.write(encode(data + "\n"));
 
 console.log(await child.status);
