@@ -130,11 +130,65 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// Instead probe for the total memory on the system and use it instead
 /// as a default.
 pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
-  let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
-  maybe_mem_info.map(|mem_info| {
-    v8::CreateParams::default()
-      .heap_limits_from_system_memory(mem_info.total, 0)
-  })
+  #[cfg(any(target_os = "android", target_os = "linux"))]
+  {
+    get_memory_limit_linux().map(|memory_limit| {
+      v8::CreateParams::default()
+        .heap_limits_from_system_memory(memory_limit, 0)
+    })
+  }
+  #[cfg(not(any(target_os = "android", target_os = "linux")))]
+  {
+    let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
+    maybe_mem_info.map(|mem_info| {
+      v8::CreateParams::default()
+        .heap_limits_from_system_memory(mem_info.total, 0)
+    })
+  }
+}
+
+/// Get memory limit with cgroup (either v1 or v2) taken into account.
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn get_memory_limit_linux() -> Option<u64> {
+  let system_total_memory =
+    deno_runtime::deno_os::sys_info::mem_info().map(|mem_info| mem_info.total);
+
+  let Ok(self_cgroup) = std::fs::read_to_string("/proc/self/cgroup") else {
+    return system_total_memory;
+  };
+
+  let limit = match self_cgroup.strip_prefix("0::/") {
+    Some(cgroup_v2_relpath) => {
+      // cgroup v2
+      let limit_path = std::path::Path::new("/sys/fs/cgroup")
+        .join(cgroup_v2_relpath)
+        .join("memory.max");
+      std::fs::read_to_string(limit_path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+    }
+    None => {
+      // cgroup v1
+      let Some(cgroup_v1_relpath) = self_cgroup.lines().find_map(|l| {
+        let split = l.split(":").collect::<Vec<_>>();
+        if split.get(1) == Some(&"memory") {
+          split.get(2)
+        } else {
+          None
+        }
+      }) else {
+        return system_total_memory;
+      };
+      let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
+        .join(cgroup_v1_relpath)
+        .join("memory.limit_in_bytes");
+      std::fs::read_to_string(limit_path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+    }
+  };
+
+  limit.or(system_total_memory)
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
