@@ -12,6 +12,7 @@ use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -109,6 +110,8 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::cover_files;
+use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
@@ -347,28 +350,28 @@ impl TestFailure {
       }
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
-        write!(f, "Leaks detected:").unwrap();
+        write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).unwrap();
+          write!(f, "\n  - {}", detail).ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).unwrap();
+          write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
+        write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
+        write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
@@ -647,7 +650,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {
@@ -1562,7 +1565,7 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
@@ -1649,6 +1652,34 @@ pub async fn run_tests(
     },
   )
   .await?;
+
+  if test_flags.coverage_raw_data_only {
+    return Ok(());
+  }
+
+  if let Some(ref coverage) = test_flags.coverage_dir {
+    let reporters: [&dyn reporter::CoverageReporter; 3] = [
+      &reporter::SummaryCoverageReporter::new(),
+      &reporter::LcovCoverageReporter::new(),
+      &reporter::HtmlCoverageReporter::new(),
+    ];
+    if let Err(err) = cover_files(
+      flags,
+      vec![coverage.clone()],
+      vec![],
+      vec![],
+      vec![],
+      Some(
+        PathBuf::from(coverage)
+          .join("lcov.info")
+          .to_string_lossy()
+          .to_string(),
+      ),
+      &reporters,
+    ) {
+      log::info!("Error generating coverage report: {}", err);
+    }
+  }
 
   Ok(())
 }

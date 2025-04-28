@@ -49,7 +49,7 @@ use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -57,7 +57,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::npm::ResolveSnapshotError;
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -144,8 +143,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::compile::compile(flags, compile_flags).await
       }
     }),
-    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags)
+    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
+      let reporter = crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
+      tools::coverage::cover_files(
+        flags,
+        coverage_flags.files.include,
+        coverage_flags.files.ignore,
+        coverage_flags.include,
+        coverage_flags.exclude,
+        coverage_flags.output,
+        &[&*reporter]
+      )
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -172,7 +180,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async {
+    DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
@@ -183,7 +191,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      lsp::start().await
+      let factory = CliFactory::from_flags(flags.clone());
+      lsp::start(Arc::new(factory.lockfile_npm_package_info_provider()?)).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -227,7 +236,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();
@@ -237,7 +246,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 cmd.build();
                 let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
                 let suggestions = args::did_you_mean(&run_flags.script, command_names);
-                if !suggestions.is_empty() {
+                if !suggestions.is_empty() && !run_flags.script.contains('.') {
                   let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
@@ -284,7 +293,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
         if let Some(ref coverage_dir) = test_flags.coverage_dir {
-          if test_flags.clean {
+          if !test_flags.coverage_raw_data_only || test_flags.clean {
+            // Keeps coverage_dir contents only when --coverage-raw-data-only is set and --clean is not set
             let _ = std::fs::remove_dir_all(coverage_dir);
           }
           std::fs::create_dir_all(coverage_dir)
@@ -368,6 +378,28 @@ fn setup_panic_hook() {
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
+
+    // Panic traces are not supported for custom/development builds.
+    #[cfg(feature = "panic-trace")]
+    {
+      let info = &deno_lib::version::DENO_VERSION_INFO;
+      let version =
+        if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+          format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+        } else {
+          info.deno.to_string()
+        };
+
+      let trace = deno_panic::trace();
+      eprintln!("View stack trace at:");
+      eprintln!(
+        "https://panic.deno.com/v{}/{}/{}",
+        version,
+        env!("TARGET"),
+        trace
+      );
+    }
+
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));
@@ -384,22 +416,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
-  let mut error_code = 1;
-
   if let Some(CoreError::Js(e)) =
     any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
     error_string = format_js_error(e);
-  } else if let Some(e @ ResolveSnapshotError { .. }) =
-    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
-  {
-    if let Some(e) = e.maybe_integrity_check_error() {
-      error_string = e.to_string();
-      error_code = 10;
-    }
   }
 
-  exit_with_message(&error_string, error_code);
+  exit_with_message(&error_string, 1);
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
@@ -465,11 +488,11 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
+  init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
-  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -484,6 +507,7 @@ fn resolve_flags_and_init(
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
+      "--js-explicit-resource-management".to_string(),
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
@@ -491,6 +515,7 @@ fn resolve_flags_and_init(
     _ => {
       vec![
         "--stack-size=1024".to_string(),
+        "--js-explicit-resource-management".to_string(),
         // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
         // and its settings.
         // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript

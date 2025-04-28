@@ -20,7 +20,6 @@ use super::deps::DepKind;
 use super::deps::DepManager;
 use super::deps::DepManagerArgs;
 use super::deps::PackageLatestVersion;
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
@@ -213,7 +212,6 @@ pub async fn outdated(
 
   let args = dep_manager_args(
     &factory,
-    cli_options,
     npm_fetch_resolver.clone(),
     jsr_fetch_resolver.clone(),
   )
@@ -410,10 +408,8 @@ async fn update(
     .await?;
 
     let mut updated_to_versions = HashSet::new();
-    let cli_options = factory.cli_options()?;
     let args = dep_manager_args(
       &factory,
-      cli_options,
       deps.npm_fetch_resolver.clone(),
       deps.jsr_fetch_resolver.clone(),
     )
@@ -483,12 +479,9 @@ async fn update(
       };
 
       log::info!(
-        " - {}{} {}{} -> {}{}",
-        format!(
-          "{}{}",
-          colors::gray(package_name[0..4].to_string()),
-          package_name[4..].to_string()
-        ),
+        " - {}{}{} {}{} -> {}{}",
+        colors::gray(package_name[0..4].to_string()),
+        &package_name[4..],
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),
@@ -517,7 +510,6 @@ async fn update(
 
 async fn dep_manager_args(
   factory: &CliFactory,
-  cli_options: &CliOptions,
   npm_fetch_resolver: Arc<NpmFetchResolver>,
   jsr_fetch_resolver: Arc<JsrFetchResolver>,
 ) -> Result<DepManagerArgs, AnyError> {
@@ -526,13 +518,13 @@ async fn dep_manager_args(
     jsr_fetch_resolver,
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
-    npm_installer: factory.npm_installer()?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()
       .await?
       .clone(),
-    lockfile: cli_options.maybe_lockfile().cloned(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
   })
 }
 

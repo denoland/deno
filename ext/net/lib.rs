@@ -47,6 +47,13 @@ pub trait NetPermissions {
     p: &'a Path,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl NetPermissions for deno_permissions::PermissionsContainer {
@@ -87,6 +94,18 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
       self, path, api_name,
     )
   }
+
+  #[inline(always)]
+  fn check_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_vsock(
+      self, cid, port, api_name,
+    )
+  }
 }
 
 /// Helper for checking unstable features. Used for sync ops.
@@ -123,6 +142,7 @@ deno_core::extension!(deno_net,
   parameters = [ P: NetPermissions ],
   ops = [
     ops::op_net_accept_tcp,
+    ops::op_net_get_ips_from_perm_token,
     ops::op_net_connect_tcp<P>,
     ops::op_net_listen_tcp<P>,
     ops::op_net_listen_udp<P>,
@@ -138,6 +158,9 @@ deno_core::extension!(deno_net,
     ops::op_dns_resolve<P>,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
+    ops::op_net_listen_vsock<P>,
+    ops::op_net_accept_vsock,
+    ops::op_net_connect_vsock<P>,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,

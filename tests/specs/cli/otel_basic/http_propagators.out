@@ -237,10 +237,10 @@
     {
       "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 17,
-      "severityText": "ERROR",
+      "severityNumber": 9,
+      "severityText": "INFO",
       "body": {
-        "stringValue": "Listening on http://[WILDCARD]:8000/\n"
+        "stringValue": "Listening on http://[WILDCARD]:8000/[WILDCARD]"
       },
       "attributes": [],
       "droppedAttributesCount": 0,
@@ -251,10 +251,10 @@
     {
       "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 17,
-      "severityText": "ERROR",
+      "severityNumber": 9,
+      "severityText": "INFO",
       "body": {
-        "stringValue": "Listening on http://[WILDCARD]:8001/\n"
+        "stringValue": "Listening on http://[WILDCARD]:8001/[WILDCARD]"
       },
       "attributes": [],
       "droppedAttributesCount": 0,

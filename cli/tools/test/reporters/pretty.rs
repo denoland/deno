@@ -57,7 +57,7 @@ impl PrettyTestReporter {
 
   fn force_report_wait(&mut self, description: &TestDescription) {
     if !self.in_new_line {
-      writeln!(&mut self.writer).unwrap();
+      writeln!(&mut self.writer).ok();
     }
     if self.parallel {
       write!(
@@ -68,19 +68,19 @@ impl PrettyTestReporter {
           to_relative_path_or_remote_url(&self.cwd, &description.origin)
         ))
       )
-      .unwrap();
+      .ok();
     }
-    write!(&mut self.writer, "{} ...", description.name).unwrap();
+    write!(&mut self.writer, "{} ...", description.name).ok();
     self.in_new_line = false;
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
     self.scope_test_id = Some(description.id);
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
     self.write_output_end();
     if !self.in_new_line {
-      writeln!(&mut self.writer).unwrap();
+      writeln!(&mut self.writer).ok();
     }
     write!(
       &mut self.writer,
@@ -88,10 +88,10 @@ impl PrettyTestReporter {
       "  ".repeat(description.level),
       description.name
     )
-    .unwrap();
+    .ok();
     self.in_new_line = false;
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
     self.scope_test_id = Some(description.id);
   }
 
@@ -124,10 +124,10 @@ impl PrettyTestReporter {
       TestStepResult::Ignored => colors::yellow("ignored").to_string(),
       TestStepResult::Failed(failure) => failure.format_label(),
     };
-    write!(&mut self.writer, " {}", status).unwrap();
+    write!(&mut self.writer, " {}", status).ok();
     if let TestStepResult::Failed(failure) = result {
       if let Some(inline_summary) = failure.format_inline_summary() {
-        write!(&mut self.writer, " ({})", inline_summary).unwrap()
+        write!(&mut self.writer, " ({})", inline_summary).ok();
       }
     }
     if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
@@ -136,9 +136,9 @@ impl PrettyTestReporter {
         " {}",
         colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
       )
-      .unwrap();
+      .ok();
     }
-    writeln!(&mut self.writer).unwrap();
+    writeln!(&mut self.writer).ok();
     self.in_new_line = true;
     if self.parallel {
       self.scope_test_id = None;
@@ -159,7 +159,7 @@ impl PrettyTestReporter {
         "{}",
         colors::gray(format!("----- {}output end -----", self.phase))
       )
-      .unwrap();
+      .ok();
       self.in_new_line = true;
       self.did_have_user_output = false;
     }
@@ -189,7 +189,7 @@ impl TestReporter for PrettyTestReporter {
         to_relative_path_or_remote_url(&self.cwd, &plan.origin)
       ))
     )
-    .unwrap();
+    .ok();
     self.in_new_line = true;
   }
 
@@ -210,7 +210,7 @@ impl TestReporter for PrettyTestReporter {
         colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
       ))
     )
-    .unwrap();
+    .ok();
   }
   fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
@@ -220,7 +220,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.did_have_user_output {
       self.did_have_user_output = true;
       if !self.in_new_line {
-        writeln!(&mut self.writer).unwrap();
+        writeln!(&mut self.writer).ok();
       }
       self.phase = if !self.started_tests {
         "pre-test "
@@ -234,13 +234,13 @@ impl TestReporter for PrettyTestReporter {
         "{}",
         colors::gray(format!("------- {}output -------", self.phase))
       )
-      .unwrap();
+      .ok();
       self.in_new_line = true;
     }
 
     // output everything to stdout in order to prevent
     // stdout and stderr racing
-    std::io::stdout().write_all(output).unwrap();
+    std::io::stdout().write_all(output).ok();
   }
 
   fn report_result(
@@ -283,10 +283,10 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Failed(failure) => failure.format_label(),
       TestResult::Cancelled => colors::gray("cancelled").to_string(),
     };
-    write!(&mut self.writer, " {}", status).unwrap();
+    write!(&mut self.writer, " {}", status).ok();
     if let TestResult::Failed(failure) = result {
       if let Some(inline_summary) = failure.format_inline_summary() {
-        write!(&mut self.writer, " ({})", inline_summary).unwrap();
+        write!(&mut self.writer, " ({})", inline_summary).ok();
       }
     }
     writeln!(
@@ -294,7 +294,7 @@ impl TestReporter for PrettyTestReporter {
       " {}",
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     )
-    .unwrap();
+    .ok();
     self.in_new_line = true;
     self.scope_test_id = None;
   }
@@ -307,7 +307,7 @@ impl TestReporter for PrettyTestReporter {
       .push((origin.to_string(), error));
 
     if !self.in_new_line {
-      writeln!(&mut self.writer).unwrap();
+      writeln!(&mut self.writer).ok();
     }
     writeln!(
       &mut self.writer,
@@ -315,7 +315,7 @@ impl TestReporter for PrettyTestReporter {
       to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
     )
-    .unwrap();
+    .ok();
     self.in_new_line = true;
     self.did_have_user_output = false;
   }
@@ -368,7 +368,7 @@ impl TestReporter for PrettyTestReporter {
         )),
         common::format_test_step_ancestry(desc, tests, test_steps)
       )
-      .unwrap();
+      .ok();
       self.in_new_line = false;
       self.scope_test_id = Some(desc.id);
       self.force_report_step_result(desc, result, elapsed);
@@ -406,7 +406,7 @@ impl TestReporter for PrettyTestReporter {
       &self.failure_format_options,
     );
     if !self.repl {
-      writeln!(&mut self.writer).unwrap();
+      writeln!(&mut self.writer).ok();
     }
     self.in_new_line = true;
   }
@@ -438,7 +438,7 @@ impl TestReporter for PrettyTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) -> anyhow::Result<()> {
-    self.writer.flush().unwrap();
+    self.writer.flush().ok();
     Ok(())
   }
 }

@@ -1,23 +1,27 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:react@*": "18.2.0"
   },
   "npm": {
     "js-tokens@4.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==",
+      "tarball": "http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz"
     },
     "loose-envify@1.4.0": {
-      "integrity": "[WILDLINE]",
+      "integrity": "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==",
       "dependencies": [
         "js-tokens"
-      ]
+      ],
+      "hasBin": true,
+      "tarball": "http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz"
     },
     "react@18.2.0": {
-      "integrity": "[WILDLINE]",
+      "integrity": "sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ==",
       "dependencies": [
         "loose-envify"
-      ]
+      ],
+      "tarball": "http://localhost:4260/react/react-18.2.0.tgz"
     }
   },
   "workspace": {

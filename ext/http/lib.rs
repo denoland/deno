@@ -4,15 +4,19 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::error::Error;
+use std::future::pending;
 use std::future::Future;
+use std::future::Pending;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::net::SocketAddr;
 use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 
@@ -24,14 +28,11 @@ use base64::Engine;
 use cache_control::CacheControl;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::pending;
 use deno_core::futures::future::select;
 use deno_core::futures::future::Either;
-use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -131,6 +132,9 @@ pub struct Options {
   /// If `None`, the default configuration provided by hyper will be used. Note
   /// that the default configuration is subject to change in future versions.
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+
+  /// If `false`, the server will abort the request when the response is dropped.
+  pub no_legacy_abort: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -141,6 +145,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -189,6 +194,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -1683,4 +1689,110 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
   // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
   drop(upgraded);
   unreachable!("unexpected stream type");
+}
+
+#[op2]
+#[serde]
+pub fn op_http_serve_address_override() -> (u8, String, u32) {
+  match std::env::var("DENO_SERVE_ADDRESS") {
+    Ok(val) => parse_serve_address(&val),
+    Err(_) => (0, String::new(), 0),
+  }
+}
+
+fn parse_serve_address(input: &str) -> (u8, String, u32) {
+  match input.split_once(':') {
+    Some(("tcp", addr)) => {
+      // TCP address
+      match addr.parse::<SocketAddr>() {
+        Ok(addr) => {
+          let hostname = match addr {
+            SocketAddr::V4(v4) => v4.ip().to_string(),
+            SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+          };
+          (1, hostname, addr.port() as u32)
+        }
+        Err(_) => {
+          log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {}", addr);
+          (0, String::new(), 0)
+        }
+      }
+    }
+    Some(("unix", addr)) => {
+      // Unix socket path
+      if addr.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty unix socket path");
+        return (0, String::new(), 0);
+      }
+      (2, addr.to_string(), 0)
+    }
+    Some(("vsock", addr)) => {
+      // Vsock address
+      match addr.split_once(':') {
+        Some((cid, port)) => {
+          let cid = if cid == "-1" {
+            "-1".to_string()
+          } else {
+            match cid.parse::<u32>() {
+              Ok(cid) => cid.to_string(),
+              Err(_) => {
+                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
+                return (0, String::new(), 0);
+              }
+            }
+          };
+          let port = match port.parse::<u32>() {
+            Ok(port) => port,
+            Err(_) => {
+              log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {}", port);
+              return (0, String::new(), 0);
+            }
+          };
+          (3, cid, port)
+        }
+        None => (0, String::new(), 0),
+      }
+    }
+    Some((_, _)) | None => {
+      log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
+      (0, String::new(), 0)
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_serve_address() {
+    assert_eq!(
+      parse_serve_address("tcp:127.0.0.1:8080"),
+      (1, "127.0.0.1".to_string(), 8080)
+    );
+    assert_eq!(
+      parse_serve_address("tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000)
+    );
+
+    assert_eq!(
+      parse_serve_address("unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0)
+    );
+
+    assert_eq!(
+      parse_serve_address("vsock:1234:5678"),
+      (3, "1234".to_string(), 5678)
+    );
+    assert_eq!(
+      parse_serve_address("vsock:-1:5678"),
+      (3, "-1".to_string(), 5678)
+    );
+
+    assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0));
+    assert_eq!(parse_serve_address("unix:"), (0, String::new(), 0));
+    assert_eq!(parse_serve_address("vsock:"), (0, String::new(), 0));
+    assert_eq!(parse_serve_address("foo:"), (0, String::new(), 0));
+    assert_eq!(parse_serve_address("bar"), (0, String::new(), 0));
+  }
 }
