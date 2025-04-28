@@ -210,7 +210,7 @@ export class LibuvStreamWrap extends HandleWrap {
       } catch {
         // swallow callback errors.
       }
-    }
+    };
 
     this.readPromise = this.streamWrap.readStart(this.#buf, onread);
 
@@ -220,7 +220,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
     this.readPromise
       .then(onread)
-      .catch(e => onread(null, e));
+      .catch((e) => onread(null, e));
 
     return 0;
   }
