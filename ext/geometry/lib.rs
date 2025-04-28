@@ -17,6 +17,13 @@ use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use lightningcss::properties::transform::Matrix as CSSMatrix;
+use lightningcss::properties::transform::Matrix3d as CSSMatrix3d;
+use lightningcss::properties::transform::Transform;
+use lightningcss::properties::transform::TransformList;
+use lightningcss::traits::Parse;
+use lightningcss::values::length::LengthPercentage;
+use lightningcss::values::number::CSSNumber;
 use nalgebra::Matrix3;
 use nalgebra::Matrix4;
 use nalgebra::Matrix4x2;
@@ -30,10 +37,10 @@ deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
   ops = [
+    op_geometry_get_enable_window_features,
     op_geometry_matrix_to_buffer,
     op_geometry_matrix_to_string,
-    op_geometry_parse_transform_list,
-    op_geometry_get_enable_window_features,
+    op_geometry_set_matrix_value,
   ],
   objects = [
     DOMPointReadOnly,
@@ -68,15 +75,15 @@ impl State {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GeometryError {
+  #[class(type)]
+  #[error("Illegal invocation")]
+  IllegalInvocation,
   #[class(inherit)]
   #[error(transparent)]
   WebIDL(#[from] WebIdlError),
   #[class(type)]
   #[error("Inconsistent 2d matrix value")]
   Inconsistent2DMatrix,
-  #[class(type)]
-  #[error("Cannot parse CSS <transform-list> on Workers")]
-  DisallowWindowFeatures,
   #[class(type)]
   #[error("The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix")]
   InvalidSequenceSize,
@@ -86,6 +93,15 @@ pub enum GeometryError {
   #[class("DOMExceptionInvalidStateError")]
   #[error("Cannot be serialized with NaN or Infinity values")]
   InvalidState,
+  #[class(type)]
+  #[error("Cannot parse a CSS <transform-list> value on Workers")]
+  DisallowWindowFeatures,
+  #[class("DOMExceptionSyntaxError")]
+  #[error("Failed to parse a CSS <transform-list> value")]
+  FailedToParse,
+  #[class("DOMExceptionSyntaxError")]
+  #[error("CSS <transform-list> value contains relative values")]
+  ContainsRelativeValue,
 }
 
 #[derive(WebIDL, Debug)]
@@ -902,19 +918,23 @@ impl DOMMatrixReadOnly {
     prefix: Cow<'static, str>,
     context: ContextFn<'_>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    // omitted (undefined)
     if value.is_undefined() {
       return Ok(DOMMatrixReadOnly::identity());
     }
-    if value.is_string() {
+
+    // DOMString
+    if let Some(value) = value.to_string(scope) {
       let state = state.borrow_mut::<State>();
       if !state.enable_window_features {
         return Err(GeometryError::DisallowWindowFeatures);
       }
-
-      // TODO(petamoriken): parse CSS <transform-list>
-      unimplemented!()
+      let matrix = DOMMatrixReadOnly::identity();
+      matrix.set_matrix_value(&value.to_rust_string_lossy(scope))?;
+      return Ok(matrix);
     }
 
+    // sequence
     let seq =
       Vec::<f64>::convert(scope, value, prefix, context, &Default::default())?;
     if let [a, b, c, d, e, f] = seq.as_slice() {
@@ -1047,7 +1067,6 @@ impl DOMMatrixReadOnly {
     let scaling = Vector3::new(sx, sy, sz);
     inner.prepend_nonuniform_scaling_mut(&scaling);
     self.is_2d.set(is_2d && sz == 1.0);
-    println!("{:?}", self);
   }
 
   #[inline]
@@ -1072,21 +1091,17 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn rotate_self_inner(&self, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) {
+  fn rotate_self_inner(&self, roll: f64, pitch: f64, yaw: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let rotation = Rotation3::from_euler_angles(
-      roll_deg.to_radians(),
-      pitch_deg.to_radians(),
-      yaw_deg.to_radians(),
-    )
-    .to_homogeneous();
+    let rotation =
+      Rotation3::from_euler_angles(roll, pitch, yaw).to_homogeneous();
     let mut result = Matrix4x3::zeros();
     inner.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
     inner.set_column(0, &result.column(0));
     inner.set_column(1, &result.column(1));
     inner.set_column(2, &result.column(2));
-    self.is_2d.set(is_2d && roll_deg == 0.0 && pitch_deg == 0.0);
+    self.is_2d.set(is_2d && roll == 0.0 && pitch == 0.0);
   }
 
   #[inline]
@@ -1105,13 +1120,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn rotate_axis_angle_self_inner(
-    &self,
-    x: f64,
-    y: f64,
-    z: f64,
-    angle_deg: f64,
-  ) {
+  fn rotate_axis_angle_self_inner(&self, x: f64, y: f64, z: f64, angle: f64) {
     if x == 0.0 && y == 0.0 && z == 0.0 {
       return;
     }
@@ -1119,7 +1128,7 @@ impl DOMMatrixReadOnly {
     let is_2d = self.is_2d.get();
     let rotation = Rotation3::from_axis_angle(
       &UnitVector3::new_normalize(Vector3::new(x, y, z)),
-      angle_deg.to_radians(),
+      angle,
     )
     .to_homogeneous();
     let mut result = Matrix4x3::zeros();
@@ -1131,18 +1140,9 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn skew_x_self_inner(&self, x_deg: f64) {
+  fn skew_x_self_inner(&self, x: f64) {
     let mut inner = self.inner.borrow_mut();
-    let skew = Matrix4x2::new(
-      1.0,
-      x_deg.to_radians().tan(),
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-    );
+    let skew = Matrix4x2::new(1.0, x.tan(), 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
     let mut result = Matrix4x2::zeros();
     inner.mul_to(&skew, &mut result);
     inner.set_column(0, &result.column(0));
@@ -1150,22 +1150,38 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn skew_y_self_inner(&self, y_deg: f64) {
+  fn skew_y_self_inner(&self, y: f64) {
     let mut inner = self.inner.borrow_mut();
-    let skew = Matrix4x2::new(
-      1.0,
-      0.0,
-      y_deg.to_radians().tan(),
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-    );
+    let skew = Matrix4x2::new(1.0, 0.0, y.tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
     let mut result = Matrix4x2::zeros();
     inner.mul_to(&skew, &mut result);
     inner.set_column(0, &result.column(0));
     inner.set_column(1, &result.column(1));
+  }
+
+  #[inline]
+  fn skew_self_inner(&self, x: f64, y: f64) {
+    let mut inner = self.inner.borrow_mut();
+    let skew = Matrix4x2::new(1.0, x.tan(), y.tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
+    let mut result = Matrix4x2::zeros();
+    inner.mul_to(&skew, &mut result);
+    inner.set_column(0, &result.column(0));
+    inner.set_column(1, &result.column(1));
+  }
+
+  #[inline]
+  fn perspective_self(&self, d: f64) {
+    if d == 0.0 {
+      return;
+    }
+    let mut inner = self.inner.borrow_mut();
+    let perspective =
+      Matrix4x2::new(0.0, 0.0, 1.0, -1.0 / d, 0.0, 0.0, 0.0, 1.0);
+    let mut result = Matrix4x2::zeros();
+    inner.mul_to(&perspective, &mut result);
+    inner.set_column(2, &result.column(0));
+    inner.set_column(3, &result.column(1));
+    self.is_2d.set(false);
   }
 
   #[inline]
@@ -1401,6 +1417,179 @@ impl DOMMatrixReadOnly {
       .borrow()
       .into_iter()
       .all(|&item| item.is_finite())
+  }
+
+  fn set_matrix_value(&self, input: &str) -> Result<(), GeometryError> {
+    let Ok(transform_list) = TransformList::parse_string(input) else {
+      return Err(GeometryError::FailedToParse);
+    };
+    for transform in transform_list.0 {
+      match transform {
+        Transform::Translate(
+          LengthPercentage::Dimension(x),
+          LengthPercentage::Dimension(y),
+        ) => {
+          if let (Some(x), Some(y)) = (x.to_px(), y.to_px()) {
+            self.translate_self_inner(x.into(), y.into(), 0.0);
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::TranslateX(LengthPercentage::Dimension(x)) => {
+          if let Some(x) = x.to_px() {
+            self.translate_self_inner(x.into(), 0.0, 0.0);
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::TranslateY(LengthPercentage::Dimension(y)) => {
+          if let Some(y) = y.to_px() {
+            self.translate_self_inner(0.0, y.into(), 0.0);
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::TranslateZ(z) => {
+          if let Some(z) = z.to_px() {
+            self.translate_self_inner(0.0, 0.0, z.into());
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::Translate3d(
+          LengthPercentage::Dimension(x),
+          LengthPercentage::Dimension(y),
+          z,
+        ) => {
+          if let (Some(x), Some(y), Some(z)) = (x.to_px(), y.to_px(), z.to_px())
+          {
+            self.translate_self_inner(x.into(), y.into(), z.into());
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::Scale(x, y) => {
+          let x: CSSNumber = (&x).into();
+          let y: CSSNumber = (&y).into();
+          self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
+        }
+        Transform::ScaleX(x) => {
+          let x: CSSNumber = (&x).into();
+          self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
+        }
+        Transform::ScaleY(y) => {
+          let y: CSSNumber = (&y).into();
+          self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
+        }
+        Transform::ScaleZ(z) => {
+          let z: CSSNumber = (&z).into();
+          self.scale_without_origin_self_inner(1.0, 1.0, z.into());
+        }
+        Transform::Scale3d(x, y, z) => {
+          let x: CSSNumber = (&x).into();
+          let y: CSSNumber = (&y).into();
+          let z: CSSNumber = (&z).into();
+          self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
+        }
+        Transform::Rotate(angle) | Transform::RotateZ(angle) => {
+          self.rotate_axis_angle_self_inner(
+            0.0,
+            0.0,
+            1.0,
+            angle.to_radians().into(),
+          );
+        }
+        Transform::RotateX(angle) => {
+          self.rotate_axis_angle_self_inner(
+            1.0,
+            0.0,
+            0.0,
+            angle.to_radians().into(),
+          );
+        }
+        Transform::RotateY(angle) => {
+          self.rotate_axis_angle_self_inner(
+            0.0,
+            0.0,
+            1.0,
+            angle.to_radians().into(),
+          );
+        }
+        Transform::Rotate3d(x, y, z, angle) => {
+          self.rotate_axis_angle_self_inner(
+            x.into(),
+            y.into(),
+            z.into(),
+            angle.to_radians().into(),
+          );
+        }
+        Transform::Skew(x, y) => {
+          self.skew_self_inner(x.to_radians().into(), y.to_radians().into());
+        }
+        Transform::SkewX(angle) => {
+          self.skew_x_self_inner(angle.to_radians().into());
+        }
+        Transform::SkewY(angle) => {
+          self.skew_y_self_inner(angle.to_radians().into());
+        }
+        Transform::Perspective(length) => {
+          if let Some(length) = length.to_px() {
+            self.perspective_self(length.into());
+          } else {
+            return Err(GeometryError::ContainsRelativeValue);
+          }
+        }
+        Transform::Matrix(CSSMatrix { a, b, c, d, e, f }) => {
+          let lhs = self.clone();
+          let rhs = DOMMatrixReadOnly {
+            #[rustfmt::skip]
+            inner: RefCell::new(Matrix4::new(
+              a.into(), c.into(), 0.0, e.into(),
+              b.into(), d.into(), 0.0, f.into(),
+                   0.0,      0.0, 1.0,      0.0,
+                   0.0,      0.0, 0.0,      1.0,
+            )),
+            is_2d: Cell::new(true),
+          };
+          self.multiply_self_inner(&lhs, &rhs);
+        }
+        Transform::Matrix3d(CSSMatrix3d {
+          m11,
+          m12,
+          m13,
+          m14,
+          m21,
+          m22,
+          m23,
+          m24,
+          m31,
+          m32,
+          m33,
+          m34,
+          m41,
+          m42,
+          m43,
+          m44,
+        }) => {
+          let lhs = self.clone();
+          let rhs = DOMMatrixReadOnly {
+            #[rustfmt::skip]
+            inner: RefCell::new(Matrix4::new(
+              m11.into(), m21.into(), m31.into(), m41.into(),
+              m12.into(), m22.into(), m32.into(), m42.into(),
+              m13.into(), m23.into(), m33.into(), m43.into(),
+              m14.into(), m24.into(), m34.into(), m44.into(),
+            )),
+            is_2d: Cell::new(false),
+          };
+          self.multiply_self_inner(&lhs, &rhs);
+        }
+        _ => {
+          return Err(GeometryError::ContainsRelativeValue);
+        }
+      }
+    }
+    Ok(())
   }
 }
 
@@ -1754,7 +1943,11 @@ impl DOMMatrixReadOnly {
         )
       };
     let out = self.clone();
-    out.rotate_self_inner(roll_deg, pitch_deg, yaw_deg);
+    out.rotate_self_inner(
+      roll_deg.to_radians(),
+      pitch_deg.to_radians(),
+      yaw_deg.to_radians(),
+    );
     out
   }
 
@@ -1786,7 +1979,7 @@ impl DOMMatrixReadOnly {
     let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.rotate_axis_angle_self_inner(x, y, z, angle_deg);
+    out.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     out
   }
 
@@ -1798,7 +1991,7 @@ impl DOMMatrixReadOnly {
   ) -> DOMMatrixReadOnly {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_x_self_inner(x_deg);
+    out.skew_x_self_inner(x_deg.to_radians());
     out
   }
 
@@ -1810,7 +2003,7 @@ impl DOMMatrixReadOnly {
   ) -> DOMMatrixReadOnly {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_y_self_inner(y_deg);
+    out.skew_y_self_inner(y_deg.to_radians());
     out
   }
 
@@ -2567,7 +2760,11 @@ impl DOMMatrix {
           *rotate_z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
         )
       };
-    ro.rotate_self_inner(roll_deg, pitch_deg, yaw_deg);
+    ro.rotate_self_inner(
+      roll_deg.to_radians(),
+      pitch_deg.to_radians(),
+      yaw_deg.to_radians(),
+    );
   }
 
   // TODO(petamoriken): returns self
@@ -2595,7 +2792,7 @@ impl DOMMatrix {
     let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    ro.rotate_axis_angle_self_inner(x, y, z, angle_deg);
+    ro.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
   }
 
   // TODO(petamoriken): returns self
@@ -2605,7 +2802,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    ro.skew_x_self_inner(x_deg);
+    ro.skew_x_self_inner(x_deg.to_radians());
   }
 
   // TODO(petamoriken): returns self
@@ -2615,7 +2812,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    ro.skew_y_self_inner(y_deg);
+    ro.skew_y_self_inner(y_deg.to_radians());
   }
 
   // TODO(petamoriken): Maybe proc-macro bug
@@ -2746,19 +2943,23 @@ fn matrix_transform_point(
 pub fn op_geometry_matrix_to_buffer<'a>(
   scope: &mut v8::HandleScope<'a>,
   matrix: v8::Local<'a, v8::Value>,
-) -> Vec<u8> {
-  let matrix =
+) -> Result<Vec<u8>, GeometryError> {
+  let Some(matrix) =
     cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
-      .unwrap();
+  else {
+    return Err(GeometryError::IllegalInvocation);
+  };
   let inner = matrix.inner.borrow();
   // SAFETY: in-range access
-  unsafe {
-    slice::from_raw_parts(
-      inner.as_slice().as_ptr() as *mut u8,
-      mem::size_of::<f64>() * 16,
-    )
-  }
-  .to_vec()
+  Ok(
+    unsafe {
+      slice::from_raw_parts(
+        inner.as_slice().as_ptr() as *mut u8,
+        mem::size_of::<f64>() * 16,
+      )
+    }
+    .to_vec(),
+  )
 }
 
 #[op2]
@@ -2767,9 +2968,11 @@ pub fn op_geometry_matrix_to_string<'a>(
   scope: &mut v8::HandleScope<'a>,
   matrix: v8::Local<'a, v8::Value>,
 ) -> Result<String, GeometryError> {
-  let matrix =
+  let Some(matrix) =
     cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
-      .unwrap();
+  else {
+    return Err(GeometryError::IllegalInvocation);
+  };
   if !matrix.is_finite_inner() {
     return Err(GeometryError::InvalidState);
   }
@@ -2797,13 +3000,18 @@ pub fn op_geometry_matrix_to_string<'a>(
   }
 }
 
-// TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-#[op2]
-#[cppgc]
-pub fn op_geometry_parse_transform_list(
+#[op2(fast)]
+pub fn op_geometry_set_matrix_value<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  matrix: v8::Local<'a, v8::Value>,
   #[string] transform_list: &str,
-) -> DOMMatrixReadOnly {
-  unimplemented!()
+) -> Result<(), GeometryError> {
+  let Some(matrix) =
+    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
+  else {
+    return Err(GeometryError::IllegalInvocation);
+  };
+  matrix.set_matrix_value(transform_list)
 }
 
 #[op2(fast)]

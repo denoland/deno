@@ -70,7 +70,7 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - DOMQuad
 - DOMMatrixReadOnly
 - DOMMatrix
+- op_geometry_get_enable_window_features
 - op_geometry_matrix_to_buffer
 - op_geometry_matrix_to_string
-- op_geometry_parse_transform_list
-- op_geometry_get_enable_window_features
+- op_geometry_set_matrix_value
