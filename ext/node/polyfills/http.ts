@@ -132,13 +132,15 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 
 class FakeSocket extends EventEmitter {
+  /** Stores the underlying request for lazily binding to abort signal */
+  #request: Request | undefined;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
-      signal?: AbortSignal | undefined;
+      request?: Request;
     } = {},
   ) {
     super();
@@ -148,8 +150,13 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
-    opts.signal?.addEventListener("abort", () => {
-      this.emit("error", opts.signal?.reason ?? new Error("aborted"));
+    this.#request = opts.request;
+  }
+
+  bindToAbortSignal() {
+    const signal = this.#request?.signal;
+    signal?.addEventListener("abort", () => {
+      this.emit("error", signal.reason);
       this.emit("close");
     }, { once: true });
   }
@@ -1499,9 +1506,14 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-  this.socket?.on("close", () => {
-    if (!this.finished) {
-      this.end();
+  this.on("newListener", (event) => {
+    if (event === "close") {
+      this.socket?.bindToAbortSignal();
+      this.socket?.on("close", () => {
+        if (!this.finished) {
+          this.emit("close");
+        }
+      });
     }
   });
   this._header = "";
@@ -1936,7 +1948,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
-        signal: request.signal,
+        request,
       });
 
       const req = new IncomingMessageForServer(socket);
