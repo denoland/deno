@@ -157,7 +157,6 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   readStart(): number {
-    let nread: number | null;
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     if (this.upgrading) {
@@ -204,7 +203,6 @@ export class LibuvStreamWrap extends HandleWrap {
 
       streamBaseState[kArrayBufferOffset] = 0;
 
-      console.log("onread", buf, nread);
       try {
         this.onread!(buf, nread);
       } catch {
