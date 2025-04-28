@@ -119,6 +119,7 @@ impl PathTrie {
   }
   fn insert(&mut self, s: &Path) {
     let normalized = deno_path_util::normalize_path(s);
+    eprintln!("insert normalized: {}", normalized.display());
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -140,6 +141,7 @@ impl PathTrie {
 
   fn find(&self, s: &Path) -> Option<Found> {
     let normalized = deno_path_util::normalize_path(s);
+    eprintln!("find normalized: {}", normalized.display());
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
