@@ -5,8 +5,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -16,6 +14,7 @@ use deno_cache_dir::HttpCache;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
@@ -33,6 +32,7 @@ use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -46,8 +46,10 @@ use node_resolver::NodeResolverOptions;
 use node_resolver::PackageJson;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
 
 use super::cache::LspCache;
+use super::documents::DocumentModule;
 use super::jsr::JsrCacheResolver;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
@@ -92,7 +94,7 @@ pub struct LspScopedResolver {
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_installer_dirty: Arc<AtomicBool>,
+  npm_installer_reqs: Arc<Mutex<BTreeSet<PackageReq>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolver: Option<CliNpmResolver>,
   node_resolver: Option<Arc<CliNodeResolver>>,
@@ -114,7 +116,7 @@ impl Default for LspScopedResolver {
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
       npm_installer: None,
-      npm_installer_dirty: Default::default(),
+      npm_installer_reqs: Default::default(),
       npm_resolver: None,
       node_resolver: None,
       npm_resolution: factory.services.npm_resolution.clone(),
@@ -200,7 +202,7 @@ impl LspScopedResolver {
       npm_pkg_req_resolver,
       npm_resolver,
       npm_installer,
-      npm_installer_dirty: Default::default(),
+      npm_installer_reqs: Default::default(),
       npm_resolution: factory.services.npm_resolution.clone(),
       node_resolver,
       pkg_json_resolver,
@@ -271,9 +273,8 @@ impl LspScopedResolver {
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
-      // npm installer isn't necessary for a snapshot
-      npm_installer: None,
-      npm_installer_dirty: Default::default(),
+      npm_installer: self.npm_installer.clone(),
+      npm_installer_reqs: self.npm_installer_reqs.clone(),
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
       npm_resolution: factory.services.npm_resolution.clone(),
       npm_resolver: factory.npm_resolver().cloned(),
@@ -357,6 +358,7 @@ impl LspScopedResolver {
     resolution_mode: ResolutionMode,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let npm_pkg_req_resolver = self.npm_pkg_req_resolver.as_ref()?;
+    self.add_npm_reqs(vec![req_ref.req().clone()]);
     Some(into_specifier_and_media_type(Some(
       npm_pkg_req_resolver
         .resolve_req_reference(
@@ -384,6 +386,10 @@ impl LspScopedResolver {
           .as_ref()?
           .lookup_package_specifier_for_resolution(specifier)
       })
+  }
+
+  pub fn npm_reqs(&self) -> BTreeSet<PackageReq> {
+    self.npm_installer_reqs.lock().clone()
   }
 
   pub fn deno_types_to_code_resolution(
@@ -440,6 +446,32 @@ impl LspScopedResolver {
       .map(|(s, e)| (s, e.headers.clone()))
       .collect()
   }
+
+  pub fn refresh_npm_reqs(&self) {
+    let Some(npm_installer) = self.npm_installer.as_ref().cloned() else {
+      return;
+    };
+    let npm_installer_reqs = self.npm_installer_reqs.lock();
+    let reqs = npm_installer_reqs.iter().cloned().collect::<Vec<_>>();
+    if let Err(err) = ADD_NPM_REQS_THREAD.add_npm_reqs(npm_installer, reqs) {
+      lsp_warn!("Could not refresh npm package requirements: {:#}", err);
+    }
+  }
+
+  pub fn add_npm_reqs(&self, reqs: Vec<PackageReq>) {
+    let Some(npm_installer) = self.npm_installer.as_ref().cloned() else {
+      return;
+    };
+    let mut npm_installer_reqs = self.npm_installer_reqs.lock();
+    let old_reqs_count = npm_installer_reqs.len();
+    npm_installer_reqs.extend(reqs.clone());
+    if npm_installer_reqs.len() == old_reqs_count {
+      return;
+    }
+    if let Err(err) = ADD_NPM_REQS_THREAD.add_npm_reqs(npm_installer, reqs) {
+      lsp_warn!("Could not add npm package requirements: {:#}", err);
+    }
+  }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -468,13 +500,33 @@ impl LspResolver {
         ),
       );
     }
-    Self {
-      unscoped: Arc::new(
-        LspScopedResolver::from_config_data(None, cache, http_client_provider)
-          .await,
-      ),
-      by_scope,
+    let unscoped = Arc::new(
+      LspScopedResolver::from_config_data(None, cache, http_client_provider)
+        .await,
+    );
+    for resolver in std::iter::once(&unscoped).chain(by_scope.values()) {
+      if resolver.npm_installer.is_none() {
+        continue;
+      }
+      let Some(lockfile) = resolver
+        .config_data
+        .as_ref()
+        .and_then(|d| d.lockfile.as_ref())
+      else {
+        continue;
+      };
+      let npm_reqs = lockfile
+        .lock()
+        .content
+        .packages
+        .specifiers
+        .keys()
+        .filter(|r| r.kind == deno_semver::package::PackageKind::Npm)
+        .map(|r| r.req.clone())
+        .collect::<Vec<_>>();
+      resolver.add_npm_reqs(npm_reqs);
     }
+    Self { unscoped, by_scope }
   }
 
   pub fn snapshot(&self) -> Arc<Self> {
@@ -497,11 +549,30 @@ impl LspResolver {
         .redirect_resolver
         .as_ref()
         .inspect(|r| r.did_cache());
-      resolver.npm_installer_dirty.store(true, Ordering::Relaxed);
+      resolver.refresh_npm_reqs();
     }
   }
 
-  pub async fn set_dep_info_by_scope(
+  pub fn did_create_module(&self, module: &DocumentModule) {
+    let resolver = self.get_scoped_resolver(module.scope.as_deref());
+    let npm_reqs = module
+      .dependencies
+      .values()
+      .flat_map(|d| [d.get_code(), d.get_type()])
+      .flatten()
+      .chain(
+        module
+          .types_dependency
+          .iter()
+          .flat_map(|d| d.dependency.maybe_specifier()),
+      )
+      .flat_map(|s| NpmPackageReqReference::from_specifier(s).ok())
+      .map(|r| r.into_inner().req)
+      .collect::<Vec<_>>();
+    resolver.add_npm_reqs(npm_reqs);
+  }
+
+  pub fn set_dep_info_by_scope(
     &self,
     dep_info_by_scope: &Arc<BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>>,
   ) {
@@ -509,27 +580,23 @@ impl LspResolver {
       .into_iter()
       .chain(self.by_scope.iter().map(|(s, r)| (Some(s), r)))
     {
-      let mut npm_installer_dirty =
-        resolver.npm_installer_dirty.swap(false, Ordering::Relaxed);
       let dep_info = dep_info_by_scope
         .get(&scope.cloned())
         .cloned()
         .unwrap_or_default();
       {
+        if resolver.npm_installer.is_some() && dep_info.has_node_specifier {
+          let has_types_node = {
+            let npm_installer_reqs = resolver.npm_installer_reqs.lock();
+            npm_installer_reqs.iter().any(|r| r.name == "@types/node")
+          };
+          if !has_types_node {
+            resolver
+              .add_npm_reqs(vec![PackageReq::from_str("@types/node").unwrap()]);
+          }
+        }
         let mut resolver_dep_info = resolver.dep_info.lock();
-        if !npm_installer_dirty {
-          npm_installer_dirty = dep_info.npm_reqs != resolver_dep_info.npm_reqs;
-        }
         *resolver_dep_info = dep_info.clone();
-      }
-      if !npm_installer_dirty {
-        continue;
-      }
-      if let Some(npm_installer) = resolver.npm_installer.as_ref() {
-        let reqs = dep_info.npm_reqs.iter().cloned().collect::<Vec<_>>();
-        if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
-          lsp_warn!("Could not set npm package requirements: {:#}", err);
-        }
       }
     }
   }
@@ -564,7 +631,6 @@ impl LspResolver {
 #[derive(Debug, Default, Clone)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
-  pub npm_reqs: BTreeSet<PackageReq>,
   pub has_node_specifier: bool,
 }
 
@@ -1173,6 +1239,62 @@ impl RedirectResolver {
     self.entries.retain(|_, entry| entry.is_some());
   }
 }
+
+type AddNpmReqsRequest = (
+  Arc<NpmInstaller>,
+  Vec<PackageReq>,
+  std::sync::mpsc::Sender<Result<(), JsErrorBox>>,
+);
+
+#[derive(Debug)]
+struct AddNpmReqsThread {
+  join_handle: Option<std::thread::JoinHandle<()>>,
+  request_tx: Option<tokio::sync::mpsc::UnboundedSender<AddNpmReqsRequest>>,
+}
+
+impl AddNpmReqsThread {
+  pub fn create() -> Self {
+    let (request_tx, mut request_rx) =
+      tokio::sync::mpsc::unbounded_channel::<AddNpmReqsRequest>();
+    let join_handle = std::thread::spawn(move || {
+      create_basic_runtime().block_on(async move {
+        while let Some((npm_installer, reqs, response_tx)) =
+          request_rx.recv().await
+        {
+          deno_core::unsync::spawn(async move {
+            let result = npm_installer.add_package_reqs_no_cache(&reqs).await;
+            response_tx.send(result).unwrap();
+          });
+        }
+      });
+    });
+    Self {
+      join_handle: Some(join_handle),
+      request_tx: Some(request_tx),
+    }
+  }
+
+  pub fn add_npm_reqs(
+    &self,
+    npm_installer: Arc<NpmInstaller>,
+    reqs: Vec<PackageReq>,
+  ) -> Result<(), JsErrorBox> {
+    let request_tx = self.request_tx.as_ref().unwrap();
+    let (response_tx, response_rx) = std::sync::mpsc::channel();
+    let _ = request_tx.send((npm_installer, reqs, response_tx));
+    response_rx.recv().unwrap()
+  }
+}
+
+impl Drop for AddNpmReqsThread {
+  fn drop(&mut self) {
+    drop(self.request_tx.take());
+    self.join_handle.take().unwrap().join().unwrap();
+  }
+}
+
+static ADD_NPM_REQS_THREAD: Lazy<AddNpmReqsThread> =
+  Lazy::new(AddNpmReqsThread::create);
 
 #[cfg(test)]
 mod tests {
