@@ -51,6 +51,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelConsoleConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
 
@@ -246,7 +247,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 cmd.build();
                 let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
                 let suggestions = args::did_you_mean(&run_flags.script, command_names);
-                if !suggestions.is_empty() {
+                if !suggestions.is_empty() && !run_flags.script.contains('.') {
                   let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
@@ -489,10 +490,15 @@ fn resolve_flags_and_init(
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
-  deno_telemetry::init(
-    deno_lib::version::otel_runtime_config(),
-    otel_config.clone(),
-  )?;
+  if otel_config.metrics_enabled
+    || otel_config.tracing_enabled
+    || !matches!(otel_config.console, OtelConsoleConfig::Ignore)
+  {
+    deno_telemetry::init(
+      deno_lib::version::otel_runtime_config(),
+      otel_config.clone(),
+    )?;
+  }
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
