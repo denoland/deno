@@ -110,8 +110,10 @@ function decode(str: string, encoding?: string): string {
 const CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function randomName(): string {
   return ArrayPrototypeJoin(
-    ArrayPrototypeMap([...new SafeArrayIterator(Array(6))], () =>
-      CHARS[MathFloor(MathRandom() * CHARS.length)]),
+    ArrayPrototypeMap(
+      [...new SafeArrayIterator(Array(6))],
+      () => CHARS[MathFloor(MathRandom() * CHARS.length)],
+    ),
     "",
   );
 }
