@@ -1501,7 +1501,7 @@ export const ServerResponse = function (
   this.socket = socket;
   this.socket?.on("close", () => {
     if (!this.finished) {
-      this.end()
+      this.end();
     }
   });
   this._header = "";
