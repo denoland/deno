@@ -267,6 +267,15 @@ async fn clean_except(
     if node_modules_path.is_some() {
       node_modules_keep.insert(package.get_package_cache_folder_id());
     }
+    eprintln!(
+      "inserting keep path: {}",
+      npm_cache
+        .package_folder_for_id(&deno_npm::NpmPackageCacheFolderId {
+          nv: package.id.nv.clone(),
+          copy_index: package.copy_index,
+        })
+        .display()
+    );
     keep_paths_trie.insert(&npm_cache.package_folder_for_id(
       &deno_npm::NpmPackageCacheFolderId {
         nv: package.id.nv.clone(),
@@ -547,14 +556,17 @@ fn clean_node_modules_symlinks(
 }
 
 fn rm_rf(state: &mut CleanState, path: &Path) -> Result<(), AnyError> {
+  eprintln!("rm_rf: {}", path.display());
   for entry in walkdir::WalkDir::new(path).contents_first(true) {
     let entry = entry?;
 
     if entry.file_type().is_dir() {
+      eprintln!("remove_dir_all: {}", entry.path().display());
       state.dirs_removed += 1;
       state.update_progress();
       std::fs::remove_dir_all(entry.path())?;
     } else {
+      eprintln!("remove_file: {}", entry.path().display());
       remove_file(state, entry.path(), entry.metadata().ok())?;
     }
   }
