@@ -1190,10 +1190,14 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                          to use when fetching remote modules from private repositories
                           <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+  <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
   <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>               Set the cache directory
   <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
                           <p(245)>(defaults to $HOME/.deno/bin)</>
+  <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
+                         database.
+  <g>DENO_EMIT_CACHE_MODE</>   Control is the transpiled sources should be cached.
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
@@ -1569,7 +1573,7 @@ where
     // causing strings with common prefix >=10 to be considered perfectly similar
     .map(|pv| (strsim::jaro(v, pv.as_ref()), pv.as_ref().to_owned()))
     // Confidence of 0.7 so that bar -> baz is suggested
-    .filter(|(confidence, _)| *confidence > 0.7)
+    .filter(|(confidence, _)| *confidence > 0.8)
     .collect();
   candidates
     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
