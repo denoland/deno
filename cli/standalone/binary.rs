@@ -56,8 +56,9 @@ use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
 
 use super::virtual_fs::output_vfs;
+use crate::args::get_default_v8_flags;
+use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::{get_default_v8_flags, CliOptions};
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
 use crate::http_util::HttpClientProvider;
