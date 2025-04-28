@@ -49,11 +49,7 @@ pub async fn serve(
     Arc::new(factory.create_cli_main_worker_factory().await?);
 
   if serve_flags.open_site {
-    let url = resolve_serve_url(
-      serve_flags.host,
-      serve_flags.port,
-      cli_options.ca_data().is_some(),
-    );
+    let url = resolve_serve_url(serve_flags.host, serve_flags.port);
     let _ = open::that_detached(url);
   }
 
@@ -192,11 +188,7 @@ async fn serve_with_watch(
   Ok(0)
 }
 
-fn resolve_serve_url(host: String, port: u16, https: bool) -> String {
-  let (scheme, default_port) = match https {
-    true => ("https", 443),
-    false => ("http", 80),
-  };
+fn resolve_serve_url(host: String, port: u16) -> String {
   let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
     "127.0.0.1".to_string()
   } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
@@ -204,10 +196,10 @@ fn resolve_serve_url(host: String, port: u16, https: bool) -> String {
   } else {
     host
   };
-  if port == default_port {
-    format!("{scheme}://{host}/")
+  if port == 80 {
+    format!("http://{host}/")
   } else {
-    format!("{scheme}://{host}:{port}/")
+    format!("http://{host}:{port}/")
   }
 }
 
@@ -218,32 +210,17 @@ mod test {
   #[test]
   fn test_resolve_serve_url() {
     assert_eq!(
-      resolve_serve_url("localhost".to_string(), 80, false),
+      resolve_serve_url("localhost".to_string(), 80),
       "http://localhost/"
     );
     assert_eq!(
-      resolve_serve_url("0.0.0.0".to_string(), 80, false),
+      resolve_serve_url("0.0.0.0".to_string(), 80),
       "http://127.0.0.1/"
     );
+    assert_eq!(resolve_serve_url("::".to_string(), 80), "http://127.0.0.1/");
     assert_eq!(
-      resolve_serve_url("::".to_string(), 80, false),
-      "http://127.0.0.1/"
-    );
-    assert_eq!(
-      resolve_serve_url("::".to_string(), 90, false),
+      resolve_serve_url("::".to_string(), 90),
       "http://127.0.0.1:90/"
-    );
-    assert_eq!(
-      resolve_serve_url("::".to_string(), 443, true),
-      "https://127.0.0.1/"
-    );
-    assert_eq!(
-      resolve_serve_url("::".to_string(), 8443, true),
-      "https://127.0.0.1:8443/"
-    );
-    assert_eq!(
-      resolve_serve_url("::".to_string(), 8443, false),
-      "http://127.0.0.1:8443/"
     );
   }
 }
