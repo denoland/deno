@@ -162,7 +162,7 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
   Ignore = 0,
@@ -636,6 +636,13 @@ pub fn init(
   rt_config: OtelRuntimeConfig,
   config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
+  if !config.metrics_enabled
+    && !config.tracing_enabled
+    && config.console == OtelConsoleConfig::Ignore
+  {
+    return Ok(());
+  }
+
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
