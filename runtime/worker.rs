@@ -413,7 +413,7 @@ impl MainWorker {
           ..Default::default()
         },
       ),
-      deno_geometry::deno_geometry::init_ops_and_esm(),
+      deno_geometry::deno_geometry::init_ops_and_esm(true),
       deno_cache::deno_cache::init_ops_and_esm(create_cache),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),

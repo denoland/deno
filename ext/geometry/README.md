@@ -10,38 +10,7 @@ From javascript, include the extension's source:
 
 ```javascript
 import { core } from "ext:core/mod.js";
-import { createGeometryLoader } from "ext:deno_geometry/00_init.js";
-```
-
-For environments that do not have a CSS `<transform-list>` parser, such as Web
-Worker, configure as follows:
-
-```javascript
-const loadGeometry = createGeometryLoader((_transformList, prefix) => {
-  throw new TypeError(
-    `${prefix}: Cannot parse CSS <transform-list> on Workers`,
-  );
-}, /* enableWindowFeatures */ false);
-```
-
-On the other hand, in environments with a CSS `<transform-list>` parser, you can
-configure as follows:
-
-```javascript
-const loadGeometry = createGeometryLoader((transformList, prefix) => {
-  try {
-    // parse <transform-list> by yourself
-    const { sequence, is2D } = parse(transformList);
-    return {
-      matrix: new Float64Array(sequence),
-      is2D,
-    };
-  } catch {
-    throw new TypeError(
-      `${prefix}: Invalid <transform-list> string: ${transformList}`,
-    );
-  }
-}, /* enableWindowFeatures */ true);
+import { loadGeometry } from "ext:deno_geometry/00_init.js";
 ```
 
 Then define to globalThis:
@@ -79,8 +48,10 @@ Object.defineProperties(globalThis, {
 });
 ```
 
-Then from rust, provide: `deno_geometry::deno_geometry::init_ops_and_esm()` in
-the `extensions` field of your `RuntimeOptions`
+Then from rust, provide: `deno_geometry::deno_geometry::init_ops_and_esm(bool)`
+in the `extensions` field of your `RuntimeOptions`
+
+Where `bool` indicates whether window features are enabled at initialization.
 
 ## Dependencies
 
@@ -92,7 +63,14 @@ the `extensions` field of your `RuntimeOptions`
 
 Following ops are provided, which can be accessed through `Deno.ops`:
 
-- DOMMatrixInner
-- DOMPointInner
-- DOMQuadInner
-- DOMRectInner
+- DOMPointReadOnly
+- DOMPoint
+- DOMRectReadOnly
+- DOMRect
+- DOMQuad
+- DOMMatrixReadOnly
+- DOMMatrix
+- op_geometry_matrix_to_buffer
+- op_geometry_matrix_to_string
+- op_geometry_parse_transform_list
+- op_geometry_get_enable_window_features

@@ -11,10 +11,11 @@ use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl;
-use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::ContextFn;
+use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::WebIDL;
 use nalgebra::Matrix3;
 use nalgebra::Matrix4;
@@ -28,26 +29,63 @@ use nalgebra::Vector4;
 deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
+  ops = [
+    op_geometry_matrix_to_buffer,
+    op_geometry_matrix_to_string,
+    op_geometry_parse_transform_list,
+    op_geometry_get_enable_window_features,
+  ],
   objects = [
     DOMPointReadOnly,
     DOMPoint,
     DOMRectReadOnly,
     DOMRect,
     DOMQuad,
-    DOMMatrixInner,
+    DOMMatrixReadOnly,
+    DOMMatrix,
   ],
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
+  options = {
+    enable_window_features: bool,
+  },
+  state = |state, options| {
+    state.put(State::new(options.enable_window_features));
+  },
 );
+
+struct State {
+  enable_window_features: bool,
+}
+
+impl State {
+  fn new(enable_window_features: bool) -> Self {
+    Self {
+      enable_window_features,
+    }
+  }
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GeometryError {
   #[class(inherit)]
   #[error(transparent)]
-  WebIdlError(#[from] WebIdlError),
+  WebIDL(#[from] WebIdlError),
   #[class(type)]
   #[error("Inconsistent 2d matrix value")]
   Inconsistent2DMatrix,
+  #[class(type)]
+  #[error("Cannot parse CSS <transform-list> on Workers")]
+  DisallowWindowFeatures,
+  #[class(type)]
+  #[error("The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix")]
+  InvalidSequenceSize,
+  #[class(type)]
+  #[error("Mismatched types")]
+  TypeMismatch,
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("Cannot be serialized with NaN or Infinity values")]
+  InvalidState,
 }
 
 #[derive(WebIDL, Debug)]
@@ -71,16 +109,10 @@ pub struct DOMPointReadOnly {
 impl GarbageCollected for DOMPointReadOnly {}
 
 impl DOMPointReadOnly {
-  fn from_point_inner<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-    prefix: Cow<'static, str>,
-    context: ContextFn<'_>,
-  ) -> Result<DOMPointReadOnly, GeometryError> {
-    let init = DOMPointInit::convert(scope, value, prefix, context, &Default::default())?;
-    Ok(DOMPointReadOnly {
+  fn from_point_inner(init: DOMPointInit) -> DOMPointReadOnly {
+    DOMPointReadOnly {
       inner: RefCell::new(Vector4::new(*init.x, *init.y, *init.z, *init.w)),
-    })
+    }
   }
 }
 
@@ -88,7 +120,7 @@ impl DOMPointReadOnly {
 impl DOMPointReadOnly {
   #[constructor]
   #[cppgc]
-  pub fn new(
+  pub fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
@@ -99,7 +131,7 @@ impl DOMPointReadOnly {
         *x.unwrap_or(webidl::UnrestrictedDouble(0.0)),
         *y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
         *z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *w.unwrap_or(webidl::UnrestrictedDouble(1.0))
+        *w.unwrap_or(webidl::UnrestrictedDouble(1.0)),
       )),
     }
   }
@@ -107,18 +139,8 @@ impl DOMPointReadOnly {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_point<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMPointReadOnly, GeometryError> {
-    DOMPointReadOnly::from_point_inner(
-      scope,
-      value,
-      "Failed to execute 'DOMPointReadOnly.fromPoint'".into(),
-      ContextFn::new_borrowed(
-        &|| Cow::Borrowed("Argument 1")
-      )
-    )
+  pub fn from_point<'a>(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+    DOMPointReadOnly::from_point_inner(init)
   }
 
   #[fast]
@@ -169,20 +191,13 @@ impl DOMPointReadOnly {
     obj
   }
 
+  // TODO(petamoriken): returns (DOMPointReadOnly, DOMPoint)
   #[cppgc]
   pub fn matrix_transform<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-    ) -> Result<DOMPointReadOnly, GeometryError> {
-    let matrix = DOMMatrixInner::from_matrix_inner(
-      scope,
-      value,
-      "Failed to execute 'DOMPointReadOnly.matrixTransform'".into(),
-      ContextFn::new_borrowed(
-        &|| Cow::Borrowed("Argument 1")
-      )
-    )?;
+    #[webidl] value: DOMMatrixInit,
+  ) -> Result<DOMPointReadOnly, GeometryError> {
+    let matrix = DOMMatrixReadOnly::from_matrix_inner(value)?;
     let out = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
@@ -199,7 +214,7 @@ impl GarbageCollected for DOMPoint {}
 impl DOMPoint {
   #[constructor]
   #[cppgc]
-  pub fn new(
+  pub fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
@@ -210,28 +225,19 @@ impl DOMPoint {
         *x.unwrap_or(webidl::UnrestrictedDouble(0.0)),
         *y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
         *z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *w.unwrap_or(webidl::UnrestrictedDouble(1.0))
+        *w.unwrap_or(webidl::UnrestrictedDouble(1.0)),
       )),
     };
     (ro, DOMPoint {})
   }
 
-  // TODO(petamoriken): returns Result<(DOMPointReadOnly, DOMPoint), GeometryError>
+  // TODO(petamoriken): returns (DOMPointReadOnly, DOMPoint)
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_point<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMPointReadOnly, GeometryError> {
-    DOMPointReadOnly::from_point_inner(
-      scope,
-      value,
-      "Failed to execute 'DOMPoint.fromPoint'".into(),
-      ContextFn::new_borrowed(
-        &|| Cow::Borrowed("Argument 1")
-      )
-    )
+  pub fn from_point<'a>(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+    let ro = DOMPointReadOnly::from_point_inner(init);
+    ro
   }
 
   #[fast]
@@ -241,7 +247,11 @@ impl DOMPoint {
   }
 
   #[setter]
-  pub fn x(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMPointReadOnly) {
+  pub fn x(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMPointReadOnly,
+  ) {
     ro.inner.borrow_mut().x = *value
   }
 
@@ -252,7 +262,11 @@ impl DOMPoint {
   }
 
   #[setter]
-  pub fn y(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMPointReadOnly) {
+  pub fn y(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMPointReadOnly,
+  ) {
     ro.inner.borrow_mut().y = *value
   }
 
@@ -263,7 +277,11 @@ impl DOMPoint {
   }
 
   #[setter]
-  pub fn z(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMPointReadOnly) {
+  pub fn z(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMPointReadOnly,
+  ) {
     ro.inner.borrow_mut().z = *value
   }
 
@@ -274,7 +292,11 @@ impl DOMPoint {
   }
 
   #[setter]
-  pub fn w(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMPointReadOnly) {
+  pub fn w(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMPointReadOnly,
+  ) {
     ro.inner.borrow_mut().w = *value
   }
 }
@@ -303,19 +325,13 @@ pub struct DOMRectReadOnly {
 impl GarbageCollected for DOMRectReadOnly {}
 
 impl DOMRectReadOnly {
-  fn from_rect_inner<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-    prefix: Cow<'static, str>,
-    context: ContextFn<'_>,
-  ) -> Result<DOMRectReadOnly, GeometryError> {
-    let init = DOMRectInit::convert(scope, value, prefix, context, &Default::default())?;
-    Ok(DOMRectReadOnly {
+  fn from_rect_inner(init: DOMRectInit) -> DOMRectReadOnly {
+    DOMRectReadOnly {
       x: Cell::new(*init.x),
       y: Cell::new(*init.y),
       width: Cell::new(*init.width),
       height: Cell::new(*init.height),
-    })
+    }
   }
 
   fn get_top(&self) -> f64 {
@@ -347,7 +363,7 @@ impl DOMRectReadOnly {
 impl DOMRectReadOnly {
   #[constructor]
   #[cppgc]
-  pub fn new(
+  pub fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] width: Option<webidl::UnrestrictedDouble>,
@@ -364,18 +380,8 @@ impl DOMRectReadOnly {
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_rect<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMRectReadOnly, GeometryError> {
-    DOMRectReadOnly::from_rect_inner(
-      scope,
-      value,
-      "Failed to execute 'DOMRectReadOnly.fromPoint'".into(),
-      ContextFn::new_borrowed(
-        &|| Cow::Borrowed("Argument 1")
-      )
-    )
+  pub fn from_rect<'a>(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+    DOMRectReadOnly::from_rect_inner(init)
   }
 
   #[fast]
@@ -483,7 +489,7 @@ impl GarbageCollected for DOMRect {}
 impl DOMRect {
   #[constructor]
   #[cppgc]
-  pub fn new(
+  pub fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] width: Option<webidl::UnrestrictedDouble>,
@@ -498,22 +504,13 @@ impl DOMRect {
     (ro, DOMRect {})
   }
 
-  // TODO(petamoriken): returns Result<(DOMRectReadOnly, DOMPoint), GeometryError>
+  // TODO(petamoriken): returns (DOMRectReadOnly, DOMRect)
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_rect<'a>(
-    scope: &mut v8::HandleScope<'a>,
-    value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMRectReadOnly, GeometryError> {
-    DOMRectReadOnly::from_rect_inner(
-      scope,
-      value,
-      "Failed to execute 'DOMRect.fromRect'".into(),
-      ContextFn::new_borrowed(
-        &|| Cow::Borrowed("Argument 1")
-      )
-    )
+  pub fn from_rect<'a>(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+    let ro = DOMRectReadOnly::from_rect_inner(init);
+    ro
   }
 
   #[fast]
@@ -523,7 +520,11 @@ impl DOMRect {
   }
 
   #[setter]
-  pub fn x(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMRectReadOnly) {
+  pub fn x(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMRectReadOnly,
+  ) {
     ro.x.set(*value)
   }
 
@@ -534,7 +535,11 @@ impl DOMRect {
   }
 
   #[setter]
-  pub fn y(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMRectReadOnly) {
+  pub fn y(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMRectReadOnly,
+  ) {
     ro.y.set(*value)
   }
 
@@ -545,7 +550,11 @@ impl DOMRect {
   }
 
   #[setter]
-  pub fn width(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMRectReadOnly) {
+  pub fn width(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMRectReadOnly,
+  ) {
     ro.width.set(*value)
   }
 
@@ -556,7 +565,11 @@ impl DOMRect {
   }
 
   #[setter]
-  pub fn height(&self, #[webidl] value: webidl::UnrestrictedDouble, #[proto] ro: &DOMRectReadOnly) {
+  pub fn height(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMRectReadOnly,
+  ) {
     ro.height.set(*value)
   }
 }
@@ -570,7 +583,7 @@ pub struct DOMQuadInit {
   p4: DOMPointInit,
 }
 
-// TODO(petamoriken): store SameObject<DOMPoint>
+// TODO(petamoriken): store SameObject<(DOMPointReadOnly, DOMPoint)>
 pub struct DOMQuad {
   p1: SameObject<DOMPointReadOnly>,
   p2: SameObject<DOMPointReadOnly>,
@@ -598,11 +611,16 @@ impl DOMQuad {
       point: DOMPointInit,
     ) -> SameObject<DOMPointReadOnly> {
       let obj = SameObject::new();
-      obj.set(scope, DOMPointReadOnly {
-        inner: RefCell::new(Vector4::new(
-          *point.x, *point.y, *point.z, *point.w,
-        )),
-      }).unwrap();
+      obj
+        .set(
+          scope,
+          DOMPointReadOnly {
+            inner: RefCell::new(Vector4::new(
+              *point.x, *point.y, *point.z, *point.w,
+            )),
+          },
+        )
+        .unwrap();
       obj
     }
 
@@ -630,9 +648,14 @@ impl DOMQuad {
       w: f64,
     ) -> SameObject<DOMPointReadOnly> {
       let obj = SameObject::new();
-      obj.set(scope, DOMPointReadOnly {
-        inner: RefCell::new(Vector4::new(x, y, z, w)),
-      }).unwrap();
+      obj
+        .set(
+          scope,
+          DOMPointReadOnly {
+            inner: RefCell::new(Vector4::new(x, y, z, w)),
+          },
+        )
+        .unwrap();
       obj
     }
 
@@ -663,11 +686,16 @@ impl DOMQuad {
       point: DOMPointInit,
     ) -> SameObject<DOMPointReadOnly> {
       let obj = SameObject::new();
-      obj.set(scope, DOMPointReadOnly {
-        inner: RefCell::new(Vector4::new(
-          *point.x, *point.y, *point.z, *point.w,
-        )),
-      }).unwrap();
+      obj
+        .set(
+          scope,
+          DOMPointReadOnly {
+            inner: RefCell::new(Vector4::new(
+              *point.x, *point.y, *point.z, *point.w,
+            )),
+          },
+        )
+        .unwrap();
       obj
     }
 
@@ -817,12 +845,12 @@ pub struct DOMMatrixInit {
 }
 
 #[derive(Debug, Clone)]
-pub struct DOMMatrixInner {
+pub struct DOMMatrixReadOnly {
   inner: RefCell<Matrix4<f64>>,
   is_2d: Cell<bool>,
 }
 
-impl GarbageCollected for DOMMatrixInner {}
+impl GarbageCollected for DOMMatrixReadOnly {}
 
 /*
  * NOTE: column-major order
@@ -866,14 +894,53 @@ const INDEX_M42: usize = 13;
 const INDEX_M43: usize = 14;
 const INDEX_M44: usize = 15;
 
-impl DOMMatrixInner {
-  fn from_matrix_inner<'a>(
+impl DOMMatrixReadOnly {
+  fn new<'a>(
+    state: &mut OpState,
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'_>,
-  ) -> Result<DOMMatrixInner, GeometryError> {
-    let init = DOMMatrixInit::convert(scope, value, prefix, context, &Default::default())?;
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if value.is_undefined() {
+      return Ok(DOMMatrixReadOnly::identity());
+    }
+    if value.is_string() {
+      let state = state.borrow_mut::<State>();
+      if !state.enable_window_features {
+        return Err(GeometryError::DisallowWindowFeatures);
+      }
+
+      // TODO(petamoriken): parse CSS <transform-list>
+      unimplemented!()
+    }
+
+    let seq =
+      Vec::<f64>::convert(scope, value, prefix, context, &Default::default())?;
+    if let [a, b, c, d, e, f] = seq.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if seq.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(seq.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
+    }
+  }
+
+  fn from_matrix_inner<'a>(
+    init: DOMMatrixInit,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
     macro_rules! fixup {
       ($value3d:expr, $value2d:expr, $default:expr) => {{
         if let Some(value3d) = $value3d {
@@ -920,7 +987,7 @@ impl DOMMatrixInner {
     };
 
     if is_2d {
-      Ok(DOMMatrixInner {
+      Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
           *m11, *m21, 0.0, *m41,
@@ -944,7 +1011,7 @@ impl DOMMatrixInner {
         m44,
         ..
       } = init;
-      Ok(DOMMatrixInner {
+      Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
           *m11, *m21, *m31, *m41,
@@ -954,6 +1021,13 @@ impl DOMMatrixInner {
         )),
         is_2d: Cell::new(false),
       })
+    }
+  }
+
+  fn identity() -> DOMMatrixReadOnly {
+    DOMMatrixReadOnly {
+      inner: RefCell::new(Matrix4::identity()),
+      is_2d: Cell::new(true),
     }
   }
 
@@ -967,17 +1041,13 @@ impl DOMMatrixInner {
   }
 
   #[inline]
-  fn scale_without_origin_self_inner(
-    &self,
-    sx: f64,
-    sy: f64,
-    sz: f64,
-  ) {
+  fn scale_without_origin_self_inner(&self, sx: f64, sy: f64, sz: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
     let scaling = Vector3::new(sx, sy, sz);
     inner.prepend_nonuniform_scaling_mut(&scaling);
     self.is_2d.set(is_2d && sz == 1.0);
+    println!("{:?}", self);
   }
 
   #[inline]
@@ -1002,12 +1072,7 @@ impl DOMMatrixInner {
   }
 
   #[inline]
-  fn rotate_self_inner(
-    &self,
-    roll_deg: f64,
-    pitch_deg: f64,
-    yaw_deg: f64,
-  ) {
+  fn rotate_self_inner(&self, roll_deg: f64, pitch_deg: f64, yaw_deg: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
     let rotation = Rotation3::from_euler_angles(
@@ -1021,16 +1086,17 @@ impl DOMMatrixInner {
     inner.set_column(0, &result.column(0));
     inner.set_column(1, &result.column(1));
     inner.set_column(2, &result.column(2));
-    self
-      .is_2d
-      .set(is_2d && roll_deg == 0.0 && pitch_deg == 0.0);
+    self.is_2d.set(is_2d && roll_deg == 0.0 && pitch_deg == 0.0);
   }
 
   #[inline]
   fn rotate_from_vector_self_inner(&self, x: f64, y: f64) {
+    if x == 0.0 && y == 0.0 {
+      return;
+    }
     let mut inner = self.inner.borrow_mut();
-    let rotation =
-      Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
+    let rotation = Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x))
+      .to_homogeneous();
     let mut result = Matrix4x3::zeros();
     inner.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
     inner.set_column(0, &result.column(0));
@@ -1067,8 +1133,16 @@ impl DOMMatrixInner {
   #[inline]
   fn skew_x_self_inner(&self, x_deg: f64) {
     let mut inner = self.inner.borrow_mut();
-    let skew =
-      Matrix4x2::new(1.0, x_deg.to_radians().tan(), 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+    let skew = Matrix4x2::new(
+      1.0,
+      x_deg.to_radians().tan(),
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+    );
     let mut result = Matrix4x2::zeros();
     inner.mul_to(&skew, &mut result);
     inner.set_column(0, &result.column(0));
@@ -1078,8 +1152,16 @@ impl DOMMatrixInner {
   #[inline]
   fn skew_y_self_inner(&self, y_deg: f64) {
     let mut inner = self.inner.borrow_mut();
-    let skew =
-      Matrix4x2::new(1.0, 0.0, y_deg.to_radians().tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
+    let skew = Matrix4x2::new(
+      1.0,
+      0.0,
+      y_deg.to_radians().tan(),
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+    );
     let mut result = Matrix4x2::zeros();
     inner.mul_to(&skew, &mut result);
     inner.set_column(0, &result.column(0));
@@ -1089,8 +1171,8 @@ impl DOMMatrixInner {
   #[inline]
   fn multiply_self_inner(
     &self,
-    lhs: &DOMMatrixInner,
-    rhs: &DOMMatrixInner,
+    lhs: &DOMMatrixReadOnly,
+    rhs: &DOMMatrixReadOnly,
   ) {
     let lhs_inner = lhs.inner.borrow();
     let lhs_is_2d = lhs.is_2d.get();
@@ -1157,138 +1239,139 @@ impl DOMMatrixInner {
   }
 
   #[inline]
-  fn get_a(&self) -> f64 {
+  fn a_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_A) }
   }
 
   #[inline]
-  fn get_b(&self) -> f64 {
+  fn b_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_B) }
   }
 
   #[inline]
-  fn get_c(&self) -> f64 {
+  fn c_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_C) }
   }
 
   #[inline]
-  fn get_d(&self) -> f64 {
+  fn d_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_D) }
   }
 
   #[inline]
-  fn get_e(&self) -> f64 {
+  fn e_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_E) }
   }
 
   #[inline]
-  fn get_f(&self) -> f64 {
+  fn f_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_F) }
   }
 
   #[inline]
-  fn get_m11(&self) -> f64 {
+  fn m11_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M11) }
   }
 
   #[inline]
-  fn get_m12(&self) -> f64 {
+  fn m12_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M12) }
   }
 
   #[inline]
-  fn get_m13(&self) -> f64 {
+  fn m13_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M13) }
   }
 
   #[inline]
-  fn get_m14(&self) -> f64 {
+  fn m14_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M14) }
   }
 
   #[inline]
-  fn get_m21(&self) -> f64 {
+  fn m21_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M21) }
   }
 
   #[inline]
-  fn get_m22(&self) -> f64 {
+  fn m22_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M22) }
   }
 
   #[inline]
-  fn get_m23(&self) -> f64 {
+  fn m23_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M23) }
   }
 
   #[inline]
-  fn get_m24(&self) -> f64 {
+  fn m24_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M24) }
   }
 
   #[inline]
-  fn get_m31(&self) -> f64 {
+  fn m31_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M31) }
   }
 
   #[inline]
-  fn get_m32(&self) -> f64 {
+  fn m32_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M32) }
   }
 
   #[inline]
-  fn get_m33(&self) -> f64 {
+  fn m33_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M33) }
   }
 
   #[inline]
-  fn get_m34(&self) -> f64 {
+  fn m34_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M34) }
   }
 
   #[inline]
-  fn get_m41(&self) -> f64 {
+  fn m41_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M41) }
   }
 
   #[inline]
-  fn get_m42(&self) -> f64 {
+  fn m42_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M42) }
   }
 
   #[inline]
-  fn get_m43(&self) -> f64 {
+  fn m43_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M43) }
   }
 
   #[inline]
-  fn get_m44(&self) -> f64 {
+  fn m44_inner(&self) -> f64 {
     // SAFETY: in-range access
     unsafe { *self.inner.borrow().get_unchecked(INDEX_M44) }
   }
 
-  fn get_is_identity(&self) -> bool {
+  #[inline]
+  fn is_identity_inner(&self) -> bool {
     let inner = self.inner.borrow();
     // SAFETY: in-range access
     unsafe {
@@ -1310,17 +1393,33 @@ impl DOMMatrixInner {
         && *inner.get_unchecked(INDEX_M44) == 1.0
     }
   }
+
+  #[inline]
+  fn is_finite_inner(&self) -> bool {
+    self
+      .inner
+      .borrow()
+      .into_iter()
+      .all(|&item| item.is_finite())
+  }
 }
 
-#[op2]
-impl DOMMatrixInner {
+#[op2(base)]
+impl DOMMatrixReadOnly {
   #[constructor]
   #[cppgc]
-  pub fn constructor(#[buffer] buffer: &[f64], is_2d: bool) -> DOMMatrixInner {
-    DOMMatrixInner {
-      inner: RefCell::new(Matrix4::from_column_slice(buffer)),
-      is_2d: Cell::new(is_2d),
-    }
+  pub fn constructor<'a>(
+    state: &mut OpState,
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    DOMMatrixReadOnly::new(
+      state,
+      scope,
+      value,
+      "Failed to construct 'DOMMatrixReadOnly'".into(),
+      ContextFn::new_borrowed(&|| Cow::Borrowed("Argument 1")),
+    )
   }
 
   #[reentrant]
@@ -1328,440 +1427,218 @@ impl DOMMatrixInner {
   #[cppgc]
   pub fn from_matrix(
     #[webidl] init: DOMMatrixInit,
-  ) -> Result<DOMMatrixInner, GeometryError> {
-    macro_rules! fixup {
-      ($value3d:expr, $value2d:expr, $default:expr) => {{
-        if let Some(value3d) = $value3d {
-          if let Some(value2d) = $value2d {
-            if !(*value3d == *value2d || value3d.is_nan() && value2d.is_nan()) {
-              return Err(GeometryError::Inconsistent2DMatrix);
-            }
-          }
-          value3d
-        } else if let Some(value2d) = $value2d {
-          value2d
-        } else {
-          webidl::UnrestrictedDouble($default)
-        }
-      }};
-    }
-
-    let m11 = fixup!(init.m11, init.a, 1.0);
-    let m12 = fixup!(init.m12, init.b, 0.0);
-    let m21 = fixup!(init.m21, init.c, 0.0);
-    let m22 = fixup!(init.m22, init.d, 1.0);
-    let m41 = fixup!(init.m41, init.e, 0.0);
-    let m42 = fixup!(init.m42, init.f, 0.0);
-    let is_2d = {
-      let is_2d_can_be_true = *init.m13 == 0.0
-        && *init.m14 == 0.0
-        && *init.m23 == 0.0
-        && *init.m24 == 0.0
-        && *init.m31 == 0.0
-        && *init.m32 == 0.0
-        && *init.m33 == 1.0
-        && *init.m34 == 0.0
-        && *init.m43 == 0.0
-        && *init.m44 == 1.0;
-      if let Some(is_2d) = init.is_2d {
-        if is_2d && !is_2d_can_be_true {
-          return Err(GeometryError::Inconsistent2DMatrix);
-        } else {
-          is_2d
-        }
-      } else {
-        is_2d_can_be_true
-      }
-    };
-
-    if is_2d {
-      Ok(DOMMatrixInner {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-          *m11, *m21, 0.0, *m41,
-          *m12, *m22, 0.0, *m42,
-           0.0,  0.0, 1.0,  0.0,
-           0.0,  0.0, 0.0,  1.0,
-        )),
-        is_2d: Cell::new(true),
-      })
-    } else {
-      let DOMMatrixInit {
-        m13,
-        m14,
-        m23,
-        m24,
-        m31,
-        m32,
-        m33,
-        m34,
-        m43,
-        m44,
-        ..
-      } = init;
-      Ok(DOMMatrixInner {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-          *m11, *m21, *m31, *m41,
-          *m12, *m22, *m32, *m42,
-          *m13, *m23, *m33, *m43,
-          *m14, *m24, *m34, *m44,
-        )),
-        is_2d: Cell::new(false),
-      })
-    }
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    DOMMatrixReadOnly::from_matrix_inner(init)
   }
 
+  #[rename("fromFloat32Array")]
   #[static_method]
   #[cppgc]
-  pub fn identity() -> DOMMatrixInner {
-    DOMMatrixInner {
-      inner: RefCell::new(Matrix4::identity()),
-      is_2d: Cell::new(true),
+  pub fn from_float32_array<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if !value.is_float32_array() {
+      return Err(GeometryError::TypeMismatch);
+    }
+    let float64 = Vec::<f64>::convert(
+      scope,
+      value,
+      "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
+      (|| Cow::Borrowed("Argument 1")).into(),
+      &Default::default(),
+    )?;
+
+    if let [a, b, c, d, e, f] = float64.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if float64.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
     }
   }
 
+  #[rename("fromFloat64Array")]
+  #[static_method]
   #[cppgc]
-  pub fn clone(&self) -> DOMMatrixInner {
-    self.clone()
+  pub fn from_float64_array<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if !value.is_float64_array() {
+      return Err(GeometryError::TypeMismatch);
+    }
+    let float64 = Vec::<f64>::convert(
+      scope,
+      value,
+      "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
+      (|| Cow::Borrowed("Argument 1")).into(),
+      &Default::default(),
+    )?;
+
+    if let [a, b, c, d, e, f] = float64.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if float64.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
+    }
   }
 
   #[fast]
   #[getter]
   pub fn a(&self) -> f64 {
-    self.get_a()
-  }
-
-  #[setter]
-  pub fn a(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_A) = *value;
-    }
+    self.a_inner()
   }
 
   #[fast]
   #[getter]
   pub fn b(&self) -> f64 {
-    self.get_b()
-  }
-
-  #[setter]
-  pub fn b(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_B) = *value;
-    }
+    self.b_inner()
   }
 
   #[fast]
   #[getter]
   pub fn c(&self) -> f64 {
-    self.get_c()
-  }
-
-  #[setter]
-  pub fn c(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_C) = *value;
-    }
+    self.c_inner()
   }
 
   #[fast]
   #[getter]
   pub fn d(&self) -> f64 {
-    self.get_d()
-  }
-
-  #[setter]
-  pub fn d(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_D) = *value;
-    }
+    self.d_inner()
   }
 
   #[fast]
   #[getter]
   pub fn e(&self) -> f64 {
-    self.get_e()
-  }
-
-  #[setter]
-  pub fn e(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_E) = *value;
-    }
+    self.e_inner()
   }
 
   #[fast]
   #[getter]
   pub fn f(&self) -> f64 {
-    self.get_f()
-  }
-
-  #[setter]
-  pub fn f(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_F) = *value;
-    }
+    self.f_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m11(&self) -> f64 {
-    self.get_m11()
-  }
-
-  #[setter]
-  pub fn m11(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = *value;
-    }
+    self.m11_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m12(&self) -> f64 {
-    self.get_m12()
-  }
-
-  #[setter]
-  pub fn m12(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = *value;
-    }
+    self.m12_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m13(&self) -> f64 {
-    self.get_m13()
-  }
-
-  #[setter]
-  pub fn m13(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m13_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m14(&self) -> f64 {
-    self.get_m14()
-  }
-
-  #[setter]
-  pub fn m14(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m14_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m21(&self) -> f64 {
-    self.get_m21()
-  }
-
-  #[setter]
-  pub fn m21(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = *value;
-    }
+    self.m21_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m22(&self) -> f64 {
-    self.get_m22()
-  }
-
-  #[setter]
-  pub fn m22(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = *value;
-    }
+    self.m22_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m23(&self) -> f64 {
-    self.get_m23()
-  }
-
-  #[setter]
-  pub fn m23(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m23_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m24(&self) -> f64 {
-    self.get_m24()
-  }
-
-  #[setter]
-  pub fn m24(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m24_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m31(&self) -> f64 {
-    self.get_m31()
-  }
-
-  #[setter]
-  pub fn m31(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m31_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m32(&self) -> f64 {
-    self.get_m32()
-  }
-
-  #[setter]
-  pub fn m32(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m32_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m33(&self) -> f64 {
-    self.get_m33()
-  }
-
-  #[setter]
-  pub fn m33(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = *value;
-    }
-    if *value != 1.0 {
-      self.is_2d.set(false);
-    }
+    self.m33_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m34(&self) -> f64 {
-    self.get_m34()
-  }
-
-  #[setter]
-  pub fn m34(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m34_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m41(&self) -> f64 {
-    self.get_m41()
-  }
-
-  #[setter]
-  pub fn m41(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = *value;
-    }
+    self.m41_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m42(&self) -> f64 {
-    self.get_m42()
-  }
-
-  #[setter]
-  pub fn m42(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = *value;
-    }
+    self.m42_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m43(&self) -> f64 {
-    self.get_m43()
-  }
-
-  #[setter]
-  pub fn m43(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = *value;
-    }
-    if *value != 0.0 {
-      self.is_2d.set(false);
-    }
+    self.m43_inner()
   }
 
   #[fast]
   #[getter]
   pub fn m44(&self) -> f64 {
-    self.get_m44()
-  }
-
-  #[setter]
-  pub fn m44(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    // SAFETY: in-range access
-    unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = *value;
-    }
-    if *value != 1.0 {
-      self.is_2d.set(false);
-    }
+    self.m44_inner()
   }
 
   #[fast]
@@ -1773,261 +1650,246 @@ impl DOMMatrixInner {
   #[fast]
   #[getter]
   pub fn is_identity(&self) -> bool {
-    self.get_is_identity()
+    self.is_identity_inner()
   }
 
-  #[fast]
-  #[getter]
-  pub fn is_finite(&self) -> bool {
-    self
-      .inner
-      .borrow()
-      .into_iter()
-      .all(|&item| item.is_finite())
-  }
-
-  #[arraybuffer]
-  pub fn to_buffer(&self) -> Vec<u8> {
-    // SAFETY: in-range access
-    unsafe {
-      slice::from_raw_parts(
-        self.inner.borrow().as_slice().as_ptr() as *mut u8,
-        mem::size_of::<f64>() * 16,
-      )
-    }
-    .to_vec()
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn translate(
     &self,
-    #[webidl] tx: webidl::UnrestrictedDouble,
-    #[webidl] ty: webidl::UnrestrictedDouble,
-    #[webidl] tz: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] tx: Option<webidl::UnrestrictedDouble>,
+    #[webidl] ty: Option<webidl::UnrestrictedDouble>,
+    #[webidl] tz: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.translate_self_inner(*tx, *ty, *tz);
+    out.translate_self_inner(tx, ty, tz);
     out
   }
 
-  pub fn translate_self(
-    &self,
-    #[webidl] tx: webidl::UnrestrictedDouble,
-    #[webidl] ty: webidl::UnrestrictedDouble,
-    #[webidl] tz: webidl::UnrestrictedDouble,
-  ) {
-    self.translate_self_inner(*tx, *ty, *tz);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn scale_without_origin(
+  pub fn scale(
     &self,
-    #[webidl] sx: webidl::UnrestrictedDouble,
-    #[webidl] sy: webidl::UnrestrictedDouble,
-    #[webidl] sz: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sz: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
+    let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.scale_without_origin_self_inner(*sx, *sy, *sz);
+    if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
+      out.scale_without_origin_self_inner(sx, sy, sz);
+    } else {
+      out
+        .scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
+    }
     out
   }
 
-  pub fn scale_without_origin_self(
-    &self,
-    #[webidl] sx: webidl::UnrestrictedDouble,
-    #[webidl] sy: webidl::UnrestrictedDouble,
-    #[webidl] sz: webidl::UnrestrictedDouble,
-  ) {
-    self.scale_without_origin_self_inner(*sx, *sy, *sz);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn scale_with_origin(
+  pub fn scale_non_uniform(
     &self,
-    #[webidl] sx: webidl::UnrestrictedDouble,
-    #[webidl] sy: webidl::UnrestrictedDouble,
-    #[webidl] sz: webidl::UnrestrictedDouble,
-    #[webidl] origin_x: webidl::UnrestrictedDouble,
-    #[webidl] origin_y: webidl::UnrestrictedDouble,
-    #[webidl] origin_z: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let out = self.clone();
-    out.scale_with_origin_self_inner(
-      *sx, *sy, *sz, *origin_x, *origin_y, *origin_z,
-    );
+    out.scale_without_origin_self_inner(sx, sy, 1.0);
     out
   }
 
-  pub fn scale_with_origin_self(
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
+  #[cppgc]
+  pub fn scale3d(
     &self,
-    #[webidl] sx: webidl::UnrestrictedDouble,
-    #[webidl] sy: webidl::UnrestrictedDouble,
-    #[webidl] sz: webidl::UnrestrictedDouble,
-    #[webidl] origin_x: webidl::UnrestrictedDouble,
-    #[webidl] origin_y: webidl::UnrestrictedDouble,
-    #[webidl] origin_z: webidl::UnrestrictedDouble,
-  ) {
-    self.scale_with_origin_self_inner(*sx, *sy, *sz, *origin_x, *origin_y, *origin_z);
+    #[webidl] scale: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let out = self.clone();
+    if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
+      out.scale_without_origin_self_inner(scale, scale, scale);
+    } else {
+      out.scale_with_origin_self_inner(
+        scale, scale, scale, origin_x, origin_y, origin_z,
+      );
+    }
+    out
   }
 
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn rotate(
     &self,
-    #[webidl] roll_deg: webidl::UnrestrictedDouble,
-    #[webidl] pitch_deg: webidl::UnrestrictedDouble,
-    #[webidl] yaw_deg: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let (roll_deg, pitch_deg, yaw_deg) =
+      if rotate_y.is_none() && rotate_z.is_none() {
+        (0.0, 0.0, rotate_x)
+      } else {
+        (
+          rotate_x,
+          *rotate_y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+          *rotate_z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+        )
+      };
     let out = self.clone();
-    out.rotate_self_inner(*roll_deg, *pitch_deg, *yaw_deg);
+    out.rotate_self_inner(roll_deg, pitch_deg, yaw_deg);
     out
   }
 
-  pub fn rotate_self(
-    &self,
-    #[webidl] roll_deg: webidl::UnrestrictedDouble,
-    #[webidl] pitch_deg: webidl::UnrestrictedDouble,
-    #[webidl] yaw_deg: webidl::UnrestrictedDouble,
-  ) {
-    self.rotate_self_inner(*roll_deg, *pitch_deg, *yaw_deg);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn rotate_from_vector(
     &self,
-    #[webidl] x: webidl::UnrestrictedDouble,
-    #[webidl] y: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.rotate_from_vector_self_inner(*x, *y);
+    out.rotate_from_vector_self_inner(x, y);
     out
   }
 
-  pub fn rotate_from_vector_self(
-    &self,
-    #[webidl] x: webidl::UnrestrictedDouble,
-    #[webidl] y: webidl::UnrestrictedDouble,
-  ) {
-    self.rotate_from_vector_self_inner(*x, *y);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn rotate_axis_angle(
     &self,
-    #[webidl] x: webidl::UnrestrictedDouble,
-    #[webidl] y: webidl::UnrestrictedDouble,
-    #[webidl] z: webidl::UnrestrictedDouble,
-    #[webidl] angle_deg: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.rotate_axis_angle_self_inner(*x, *y, *z, *angle_deg);
+    out.rotate_axis_angle_self_inner(x, y, z, angle_deg);
     out
   }
 
-  pub fn rotate_axis_angle_self(
-    &self,
-    #[webidl] x: webidl::UnrestrictedDouble,
-    #[webidl] y: webidl::UnrestrictedDouble,
-    #[webidl] z: webidl::UnrestrictedDouble,
-    #[webidl] angle_deg: webidl::UnrestrictedDouble,
-  ) {
-    self.rotate_axis_angle_self_inner(*x, *y, *z, *angle_deg);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn skew_x(
     &self,
-    #[webidl] x_deg: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_x_self_inner(*x_deg);
+    out.skew_x_self_inner(x_deg);
     out
   }
 
-  pub fn skew_x_self(&self, #[webidl] x_deg: webidl::UnrestrictedDouble) {
-    self.skew_x_self_inner(*x_deg);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
   pub fn skew_y(
     &self,
-    #[webidl] y_deg: webidl::UnrestrictedDouble,
-  ) -> DOMMatrixInner {
+    #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
+  ) -> DOMMatrixReadOnly {
+    let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_y_self_inner(*y_deg);
+    out.skew_y_self_inner(y_deg);
     out
   }
 
-  pub fn skew_y_self(&self, #[webidl] y_deg: webidl::UnrestrictedDouble) {
-    self.skew_y_self_inner(*y_deg);
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn multiply(&self, #[cppgc] other: &DOMMatrixInner) -> DOMMatrixInner {
-    let out = DOMMatrixInner {
-      inner: RefCell::new(Matrix4::zeros()),
-      is_2d: Cell::new(true),
-    };
-    out.multiply_self_inner(self, other);
-    out
+  pub fn multiply<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    other: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    let out = self.clone();
+    if let Some(other) =
+      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
+    {
+      out.multiply_self_inner(self, &other);
+    } else {
+      let other = DOMMatrixInit::convert(
+        scope,
+        other,
+        "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+        (|| Cow::Borrowed("Argument 1")).into(),
+        &Default::default(),
+      )?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      out.multiply_self_inner(self, &other);
+    }
+    Ok(out)
   }
 
-  #[fast]
-  pub fn multiply_self(&self, #[cppgc] other: &DOMMatrixInner) {
-    let result = DOMMatrixInner {
-      inner: RefCell::new(Matrix4::zeros()),
-      is_2d: Cell::new(true),
-    };
-    result.multiply_self_inner(self, other);
-    self.inner.borrow_mut().copy_from(&result.inner.borrow());
-    self.is_2d.set(result.is_2d.get());
-  }
-
-  #[fast]
-  pub fn pre_multiply_self(&self, #[cppgc] other: &DOMMatrixInner) {
-    let result = DOMMatrixInner {
-      inner: RefCell::new(Matrix4::zeros()),
-      is_2d: Cell::new(true),
-    };
-    result.multiply_self_inner(other, self);
-    self.inner.borrow_mut().copy_from(&result.inner.borrow());
-    self.is_2d.set(result.is_2d.get());
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn flip_x(&self) -> DOMMatrixInner {
+  pub fn flip_x(&self) -> DOMMatrixReadOnly {
     let out = self.clone();
     out.flip_x_inner();
     out
   }
 
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn flip_y(&self) -> DOMMatrixInner {
+  pub fn flip_y(&self) -> DOMMatrixReadOnly {
     let out = self.clone();
     out.flip_y_inner();
     out
   }
 
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn inverse(&self) -> DOMMatrixInner {
+  pub fn inverse(&self) -> DOMMatrixReadOnly {
     let out = self.clone();
     out.invert_self_inner();
     out
   }
 
-  #[fast]
-  pub fn invert_self(&self) {
-    self.invert_self_inner();
-  }
-
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[cppgc]
-  pub fn transform_point(
+  pub fn transform_point<'a>(
     &self,
-    #[cppgc] point: &DOMPointReadOnly,
-  ) -> DOMPointReadOnly {
+    scope: &mut v8::HandleScope<'a>,
+    point: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMPointReadOnly, GeometryError> {
     let out = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
-    matrix_transform_point(self, point, &out);
-    out
+    if let Some(point) =
+      cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(scope, point)
+    {
+      matrix_transform_point(self, &point, &out);
+    } else {
+      let point = DOMPointInit::convert(
+        scope,
+        point,
+        "Failed to execute 'transformPoint' on 'DOMMatrixReadOnly'".into(),
+        (|| Cow::Borrowed("Argument 1")).into(),
+        &Default::default(),
+      )?;
+      let point = DOMPointReadOnly::from_point_inner(point);
+      matrix_transform_point(self, &point, &out);
+    }
+    Ok(out)
   }
 
   #[rename("toJSON")]
@@ -2057,31 +1919,776 @@ impl DOMMatrixInner {
     }
 
     let mut obj = v8::Object::new(scope);
-    set_f64(scope, &mut obj, "a", self.get_a());
-    set_f64(scope, &mut obj, "b", self.get_b());
-    set_f64(scope, &mut obj, "c", self.get_c());
-    set_f64(scope, &mut obj, "d", self.get_d());
-    set_f64(scope, &mut obj, "e", self.get_e());
-    set_f64(scope, &mut obj, "f", self.get_f());
-    set_f64(scope, &mut obj, "m11", self.get_m11());
-    set_f64(scope, &mut obj, "m12", self.get_m12());
-    set_f64(scope, &mut obj, "m13", self.get_m13());
-    set_f64(scope, &mut obj, "m14", self.get_m14());
-    set_f64(scope, &mut obj, "m21", self.get_m21());
-    set_f64(scope, &mut obj, "m22", self.get_m22());
-    set_f64(scope, &mut obj, "m23", self.get_m23());
-    set_f64(scope, &mut obj, "m24", self.get_m24());
-    set_f64(scope, &mut obj, "m31", self.get_m31());
-    set_f64(scope, &mut obj, "m32", self.get_m32());
-    set_f64(scope, &mut obj, "m33", self.get_m33());
-    set_f64(scope, &mut obj, "m34", self.get_m34());
-    set_f64(scope, &mut obj, "m41", self.get_m41());
-    set_f64(scope, &mut obj, "m42", self.get_m42());
-    set_f64(scope, &mut obj, "m43", self.get_m43());
-    set_f64(scope, &mut obj, "m44", self.get_m44());
+    set_f64(scope, &mut obj, "a", self.a_inner());
+    set_f64(scope, &mut obj, "b", self.b_inner());
+    set_f64(scope, &mut obj, "c", self.c_inner());
+    set_f64(scope, &mut obj, "d", self.d_inner());
+    set_f64(scope, &mut obj, "e", self.e_inner());
+    set_f64(scope, &mut obj, "f", self.f_inner());
+    set_f64(scope, &mut obj, "m11", self.m11_inner());
+    set_f64(scope, &mut obj, "m12", self.m12_inner());
+    set_f64(scope, &mut obj, "m13", self.m13_inner());
+    set_f64(scope, &mut obj, "m14", self.m14_inner());
+    set_f64(scope, &mut obj, "m21", self.m21_inner());
+    set_f64(scope, &mut obj, "m22", self.m22_inner());
+    set_f64(scope, &mut obj, "m23", self.m23_inner());
+    set_f64(scope, &mut obj, "m24", self.m24_inner());
+    set_f64(scope, &mut obj, "m31", self.m31_inner());
+    set_f64(scope, &mut obj, "m32", self.m32_inner());
+    set_f64(scope, &mut obj, "m33", self.m33_inner());
+    set_f64(scope, &mut obj, "m34", self.m34_inner());
+    set_f64(scope, &mut obj, "m41", self.m41_inner());
+    set_f64(scope, &mut obj, "m42", self.m42_inner());
+    set_f64(scope, &mut obj, "m43", self.m43_inner());
+    set_f64(scope, &mut obj, "m44", self.m44_inner());
     set_boolean(scope, &mut obj, "is2D", self.is_2d.get());
-    set_boolean(scope, &mut obj, "isIdentity", self.get_is_identity());
+    set_boolean(scope, &mut obj, "isIdentity", self.is_identity_inner());
     obj
+  }
+}
+
+pub struct DOMMatrix {}
+
+impl GarbageCollected for DOMMatrix {}
+
+#[op2(inherit = DOMMatrixReadOnly)]
+impl DOMMatrix {
+  #[constructor]
+  #[cppgc]
+  pub fn constructor<'a>(
+    state: &mut OpState,
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+    // TODO(petamoriken): Error when deleting next line. proc-macro bug?
+    #[webidl] _: Option<webidl::UnrestrictedDouble>,
+  ) -> Result<(DOMMatrixReadOnly, DOMMatrix), GeometryError> {
+    let ro = DOMMatrixReadOnly::new(
+      state,
+      scope,
+      value,
+      "Failed to construct 'DOMMatrixReadOnly'".into(),
+      ContextFn::new_borrowed(&|| Cow::Borrowed("Argument 1")),
+    )?;
+    Ok((ro, DOMMatrix {}))
+  }
+
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
+  #[reentrant]
+  #[static_method]
+  #[cppgc]
+  pub fn from_matrix(
+    #[webidl] init: DOMMatrixInit,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    DOMMatrixReadOnly::from_matrix_inner(init)
+  }
+
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
+  #[rename("fromFloat32Array")]
+  #[static_method]
+  #[cppgc]
+  pub fn from_float32_array<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if !value.is_float32_array() {
+      return Err(GeometryError::TypeMismatch);
+    }
+    let float64 = Vec::<f64>::convert(
+      scope,
+      value,
+      "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
+      (|| Cow::Borrowed("Argument 1")).into(),
+      &Default::default(),
+    )?;
+
+    if let [a, b, c, d, e, f] = float64.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if float64.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
+    }
+  }
+
+  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
+  #[rename("fromFloat64Array")]
+  #[static_method]
+  #[cppgc]
+  pub fn from_float64_array<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if !value.is_float64_array() {
+      return Err(GeometryError::TypeMismatch);
+    }
+    let float64 = Vec::<f64>::convert(
+      scope,
+      value,
+      "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
+      (|| Cow::Borrowed("Argument 1")).into(),
+      &Default::default(),
+    )?;
+
+    if let [a, b, c, d, e, f] = float64.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if float64.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn a(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.a_inner()
+  }
+
+  #[setter]
+  pub fn a(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_A) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn b(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.b_inner()
+  }
+
+  #[setter]
+  pub fn b(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_B) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn c(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.c_inner()
+  }
+
+  #[setter]
+  pub fn c(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_C) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn d(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.d_inner()
+  }
+
+  #[setter]
+  pub fn d(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_D) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn e(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.e_inner()
+  }
+
+  #[setter]
+  pub fn e(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_E) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn f(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.f_inner()
+  }
+
+  #[setter]
+  pub fn f(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_F) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m11(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m11_inner()
+  }
+
+  #[setter]
+  pub fn m11(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m12(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m12_inner()
+  }
+
+  #[setter]
+  pub fn m12(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m13(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m13_inner()
+  }
+
+  #[setter]
+  pub fn m13(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m14(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m14_inner()
+  }
+
+  #[setter]
+  pub fn m14(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m21(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m21_inner()
+  }
+
+  #[setter]
+  pub fn m21(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m22(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m22_inner()
+  }
+
+  #[setter]
+  pub fn m22(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m23(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m23_inner()
+  }
+
+  #[setter]
+  pub fn m23(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m24(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m24_inner()
+  }
+
+  #[setter]
+  pub fn m24(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m31(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m31_inner()
+  }
+
+  #[setter]
+  pub fn m31(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m32(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m32_inner()
+  }
+
+  #[setter]
+  pub fn m32(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m33(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m33_inner()
+  }
+
+  #[setter]
+  pub fn m33(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = *value;
+    }
+    if *value != 1.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m34(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m34_inner()
+  }
+
+  #[setter]
+  pub fn m34(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m41(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m41_inner()
+  }
+
+  #[setter]
+  pub fn m41(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m42(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m42_inner()
+  }
+
+  #[setter]
+  pub fn m42(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = *value;
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m43(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m43_inner()
+  }
+
+  #[setter]
+  pub fn m43(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = *value;
+    }
+    if *value != 0.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  #[fast]
+  #[getter]
+  pub fn m44(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+    ro.m44_inner()
+  }
+
+  #[setter]
+  pub fn m44(
+    &self,
+    #[webidl] value: webidl::UnrestrictedDouble,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    // SAFETY: in-range access
+    unsafe {
+      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = *value;
+    }
+    if *value != 1.0 {
+      ro.is_2d.set(false);
+    }
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn translate_self(
+    &self,
+    #[webidl] tx: Option<webidl::UnrestrictedDouble>,
+    #[webidl] ty: Option<webidl::UnrestrictedDouble>,
+    #[webidl] tz: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    ro.translate_self_inner(tx, ty, tz);
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn scale_self(
+    &self,
+    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sz: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
+    let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
+      ro.scale_without_origin_self_inner(sx, sy, sz);
+    } else {
+      ro.scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
+    }
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn scale3d_self(
+    &self,
+    #[webidl] scale: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
+      ro.scale_without_origin_self_inner(scale, scale, scale);
+    } else {
+      ro.scale_with_origin_self_inner(
+        scale, scale, scale, origin_x, origin_y, origin_z,
+      );
+    }
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn rotate_self(
+    &self,
+    #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let (roll_deg, pitch_deg, yaw_deg) =
+      if rotate_y.is_none() && rotate_z.is_none() {
+        (0.0, 0.0, rotate_x)
+      } else {
+        (
+          rotate_x,
+          *rotate_y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+          *rotate_z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+        )
+      };
+    ro.rotate_self_inner(roll_deg, pitch_deg, yaw_deg);
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn rotate_from_vector_self(
+    &self,
+    #[webidl] x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    ro.rotate_from_vector_self_inner(x, y);
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn rotate_axis_angle_self(
+    &self,
+    #[webidl] x: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    ro.rotate_axis_angle_self_inner(x, y, z, angle_deg);
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn skew_x_self(
+    &self,
+    #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    ro.skew_x_self_inner(x_deg);
+  }
+
+  // TODO(petamoriken): returns self
+  pub fn skew_y_self(
+    &self,
+    #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
+    #[proto] ro: &DOMMatrixReadOnly,
+  ) {
+    let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    ro.skew_y_self_inner(y_deg);
+  }
+
+  // TODO(petamoriken): Maybe proc-macro bug
+  //   mismatched types
+  //   expected mutable reference `&mut HandleScope<'_>`
+  //     found mutable reference `&mut &mut Isolate
+
+  // #[fast]
+  // pub fn multiply_self<'a>(
+  //   &self,
+  //   scope: &mut v8::HandleScope<'a>,
+  //   other: v8::Local<'a, v8::Value>,
+  //   #[proto] ro: &DOMMatrixReadOnly,
+  // ) -> Result<(), GeometryError> {
+  //   let result = DOMMatrixReadOnly {
+  //     inner: RefCell::new(Matrix4::zeros()),
+  //     is_2d: Cell::new(true),
+  //   };
+  //   if let Some(other) =
+  //     cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+  //   {
+  //     result.multiply_self_inner(ro, &other);
+  //   } else {
+  //     let other = DOMMatrixInit::convert(
+  //       scope,
+  //       other,
+  //       "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+  //       (|| Cow::Borrowed("Argument 1")).into(),
+  //       &Default::default(),
+  //     )?;
+  //     let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+  //     result.multiply_self_inner(ro, &other);
+  //   }
+  //   ro.inner.borrow_mut().copy_from(&result.inner.borrow());
+  //   ro.is_2d.set(result.is_2d.get());
+  //   Ok(())
+  // }
+
+  // #[fast]
+  // pub fn pre_multiply_self<'a>(
+  //   &self,
+  //   scope: &mut v8::HandleScope<'a>,
+  //   other: v8::Local<'a, v8::Value>,
+  //   #[proto] ro: &DOMMatrixReadOnly,
+  // ) -> Result<(), GeometryError> {
+  //   let result = DOMMatrixReadOnly {
+  //     inner: RefCell::new(Matrix4::zeros()),
+  //     is_2d: Cell::new(true),
+  //   };
+  //   if let Some(other) =
+  //     cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+  //   {
+  //     result.multiply_self_inner(&other, ro);
+  //   } else {
+  //     let other = DOMMatrixInit::convert(
+  //       scope,
+  //       other,
+  //       "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+  //       (|| Cow::Borrowed("Argument 1")).into(),
+  //       &Default::default(),
+  //     )?;
+  //     let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+  //     result.multiply_self_inner(&other, ro);
+  //   }
+  //   ro.inner.borrow_mut().copy_from(&result.inner.borrow());
+  //   ro.is_2d.set(result.is_2d.get());
+  //   Ok(())
+  // }
+
+  // TODO(petamoriken): returns self
+  #[fast]
+  pub fn invert_self(&self, #[proto] ro: &DOMMatrixReadOnly) {
+    ro.invert_self_inner();
   }
 }
 
@@ -2124,7 +2731,7 @@ fn minimum(a: f64, b: f64) -> f64 {
 }
 
 fn matrix_transform_point(
-  matrix: &DOMMatrixInner,
+  matrix: &DOMMatrixReadOnly,
   point: &DOMPointReadOnly,
   out: &DOMPointReadOnly,
 ) {
@@ -2132,4 +2739,75 @@ fn matrix_transform_point(
   let point = point.inner.borrow();
   let mut result = out.inner.borrow_mut();
   inner.mul_to(&point, &mut result);
+}
+
+#[op2]
+#[arraybuffer]
+pub fn op_geometry_matrix_to_buffer<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  matrix: v8::Local<'a, v8::Value>,
+) -> Vec<u8> {
+  let matrix =
+    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
+      .unwrap();
+  let inner = matrix.inner.borrow();
+  // SAFETY: in-range access
+  unsafe {
+    slice::from_raw_parts(
+      inner.as_slice().as_ptr() as *mut u8,
+      mem::size_of::<f64>() * 16,
+    )
+  }
+  .to_vec()
+}
+
+#[op2]
+#[string]
+pub fn op_geometry_matrix_to_string<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  matrix: v8::Local<'a, v8::Value>,
+) -> Result<String, GeometryError> {
+  let matrix =
+    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
+      .unwrap();
+  if !matrix.is_finite_inner() {
+    return Err(GeometryError::InvalidState);
+  }
+  if matrix.is_2d.get() {
+    Ok(format!(
+      "matrix({}, {}, {}, {}, {}, {})",
+      matrix.a_inner(),
+      matrix.b_inner(),
+      matrix.c_inner(),
+      matrix.d_inner(),
+      matrix.e_inner(),
+      matrix.f_inner(),
+    ))
+  } else {
+    Ok(format!(
+      "matrix3d({})",
+      matrix
+        .inner
+        .borrow()
+        .iter()
+        .map(|item| item.to_string())
+        .collect::<Vec::<String>>()
+        .join(", ")
+    ))
+  }
+}
+
+// TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
+#[op2]
+#[cppgc]
+pub fn op_geometry_parse_transform_list(
+  #[string] transform_list: &str,
+) -> DOMMatrixReadOnly {
+  unimplemented!()
+}
+
+#[op2(fast)]
+fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
+  let state = state.borrow_mut::<State>();
+  state.enable_window_features
 }
