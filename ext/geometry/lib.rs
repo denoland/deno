@@ -3000,18 +3000,20 @@ pub fn op_geometry_matrix_to_string<'a>(
   }
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_geometry_set_matrix_value<'a>(
   scope: &mut v8::HandleScope<'a>,
-  matrix: v8::Local<'a, v8::Value>,
+  input: v8::Local<'a, v8::Value>,
   #[string] transform_list: &str,
-) -> Result<(), GeometryError> {
-  let Some(matrix) =
-    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
-  else {
+) -> Result<v8::Local<'a, v8::Value>, GeometryError> {
+  if cppgc::try_unwrap_cppgc_proto_object::<DOMMatrix>(scope, input).is_none() {
     return Err(GeometryError::IllegalInvocation);
-  };
-  matrix.set_matrix_value(transform_list)
+  }
+  let matrix =
+    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
+      .unwrap();
+  matrix.set_matrix_value(transform_list)?;
+  Ok(input)
 }
 
 #[op2(fast)]
