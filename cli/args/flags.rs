@@ -452,7 +452,7 @@ pub struct HelpFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanFlags {
-  pub entrypoints: Vec<String>,
+  pub except_paths: Vec<String>,
   pub dry_run: bool,
 }
 
@@ -1902,25 +1902,27 @@ fn clean_subcommand() -> Command {
   .defer(|cmd| {
     cmd
       .arg(
-        Arg::new("entrypoints")
-          .required_if_eq("entrypoint", "true")
+        Arg::new("except_paths")
+          .required_if_eq("except", "true")
           .num_args(1..)
           .value_hint(ValueHint::FilePath),
       )
       .arg(
-        Arg::new("entrypoint")
-          .long("entrypoint")
+        Arg::new("except")
+          .long("except")
           .short('e')
+          .help("Retain cache data needed by the given files")
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("dry_run")
           .long("dry-run")
           .action(ArgAction::SetTrue)
-          .requires("entrypoint"),
+          .help("Show what would be removed without performing any actions")
+          .requires("except"),
       )
-      .arg(node_modules_dir_arg().requires("entrypoint"))
-      .arg(vendor_arg().requires("entrypoint"))
+      .arg(node_modules_dir_arg().requires("except"))
+      .arg(vendor_arg().requires("except"))
   })
 }
 
@@ -4750,12 +4752,12 @@ fn check_parse(
 
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
-    entrypoints: Vec::new(),
+    except_paths: Vec::new(),
     dry_run: false,
   };
-  if matches.get_flag("entrypoint") {
-    clean_flags.entrypoints = matches
-      .remove_many::<String>("entrypoints")
+  if matches.get_flag("except") {
+    clean_flags.except_paths = matches
+      .remove_many::<String>("except_paths")
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
@@ -12019,5 +12021,20 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn clean() {
+    let r = flags_from_vec(svec!["deno", "clean", "--except", "foo.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Clean(CleanFlags {
+          except_paths: svec!["foo.ts"],
+          dry_run: false,
+        }),
+        ..Default::default()
+      }
+    );
   }
 }

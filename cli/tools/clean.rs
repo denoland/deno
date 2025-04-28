@@ -50,13 +50,9 @@ pub async fn clean(
   flags: Arc<Flags>,
   clean_flags: CleanFlags,
 ) -> Result<(), AnyError> {
-  if !clean_flags.entrypoints.is_empty() {
-    return clean_entrypoint(
-      flags,
-      &clean_flags.entrypoints,
-      clean_flags.dry_run,
-    )
-    .await;
+  if !clean_flags.except_paths.is_empty() {
+    return clean_except(flags, &clean_flags.except_paths, clean_flags.dry_run)
+      .await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -161,7 +157,7 @@ impl PathTrie {
   }
 }
 
-async fn clean_entrypoint(
+async fn clean_except(
   flags: Arc<Flags>,
   entrypoints: &[String],
   dry_run: bool,
