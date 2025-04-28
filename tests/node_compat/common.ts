@@ -197,7 +197,7 @@ export async function runNodeCompatTestCase(
 }
 
 /** Parses the special "Flags:"" syntax in Node.js test files */
-function parseFlags(source: string): string[] {
+export function parseFlags(source: string): string[] {
   const line = /^\/\/ Flags: (.+)$/um.exec(source);
   if (line == null) return [];
   return line[1].split(" ");

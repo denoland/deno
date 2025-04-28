@@ -9,7 +9,12 @@ import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
-import { RUN_ARGS, TEST_ARGS, usesNodeTestModule } from "./common.ts";
+import {
+  parseFlags,
+  RUN_ARGS,
+  TEST_ARGS,
+  usesNodeTestModule,
+} from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
@@ -224,6 +229,24 @@ type ErrorUnexpected = {
   message: string;
 };
 
+function getV8Flags(source: string): string[] {
+  const v8Flags = [] as string[];
+  const flags = parseFlags(source);
+  flags.forEach((flag) => {
+    switch (flag) {
+      case "--expose_externalize_string":
+        v8Flags.push("--expose-externalize-string");
+        break;
+      case "--expose-gc":
+        v8Flags.push("--expose-gc");
+        break;
+      default:
+        break;
+    }
+  });
+  return v8Flags;
+}
+
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
@@ -233,11 +256,13 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
-    const usesNodeTest = await Deno.readTextFile(testPath_)
-      .then(usesNodeTestModule).catch(() => false);
+    const source = await Deno.readTextFile(testPath_);
+    const usesNodeTest = usesNodeTestModule(source);
+    const v8Flags = getV8Flags(source);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
         ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
+        ...(v8Flags.length > 0 ? ["--v8-flags=" + v8Flags.join(",")] : []),
         testPath_,
       ],
       env: {
