@@ -88,6 +88,7 @@ if (errors.length > 0) {
 }
 
 function isBrandVarStmt(node) {
+  // this variable statement is intentionally private
   return Node.isVariableStatement(node) &&
     node.getDeclarations()[0].getName() === "brand";
 }
