@@ -113,7 +113,13 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  // deno_os and deno_os_worker may be used interchangeably, ensure that all
+  // esm modules are given the same identifiers. This is important when
+  // using `WebWorker` without snapshotting.
+  esm = [
+    "ext:deno_os/30_os.js" = "30_os.js",
+    "ext:deno_os/40_signals.js" = "40_signals.js",
+  ],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync()),
