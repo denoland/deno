@@ -27,6 +27,10 @@ fn build_extension() {
   }
 
   let build_plugin_output = build_plugin.output().unwrap();
+  println!(
+    "cargo build output: {}",
+    String::from_utf8_lossy(&build_plugin_output.stdout)
+  );
   assert!(build_plugin_output.status.success());
 }
 
