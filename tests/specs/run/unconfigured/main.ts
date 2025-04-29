@@ -33,14 +33,12 @@ console.log(Deno.env.get('A'));
 `,
 );
 
-const encode = (s: string) => new TextEncoder().encode(s);
-
 const data = JSON.stringify({
-  cwd: [...encode(tempDirPath)],
-  args: ["run", "-A", "test.ts"].map((v) => [...encode(v)]),
-  env: [["A", "hello world"]].map(([k, v]) => [[...encode(k)], [...encode(v)]]),
+  cwd: tempDirPath,
+  args: ["run", "-A", "test.ts"],
+  env: [["A", "hello world"]],
 });
 
-await sock.write(encode(data + "\n"));
+await sock.write(new TextEncoder().encode(data + "\n"));
 
 console.log(await child.status);

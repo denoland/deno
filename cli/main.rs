@@ -455,28 +455,29 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
+  let args: Vec<_> = env::args_os().collect();
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured, waited_args) = match wait_for_start(roots.clone())
-    {
-      Some(f) => match f.await {
-        Ok(v) => match v {
-          Some((u, a)) => (Some(u), Some(a)),
-          None => (None, None),
+    let (waited_unconfigured, waited_args) =
+      match wait_for_start(&args, roots.clone()) {
+        Some(f) => match f.await {
+          Ok(v) => match v {
+            Some((u, a)) => (Some(u), Some(a)),
+            None => (None, None),
+          },
+          Err(e) => {
+            panic!("Failure from control sock: {e}");
+          }
         },
-        Err(e) => {
-          panic!("{e:?}");
-        }
-      },
-      None => (None, None),
-    };
+        None => (None, None),
+      };
 
     #[cfg(not(unix))]
     let (waited_unconfigured, waited_args) = (None, None);
 
-    let args: Vec<_> = waited_args.unwrap_or_else(|| env::args_os().collect());
+    let args = waited_args.unwrap_or(args);
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
@@ -590,6 +591,7 @@ fn init_logging(
 #[cfg(unix)]
 #[allow(clippy::type_complexity)]
 fn wait_for_start(
+  args: &[std::ffi::OsString],
   roots: LibWorkerFactoryRoots,
 ) -> Option<
   impl Future<
@@ -600,9 +602,9 @@ fn wait_for_start(
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
   std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK");
 
-  Some(async move {
-    use std::os::unix::ffi::OsStringExt;
+  let argv0 = args[0].clone();
 
+  Some(async move {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::AsyncRead;
     use tokio::io::BufReader;
@@ -642,7 +644,7 @@ fn wait_for_start(
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");
         };
-        let cid = cid.parse()?;
+        let cid = if cid == "-1" { u32::MAX } else { cid.parse()? };
         let port = port.parse()?;
         let addr = VsockAddr::new(cid, port);
         let listener = VsockListener::bind(addr)?;
@@ -661,27 +663,23 @@ fn wait_for_start(
 
     #[derive(deno_core::serde::Deserialize)]
     struct Start {
-      cwd: Vec<u8>,
-      args: Vec<Vec<u8>>,
-      env: Vec<(Vec<u8>, Vec<u8>)>,
+      cwd: String,
+      args: Vec<String>,
+      env: Vec<(String, String)>,
     }
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(std::ffi::OsString::from_vec(cmd.cwd))?;
+    std::env::set_current_dir(cmd.cwd)?;
 
     for (k, v) in cmd.env {
-      std::env::set_var(
-        std::ffi::OsString::from_vec(k),
-        std::ffi::OsString::from_vec(v),
-      );
+      std::env::set_var(k, v);
     }
 
-    let mut args = Vec::with_capacity(cmd.args.len() + 1);
-    args.push(std::ffi::OsString::from("deno"));
-    for arg in cmd.args {
-      args.push(std::ffi::OsString::from_vec(arg));
-    }
+    let args = [argv0]
+      .into_iter()
+      .chain(cmd.args.into_iter().map(Into::into))
+      .collect();
 
     Ok(Some((unconfigured, args)))
   })
