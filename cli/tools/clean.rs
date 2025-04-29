@@ -15,6 +15,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::packages::PackageSpecifiers;
 use deno_graph::ModuleGraph;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsCreateDirAll;
 use walkdir::WalkDir;
 
 use crate::args::CleanFlags;
@@ -159,6 +161,20 @@ impl PathTrie {
   }
 }
 
+fn try_get_canonicalized_root_dir<Sys: FsCanonicalize + FsCreateDirAll>(
+  sys: &Sys,
+  root_dir: &Path,
+) -> Result<PathBuf, std::io::Error> {
+  match sys.fs_canonicalize(root_dir) {
+    Ok(path) => Ok(path),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      sys.fs_create_dir_all(root_dir)?;
+      sys.fs_canonicalize(root_dir)
+    }
+    Err(err) => Err(err),
+  }
+}
+
 async fn clean_except(
   flags: Arc<Flags>,
   entrypoints: &[String],
@@ -167,12 +183,18 @@ async fn clean_except(
   let mut state = CleanState::default();
 
   let factory = CliFactory::from_flags(flags.clone());
+  let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
   let roots = main_graph_container.collect_specifiers(entrypoints)?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
-  let deno_dir = factory.deno_dir()?.clone();
+  let mut deno_dir = factory.deno_dir()?.clone();
+  deno_dir.root = try_get_canonicalized_root_dir(&sys, &deno_dir.root)
+    .unwrap_or(deno_dir.root);
+  deno_dir.gen_cache.location =
+    try_get_canonicalized_root_dir(&sys, &deno_dir.gen_cache.location)
+      .unwrap_or(deno_dir.gen_cache.location);
 
   let mut permit = main_graph_container.acquire_update_permit().await;
   let graph = permit.graph_mut();
