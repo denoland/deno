@@ -214,6 +214,8 @@ export const initStdin = (warmup = false) => {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
       stdin = new Readable({ read() {} });
+      // deno-lint-ignore prefer-primordials
+      stdin.push(null);
     }
   }
 
