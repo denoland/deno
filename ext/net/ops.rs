@@ -957,13 +957,14 @@ where
     .records()
     .iter()
     .filter_map(|rec| {
-      let data = format_rdata(record_type)(rec.data()).unwrap();
-      Some(DnsRecordWithTtl {
-        data: data?,
-        ttl: rec.ttl(),
+      let r = format_rdata(record_type)(rec.data()).transpose();
+      r.map(|maybe_data| {
+        maybe_data.map(|data| DnsRecordWithTtl {
+          data,
+          ttl: rec.ttl(),
+        })
       })
     })
-    .map(Ok)
     .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
 }
 
