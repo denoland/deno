@@ -57,7 +57,6 @@ const {
   ArrayPrototypePush,
   SafeArrayIterator,
   StringFromCodePoint,
-  StringLength,
   StringPrototypeCharCodeAt,
 } = primordials;
 
@@ -74,7 +73,7 @@ const {
 function ucs2decode(str: string) {
   const output = [];
   let counter = 0;
-  const length = StringLength(str);
+  const length = str.length;
 
   while (counter < length) {
     const value = StringPrototypeCharCodeAt(str, counter++);
