@@ -57,6 +57,8 @@ ObjectDefineProperty(
     configurable: true,
   },
 );
+webidl.configureInterface(DOMPoint);
+webidl.configureInterface(DOMPointReadOnly);
 
 const DOMRectPrototype = DOMRect.prototype;
 const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
@@ -83,6 +85,8 @@ ObjectDefineProperty(
     configurable: true,
   },
 );
+webidl.configureInterface(DOMRect);
+webidl.configureInterface(DOMRectReadOnly);
 
 const DOMQuadPrototype = DOMQuad.prototype;
 ObjectDefineProperty(DOMQuadPrototype, SymbolFor("Deno.privateCustomInspect"), {
@@ -101,7 +105,9 @@ ObjectDefineProperty(DOMQuadPrototype, SymbolFor("Deno.privateCustomInspect"), {
   writable: true,
   configurable: true,
 });
+webidl.configureInterface(DOMQuad);
 
+const DOMMatrixPrototype = DOMMatrix.prototype;
 const DOMMatrixReadOnlyPrototype = DOMMatrixReadOnly.prototype;
 ObjectDefineProperties(DOMMatrixReadOnlyPrototype, {
   toFloat32Array: {
@@ -170,8 +176,6 @@ ObjectDefineProperties(DOMMatrixReadOnlyPrototype, {
   },
 });
 
-const DOMMatrixPrototype = DOMMatrix.prototype;
-
 if (op_geometry_get_enable_window_features()) {
   // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
   ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
@@ -195,6 +199,9 @@ if (op_geometry_get_enable_window_features()) {
     configurable: true,
   });
 }
+
+webidl.configureInterface(DOMMatrix);
+webidl.configureInterface(DOMMatrixReadOnly);
 
 export {
   DOMMatrix,
