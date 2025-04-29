@@ -92,22 +92,23 @@ pub async fn clean(
   Ok(())
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Found {
+  Match,
+  Prefix,
+}
+
 #[derive(Clone, Debug, Default)]
 struct PathNode {
   exact: bool,
   children: BTreeMap<OsString, usize>,
 }
+
 #[derive(Debug)]
 struct PathTrie {
   root: usize,
   nodes: Vec<PathNode>,
   rewrites: Vec<(PathBuf, PathBuf)>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Found {
-  Match,
-  Prefix,
 }
 
 impl PathTrie {
@@ -219,7 +220,6 @@ async fn clean_except(
     .build_graph_with_npm_resolution(
       graph,
       CreateGraphOptions {
-        // loader: Some(&mut NoLoader),
         loader: None,
         graph_kind: graph.graph_kind(),
         is_dynamic: false,
@@ -315,6 +315,13 @@ async fn clean_except(
         copy_index: package.copy_index,
       },
     ));
+  }
+
+  if dry_run {
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("would remove:");
+    }
   }
 
   let jsr_url = crate::args::jsr_url();
@@ -434,6 +441,7 @@ fn add_jsr_meta_paths(
   Ok(())
 }
 
+// TODO(nathanwhit): use strategy pattern instead of branching on dry_run
 fn walk_removing(
   state: &mut CleanState,
   walker: WalkDir,
@@ -452,13 +460,17 @@ fn walk_removing(
       continue;
     }
     if !entry.path().starts_with(base) {
-      panic!("VERY BAD");
+      panic!(
+        "would have removed a file outside of the base directory: base: {}, path: {}",
+        base.display(),
+        entry.path().display()
+      );
     }
     if entry.file_type().is_dir() {
       if dry_run {
         #[allow(clippy::print_stderr)]
         {
-          eprintln!("would remove dir: {}", entry.path().display());
+          eprintln!(" {}", entry.path().display());
         }
       } else {
         rm_rf(state, entry.path())?;
@@ -467,7 +479,7 @@ fn walk_removing(
     } else if dry_run {
       #[allow(clippy::print_stderr)]
       {
-        eprintln!("would remove file: {}", entry.path().display());
+        eprintln!(" {}", entry.path().display());
       }
     } else {
       remove_file(state, entry.path(), Some(entry.metadata()?))?;
@@ -484,7 +496,7 @@ fn clean_node_modules(
   dry_run: bool,
 ) -> Result<(), AnyError> {
   if !dir.ends_with("node_modules") || !dir.is_dir() {
-    bail!("not a node_modules directory");
+    bail!("expected a node_modules directory, got: {}", dir.display());
   }
   let base = dir.join(".deno");
   if !base.exists() {
@@ -496,12 +508,31 @@ fn clean_node_modules(
     .map(deno_resolver::npm::get_package_folder_id_folder_name)
     .collect::<HashSet<_>>();
 
+  // remove the actual packages from node_modules/.deno
+  let entries = match std::fs::read_dir(&base) {
+    Ok(entries) => entries,
+    Err(err)
+      if matches!(
+        err.kind(),
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+      ) =>
+    {
+      return Ok(());
+    }
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!(
+          "failed to clean node_modules directory at {}",
+          dir.display()
+        )
+      })
+    }
+  };
+
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
   let mut setup_cache =
     crate::npm::installer::SetupCache::load(base.join(".setup-cache.bin"));
 
-  // remove the actual packages from node_modules/.deno
-  let entries = std::fs::read_dir(&base)?;
   for entry in entries {
     let entry = entry?;
     if !entry.file_type()?.is_dir() {
@@ -514,10 +545,7 @@ fn clean_node_modules(
     } else if dry_run {
       #[allow(clippy::print_stderr)]
       {
-        eprintln!(
-          "would remove dir from node modules: {}",
-          entry.path().display()
-        );
+        eprintln!(" {}", entry.path().display());
       }
     } else {
       rm_rf(state, &entry.path())?;
@@ -575,10 +603,7 @@ fn clean_node_modules_symlinks(
           if dry_run {
             #[allow(clippy::print_stderr)]
             {
-              eprintln!(
-                "would remove symlink from node modules: {}",
-                entry.path().display()
-              );
+              eprintln!(" {}", entry.path().display());
             }
           } else {
             on_remove(&name);
