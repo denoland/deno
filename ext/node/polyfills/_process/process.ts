@@ -51,11 +51,7 @@ function denoEnvGet(name: string) {
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (
-      ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) ||
-      // TODO(iuioiua): Use `NotCapablePrototype` when it's available
-      ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)
-    ) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       return undefined;
     }
     throw e;

@@ -356,6 +356,7 @@ pub struct ServeFlags {
   pub port: u16,
   pub host: String,
   pub worker_count: Option<usize>,
+  pub open_site: bool,
 }
 
 impl ServeFlags {
@@ -367,6 +368,7 @@ impl ServeFlags {
       port,
       host: host.to_owned(),
       worker_count: None,
+      open_site: false,
     }
   }
 }
@@ -1190,10 +1192,14 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                          to use when fetching remote modules from private repositories
                           <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+  <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
   <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>               Set the cache directory
   <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
                           <p(245)>(defaults to $HOME/.deno/bin)</>
+  <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
+                         database.
+  <g>DENO_EMIT_CACHE_MODE</>   Control is the transpiled sources should be cached.
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
@@ -1569,7 +1575,7 @@ where
     // causing strings with common prefix >=10 to be considered perfectly similar
     .map(|pv| (strsim::jaro(v, pv.as_ref()), pv.as_ref().to_owned()))
     // Confidence of 0.7 so that bar -> baz is suggested
-    .filter(|(confidence, _)| *confidence > 0.7)
+    .filter(|(confidence, _)| *confidence > 0.8)
     .collect();
   candidates
     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -3082,6 +3088,11 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .long("host")
         .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces)")
         .value_parser(serve_host_validator),
+    ).arg(
+      Arg::new("open")
+      .long("open")
+      .help("Open the browser on the address that the server is running on.")
+      .action(ArgAction::SetTrue)
     )
     .arg(
       parallel_arg("multiple server workers")
@@ -5281,6 +5292,7 @@ fn serve_parse(
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
+  let open_site = matches.remove_one::<bool>("open").unwrap_or(false);
 
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
@@ -5327,6 +5339,7 @@ fn serve_parse(
     port,
     host,
     worker_count,
+    open_site,
   });
 
   Ok(())
