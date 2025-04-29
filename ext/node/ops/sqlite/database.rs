@@ -421,6 +421,7 @@ impl DatabaseSync {
   // to be granted and allowExtension must be set to true when opening the database.
   fn load_extension(
     &self,
+    state: &mut OpState,
     #[string] path: &str,
     #[string] entry_point: Option<String>,
   ) -> Result<(), SqliteError> {
@@ -433,6 +434,8 @@ impl DatabaseSync {
         "ERR_LOAD_SQLITE_EXTENSION",
       ));
     }
+
+    state.borrow::<PermissionsContainer>().check_ffi_all()?;
 
     // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let raw_handle = unsafe { db.handle() };
