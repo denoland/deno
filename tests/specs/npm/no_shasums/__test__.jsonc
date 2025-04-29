@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim());"],
+    "output": "deno.lock.out"
+  }]
+}
