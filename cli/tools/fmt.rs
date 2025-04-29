@@ -544,19 +544,17 @@ fn create_external_formatter_for_typescript(
   &dprint_plugin_typescript::configuration::Configuration,
 ) -> Option<String> {
   let unstable_sql = unstable_options.sql;
-  move |media_type, text, config| {
-    match media_type {
-      MediaType::Css => format_embedded_css(&text, config),
-      MediaType::Html => format_embedded_html(&text, config),
-      MediaType::Sql => {
-        if unstable_sql {
-          format_embedded_sql(&text, config)
-        } else {
-          None
-        }
+  move |media_type, text, config| match media_type {
+    MediaType::Css => format_embedded_css(&text, config),
+    MediaType::Html => format_embedded_html(&text, config),
+    MediaType::Sql => {
+      if unstable_sql {
+        format_embedded_sql(&text, config)
+      } else {
+        None
       }
-      _ => None,
     }
+    _ => None,
   }
 }
 
@@ -622,9 +620,59 @@ fn format_embedded_html(
     layout: config::LayoutOptions {
       indent_width: config.indent_width as usize,
       use_tabs: config.use_tabs,
-      ..Default::default()
+      print_width: config.line_width as usize,
+      line_break: match config.new_line_kind {
+        dprint_core::configuration::NewLineKind::LineFeed => {
+          config::LineBreak::Lf
+        }
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
+          config::LineBreak::Crlf
+        }
+        _ => config::LineBreak::Lf,
+      },
     },
-    ..Default::default()
+    language: config::LanguageOptions {
+      quotes: config::Quotes::Double,
+      format_comments: false,
+      script_indent: false,
+      html_script_indent: None,
+      vue_script_indent: None,
+      svelte_script_indent: None,
+      astro_script_indent: None,
+      style_indent: false,
+      html_style_indent: None,
+      vue_style_indent: None,
+      svelte_style_indent: None,
+      astro_style_indent: None,
+      closing_bracket_same_line: false,
+      closing_tag_line_break_for_empty:
+        config::ClosingTagLineBreakForEmpty::Fit,
+      max_attrs_per_line: None,
+      prefer_attrs_single_line: false,
+      html_normal_self_closing: None,
+      html_void_self_closing: None,
+      component_self_closing: None,
+      svg_self_closing: None,
+      mathml_self_closing: None,
+      whitespace_sensitivity: config::WhitespaceSensitivity::Css,
+      component_whitespace_sensitivity: None,
+      doctype_keyword_case: config::DoctypeKeywordCase::Upper,
+      v_bind_style: None,
+      v_on_style: None,
+      v_for_delimiter_style: None,
+      v_slot_style: None,
+      component_v_slot_style: None,
+      default_v_slot_style: None,
+      named_v_slot_style: None,
+      v_bind_same_name_short_hand: None,
+      strict_svelte_attr: false,
+      svelte_attr_shorthand: None,
+      svelte_directive_shorthand: None,
+      astro_attr_shorthand: None,
+      script_formatter: None,
+      ignore_comment_directive: "deno-fmt-ignore".into(),
+      ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    },
   };
   let Ok(text) = markup_fmt::format_text(
     text,

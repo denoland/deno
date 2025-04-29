@@ -1496,6 +1496,7 @@ dependencies = [
  "dhat",
  "dissimilar",
  "dotenvy",
+ "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
