@@ -156,8 +156,14 @@ pub struct DenoDirPathProvider<
   deno_dir: Deferred<PathBuf>,
 }
 
-impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
-  DenoDirPathProvider<TSys>
+impl<
+    TSys: EnvCacheDir
+      + EnvHomeDir
+      + EnvVar
+      + EnvCurrentDir
+      + FsCanonicalize
+      + FsCreateDirAll,
+  > DenoDirPathProvider<TSys>
 {
   pub fn new(sys: TSys, options: DenoDirPathProviderOptions) -> Self {
     Self {
@@ -173,7 +179,27 @@ impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
         &self.sys,
         self.options.maybe_custom_root.clone(),
       )
+      .map(|path| {
+        // TODO(nathanwhit): maybe move this to deno_cache_dir, and make sure that
+        // `NpmCacheDir::new` doesn't also try to canonicalize
+        let normalized = deno_path_util::normalize_path(&path);
+        try_get_canonicalized_root_dir(&self.sys, &normalized)
+          .unwrap_or(normalized)
+      })
     })
+  }
+}
+fn try_get_canonicalized_root_dir<Sys: FsCanonicalize + FsCreateDirAll>(
+  sys: &Sys,
+  root_dir: &Path,
+) -> Result<PathBuf, std::io::Error> {
+  match sys.fs_canonicalize(root_dir) {
+    Ok(path) => Ok(path),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      sys.fs_create_dir_all(root_dir)?;
+      sys.fs_canonicalize(root_dir)
+    }
+    Err(err) => Err(err),
   }
 }
 
