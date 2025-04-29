@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// deno-lint-ignore-file no-console
-
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";

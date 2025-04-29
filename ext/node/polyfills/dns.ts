@@ -93,7 +93,6 @@ import {
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,

@@ -35,6 +35,7 @@ import {
 const UDP_DGRAM_MAXSIZE = 65507;
 
 const {
+  ArrayPrototypeMap,
   Error,
   Number,
   NumberIsNaN,
@@ -84,7 +85,7 @@ async function resolveDns(query, recordType, options) {
       recordType,
       options,
     });
-    return res.map((recordWithTtl) => recordWithTtl.data);
+    return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
       options.signal[abortSignal.remove](abortHandler);
