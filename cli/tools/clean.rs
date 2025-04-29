@@ -101,6 +101,7 @@ struct PathNode {
 struct PathTrie {
   root: usize,
   nodes: Vec<PathNode>,
+  rewrites: Vec<(PathBuf, PathBuf)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -117,10 +118,23 @@ impl PathTrie {
         exact: false,
         children: Default::default(),
       }],
+      rewrites: vec![],
     }
   }
-  fn insert(&mut self, s: &Path) {
+  fn add_rewrite(&mut self, from: PathBuf, to: PathBuf) {
+    self.rewrites.push((from, to));
+  }
+  fn rewrite(&self, s: &Path) -> PathBuf {
     let normalized = deno_path_util::normalize_path(s);
+    for (from, to) in &self.rewrites {
+      if normalized.starts_with(from) {
+        return to.join(normalized.strip_prefix(from).unwrap());
+      }
+    }
+    normalized
+  }
+  fn insert(&mut self, s: &Path) {
+    let normalized = self.rewrite(s);
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -141,7 +155,7 @@ impl PathTrie {
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
-    let normalized = deno_path_util::normalize_path(s);
+    let normalized = self.rewrite(s);
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -189,12 +203,10 @@ async fn clean_except(
   let roots = main_graph_container.collect_specifiers(entrypoints)?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
-  let mut deno_dir = factory.deno_dir()?.clone();
-  deno_dir.root = try_get_canonicalized_root_dir(&sys, &deno_dir.root)
-    .unwrap_or(deno_dir.root);
-  deno_dir.gen_cache.location =
-    try_get_canonicalized_root_dir(&sys, &deno_dir.gen_cache.location)
-      .unwrap_or(deno_dir.gen_cache.location);
+  let deno_dir = factory.deno_dir()?.clone();
+  let deno_dir_root_canonical =
+    try_get_canonicalized_root_dir(&sys, &deno_dir.root)
+      .unwrap_or(deno_dir.root.clone());
 
   let mut permit = main_graph_container.acquire_update_permit().await;
   let graph = permit.graph_mut();
@@ -220,7 +232,10 @@ async fn clean_except(
   let mut npm_reqs = Vec::new();
 
   let mut keep_paths_trie = PathTrie::new();
-
+  if deno_dir_root_canonical != deno_dir.root {
+    keep_paths_trie
+      .add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical.clone());
+  }
   for (_, entry) in graph.walk(
     roots.iter(),
     deno_graph::WalkOptions {
@@ -330,6 +345,9 @@ async fn clean_except(
   if let Some(vendor_dir) = options.vendor_dir_path() {
     if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
       let mut trie = PathTrie::new();
+      if deno_dir_root_canonical != deno_dir.root {
+        trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+      }
       let cache = cache.clone();
       add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
         if let Ok(Some(path)) = cache.local_path_for_url(_url) {
