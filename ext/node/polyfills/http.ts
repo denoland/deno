@@ -130,6 +130,7 @@ function validateHost(host, name) {
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
+const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 
 class FakeSocket extends EventEmitter {
   /** Stores the underlying request for lazily binding to abort signal */
@@ -153,7 +154,7 @@ class FakeSocket extends EventEmitter {
     this.#request = opts.request;
   }
 
-  bindToAbortSignal() {
+  [kBindToAbortSignal]() {
     const signal = this.#request?.signal;
     signal?.addEventListener("abort", () => {
       this.emit("error", signal.reason);
@@ -1508,7 +1509,7 @@ export const ServerResponse = function (
   this.socket = socket;
   this.on("newListener", (event) => {
     if (event === "close") {
-      this.socket?.bindToAbortSignal();
+      this.socket?.[kBindToAbortSignal]();
       this.socket?.on("close", () => {
         if (!this.finished) {
           this.emit("close");
