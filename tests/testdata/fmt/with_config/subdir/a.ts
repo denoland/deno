@@ -9,8 +9,8 @@ Deno.test(
 		const response1 =
 			response.clone()
 		assert(
-			response !==
-				response1
+			response
+				!== response1
 		)
 		assertEquals(
 			response.status,
@@ -30,8 +30,8 @@ Deno.test(
 				.bytes()
 		for (
 			let i = 0;
-			i <
-				u8a.byteLength;
+			i
+				< u8a.byteLength;
 			i++
 		)
 		{
@@ -64,9 +64,9 @@ Deno.test(
 		while ( false )
 
 		// checks operatorPosition=sameLine
-		let c = 'hello world foo bar baz' +
-			'hello world foo bar baz' +
-			'hello world foo bar baz'
+		let c = 'hello world foo bar baz'
+			+ 'hello world foo bar baz'
+			+ 'hello world foo bar baz'
 
 		// checks typeLiteral.separatorKind=semiColon
 		// checks spaceSurroundingProperties=false

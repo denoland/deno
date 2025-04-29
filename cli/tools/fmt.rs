@@ -1070,11 +1070,16 @@ fn get_typescript_config_builder(
   }
 
   if let Some(operator_position) = options.operator_position {
-    builder.operator_position(match operator_position {
+    let option = match operator_position {
       OperatorPosition::Maintain => dprint_config::OperatorPosition::Maintain,
       OperatorPosition::NextLine => dprint_config::OperatorPosition::NextLine,
       OperatorPosition::SameLine => dprint_config::OperatorPosition::SameLine,
-    });
+    };
+    // Because Deno's defaults are set at AST specific options, we need to
+    // set them to AST specific options to override them.
+    builder.binary_expression_operator_position(option);
+    builder.conditional_expression_operator_position(option);
+    builder.conditional_type_operator_position(option);
   }
 
   if let Some(jsx_bracket_position) = options.jsx_bracket_position {

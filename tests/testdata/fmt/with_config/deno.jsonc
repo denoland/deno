@@ -19,7 +19,7 @@
 		"singleBodyPosition": "nextLine",
 		"nextControlFlowPosition": "nextLine",
 		"trailingCommas": "never",
-		"operatorPosition": "sameLine",
+		"operatorPosition": "nextLine",
 		"jsx.bracketPosition": "sameLine",
 		"jsx.forceNewLinesSurroundingContent": true,
 		"jsx.multiLineParens": "never",
