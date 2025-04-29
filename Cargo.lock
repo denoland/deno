@@ -1727,9 +1727,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.53.0"
+version = "0.54.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ceb8fc4ae517f599e5eb2ad19b56507f9be266cbde7230ff3e88a07141c0e85"
+checksum = "24d5e2c916959cc16ef874021cb8c0617ed2a63bc4821ed4408c5ddeef6cb512"
 dependencies = [
  "boxed_error",
  "capacity_builder",
