@@ -1378,7 +1378,7 @@ mod tests {
     );
 
     let runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
+      extensions: vec![test_ext::init()],
       feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
     });
