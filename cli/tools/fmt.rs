@@ -31,6 +31,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
+use deno_media_type::MediaType;
 use log::debug;
 use log::info;
 use log::warn;
@@ -301,10 +302,12 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             format_css(&fake_filename, text, fmt_options)
           }
-          "html" => format_html(&fake_filename, text, fmt_options),
+          "html" => {
+            format_html(&fake_filename, text, fmt_options, unstable_options)
+          }
           "svelte" | "vue" | "astro" | "vto" | "njk" => {
             if unstable_options.component {
-              format_html(&fake_filename, text, fmt_options)
+              format_html(&fake_filename, text, fmt_options, unstable_options)
             } else {
               Ok(None)
             }
@@ -322,10 +325,15 @@ fn format_markdown(
               get_resolved_typescript_config(fmt_options);
             codeblock_config.line_width = line_width;
             dprint_plugin_typescript::format_text(
-              &fake_filename,
-              None,
-              text.to_string(),
-              &codeblock_config,
+              dprint_plugin_typescript::FormatTextOptions {
+                path: &fake_filename,
+                extension: None,
+                text: text.to_string(),
+                config: &codeblock_config,
+                external_formatter: Some(
+                  &create_external_formatter_for_typescript(unstable_options),
+                ),
+              },
             )
           }
         }
@@ -401,6 +409,7 @@ pub fn format_html(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let format_result = markup_fmt::format_text(
     file_text,
@@ -454,10 +463,15 @@ pub fn format_html(
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
-            &path,
-            None,
-            text.to_string(),
-            &typescript_config,
+            dprint_plugin_typescript::FormatTextOptions {
+              path: &path,
+              extension: None,
+              text: text.to_string(),
+              config: &typescript_config,
+              external_formatter: Some(
+                &create_external_formatter_for_typescript(unstable_options),
+              ),
+            },
           )
           .map(|formatted| {
             if let Some(formatted) = formatted {
@@ -521,6 +535,224 @@ pub fn format_html(
   })
 }
 
+/// A function for formatting embedded code blocks in JavaScript and TypeScript.
+fn create_external_formatter_for_typescript(
+  unstable_options: &UnstableFmtOptions,
+) -> impl Fn(
+  MediaType,
+  String,
+  &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  let unstable_sql = unstable_options.sql;
+  move |media_type, text, config| match media_type {
+    MediaType::Css => format_embedded_css(&text, config),
+    MediaType::Html => format_embedded_html(&text, config),
+    MediaType::Sql => {
+      if unstable_sql {
+        format_embedded_sql(&text, config)
+      } else {
+        None
+      }
+    }
+    _ => None,
+  }
+}
+
+/// Formats embedded CSS code blocks in JavaScript and TypeScript.
+///
+/// This function supports properties only CSS expressions, like:
+/// ```css
+/// margin: 10px;
+/// padding: 10px;
+/// ```
+///
+/// To support this scenario, this function first wraps the text with `a { ... }`,
+/// and then strips it off after formatting with malva.
+fn format_embedded_css(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  use malva::config;
+  let options = config::FormatOptions {
+    layout: config::LayoutOptions {
+      indent_width: config.indent_width as usize,
+      use_tabs: config.use_tabs,
+      print_width: config.line_width as usize,
+      line_break: match config.new_line_kind {
+        dprint_core::configuration::NewLineKind::LineFeed => {
+          config::LineBreak::Lf
+        }
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
+          config::LineBreak::Crlf
+        }
+        _ => config::LineBreak::Lf,
+      },
+    },
+    language: config::LanguageOptions {
+      hex_case: config::HexCase::Lower,
+      hex_color_length: None,
+      quotes: config::Quotes::AlwaysDouble,
+      operator_linebreak: config::OperatorLineBreak::After,
+      block_selector_linebreak: config::BlockSelectorLineBreak::Consistent,
+      omit_number_leading_zero: false,
+      trailing_comma: false,
+      format_comments: false,
+      align_comments: true,
+      linebreak_in_pseudo_parens: false,
+      declaration_order: None,
+      single_line_block_threshold: None,
+      keyframe_selector_notation: None,
+      attr_value_quotes: config::AttrValueQuotes::Always,
+      prefer_single_line: false,
+      selectors_prefer_single_line: None,
+      function_args_prefer_single_line: None,
+      sass_content_at_rule_prefer_single_line: None,
+      sass_include_at_rule_prefer_single_line: None,
+      sass_map_prefer_single_line: None,
+      sass_module_config_prefer_single_line: None,
+      sass_params_prefer_single_line: None,
+      less_import_options_prefer_single_line: None,
+      less_mixin_args_prefer_single_line: None,
+      less_mixin_params_prefer_single_line: None,
+      single_line_top_level_declarations: false,
+      selector_override_comment_directive: "malva-selector-override".into(),
+      ignore_comment_directive: "malva-ignore".into(),
+      ignore_file_comment_directive: "malva-ignore-file".into(),
+    },
+  };
+  // Wraps the text in a css block of `a { ... }`
+  // to make it valid css (scss)
+  let Ok(text) = malva::format_text(
+    &format!("a{{\n{}\n}}", text),
+    malva::Syntax::Scss,
+    &options,
+  ) else {
+    return None;
+  };
+  let mut buf = vec![];
+  for (i, l) in text.lines().enumerate() {
+    // skip the first line (a {)
+    if i == 0 {
+      continue;
+    }
+    // skip the last line (})
+    if l.starts_with("}") {
+      continue;
+    }
+    let mut chars = l.chars();
+    // drop the indentation
+    for _ in 0..config.indent_width {
+      chars.next();
+    }
+    buf.push(chars.as_str());
+  }
+  Some(buf.join("\n").to_string())
+}
+
+/// Formats the embedded HTML code blocks in JavaScript and TypeScript.
+fn format_embedded_html(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  use markup_fmt::config;
+  let options = config::FormatOptions {
+    layout: config::LayoutOptions {
+      indent_width: config.indent_width as usize,
+      use_tabs: config.use_tabs,
+      print_width: config.line_width as usize,
+      line_break: match config.new_line_kind {
+        dprint_core::configuration::NewLineKind::LineFeed => {
+          config::LineBreak::Lf
+        }
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
+          config::LineBreak::Crlf
+        }
+        _ => config::LineBreak::Lf,
+      },
+    },
+    language: config::LanguageOptions {
+      quotes: config::Quotes::Double,
+      format_comments: false,
+      script_indent: false,
+      html_script_indent: None,
+      vue_script_indent: None,
+      svelte_script_indent: None,
+      astro_script_indent: None,
+      style_indent: false,
+      html_style_indent: None,
+      vue_style_indent: None,
+      svelte_style_indent: None,
+      astro_style_indent: None,
+      closing_bracket_same_line: false,
+      closing_tag_line_break_for_empty:
+        config::ClosingTagLineBreakForEmpty::Fit,
+      max_attrs_per_line: None,
+      prefer_attrs_single_line: false,
+      html_normal_self_closing: None,
+      html_void_self_closing: None,
+      component_self_closing: None,
+      svg_self_closing: None,
+      mathml_self_closing: None,
+      whitespace_sensitivity: config::WhitespaceSensitivity::Css,
+      component_whitespace_sensitivity: None,
+      doctype_keyword_case: config::DoctypeKeywordCase::Upper,
+      v_bind_style: None,
+      v_on_style: None,
+      v_for_delimiter_style: None,
+      v_slot_style: None,
+      component_v_slot_style: None,
+      default_v_slot_style: None,
+      named_v_slot_style: None,
+      v_bind_same_name_short_hand: None,
+      strict_svelte_attr: false,
+      svelte_attr_shorthand: None,
+      svelte_directive_shorthand: None,
+      astro_attr_shorthand: None,
+      script_formatter: None,
+      ignore_comment_directive: "deno-fmt-ignore".into(),
+      ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    },
+  };
+  let Ok(text) = markup_fmt::format_text(
+    text,
+    markup_fmt::Language::Html,
+    &options,
+    |code, _| Ok::<_, std::convert::Infallible>(code.into()),
+  ) else {
+    return None;
+  };
+  Some(text.to_string())
+}
+
+/// Formats the embedded SQL code blocks in JavaScript and TypeScript.
+fn format_embedded_sql(
+  text: &str,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+) -> Option<String> {
+  Some(format_sql_text(text, config.use_tabs, config.indent_width))
+}
+
+fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {
+  let mut text = sqlformat::format(
+    text,
+    &sqlformat::QueryParams::None,
+    &sqlformat::FormatOptions {
+      ignore_case_convert: None,
+      indent: if use_tabs {
+        sqlformat::Indent::Tabs
+      } else {
+        sqlformat::Indent::Spaces(indent_width)
+      },
+      // leave one blank line between queries.
+      lines_between_queries: 2,
+      uppercase: Some(true),
+    },
+  );
+  // Add single new line to the end of text.
+  text.push('\n');
+  text
+}
+
 pub fn format_sql(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
@@ -540,24 +772,11 @@ pub fn format_sql(
     return Ok(None);
   }
 
-  let mut formatted_str = sqlformat::format(
+  let formatted_str = format_sql_text(
     file_text,
-    &sqlformat::QueryParams::None,
-    &sqlformat::FormatOptions {
-      ignore_case_convert: None,
-      indent: if fmt_options.use_tabs.unwrap_or_default() {
-        sqlformat::Indent::Tabs
-      } else {
-        sqlformat::Indent::Spaces(fmt_options.indent_width.unwrap_or(2))
-      },
-      // leave one blank line between queries.
-      lines_between_queries: 2,
-      uppercase: Some(true),
-    },
+    fmt_options.use_tabs.unwrap_or_default(),
+    fmt_options.indent_width.unwrap_or(2),
   );
-
-  // Add single new line to the end of file.
-  formatted_str.push('\n');
 
   Ok(if formatted_str == file_text {
     None
@@ -586,10 +805,10 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       format_css(file_path, file_text, fmt_options)
     }
-    "html" => format_html(file_path, file_text, fmt_options),
+    "html" => format_html(file_path, file_text, fmt_options, unstable_options),
     "svelte" | "vue" | "astro" | "vto" | "njk" => {
       if unstable_options.component {
-        format_html(file_path, file_text, fmt_options)
+        format_html(file_path, file_text, fmt_options, unstable_options)
       } else {
         Ok(None)
       }
@@ -611,10 +830,15 @@ pub fn format_file(
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
-        file_path,
-        Some(&ext),
-        file_text.to_string(),
-        &config,
+        dprint_plugin_typescript::FormatTextOptions {
+          path: file_path,
+          extension: Some(&ext),
+          text: file_text.to_string(),
+          config: &config,
+          external_formatter: Some(&create_external_formatter_for_typescript(
+            unstable_options,
+          )),
+        },
       )
     }
   }
@@ -623,10 +847,12 @@ pub fn format_file(
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
+    Some(&create_external_formatter_for_typescript(unstable_options)),
   )
 }
 

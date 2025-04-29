@@ -1823,7 +1823,7 @@ impl Inner {
           .and_then(|d| d.parsed_source.as_ref())
         {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options, &unstable_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
