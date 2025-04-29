@@ -516,10 +516,21 @@ fn resolve_flags_and_init(
     _ => get_default_v8_flags(),
   };
 
-  init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+  let env_v8_flags = get_v8_flags_from_env();
+  let is_single_threaded = env_v8_flags
+    .iter()
+    .chain(&flags.v8_flags)
+    .any(|flag| flag == "--single-threaded");
+  init_v8_flags(&default_v8_flags, &flags.v8_flags, env_v8_flags);
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
-    None, /* import assertions enabled */ false,
+    v8_platform,
+    /* import assertions enabled */ false,
   );
 
   Ok(flags)
