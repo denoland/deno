@@ -132,7 +132,7 @@ pub fn get_cache_storage_dir() -> PathBuf {
 pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
-    get_memory_limit_linux().map(|memory_limit| {
+    linux::get_memory_limit().map(|memory_limit| {
       v8::CreateParams::default()
         .heap_limits_from_system_memory(memory_limit, 0)
     })
@@ -147,48 +147,129 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
   }
 }
 
-/// Get memory limit with cgroup (either v1 or v2) taken into account.
 #[cfg(any(target_os = "android", target_os = "linux"))]
-fn get_memory_limit_linux() -> Option<u64> {
-  let system_total_memory =
-    deno_runtime::deno_os::sys_info::mem_info().map(|mem_info| mem_info.total);
+mod linux {
+  /// Get memory limit with cgroup (either v1 or v2) taken into account.
+  pub(super) fn get_memory_limit() -> Option<u64> {
+    let system_total_memory = deno_runtime::deno_os::sys_info::mem_info()
+      .map(|mem_info| mem_info.total);
 
-  let Ok(self_cgroup) = std::fs::read_to_string("/proc/self/cgroup") else {
-    return system_total_memory;
-  };
+    let Ok(self_cgroup) = std::fs::read_to_string("/proc/self/cgroup") else {
+      return system_total_memory;
+    };
 
-  let limit = match self_cgroup.strip_prefix("0::/") {
-    Some(cgroup_v2_relpath) => {
-      // cgroup v2
-      let limit_path = std::path::Path::new("/sys/fs/cgroup")
-        .join(cgroup_v2_relpath)
-        .join("memory.max");
-      std::fs::read_to_string(limit_path)
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-    }
-    None => {
-      // cgroup v1
-      let Some(cgroup_v1_relpath) = self_cgroup.lines().find_map(|l| {
-        let split = l.split(":").collect::<Vec<_>>();
-        if split.get(1) == Some(&"memory") {
-          split.get(2)
-        } else {
-          None
+    let limit = match parse_self_cgroup(&self_cgroup) {
+      CgroupVersion::V1 { cgroup_relpath } => {
+        let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
+          .join(cgroup_relpath)
+          .join("memory.limit_in_bytes");
+        std::fs::read_to_string(limit_path)
+          .ok()
+          .and_then(|s| s.trim().parse::<u64>().ok())
+      }
+      CgroupVersion::V2 { cgroup_relpath } => {
+        let limit_path = std::path::Path::new("/sys/fs/cgroup")
+          .join(cgroup_relpath)
+          .join("memory.max");
+        std::fs::read_to_string(limit_path)
+          .ok()
+          .and_then(|s| s.trim().parse::<u64>().ok())
+      }
+      CgroupVersion::None => system_total_memory,
+    };
+
+    limit.or(system_total_memory)
+  }
+
+  enum CgroupVersion<'a> {
+    V1 { cgroup_relpath: &'a str },
+    V2 { cgroup_relpath: &'a str },
+    None,
+  }
+
+  fn parse_self_cgroup<'a>(self_cgroup_content: &'a str) -> CgroupVersion<'a> {
+    let mut cgroup_version = CgroupVersion::None;
+
+    for line in self_cgroup_content.lines() {
+      let split = line.split(":").collect::<Vec<_>>();
+
+      match &split[..] {
+        // A line like `4:memory:/foo/bar` means that memory is managed by v1.
+        [_, "memory", cgroup_v1_relpath] => {
+          cgroup_version = CgroupVersion::V1 {
+            cgroup_relpath: cgroup_v1_relpath,
+          };
+          break;
         }
-      }) else {
-        return system_total_memory;
-      };
-      let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
-        .join(cgroup_v1_relpath)
-        .join("memory.limit_in_bytes");
-      std::fs::read_to_string(limit_path)
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
+        // A line like `0::/foo/bar` means that cgroup v2 is used.
+        // However, it is still possible that memory is managed by v1 when
+        // hybrid mode is enabled. We continue until the whole lines are checked
+        // or an explicit memory line (indicating v1) is found.
+        ["0", "", cgroup_v2_relpath] => {
+          cgroup_version = CgroupVersion::V2 {
+            cgroup_relpath: cgroup_v2_relpath,
+          };
+        }
+        _ => {}
+      }
     }
-  };
 
-  limit.or(system_total_memory)
+    cgroup_version
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_v2() {
+    let self_cgroup = "0::/user.slice/user-1000.slice/session-3.scope";
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "/user.slice/user-1000.slice/session-3.scope"
+    ));
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_hybrid() {
+    let self_cgroup = r#"12:rdma:/
+11:blkio:/user.slice
+10:devices:/user.slice
+9:cpu,cpuacct:/user.slice
+8:pids:/user.slice/user-1000.slice/session-3.scope
+7:memory:/user.slice/user-1000.slice/session-3.scope
+6:perf_event:/
+5:freezer:/
+4:net_cls,net_prio:/
+3:hugetlb:/
+2:cpuset:/
+1:name=systemd:/user.slice/user-1000.slice/session-3.scope
+0::/user.slice/user-1000.slice/session-3.scope
+"#;
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "/user.slice/user-1000.slice/session-3.scope"
+    ));
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_v1() {
+    let self_cgroup = r#"11:hugetlb:/
+10:pids:/user.slice/user-1000.slice
+9:perf_event:/
+8:devices:/user.slice
+7:net_cls,net_prio:/
+6:memory:/
+5:blkio:/
+4:cpuset:/
+3:cpu,cpuacct:/
+2:freezer:/
+1:name=systemd:/user.slice/user-1000.slice/session-2.scope
+"#;
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "/"
+    ));
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
