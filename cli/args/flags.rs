@@ -454,6 +454,12 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub except_paths: Vec<String>,
+  pub dry_run: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
@@ -461,7 +467,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1900,6 +1906,31 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("except-paths")
+          .required_if_eq("except", "true")
+          .num_args(1..)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("except")
+          .long("except")
+          .short('e')
+          .help("Retain cache data needed by the given files")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .action(ArgAction::SetTrue)
+          .help("Show what would be removed without performing any actions")
+          .requires("except"),
+      )
+      .arg(node_modules_dir_arg().requires("except"))
+      .arg(vendor_arg().requires("except"))
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4658,8 +4689,21 @@ fn check_parse(
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let mut clean_flags = CleanFlags {
+    except_paths: Vec::new(),
+    dry_run: false,
+  };
+  if matches.get_flag("except") {
+    clean_flags.except_paths = matches
+      .remove_many::<String>("except-paths")
+      .unwrap()
+      .collect::<Vec<_>>();
+    flags.cached_only = true;
+    clean_flags.dry_run = matches.get_flag("dry-run");
+    node_modules_and_vendor_dir_arg_parse(flags, matches);
+  }
+  flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
 
 fn compile_parse(
@@ -11915,6 +11959,63 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       assert_eq!(
         r.subcommand,
         DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+  }
+
+  #[test]
+  fn clean_subcommand() {
+    let cases = [
+      (
+        svec![],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string()],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1", "path2"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string(), "path2".to_string()],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1", "--dry-run"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string()],
+          dry_run: true,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let cached_only = !input.is_empty();
+      let mut args = svec!["deno", "clean"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone())
+        .inspect_err(|e| {
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!("error: {:?} on input: {:?}", e, args);
+          }
+        })
+        .unwrap();
+      assert_eq!(
+        r,
+        Flags {
+          subcommand: DenoSubcommand::Clean(expected),
+          cached_only,
+          ..Flags::default()
+        },
         "incorrect result for args: {:?}",
         args
       );
