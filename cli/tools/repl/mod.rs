@@ -186,7 +186,7 @@ pub async fn run(
       WorkerExecutionMode::Repl,
       main_module.clone(),
       permissions.clone(),
-      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
+      vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
     )
     .await?;
