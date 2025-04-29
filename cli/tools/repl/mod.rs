@@ -63,9 +63,13 @@ impl Repl {
 
           // We check for close and break here instead of making it a loop condition to get
           // consistent behavior in when the user evaluates a call to close().
-          if self.session.closing().await? {
-            break;
-          }
+          match self.session.closing().await {
+            Ok(closing) if closing => break,
+            Ok(_) => {}
+            Err(err) => {
+              println!("Error: {:?}", err)
+            }
+          };
 
           println!("{}", output);
         }
