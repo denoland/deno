@@ -577,9 +577,48 @@ fn format_embedded_css(
     layout: config::LayoutOptions {
       indent_width: config.indent_width as usize,
       use_tabs: config.use_tabs,
-      ..Default::default()
+      print_width: config.line_width as usize,
+      line_break: match config.new_line_kind {
+        dprint_core::configuration::NewLineKind::LineFeed => {
+          config::LineBreak::Lf
+        }
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
+          config::LineBreak::Crlf
+        }
+        _ => config::LineBreak::Lf,
+      },
     },
-    ..Default::default()
+    language: config::LanguageOptions {
+      hex_case: config::HexCase::Lower,
+      hex_color_length: None,
+      quotes: config::Quotes::AlwaysDouble,
+      operator_linebreak: config::OperatorLineBreak::After,
+      block_selector_linebreak: config::BlockSelectorLineBreak::Consistent,
+      omit_number_leading_zero: false,
+      trailing_comma: false,
+      format_comments: false,
+      align_comments: true,
+      linebreak_in_pseudo_parens: false,
+      declaration_order: None,
+      single_line_block_threshold: None,
+      keyframe_selector_notation: None,
+      attr_value_quotes: config::AttrValueQuotes::Always,
+      prefer_single_line: false,
+      selectors_prefer_single_line: None,
+      function_args_prefer_single_line: None,
+      sass_content_at_rule_prefer_single_line: None,
+      sass_include_at_rule_prefer_single_line: None,
+      sass_map_prefer_single_line: None,
+      sass_module_config_prefer_single_line: None,
+      sass_params_prefer_single_line: None,
+      less_import_options_prefer_single_line: None,
+      less_mixin_args_prefer_single_line: None,
+      less_mixin_params_prefer_single_line: None,
+      single_line_top_level_declarations: false,
+      selector_override_comment_directive: "malva-selector-override".into(),
+      ignore_comment_directive: "malva-ignore".into(),
+      ignore_file_comment_directive: "malva-ignore-file".into(),
+    },
   };
   // Wraps the text in a css block of `a { ... }`
   // to make it valid css (scss)
