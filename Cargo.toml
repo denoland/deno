@@ -57,7 +57,7 @@ deno_ast = { version = "=0.46.5", features = ["transpiling"] }
 deno_core = { version = "0.344.0" }
 
 deno_cache_dir = "=0.18.0"
-deno_config = { version = "=0.52.0", features = ["workspace"] }
+deno_config = { version = "=0.53.0", features = ["workspace"] }
 deno_doc = "=0.172.0"
 deno_error = "=0.5.6"
 deno_graph = "=0.90.0"
@@ -287,6 +287,7 @@ console_static_text = "=0.8.3"
 crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
+dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"

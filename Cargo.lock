@@ -1496,6 +1496,7 @@ dependencies = [
  "dhat",
  "dissimilar",
  "dotenvy",
+ "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
@@ -1726,9 +1727,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.52.0"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0e3242175b68ade08756db0eed2e9d0806e7a47c714e1abb451d3605cd96fb8"
+checksum = "7ceb8fc4ae517f599e5eb2ad19b56507f9be266cbde7230ff3e88a07141c0e85"
 dependencies = [
  "boxed_error",
  "capacity_builder",
