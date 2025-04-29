@@ -169,10 +169,10 @@ impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
 
   pub fn get_or_create(&self) -> Result<&PathBuf, DenoDirResolutionError> {
     self.deno_dir.get_or_try_init(|| {
-      dbg!(deno_cache_dir::resolve_deno_dir(
+      deno_cache_dir::resolve_deno_dir(
         &self.sys,
         self.options.maybe_custom_root.clone(),
-      ))
+      )
     })
   }
 }
