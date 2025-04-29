@@ -97,10 +97,10 @@ pub enum GeometryError {
   #[error("Cannot parse a CSS <transform-list> value on Workers")]
   DisallowWindowFeatures,
   #[class("DOMExceptionSyntaxError")]
-  #[error("Failed to parse a CSS <transform-list> value")]
+  #[error("Failed to parse the string as CSS <transform-list> value")]
   FailedToParse,
   #[class("DOMExceptionSyntaxError")]
-  #[error("CSS <transform-list> value contains relative values")]
+  #[error("The CSS <transform-list> value contains relative values")]
   ContainsRelativeValue,
 }
 
@@ -213,7 +213,7 @@ impl DOMPointReadOnly {
     &self,
     #[webidl] value: DOMMatrixInit,
   ) -> Result<DOMPointReadOnly, GeometryError> {
-    let matrix = DOMMatrixReadOnly::from_matrix_inner(value)?;
+    let matrix = DOMMatrixReadOnly::from_matrix_inner(&value)?;
     let ro = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
@@ -934,18 +934,23 @@ impl DOMMatrixReadOnly {
       }
       let value = value.to_string(scope).unwrap();
       let matrix = DOMMatrixReadOnly::identity();
-      matrix.set_matrix_value_inner(&value.to_rust_string_lossy(scope))?;
+      let Ok(transform_list) =
+        TransformList::parse_string(&value.to_rust_string_lossy(scope))
+      else {
+        return Err(GeometryError::FailedToParse);
+      };
+      matrix.set_matrix_value_inner(&transform_list)?;
       return Ok(matrix);
     }
 
     // sequence
     let seq =
       Vec::<f64>::convert(scope, value, prefix, context, &Default::default())?;
-    DOMMatrixReadOnly::from_sequence_inner(seq)
+    DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
   fn from_matrix_inner(
-    init: DOMMatrixInit,
+    init: &DOMMatrixInit,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     macro_rules! fixup {
       ($value3d:expr, $value2d:expr, $default:expr) => {{
@@ -1020,10 +1025,10 @@ impl DOMMatrixReadOnly {
       Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
-          *m11, *m21, *m31, *m41,
-          *m12, *m22, *m32, *m42,
-          *m13, *m23, *m33, *m43,
-          *m14, *m24, *m34, *m44,
+           *m11,  *m21, **m31,  *m41,
+           *m12,  *m22, **m32,  *m42,
+          **m13, **m23, **m33, **m43,
+          **m14, **m24, **m34, **m44,
         )),
         is_2d: Cell::new(false),
       })
@@ -1031,9 +1036,9 @@ impl DOMMatrixReadOnly {
   }
 
   fn from_sequence_inner(
-    seq: Vec<f64>,
+    seq: &[f64],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    if let [a, b, c, d, e, f] = seq.as_slice() {
+    if let [a, b, c, d, e, f] = seq {
       return Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
@@ -1046,7 +1051,7 @@ impl DOMMatrixReadOnly {
       });
     } else if seq.len() == 16 {
       return Ok(DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(seq.as_slice())),
+        inner: RefCell::new(Matrix4::from_column_slice(seq)),
         is_2d: Cell::new(false),
       });
     } else {
@@ -1151,26 +1156,6 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn skew_x_self_inner(&self, x: f64) {
-    let mut inner = self.inner.borrow_mut();
-    let skew = Matrix4x2::new(1.0, x.tan(), 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
-    let mut result = Matrix4x2::zeros();
-    inner.mul_to(&skew, &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
-  }
-
-  #[inline]
-  fn skew_y_self_inner(&self, y: f64) {
-    let mut inner = self.inner.borrow_mut();
-    let skew = Matrix4x2::new(1.0, 0.0, y.tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
-    let mut result = Matrix4x2::zeros();
-    inner.mul_to(&skew, &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
-  }
-
-  #[inline]
   fn skew_self_inner(&self, x: f64, y: f64) {
     let mut inner = self.inner.borrow_mut();
     let skew = Matrix4x2::new(1.0, x.tan(), y.tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1181,7 +1166,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[inline]
-  fn perspective_self(&self, d: f64) {
+  fn perspective_self_inner(&self, d: f64) {
     if d == 0.0 {
       return;
     }
@@ -1430,11 +1415,11 @@ impl DOMMatrixReadOnly {
       .all(|&item| item.is_finite())
   }
 
-  fn set_matrix_value_inner(&self, input: &str) -> Result<(), GeometryError> {
-    let Ok(transform_list) = TransformList::parse_string(input) else {
-      return Err(GeometryError::FailedToParse);
-    };
-    for transform in transform_list.0 {
+  fn set_matrix_value_inner(
+    &self,
+    transform_list: &TransformList,
+  ) -> Result<(), GeometryError> {
+    for transform in transform_list.0.iter() {
       match transform {
         Transform::Translate(
           LengthPercentage::Dimension(x),
@@ -1480,26 +1465,26 @@ impl DOMMatrixReadOnly {
           }
         }
         Transform::Scale(x, y) => {
-          let x: CSSNumber = (&x).into();
-          let y: CSSNumber = (&y).into();
+          let x: CSSNumber = x.into();
+          let y: CSSNumber = y.into();
           self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
         }
         Transform::ScaleX(x) => {
-          let x: CSSNumber = (&x).into();
+          let x: CSSNumber = x.into();
           self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
         }
         Transform::ScaleY(y) => {
-          let y: CSSNumber = (&y).into();
+          let y: CSSNumber = y.into();
           self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
         }
         Transform::ScaleZ(z) => {
-          let z: CSSNumber = (&z).into();
+          let z: CSSNumber = z.into();
           self.scale_without_origin_self_inner(1.0, 1.0, z.into());
         }
         Transform::Scale3d(x, y, z) => {
-          let x: CSSNumber = (&x).into();
-          let y: CSSNumber = (&y).into();
-          let z: CSSNumber = (&z).into();
+          let x: CSSNumber = x.into();
+          let y: CSSNumber = y.into();
+          let z: CSSNumber = z.into();
           self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
         }
         Transform::Rotate(angle) | Transform::RotateZ(angle) => {
@@ -1528,9 +1513,9 @@ impl DOMMatrixReadOnly {
         }
         Transform::Rotate3d(x, y, z, angle) => {
           self.rotate_axis_angle_self_inner(
-            x.into(),
-            y.into(),
-            z.into(),
+            (*x).into(),
+            (*y).into(),
+            (*z).into(),
             angle.to_radians().into(),
           );
         }
@@ -1538,14 +1523,14 @@ impl DOMMatrixReadOnly {
           self.skew_self_inner(x.to_radians().into(), y.to_radians().into());
         }
         Transform::SkewX(angle) => {
-          self.skew_x_self_inner(angle.to_radians().into());
+          self.skew_self_inner(angle.to_radians().into(), 0.0);
         }
         Transform::SkewY(angle) => {
-          self.skew_y_self_inner(angle.to_radians().into());
+          self.skew_self_inner(0.0, angle.to_radians().into());
         }
         Transform::Perspective(length) => {
           if let Some(length) = length.to_px() {
-            self.perspective_self(length.into());
+            self.perspective_self_inner(length.into());
           } else {
             return Err(GeometryError::ContainsRelativeValue);
           }
@@ -1555,10 +1540,10 @@ impl DOMMatrixReadOnly {
           let rhs = DOMMatrixReadOnly {
             #[rustfmt::skip]
             inner: RefCell::new(Matrix4::new(
-              a.into(), c.into(), 0.0, e.into(),
-              b.into(), d.into(), 0.0, f.into(),
-                   0.0,      0.0, 1.0,      0.0,
-                   0.0,      0.0, 0.0,      1.0,
+              (*a).into(), (*c).into(), 0.0, (*e).into(),
+              (*b).into(), (*d).into(), 0.0, (*f).into(),
+                      0.0,         0.0, 1.0,         0.0,
+                      0.0,         0.0, 0.0,         1.0,
             )),
             is_2d: Cell::new(true),
           };
@@ -1586,10 +1571,10 @@ impl DOMMatrixReadOnly {
           let rhs = DOMMatrixReadOnly {
             #[rustfmt::skip]
             inner: RefCell::new(Matrix4::new(
-              m11.into(), m21.into(), m31.into(), m41.into(),
-              m12.into(), m22.into(), m32.into(), m42.into(),
-              m13.into(), m23.into(), m33.into(), m43.into(),
-              m14.into(), m24.into(), m34.into(), m44.into(),
+              (*m11).into(), (*m21).into(), (*m31).into(), (*m41).into(),
+              (*m12).into(), (*m22).into(), (*m32).into(), (*m42).into(),
+              (*m13).into(), (*m23).into(), (*m33).into(), (*m43).into(),
+              (*m14).into(), (*m24).into(), (*m34).into(), (*m44).into(),
             )),
             is_2d: Cell::new(false),
           };
@@ -1628,7 +1613,7 @@ impl DOMMatrixReadOnly {
   pub fn from_matrix(
     #[webidl] init: DOMMatrixInit,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    DOMMatrixReadOnly::from_matrix_inner(init)
+    DOMMatrixReadOnly::from_matrix_inner(&init)
   }
 
   #[rename("fromFloat32Array")]
@@ -1648,7 +1633,7 @@ impl DOMMatrixReadOnly {
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
-    DOMMatrixReadOnly::from_sequence_inner(seq)
+    DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
   #[rename("fromFloat64Array")]
@@ -1668,7 +1653,7 @@ impl DOMMatrixReadOnly {
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
-    DOMMatrixReadOnly::from_sequence_inner(seq)
+    DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
   #[fast]
@@ -1964,7 +1949,7 @@ impl DOMMatrixReadOnly {
   ) -> DOMMatrixReadOnly {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_x_self_inner(x_deg.to_radians());
+    out.skew_self_inner(x_deg.to_radians(), 0.0);
     out
   }
 
@@ -1976,7 +1961,7 @@ impl DOMMatrixReadOnly {
   ) -> DOMMatrixReadOnly {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
-    out.skew_y_self_inner(y_deg.to_radians());
+    out.skew_self_inner(0.0, y_deg.to_radians());
     out
   }
 
@@ -2000,7 +1985,7 @@ impl DOMMatrixReadOnly {
         (|| Cow::Borrowed("Argument 1")).into(),
         &Default::default(),
       )?;
-      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
       out.multiply_self_inner(self, &other);
     }
     Ok(out)
@@ -2145,7 +2130,7 @@ impl DOMMatrix {
   pub fn from_matrix(
     #[webidl] init: DOMMatrixInit,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    DOMMatrixReadOnly::from_matrix_inner(init)
+    DOMMatrixReadOnly::from_matrix_inner(&init)
   }
 
   // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
@@ -2788,7 +2773,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    ro.skew_x_self_inner(x_deg.to_radians());
+    ro.skew_self_inner(x_deg.to_radians(), 0.0);
     this
   }
 
@@ -2800,7 +2785,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    ro.skew_y_self_inner(y_deg.to_radians());
+    ro.skew_self_inner(0.0, y_deg.to_radians());
     this
   }
 
@@ -2825,7 +2810,7 @@ impl DOMMatrix {
         (|| Cow::Borrowed("Argument 1")).into(),
         &Default::default(),
       )?;
-      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
       ro.multiply_self_inner(&lhs, &other);
     }
     Ok(this)
@@ -2852,7 +2837,7 @@ impl DOMMatrix {
         (|| Cow::Borrowed("Argument 1")).into(),
         &Default::default(),
       )?;
-      let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
+      let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
       ro.multiply_self_inner(&other, &rhs);
     }
     Ok(this)
@@ -2993,7 +2978,10 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
   let matrix =
     cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
       .unwrap();
-  matrix.set_matrix_value_inner(transform_list)?;
+  let Ok(transform_list) = TransformList::parse_string(transform_list) else {
+    return Err(GeometryError::FailedToParse);
+  };
+  matrix.set_matrix_value_inner(&transform_list)?;
   Ok(input)
 }
 
