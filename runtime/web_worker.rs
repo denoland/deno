@@ -28,7 +28,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
-use deno_core::FeatureChecker;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -68,6 +67,7 @@ use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
+use crate::FeatureChecker;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -617,7 +617,6 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
-      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
@@ -646,6 +645,7 @@ impl WebWorker {
 
       state.put::<PermissionsContainer>(services.permissions);
       state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
 
       // Put inspector handle into the op state so we can put a breakpoint when
       // executing a CJS entrypoint.

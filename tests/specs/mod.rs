@@ -434,7 +434,14 @@ fn run_step(
     false => command,
   };
   let command = match &step.input {
-    Some(input) => command.stdin_text(input),
+    Some(input) => {
+      if input.ends_with(".in") {
+        let test_input_path = cwd.join(input);
+        command.stdin_text(std::fs::read_to_string(test_input_path).unwrap())
+      } else {
+        command.stdin_text(input)
+      }
+    }
     None => command,
   };
   let output = command.run();
