@@ -57,7 +57,7 @@ deno_ast = { version = "=0.46.6", features = ["transpiling"] }
 deno_core = { version = "0.344.0" }
 
 deno_cache_dir = "=0.18.0"
-deno_config = { version = "=0.53.0", features = ["workspace"] }
+deno_config = { version = "=0.54.2", features = ["workspace"] }
 deno_doc = "=0.172.0"
 deno_error = "=0.5.6"
 deno_graph = "=0.90.0"
@@ -293,7 +293,7 @@ dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
 dprint-plugin-typescript = "=0.95.0"
 env_logger = "=0.11.6"
-eszip = "=0.86.0"
+eszip = "=0.87.0"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
 malva = "=0.11.2"
