@@ -2041,3 +2041,42 @@ Deno.test("[node/http] 'close' event is emitted on ServerResponse object when th
   await new Promise((resolve) => server.close(resolve));
   assert(responseCloseEmitted);
 });
+
+Deno.test("[node/http] rawHeaders are in flattened format", async () => {
+  const getHeader = (req: IncomingMessage, name: string) => {
+    const idx = req.rawHeaders.indexOf(name);
+    if (idx < 0) {
+      throw new Error(`Header ${name} not found`);
+    }
+    return [name, req.rawHeaders[idx + 1]];
+  };
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    resolve();
+    // TODO(nathanwhit): the raw headers should not be lowercased, they should be
+    // exactly as they appeared in the request
+    assertEquals(getHeader(req, "content-type"), [
+      "content-type",
+      "text/plain",
+    ]);
+    assertEquals(getHeader(req, "set-cookie"), [
+      "set-cookie",
+      "foo=bar",
+    ]);
+    res.end();
+  });
+
+  server.listen(0, async () => {
+    const { port } = server.address() as { port: number };
+    const response = await fetch(`http://localhost:${port}`, {
+      headers: {
+        "Set-Cookie": "foo=bar",
+        "Content-Type": "text/plain",
+      },
+    });
+    await response.body?.cancel();
+  });
+
+  await promise;
+  await new Promise((resolve) => server.close(resolve));
+});
