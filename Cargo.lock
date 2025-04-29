@@ -8505,6 +8505,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_sqlite_extension"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "test_server",
+]
+
+[[package]]
 name = "text-size"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
