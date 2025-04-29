@@ -45,7 +45,7 @@ pub trait NetPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
-    p: &'a Path,
+    p: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -88,7 +88,7 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_write_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_path(

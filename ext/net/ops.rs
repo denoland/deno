@@ -1334,10 +1334,10 @@ mod tests {
 
     fn check_write_path<'a>(
       &mut self,
-      p: &'a Path,
+      p: Cow<'a, Path>,
       _api_name: &str,
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(Cow::Borrowed(p))
+      Ok(p)
     }
 
     fn check_vsock(
