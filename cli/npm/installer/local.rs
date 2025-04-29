@@ -1050,7 +1050,7 @@ struct SetupCacheData {
 /// cache what we've setup on the last run and only update what is necessary.
 /// Obviously this could lead to issues if the cache gets out of date with the
 /// file system, such as if the user manually deletes a symlink.
-struct SetupCache {
+pub struct SetupCache {
   file_path: PathBuf,
   previous: Option<SetupCacheData>,
   current: SetupCacheData,
@@ -1085,6 +1085,14 @@ impl SetupCache {
       .ok()
     });
     true
+  }
+
+  pub fn remove_root_symlink(&mut self, name: &str) {
+    self.current.root_symlinks.remove(name);
+  }
+
+  pub fn remove_deno_symlink(&mut self, name: &str) {
+    self.current.deno_symlinks.remove(name);
   }
 
   /// Inserts and checks for the existence of a root symlink
@@ -1139,7 +1147,7 @@ impl SetupCache {
     }
   }
 
-  pub fn with_dep(&mut self, parent_name: &str) -> SetupCacheDep<'_> {
+  fn with_dep(&mut self, parent_name: &str) -> SetupCacheDep<'_> {
     SetupCacheDep {
       previous: self
         .previous
