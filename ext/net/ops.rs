@@ -650,12 +650,15 @@ pub async fn op_net_connect_vsock<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  use std::sync::Arc;
+
+  use deno_features::FeatureChecker;
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockStream;
 
   state
     .borrow()
-    .feature_checker
+    .borrow::<Arc<FeatureChecker>>()
     .check_or_exit("vsock", "Deno.connect");
 
   state.borrow_mut().borrow_mut::<NP>().check_vsock(
@@ -705,10 +708,15 @@ pub fn op_net_listen_vsock<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  use std::sync::Arc;
+
+  use deno_features::FeatureChecker;
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockListener;
 
-  state.feature_checker.check_or_exit("vsock", "Deno.listen");
+  state
+    .borrow::<Arc<FeatureChecker>>()
+    .check_or_exit("vsock", "Deno.listen");
 
   state
     .borrow_mut::<NP>()
@@ -1378,8 +1386,7 @@ mod tests {
     );
 
     let runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
-      feature_checker: Some(Arc::new(Default::default())),
+      extensions: vec![test_ext::init()],
       ..Default::default()
     });
 

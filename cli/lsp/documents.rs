@@ -35,7 +35,6 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
@@ -1203,6 +1202,7 @@ impl DocumentModules {
       &self.config,
       &self.cache,
     ));
+    self.resolver.did_create_module(&module);
     modules.insert(document, module.clone());
     Some(module)
   }
@@ -1464,14 +1464,6 @@ impl DocumentModules {
             if dep.scheme() == "node" {
               dep_info.has_node_specifier = true;
             }
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
-          }
-          if let Some(dep) = type_specifier {
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
           }
           if dependency.maybe_deno_types_specifier.is_some() {
             if let (Some(code_specifier), Some(type_specifier)) =
@@ -1483,15 +1475,6 @@ impl DocumentModules {
                   .insert(type_specifier.clone(), code_specifier.clone());
               }
             }
-          }
-        }
-        if let Some(dep) = module
-          .types_dependency
-          .as_ref()
-          .and_then(|d| d.dependency.maybe_specifier())
-        {
-          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            dep_info.npm_reqs.insert(reference.into_inner().req);
           }
         }
       };
@@ -1535,22 +1518,6 @@ impl DocumentModules {
             .insert(type_specifier, code_specifier);
           Some(())
         })();
-        // fill the reqs from the lockfile
-        if let Some(lockfile) = config_data.lockfile.as_ref() {
-          let lockfile = lockfile.lock();
-          for dep_req in lockfile.content.packages.specifiers.keys() {
-            if dep_req.kind == deno_semver::package::PackageKind::Npm {
-              dep_info.npm_reqs.insert(dep_req.req.clone());
-            }
-          }
-        }
-      }
-      if dep_info.has_node_specifier
-        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
-      {
-        dep_info
-          .npm_reqs
-          .insert(PackageReq::from_str("@types/node").unwrap());
       }
       (scope.cloned(), Arc::new(dep_info))
     };

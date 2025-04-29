@@ -51,6 +51,7 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 pub mod shared;
+pub use deno_features::FeatureChecker;
 pub use deno_features::UnstableFeatureKind;
 pub use deno_features::UNSTABLE_FEATURES;
 pub use deno_os::exit;
