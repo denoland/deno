@@ -73,9 +73,7 @@ pub async fn kernel(
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let tsconfig_resolver = factory.tsconfig_resolver()?;
   let resolver = factory.resolver().await?.clone();
-  let worker_factory = factory
-    .create_cli_main_worker_factory(Default::default())
-    .await?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
 
   let conn_file =

@@ -85,9 +85,15 @@ pub async fn run_script(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory(roots).await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone(), unconfigured)
+    .create_main_worker_with_unconfigured(
+      mode,
+      main_module.clone(),
+      unconfigured,
+    )
     .await?;
 
   let exit_code = worker.run().await?;
@@ -106,7 +112,9 @@ pub async fn run_from_stdin(
   maybe_npm_install(&factory).await?;
 
   let file_fetcher = factory.file_fetcher()?;
-  let worker_factory = factory.create_cli_main_worker_factory(roots).await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
@@ -118,7 +126,7 @@ pub async fn run_from_stdin(
   });
 
   let mut worker = worker_factory
-    .create_main_worker(
+    .create_main_worker_with_unconfigured(
       WorkerExecutionMode::Run,
       main_module.clone(),
       unconfigured,
@@ -162,9 +170,9 @@ async fn run_with_watch(
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let mut worker = factory
-          .create_cli_main_worker_factory(Default::default())
+          .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module.clone(), None)
+          .create_main_worker(mode, main_module.clone())
           .await?;
 
         if watch_flags.hmr {
@@ -209,11 +217,9 @@ pub async fn eval_command(
     source: source_code.into_bytes().into(),
   });
 
-  let worker_factory = factory
-    .create_cli_main_worker_factory(Default::default())
-    .await?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Eval, main_module.clone(), None)
+    .create_main_worker(WorkerExecutionMode::Eval, main_module.clone())
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -261,9 +267,15 @@ pub async fn run_eszip(
 
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
-  let worker_factory = factory.create_cli_main_worker_factory(roots).await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone(), unconfigured)
+    .create_main_worker_with_unconfigured(
+      mode,
+      main_module.clone(),
+      unconfigured,
+    )
     .await?;
 
   let exit_code = worker.run().await?;

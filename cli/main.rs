@@ -597,14 +597,19 @@ fn wait_for_start(
   >,
 > {
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
-  let path = std::env::var("DENO_CONTROL_SOCK").ok()?;
-  std::env::remove_var("DENO_CONTROL_SOCK");
+  let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
+  std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK");
 
   Some(async move {
     use std::os::unix::ffi::OsStringExt;
 
     use tokio::io::AsyncBufReadExt;
+    use tokio::io::AsyncRead;
     use tokio::io::BufReader;
+    use tokio::net::TcpListener;
+    use tokio::net::UnixSocket;
+    use tokio_vsock::VsockAddr;
+    use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
 
@@ -620,13 +625,35 @@ fn wait_for_start(
       vec![],
     );
 
-    let _ = tokio::fs::remove_file(&path).await;
+    let stream: Box<dyn AsyncRead + Unpin> = match addr.split_once(':') {
+      Some(("tcp", addr)) => {
+        let listener = TcpListener::bind(addr).await?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      Some(("unix", path)) => {
+        let socket = UnixSocket::new_stream()?;
+        socket.bind(path)?;
+        let listener = socket.listen(1)?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      Some(("vsock", addr)) => {
+        let Some((cid, port)) = addr.split_once(':') else {
+          deno_core::anyhow::bail!("invalid vsock addr");
+        };
+        let cid = cid.parse()?;
+        let port = port.parse()?;
+        let addr = VsockAddr::new(cid, port);
+        let listener = VsockListener::bind(addr)?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      _ => {
+        deno_core::anyhow::bail!("invalid control sock");
+      }
+    };
 
-    let socket = tokio::net::UnixSocket::new_stream()?;
-    socket.bind(&path)?;
-    let listener = socket.listen(1)?;
-
-    let (stream, _) = listener.accept().await?;
     let mut stream = BufReader::new(stream);
 
     let mut buf = Vec::with_capacity(1024);

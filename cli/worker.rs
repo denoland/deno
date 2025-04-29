@@ -357,6 +357,23 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    self
+      .create_custom_worker(
+        mode,
+        main_module,
+        self.root_permissions.clone(),
+        vec![],
+        Default::default(),
+        None,
+      )
+      .await
+  }
+
+  pub async fn create_main_worker_with_unconfigured(
+    &self,
+    mode: WorkerExecutionMode,
+    main_module: ModuleSpecifier,
     unconfigured: Option<deno_runtime::Unconfigured>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self

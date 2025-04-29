@@ -1204,6 +1204,14 @@ impl CliFactory {
 
   pub async fn create_cli_main_worker_factory(
     &self,
+  ) -> Result<CliMainWorkerFactory, AnyError> {
+    self
+      .create_cli_main_worker_factory_with_roots(Default::default())
+      .await
+  }
+
+  pub async fn create_cli_main_worker_factory_with_roots(
+    &self,
     roots: LibWorkerFactoryRoots,
   ) -> Result<CliMainWorkerFactory, AnyError> {
     let cli_options = self.cli_options()?;

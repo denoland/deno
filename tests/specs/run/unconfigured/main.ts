@@ -5,7 +5,7 @@ const testPath = `${tempDirPath}/test.ts`;
 
 const command = new Deno.Command(Deno.execPath(), {
   env: {
-    DENO_CONTROL_SOCK: sockPath,
+    DENO_UNSTABLE_CONTROL_SOCK: `unix:${sockPath}`,
   },
 });
 

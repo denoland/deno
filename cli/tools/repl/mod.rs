@@ -178,9 +178,7 @@ pub async fn run(
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
   let tsconfig_resolver = factory.tsconfig_resolver()?;
-  let worker_factory = factory
-    .create_cli_main_worker_factory(Default::default())
-    .await?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
     .ok()

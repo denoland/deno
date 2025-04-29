@@ -406,7 +406,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
-    unconfigured: Option<deno_runtime::Unconfigured>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
@@ -414,7 +413,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       permissions,
       vec![],
       Default::default(),
-      unconfigured,
+      None,
     )
   }
 

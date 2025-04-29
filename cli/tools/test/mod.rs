@@ -1620,11 +1620,8 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let worker_factory = Arc::new(
-    factory
-      .create_cli_main_worker_factory(Default::default())
-      .await?,
-  );
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
 
   // Run tests
   test_specifiers(
@@ -1837,11 +1834,8 @@ pub async fn run_tests_with_watch(
           return Ok(());
         }
 
-        let worker_factory = Arc::new(
-          factory
-            .create_cli_main_worker_factory(Default::default())
-            .await?,
-        );
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         test_specifiers(
           worker_factory,

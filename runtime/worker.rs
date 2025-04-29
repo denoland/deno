@@ -392,8 +392,7 @@ impl MainWorker {
     // check options that require configuring a new jsruntime
     if options.unconfigured.is_some()
       && (options.enable_stack_trace_arg_in_ops
-        || op_metrics_factory_fn.is_some()
-        || !services.feature_checker.is_empty())
+        || op_metrics_factory_fn.is_some())
     {
       options.unconfigured = None;
     }
@@ -426,7 +425,6 @@ impl MainWorker {
         services.shared_array_buffer_store,
         services.compiled_wasm_module_store,
         extensions,
-        Some(services.feature_checker.clone()),
         op_metrics_factory_fn,
         options.enable_stack_trace_arg_in_ops,
       )
@@ -1008,7 +1006,6 @@ fn common_runtime(
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
-  feature_checker: Option<Arc<FeatureChecker>>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   enable_stack_trace_arg_in_ops: bool,
 ) -> JsRuntime {
@@ -1028,7 +1025,6 @@ fn common_runtime(
     extension_transpiler: None,
     inspector: true,
     is_main: true,
-    feature_checker,
     op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
@@ -1083,7 +1079,6 @@ impl Unconfigured {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       extensions,
-      None,
       None,
       false,
     );

@@ -192,6 +192,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
+tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true

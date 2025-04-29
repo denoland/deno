@@ -478,11 +478,8 @@ pub async fn run_benchmarks(
   }
 
   let log_level = cli_options.log_level();
-  let worker_factory = Arc::new(
-    factory
-      .create_cli_main_worker_factory(Default::default())
-      .await?,
-  );
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
     worker_factory,
     &permissions,
@@ -595,11 +592,8 @@ pub async fn run_benchmarks_with_watch(
           bench_modules.clone()
         };
 
-        let worker_factory = Arc::new(
-          factory
-            .create_cli_main_worker_factory(Default::default())
-            .await?,
-        );
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         let specifiers = collected_bench_modules
           .into_iter()
