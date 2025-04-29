@@ -787,6 +787,7 @@ impl DOMQuad {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
+    #[inline]
     fn set(
       scope: &mut v8::HandleScope,
       object: &mut v8::Local<v8::Object>,
@@ -940,25 +941,7 @@ impl DOMMatrixReadOnly {
     // sequence
     let seq =
       Vec::<f64>::convert(scope, value, prefix, context, &Default::default())?;
-    if let [a, b, c, d, e, f] = seq.as_slice() {
-      return Ok(DOMMatrixReadOnly {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        )),
-        is_2d: Cell::new(true),
-      });
-    } else if seq.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(seq.as_slice())),
-        is_2d: Cell::new(false),
-      });
-    } else {
-      Err(GeometryError::InvalidSequenceSize)
-    }
+    DOMMatrixReadOnly::from_sequence_inner(seq)
   }
 
   fn from_matrix_inner(
@@ -1044,6 +1027,30 @@ impl DOMMatrixReadOnly {
         )),
         is_2d: Cell::new(false),
       })
+    }
+  }
+
+  fn from_sequence_inner(
+    seq: Vec<f64>,
+  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+    if let [a, b, c, d, e, f] = seq.as_slice() {
+      return Ok(DOMMatrixReadOnly {
+        #[rustfmt::skip]
+        inner: RefCell::new(Matrix4::new(
+           *a,  *c, 0.0,  *e,
+           *b,  *d, 0.0,  *f,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
+        )),
+        is_2d: Cell::new(true),
+      });
+    } else if seq.len() == 16 {
+      return Ok(DOMMatrixReadOnly {
+        inner: RefCell::new(Matrix4::from_column_slice(seq.as_slice())),
+        is_2d: Cell::new(false),
+      });
+    } else {
+      Err(GeometryError::InvalidSequenceSize)
     }
   }
 
@@ -1634,33 +1641,14 @@ impl DOMMatrixReadOnly {
     if !value.is_float32_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let float64 = Vec::<f64>::convert(
+    let seq = Vec::<f64>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
-
-    if let [a, b, c, d, e, f] = float64.as_slice() {
-      return Ok(DOMMatrixReadOnly {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        )),
-        is_2d: Cell::new(true),
-      });
-    } else if float64.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
-        is_2d: Cell::new(false),
-      });
-    } else {
-      Err(GeometryError::InvalidSequenceSize)
-    }
+    DOMMatrixReadOnly::from_sequence_inner(seq)
   }
 
   #[rename("fromFloat64Array")]
@@ -1673,33 +1661,14 @@ impl DOMMatrixReadOnly {
     if !value.is_float64_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let float64 = Vec::<f64>::convert(
+    let seq = Vec::<f64>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
-
-    if let [a, b, c, d, e, f] = float64.as_slice() {
-      return Ok(DOMMatrixReadOnly {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        )),
-        is_2d: Cell::new(true),
-      });
-    } else if float64.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
-        is_2d: Cell::new(false),
-      });
-    } else {
-      Err(GeometryError::InvalidSequenceSize)
-    }
+    DOMMatrixReadOnly::from_sequence_inner(seq)
   }
 
   #[fast]
@@ -2843,14 +2812,11 @@ impl DOMMatrix {
     other: v8::Local<'a, v8::Value>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
-    let result = DOMMatrixReadOnly {
-      inner: RefCell::new(Matrix4::zeros()),
-      is_2d: Cell::new(true),
-    };
+    let lhs = ro.clone();
     if let Some(other) =
       cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
     {
-      result.multiply_self_inner(ro, &other);
+      ro.multiply_self_inner(&lhs, &other);
     } else {
       let other = DOMMatrixInit::convert(
         scope,
@@ -2860,10 +2826,8 @@ impl DOMMatrix {
         &Default::default(),
       )?;
       let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
-      result.multiply_self_inner(ro, &other);
+      ro.multiply_self_inner(&lhs, &other);
     }
-    ro.inner.borrow_mut().copy_from(&result.inner.borrow());
-    ro.is_2d.set(result.is_2d.get());
     Ok(this)
   }
 
@@ -2875,14 +2839,11 @@ impl DOMMatrix {
     other: v8::Local<'a, v8::Value>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
-    let result = DOMMatrixReadOnly {
-      inner: RefCell::new(Matrix4::zeros()),
-      is_2d: Cell::new(true),
-    };
+    let rhs = ro.clone();
     if let Some(other) =
       cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
     {
-      result.multiply_self_inner(&other, ro);
+      ro.multiply_self_inner(&other, &rhs);
     } else {
       let other = DOMMatrixInit::convert(
         scope,
@@ -2892,10 +2853,8 @@ impl DOMMatrix {
         &Default::default(),
       )?;
       let other = DOMMatrixReadOnly::from_matrix_inner(other)?;
-      result.multiply_self_inner(&other, ro);
+      ro.multiply_self_inner(&other, &rhs);
     }
-    ro.inner.borrow_mut().copy_from(&result.inner.borrow());
-    ro.is_2d.set(result.is_2d.get());
     Ok(this)
   }
 
