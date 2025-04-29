@@ -1944,7 +1944,7 @@ impl UnaryPermission<EnvQueryDescriptor> {
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(None, false, None)
+    self.check_desc(None, true, None)
   }
 }
 
@@ -5266,5 +5266,22 @@ mod tests {
         cmd_path
       );
     }
+  }
+
+  #[test]
+  fn test_env_check_all() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_env: Some(vec![]),
+        deny_env: Some(svec!["FOO"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.env.check_all().is_err());
   }
 }

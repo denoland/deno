@@ -90,6 +90,12 @@ deno_error::js_error_wrapper!(
   "TypeError"
 );
 
+#[derive(Debug)]
+enum Mode {
+  Disk,
+  InMemory,
+}
+
 #[async_trait(?Send)]
 impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
   type DB = denokv_sqlite::Sqlite;
@@ -137,6 +143,25 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
     let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
       denokv_sqlite::sqlite_retry_loop(|| {
+        let mode = match std::env::var("DENO_KV_DB_MODE")
+          .unwrap_or_default()
+          .as_str()
+        {
+          "disk" | "" => Mode::Disk,
+          "memory" => Mode::InMemory,
+          _ => {
+            log::warn!("Unknown DENO_KV_DB_MODE value, defaulting to disk");
+            Mode::Disk
+          }
+        };
+
+        if matches!(mode, Mode::InMemory) {
+          return Ok::<_, SqliteBackendError>((
+            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
+            None,
+          ));
+        }
+
         let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
         {
           (Some(":memory:"), _) | (None, None) => (

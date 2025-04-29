@@ -19,7 +19,7 @@ if (process.argv[2] === 'child') {
   console.log(stdoutData);
   console.error(stderrData);
 } else {
-  const cmd = `"${process.execPath}" --allow-read "${__filename}" child`;
+  const cmd = `"${process.execPath}" --allow-read --allow-env "${__filename}" child`;
   const child = cp.exec(cmd, common.mustSucceed((stdout, stderr) => {
     assert.strictEqual(stdout, expectedStdout);
     assert.strictEqual(stderr, expectedStderr);

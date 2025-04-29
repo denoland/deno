@@ -49,7 +49,7 @@ use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -59,6 +59,7 @@ const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
+use crate::args::get_default_v8_flags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::util::display;
@@ -246,7 +247,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 cmd.build();
                 let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
                 let suggestions = args::did_you_mean(&run_flags.script, command_names);
-                if !suggestions.is_empty() {
+                if !suggestions.is_empty() && !run_flags.script.contains('.') {
                   let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
@@ -488,11 +489,11 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
+  init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
-  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -512,17 +513,7 @@ fn resolve_flags_and_init(
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
     ],
-    _ => {
-      vec![
-        "--stack-size=1024".to_string(),
-        "--js-explicit-resource-management".to_string(),
-        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-        // and its settings.
-        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-        "--no-harmony-import-assertions".to_string(),
-      ]
-    }
+    _ => get_default_v8_flags(),
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());

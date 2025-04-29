@@ -99,8 +99,8 @@ async fn get_infos(
           cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
           os: version_info.os.iter().map(|s| s.to_string()).collect(),
           deprecated: version_info.deprecated.is_some(),
-          has_bin: version_info.bin.is_some(),
-          has_scripts: version_info.scripts.contains_key("preinstall")
+          bin: version_info.bin.is_some(),
+          scripts: version_info.scripts.contains_key("preinstall")
             || version_info.scripts.contains_key("install")
             || version_info.scripts.contains_key("postinstall"),
           optional_peers: version_info
@@ -178,7 +178,7 @@ impl WorkspaceNpmPatchPackages {
             log::warn!(
               "{} {}\n    at {}",
               colors::yellow("Warning"),
-              err.to_string(),
+              err,
               pkg_json.path.display(),
             );
           }
