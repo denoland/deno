@@ -837,13 +837,6 @@ pub struct DnsRecordWithTtl {
   pub ttl: u32,
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
-pub enum DnsReturnRecord {
-  WithoutTtl(DnsRecordData),
-  WithTtl(DnsRecordWithTtl),
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveAddrArgs {
@@ -857,7 +850,6 @@ pub struct ResolveAddrArgs {
 #[serde(rename_all = "camelCase")]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
-  ttl: Option<bool>,
 }
 
 fn default_port() -> u16 {
@@ -877,7 +869,7 @@ pub struct NameServer {
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: ResolveAddrArgs,
-) -> Result<Vec<DnsReturnRecord>, NetError>
+) -> Result<Vec<DnsRecordWithTtl>, NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -903,8 +895,6 @@ where
   } else {
     system_conf::read_system_conf()?
   };
-
-  let ttl = options.as_ref().and_then(|o| o.ttl).unwrap_or(false);
 
   {
     let mut s = state.borrow_mut();
@@ -968,17 +958,13 @@ where
     .iter()
     .filter_map(|rec| {
       let data = format_rdata(record_type)(rec.data()).unwrap();
-      if ttl {
-        Some(DnsReturnRecord::WithTtl(DnsRecordWithTtl {
-          data: data?,
-          ttl: rec.ttl(),
-        }))
-      } else {
-        Some(DnsReturnRecord::WithoutTtl(data?))
-      }
+      Some(DnsRecordWithTtl {
+        data: data?,
+        ttl: rec.ttl(),
+      })
     })
     .map(Ok)
-    .collect::<Result<Vec<DnsReturnRecord>, NetError>>()
+    .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
 }
 
 #[op2(fast)]

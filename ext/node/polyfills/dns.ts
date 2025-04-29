@@ -345,11 +345,6 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
     req.callback = callback as ResolveCallback;
     req.hostname = name;
     req.oncomplete = onresolve;
-
-    if (options && (options as ResolveOptions).ttl) {
-      notImplemented("dns.resolve* with ttl option");
-    }
-
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
     const err = this._handle[bindingName](req, domainToASCII(name));

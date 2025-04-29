@@ -37,6 +37,7 @@ import {
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
+  op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_node_getaddrinfo,
 } from "ext:core/ops";
@@ -202,23 +203,20 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
-    const resolveOptions: Deno.ResolveDnsOptions = {
-      ...ttl !== undefined ? { ttl } : {},
-    };
-
     if (this.#servers.length) {
       for (const [ipAddr, port] of this.#servers) {
-        Object.assign(resolveOptions, {
+        const resolveOptions = {
           nameServer: {
             ipAddr,
             port,
           },
-        });
+        };
 
         ({ code, ret } = await this.#resolve(
           query,
           recordType,
           resolveOptions,
+          ttl,
         ));
 
         if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
@@ -226,7 +224,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
       }
     } else {
-      ({ code, ret } = await this.#resolve(query, recordType, resolveOptions));
+      ({ code, ret } = await this.#resolve(query, recordType, null, ttl));
     }
 
     return { code: code!, ret: ret! };
@@ -236,15 +234,26 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     query: string,
     recordType: Deno.RecordType,
     resolveOptions?: Deno.ResolveDnsOptions,
+    ttl?: boolean,
   ): Promise<{
     code: number;
-    ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
+    // deno-lint-ignore no-explicit-any
+    ret: any[];
   }> {
-    let ret: Awaited<ReturnType<typeof Deno.resolveDns>> = [];
+    let ret = [];
     let code = 0;
 
     try {
-      ret = await Deno.resolveDns(query, recordType, resolveOptions);
+      const res = await op_dns_resolve({
+        query,
+        recordType,
+        options: resolveOptions,
+      });
+      if (ttl) {
+        ret = res;
+      } else {
+        ret = res.map((recordWithTtl) => recordWithTtl.data);
+      }
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;

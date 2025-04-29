@@ -4684,22 +4684,6 @@ declare namespace Deno {
      * and the promise returned will be rejected with an AbortError.
      */
     signal?: AbortSignal;
-    /** */
-    ttl?: boolean;
-  }
-
-  export interface RecordWithTtl {
-    /** */
-    data:
-      | string
-      | CaaRecord
-      | MxRecord
-      | NaptrRecord
-      | SoaRecord
-      | SrvRecord
-      | string[];
-    /** */
-    ttl: number;
   }
 
   /** If {@linkcode Deno.resolveDns} is called with `"CAA"` record type
@@ -4773,37 +4757,6 @@ declare namespace Deno {
     port: number;
     target: string;
   }
-
-  /**
-   * Performs DNS resolution against the given query, returning resolved
-   * records with ttl values.
-   *
-   * Fails in the cases such as:
-   *
-   * - the query is in invalid format.
-   * - the options have an invalid parameter. For example `nameServer.port` is
-   *   beyond the range of 16-bit unsigned integer.
-   * - the request timed out.
-   *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A", { ttl: true });
-   *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   *   ttl: true,
-   * });
-   * ```
-   *
-   * Requires `allow-net` permission.
-   *
-   * @tags allow-net
-   * @category Network
-   */
-  export function resolveDns(
-    query: string,
-    recordType: RecordType,
-    options?: { ttl: true } & ResolveDnsOptions,
-  ): Promise<RecordWithTtl[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5051,7 +5004,6 @@ declare namespace Deno {
     | SoaRecord[]
     | SrvRecord[]
     | string[][]
-    | RecordWithTtl[]
   >;
 
   /**

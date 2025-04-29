@@ -78,12 +78,13 @@ async function resolveDns(query, recordType, options) {
   }
 
   try {
-    return await op_dns_resolve({
+    const res = await op_dns_resolve({
       cancelRid,
       query,
       recordType,
       options,
     });
+    return res.map((recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
       options.signal[abortSignal.remove](abortHandler);
