@@ -643,6 +643,21 @@ mod tests {
 
     let mut trie = super::PathTrie::new();
 
+    #[cfg(unix)]
+    {
+      trie.add_rewrite(
+        Path::new("/RewriteMe").into(),
+        Path::new("/Actual").into(),
+      );
+    }
+    #[cfg(windows)]
+    {
+      trie.add_rewrite(
+        Path::new("C:/RewriteMe").into(),
+        Path::new("C:/Actual").into(),
+      );
+    }
+
     let paths = {
       #[cfg(unix)]
       {
@@ -651,6 +666,7 @@ mod tests {
           "/foo/bar/deno/1",
           "/foo/bar/deno/2",
           "/foo/baz",
+          "/Actual/thing/quux",
         ]
       }
       #[cfg(windows)]
@@ -661,6 +677,7 @@ mod tests {
           r"C:\foo\bar\deno\2",
           r"C:\foo\baz",
           r"D:\thing",
+          r"C:\Actual\thing\quux",
         ]
       }
     };
@@ -679,6 +696,9 @@ mod tests {
           ("/foo/baz", Some(Match)),
           ("/fo", None),
           ("/foo/baz/deno", None),
+          ("/Actual/thing/quux", Some(Match)),
+          ("/RewriteMe/thing/quux", Some(Match)),
+          ("/RewriteMe/thing", Some(Prefix)),
         ]
       }
       #[cfg(windows)]
@@ -688,7 +708,7 @@ mod tests {
           (r"C:\foo", Some(Prefix)),
           (r"C:\foo\", Some(Prefix)),
           (r"C:\foo\", Some(Prefix)),
-          (r"C:\foo\bar", Some(Match)),
+          (r"C:\foo\bar", Some(Prefix)),
           (r"C:\foo\bar\deno\1", Some(Match)),
           (r"C:\foo\bar\deno\2", Some(Match)),
           (r"C:\foo\baz", Some(Match)),
@@ -696,6 +716,9 @@ mod tests {
           (r"C:\foo\baz\deno", None),
           (r"D:\", Some(Prefix)),
           (r"E:\", None),
+          (r"C:\Actual\thing\quux", Some(Match)),
+          (r"C:\RewriteMe\thing\quux", Some(Match)),
+          (r"C:\RewriteMe\thing", Some(Prefix)),
         ]
       }
     };
