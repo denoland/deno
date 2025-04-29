@@ -2934,6 +2934,15 @@ pub fn op_geometry_matrix_to_string<'a>(
   scope: &mut v8::HandleScope<'a>,
   matrix: v8::Local<'a, v8::Value>,
 ) -> Result<String, GeometryError> {
+  #[inline]
+  fn to_string(
+    scope: &mut v8::HandleScope,
+    value: f64,
+  ) -> String {
+    let number = v8::Number::new(scope, value);
+    number.to_string(scope).unwrap().to_rust_string_lossy(scope)
+  }
+
   let Some(matrix) =
     cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
   else {
@@ -2945,12 +2954,12 @@ pub fn op_geometry_matrix_to_string<'a>(
   if matrix.is_2d.get() {
     Ok(format!(
       "matrix({}, {}, {}, {}, {}, {})",
-      matrix.a_inner(),
-      matrix.b_inner(),
-      matrix.c_inner(),
-      matrix.d_inner(),
-      matrix.e_inner(),
-      matrix.f_inner(),
+      to_string(scope, matrix.a_inner()),
+      to_string(scope, matrix.b_inner()),
+      to_string(scope, matrix.c_inner()),
+      to_string(scope, matrix.d_inner()),
+      to_string(scope, matrix.e_inner()),
+      to_string(scope, matrix.f_inner()),
     ))
   } else {
     Ok(format!(
@@ -2959,7 +2968,7 @@ pub fn op_geometry_matrix_to_string<'a>(
         .inner
         .borrow()
         .iter()
-        .map(|item| item.to_string())
+        .map(|item| to_string(scope, *item))
         .collect::<Vec::<String>>()
         .join(", ")
     ))
