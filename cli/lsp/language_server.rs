@@ -1164,7 +1164,7 @@ impl Inner {
       );
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let compiler_options = config_file.to_compiler_options().ok()??.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
