@@ -63,7 +63,7 @@ Deno.test(
 		}
 		while ( false )
 
-		// checks operatorPosition=sameLine
+		// checks operatorPosition=nextLine
 		let c = 'hello world foo bar baz'
 			+ 'hello world foo bar baz'
 			+ 'hello world foo bar baz'
