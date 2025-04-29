@@ -28,6 +28,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   let mut set = HashSet::new();
   set.insert("NODE_DEBUG".to_string());
   set.insert("NODE_OPTIONS".to_string());
+  set.insert("FORCE_COLOR".to_string());
   set
 });
 
@@ -77,55 +78,12 @@ deno_core::extension!(
   ],
   esm = ["30_os.js", "40_signals.js"],
   options = {
-    exit_code: ExitCode,
+    exit_code: Option<ExitCode>,
   },
   state = |state, options| {
-    state.put::<ExitCode>(options.exit_code);
-    #[cfg(unix)]
-    {
-      state.put(ops::signal::SignalState::default());
+    if let Some(exit_code) = options.exit_code {
+      state.put::<ExitCode>(exit_code);
     }
-  }
-);
-
-deno_core::extension!(
-  deno_os_worker,
-  ops = [
-    op_env,
-    op_exec_path,
-    op_exit,
-    op_delete_env,
-    op_get_env,
-    op_gid,
-    op_hostname,
-    op_loadavg,
-    op_network_interfaces,
-    op_os_release,
-    op_os_uptime,
-    op_set_env,
-    op_set_exit_code,
-    op_get_exit_code,
-    op_system_memory_info,
-    op_uid,
-    op_runtime_cpu_usage,
-    op_runtime_memory_usage,
-    ops::signal::op_signal_bind,
-    ops::signal::op_signal_unbind,
-    ops::signal::op_signal_poll,
-  ],
-  // deno_os and deno_os_worker may be used interchangeably, ensure that all
-  // esm modules are given the same identifiers. This is important when
-  // using `WebWorker` without snapshotting.
-  esm = [
-    "ext:deno_os/30_os.js" = "30_os.js",
-    "ext:deno_os/40_signals.js" = "40_signals.js",
-  ],
-  middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync()),
-    _ => op,
-  },
-  state = |state| {
     #[cfg(unix)]
     {
       state.put(ops::signal::SignalState::default());
@@ -273,19 +231,25 @@ fn op_delete_env(
 
 #[op2(fast)]
 fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
-  state.borrow_mut::<ExitCode>().set(code);
+  if let Some(exit_code) = state.try_borrow_mut::<ExitCode>() {
+    exit_code.set(code);
+  }
 }
 
 #[op2(fast)]
 #[smi]
 fn op_get_exit_code(state: &mut OpState) -> i32 {
-  state.borrow_mut::<ExitCode>().get()
+  state
+    .try_borrow::<ExitCode>()
+    .map(|e| e.get())
+    .unwrap_or_default()
 }
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
-  let code = state.borrow::<ExitCode>().get();
-  exit(code)
+  if let Some(exit_code) = state.try_borrow::<ExitCode>() {
+    exit(exit_code.get())
+  }
 }
 
 #[op2(stack_trace)]

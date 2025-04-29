@@ -103,7 +103,7 @@ export function equal(c: unknown, d: unknown): boolean {
       return aTime === bTime;
     }
     if (typeof a === "number" && typeof b === "number") {
-      return NumberIsNaN(a) && NumberIsNaN(b) || a === b;
+      return ObjectIs(a, b);
     }
     if (ObjectIs(a, b)) {
       return true;
