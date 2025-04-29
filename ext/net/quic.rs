@@ -15,10 +15,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 use std::time::Duration;
 
 use deno_core::error::ResourceError;
-use deno_core::futures::task::noop_waker_ref;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -820,7 +820,7 @@ pub(crate) async fn op_quic_connection_open_bi(
   let (tx, rx) = if wait_for_available {
     connection.0.open_bi().await?
   } else {
-    let waker = noop_waker_ref();
+    let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     match pin!(connection.0.open_bi()).poll(&mut cx) {
       Poll::Ready(r) => r?,
@@ -869,7 +869,7 @@ pub(crate) async fn op_quic_connection_open_uni(
   let tx = if wait_for_available {
     connection.0.open_uni().await?
   } else {
-    let waker = noop_waker_ref();
+    let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     match pin!(connection.0.open_uni()).poll(&mut cx) {
       Poll::Ready(r) => r?,

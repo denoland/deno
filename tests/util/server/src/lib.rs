@@ -40,6 +40,8 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
+pub use fs::url_to_notebook_cell_uri;
+pub use fs::url_to_uri;
 pub use fs::PathRef;
 pub use fs::TempDir;
 
@@ -323,7 +325,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 33;
+pub const TEST_SERVERS_COUNT: usize = 34;
 
 #[derive(Default)]
 struct HttpServerCount {
@@ -636,7 +638,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub cwd: Option<&'a str>,
 }
 
-impl<'a> CheckOutputIntegrationTest<'a> {
+impl CheckOutputIntegrationTest<'_> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {

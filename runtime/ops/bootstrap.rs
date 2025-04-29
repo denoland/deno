@@ -16,10 +16,10 @@ deno_core::extension!(
     op_bootstrap_user_agent,
     op_bootstrap_language,
     op_bootstrap_log_level,
-    op_bootstrap_no_color,
     op_bootstrap_color_depth,
-    op_bootstrap_is_stdout_tty,
-    op_bootstrap_is_stderr_tty,
+    op_bootstrap_no_color,
+    op_bootstrap_stdout_no_color,
+    op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
@@ -96,8 +96,10 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   let mut flags = Vec::with_capacity(options.unstable_features.len());
-  for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-    if options.unstable_features.contains(&granular_flag.id) {
+  for unstable_feature in &options.unstable_features {
+    if let Some(granular_flag) =
+      deno_features::UNSTABLE_FEATURES.get((*unstable_feature) as usize)
+    {
       flags.push(format!("--unstable-{}", granular_flag.name));
     }
   }
@@ -117,12 +119,6 @@ pub fn op_bootstrap_log_level(state: &mut OpState) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.no_color
-}
-
-#[op2(fast)]
 pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
   let options = state.borrow::<BootstrapOptions>();
   match options.color_level {
@@ -134,13 +130,24 @@ pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_stdout_tty(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.is_stdout_tty
+pub fn op_bootstrap_no_color(_state: &mut OpState) -> bool {
+  !deno_terminal::colors::use_color()
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_stderr_tty(state: &mut OpState) -> bool {
-  let options = state.borrow::<BootstrapOptions>();
-  options.is_stderr_tty
+pub fn op_bootstrap_stdout_no_color(_state: &mut OpState) -> bool {
+  if deno_terminal::colors::force_color() {
+    return false;
+  }
+
+  !deno_terminal::is_stdout_tty() || !deno_terminal::colors::use_color()
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
+  if deno_terminal::colors::force_color() {
+    return false;
+  }
+
+  !deno_terminal::is_stderr_tty() || !deno_terminal::colors::use_color()
 }

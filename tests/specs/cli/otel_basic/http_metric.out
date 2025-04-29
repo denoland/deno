@@ -20,7 +20,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -59,10 +59,10 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000002",
+      "traceId": "00000000000000000000000000000001",
       "spanId": "0000000000000002",
       "traceState": "",
-      "parentSpanId": "",
+      "parentSpanId": "0000000000000001",
       "flags": 1,
       "name": "GET",
       "kind": 2,
@@ -78,7 +78,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -136,7 +136,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -175,10 +175,10 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000003",
+      "traceId": "00000000000000000000000000000001",
       "spanId": "0000000000000004",
       "traceState": "",
-      "parentSpanId": "",
+      "parentSpanId": "0000000000000003",
       "flags": 1,
       "name": "GET",
       "kind": 2,
@@ -194,7 +194,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -252,7 +252,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -291,10 +291,10 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000004",
+      "traceId": "00000000000000000000000000000001",
       "spanId": "0000000000000006",
       "traceState": "",
-      "parentSpanId": "",
+      "parentSpanId": "0000000000000005",
       "flags": 1,
       "name": "GET",
       "kind": 2,
@@ -310,7 +310,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -493,21 +493,21 @@
             "count": 3,
             "sum": [WILDCARD],
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0.005,
@@ -573,16 +573,16 @@
             "count": 3,
             "sum": 0,
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0,

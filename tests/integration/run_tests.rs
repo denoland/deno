@@ -327,7 +327,7 @@ fn permissions_prompt_allow_all() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -486,7 +486,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "4",
+  "version": "5",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -505,7 +505,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "4",
+  "version": "5",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -536,7 +536,7 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:@denotest/esm-basic@*": "1.0.0"
   },
@@ -588,7 +588,7 @@ fn lock_deno_json_package_json_deps() {
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
       "npm:@denotest/esm-basic@*": "1.0.0"
@@ -600,7 +600,8 @@ fn lock_deno_json_package_json_deps() {
     },
     "npm": {
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -637,7 +638,7 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
       "npm:@denotest/esm-basic@*": "1.0.0"
@@ -649,7 +650,8 @@ fn lock_deno_json_package_json_deps() {
     },
     "npm": {
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -674,7 +676,7 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
     },
@@ -702,7 +704,7 @@ fn lock_deno_json_package_json_deps() {
     .skip_output_check();
 
   lockfile.assert_matches_json(json!({
-    "version": "4"
+    "version": "5"
   }));
 }
 
@@ -760,17 +762,19 @@ fn lock_deno_json_package_json_deps_workspace() {
   );
 
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/cjs-default-export@1": "1.0.0",
       "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
-        "integrity": cjs_default_export_integrity
+        "integrity": cjs_default_export_integrity,
+        "tarball": "http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz"
       },
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -803,17 +807,19 @@ fn lock_deno_json_package_json_deps_workspace() {
     "@denotest/cjs-default-export@1.0.0",
   );
   let expected_lockfile = json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/cjs-default-export@1": "1.0.0",
       "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
-        "integrity": cjs_default_export_integrity
+        "integrity": cjs_default_export_integrity,
+        "tarball": "http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz"
       },
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -1658,7 +1664,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1695,7 +1701,7 @@ mod permissions {
   }
 }
 
-#[test]
+#[flaky_test::flaky_test]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()

@@ -1,8 +1,8 @@
 # Deno
 
 [![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
-[![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
-[![YouTube badge][]][YouTube link]
+[![Twitter badge][]][Twitter link] [![Bluesky badge][]][Bluesky link]
+[![Discord badge][]][Discord link] [![YouTube badge][]][YouTube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
@@ -87,19 +87,22 @@ Learn more about writing and running Deno programs
   the Deno runtime, [Deno Deploy](https://deno.com/deploy), and beyond.
 - **[Deno Standard Library](https://jsr.io/@std)**: officially supported common
   utilities for Deno programs.
-- **[deno.land/x](https://deno.land/x)**: registry for third-party Deno modules.
+- **[JSR](https://jsr.io/)**: The open-source package registry for modern
+  JavaScript and TypeScript
 - **[Developer Blog](https://deno.com/blog)**: Product updates, tutorials, and
   more from the Deno team.
 
 ## Contributing
 
 We appreciate your help! To contribute, please read our
-[contributing instructions](https://docs.deno.com/runtime/manual/references/contributing/).
+[contributing instructions](.github/CONTRIBUTING.md).
 
 [Build status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions
 [Twitter badge]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
 [Twitter link]: https://twitter.com/intent/follow?screen_name=deno_land
+[Bluesky badge]: https://img.shields.io/badge/Follow-whitesmoke?logo=bluesky
+[Bluesky link]: https://bsky.app/profile/deno.land
 [YouTube badge]: https://img.shields.io/youtube/channel/subscribers/UCqC2G2M-rg4fzg1esKFLFIw?style=social
 [YouTube link]: https://www.youtube.com/@deno_land
 [Discord badge]: https://img.shields.io/discord/684898665143206084?logo=discord&style=social

@@ -25,8 +25,9 @@ use tower_lsp::lsp_types as lsp;
 use super::client::Client;
 use super::config::Config;
 use super::config::WorkspaceSettings;
-use super::documents::Documents;
-use super::documents::DocumentsFilter;
+use super::documents::DocumentModule;
+use super::documents::DocumentModules;
+use super::documents::ServerDocumentKind;
 use super::jsr::CliJsrSearchApi;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
@@ -152,38 +153,37 @@ fn to_narrow_lsp_range(
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
-  specifier: &ModuleSpecifier,
+  module: &DocumentModule,
   position: &lsp::Position,
   config: &Config,
   client: &Client,
   module_registries: &ModuleRegistry,
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
-  documents: &Documents,
+  document_modules: &DocumentModules,
   resolver: &LspResolver,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
-  let document = documents.get(specifier)?;
-  let file_referrer = document.file_referrer();
-  let (text, _, graph_range) = document.get_maybe_dependency(position)?;
+  let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
     .map(to_node_resolution_mode)
-    .unwrap_or_else(|| document.resolution_mode());
-  let range = to_narrow_lsp_range(document.text_info(), graph_range.range);
-  let resolved = resolver
-    .as_cli_resolver(file_referrer)
+    .unwrap_or_else(|| module.resolution_mode);
+  let range = to_narrow_lsp_range(module.text_info(), graph_range.range);
+  let scoped_resolver = resolver.get_scoped_resolver(module.scope.as_deref());
+  let resolved = scoped_resolver
+    .as_cli_resolver()
     .resolve(
-      &text,
-      specifier,
+      text,
+      &module.specifier,
       deno_graph::Position::zeroed(),
       resolution_mode,
       NodeResolutionKind::Execution,
     )
     .ok();
   if let Some(completion_list) = get_jsr_completions(
-    specifier,
-    &text,
+    &module.specifier,
+    text,
     &range,
     resolved.as_ref(),
     jsr_search_api,
@@ -193,39 +193,46 @@ pub async fn get_import_completions(
   {
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
-    get_npm_completions(specifier, &text, &range, npm_search_api).await
+    get_npm_completions(&module.specifier, text, &range, npm_search_api).await
   {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_node_completions(&text, &range) {
+  } else if let Some(completion_list) = get_node_completions(text, &range) {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_import_map_completions(specifier, &text, &range, maybe_import_map)
-  {
+  } else if let Some(completion_list) = get_import_map_completions(
+    &module.specifier,
+    text,
+    &range,
+    maybe_import_map,
+  ) {
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_local_completions(specifier, resolution_mode, &text, &range, resolver)
-  {
+  } else if let Some(completion_list) = get_local_completions(
+    &module.specifier,
+    resolution_mode,
+    text,
+    &range,
+    resolver,
+  ) {
     // completions for local relative modules
     Some(lsp::CompletionResponse::List(completion_list))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(
-      &text,
-      config.workspace_settings_for_specifier(specifier),
+      text,
+      config.workspace_settings_for_specifier(&module.specifier),
       client,
       module_registries,
     )
     .await;
     let maybe_list = module_registries
-      .get_completions(&text, &range, resolved.as_ref(), |s| {
-        documents.exists(s, file_referrer)
+      .get_completions(text, &range, resolved.as_ref(), |s| {
+        document_modules.specifier_exists(s, module.scope.as_deref())
       })
       .await;
     let maybe_list = maybe_list
-      .or_else(|| module_registries.get_origin_completions(&text, &range));
+      .or_else(|| module_registries.get_origin_completions(text, &range));
     let list = maybe_list.unwrap_or_else(|| CompletionList {
-      items: get_workspace_completions(specifier, &text, &range, documents),
+      items: get_remote_completions(module, text, &range, document_modules),
       is_incomplete: false,
     });
     Some(lsp::CompletionResponse::List(list))
@@ -248,10 +255,13 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map, specifier));
+      items.extend(get_base_import_map_completions(
+        import_map,
+        &module.specifier,
+      ));
     }
     if let Some(origin_items) =
-      module_registries.get_origin_completions(&text, &range)
+      module_registries.get_origin_completions(text, &range)
     {
       is_incomplete = origin_items.is_incomplete;
       items.extend(origin_items.items);
@@ -368,8 +378,9 @@ fn get_local_completions(
     return None;
   }
   let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
-  let resolved_parent = resolver
-    .as_cli_resolver(Some(referrer))
+  let scoped_resolver = resolver.get_scoped_resolver(Some(referrer));
+  let resolved_parent = scoped_resolver
+    .as_cli_resolver()
     .resolve(
       parent,
       referrer,
@@ -438,22 +449,6 @@ fn get_local_completions(
   } else {
     None
   }
-}
-
-fn get_relative_specifiers(
-  base: &ModuleSpecifier,
-  specifiers: Vec<ModuleSpecifier>,
-) -> Vec<String> {
-  specifiers
-    .iter()
-    .filter_map(|s| {
-      if s != base {
-        Some(relative_specifier(base, s).unwrap_or_else(|| s.to_string()))
-      } else {
-        None
-      }
-    })
-    .collect()
 }
 
 /// Find the index of the '@' delimiting the package name and version, if any.
@@ -770,34 +765,33 @@ fn get_node_completions(
   })
 }
 
-/// Get workspace completions that include modules in the Deno cache which match
+/// Get remote completions that include modules in the Deno cache which match
 /// the current specifier string.
-fn get_workspace_completions(
-  specifier: &ModuleSpecifier,
+fn get_remote_completions(
+  module: &DocumentModule,
   current: &str,
   range: &lsp::Range,
-  documents: &Documents,
+  document_modules: &DocumentModules,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = documents
-    .documents(DocumentsFilter::AllDiagnosable)
+  let specifiers = document_modules
+    .documents
+    .server_docs()
     .into_iter()
-    .map(|d| d.specifier().clone())
-    .collect();
-  let specifier_strings =
-    get_relative_specifiers(specifier, workspace_specifiers);
-  specifier_strings
-    .into_iter()
+    .filter_map(|d| {
+      if let ServerDocumentKind::RemoteUrl { url, .. } = &d.kind {
+        if *url == module.specifier {
+          return None;
+        }
+        return Some(
+          relative_specifier(&module.specifier, url)
+            .unwrap_or_else(|| url.to_string()),
+        );
+      }
+      None
+    });
+  specifiers
     .filter_map(|label| {
       if label.starts_with(current) {
-        let detail = Some(
-          if label.starts_with("http:") || label.starts_with("https:") {
-            "(remote)".to_string()
-          } else if label.starts_with("data:") {
-            "(data)".to_string()
-          } else {
-            "(local)".to_string()
-          },
-        );
         let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
           range: *range,
           new_text: label.clone(),
@@ -805,7 +799,7 @@ fn get_workspace_completions(
         Some(lsp::CompletionItem {
           label,
           kind: Some(lsp::CompletionItemKind::FILE),
-          detail,
+          detail: Some("(remote)".to_string()),
           sort_text: Some("1".to_string()),
           text_edit,
           commit_characters: Some(
@@ -831,18 +825,18 @@ mod tests {
   use super::*;
   use crate::cache::HttpCache;
   use crate::lsp::cache::LspCache;
-  use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
+  use crate::lsp::urls::url_to_uri;
 
   fn setup(
     open_sources: &[(&str, &str, i32, LanguageId)],
     fs_sources: &[(&str, &str)],
-  ) -> Documents {
+  ) -> DocumentModules {
     let temp_dir = TempDir::new();
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
-    let mut documents = Documents::default();
-    documents.update_config(
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
       &Default::default(),
       &Default::default(),
       &cache,
@@ -851,7 +845,14 @@ mod tests {
     for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, *version, *language_id, (*source).into(), None);
+      let uri = url_to_uri(&specifier).unwrap();
+      document_modules.open_document(
+        uri,
+        *version,
+        *language_id,
+        (*source).into(),
+        None,
+      );
     }
     for (specifier, source) in fs_sources {
       let specifier =
@@ -860,32 +861,10 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let document = documents
-        .get_or_load(&specifier, Some(&temp_dir.url().join("$").unwrap()));
-      assert!(document.is_some(), "source could not be setup");
+      let module = document_modules.module_for_specifier(&specifier, None);
+      assert!(module.is_some(), "source could not be setup");
     }
-    documents
-  }
-
-  #[test]
-  fn test_get_relative_specifiers() {
-    let base = resolve_url("file:///a/b/c.ts").unwrap();
-    let specifiers = vec![
-      resolve_url("file:///a/b/c.ts").unwrap(),
-      resolve_url("file:///a/b/d.ts").unwrap(),
-      resolve_url("file:///a/c/c.ts").unwrap(),
-      resolve_url("file:///a/b/d/d.ts").unwrap(),
-      resolve_url("https://deno.land/x/a/b/c.ts").unwrap(),
-    ];
-    assert_eq!(
-      get_relative_specifiers(&base, specifiers),
-      vec![
-        "./d.ts".to_string(),
-        "../c/c.ts".to_string(),
-        "./d/d.ts".to_string(),
-        "https://deno.land/x/a/b/c.ts".to_string(),
-      ]
-    );
+    document_modules
   }
 
   #[test]
@@ -940,7 +919,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_get_workspace_completions() {
+  async fn test_get_remote_completions() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
     let range = lsp::Range {
       start: lsp::Position {
@@ -952,7 +931,7 @@ mod tests {
         character: 21,
       },
     };
-    let documents = setup(
+    let document_modules = setup(
       &[
         (
           "file:///a/b/c.ts",
@@ -964,7 +943,11 @@ mod tests {
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
-    let actual = get_workspace_completions(&specifier, "h", &range, &documents);
+    let module = document_modules
+      .module_for_specifier(&specifier, None)
+      .unwrap();
+    let actual =
+      get_remote_completions(&module, "h", &range, &document_modules);
     assert_eq!(
       actual,
       vec![lsp::CompletionItem {

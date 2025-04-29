@@ -121,9 +121,9 @@ import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
-import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.mjs";
-import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
-import internalStreamsState from "ext:deno_node/internal/streams/state.mjs";
+import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
+import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
@@ -1101,8 +1101,11 @@ function loadESMFromCJS(module, filename, code) {
     url.pathToFileURL(filename).toString(),
     code,
   );
-
-  module.exports = namespace;
+  if (ObjectHasOwn(namespace, "module.exports")) {
+    module.exports = namespace["module.exports"];
+  } else {
+    module.exports = namespace;
+  }
 }
 
 function stripBOM(content) {
