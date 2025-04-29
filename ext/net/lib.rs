@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::OpState;
+use deno_features::FeatureChecker;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
@@ -111,7 +112,7 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
   state
-    .feature_checker
+    .borrow::<Arc<FeatureChecker>>()
     .check_or_exit(UNSTABLE_FEATURE_NAME, api_name);
 }
 

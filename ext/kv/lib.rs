@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use base64::prelude::BASE64_URL_SAFE;
@@ -33,6 +34,7 @@ use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_features::FeatureChecker;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
 use denokv_proto::AtomicWrite;
@@ -219,7 +221,7 @@ where
   let handler = {
     let state = state.borrow();
     state
-      .feature_checker
+      .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
