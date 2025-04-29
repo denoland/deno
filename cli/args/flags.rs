@@ -11998,12 +11998,15 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       ),
     ];
     for (input, expected) in cases {
-      let cached_only = input.len() > 0;
+      let cached_only = !input.is_empty();
       let mut args = svec!["deno", "clean"];
       args.extend(input);
       let r = flags_from_vec(args.clone())
         .inspect_err(|e| {
-          eprintln!("error: {:?} on input: {:?}", e, args);
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!("error: {:?} on input: {:?}", e, args);
+          }
         })
         .unwrap();
       assert_eq!(

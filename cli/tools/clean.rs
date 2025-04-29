@@ -121,9 +121,11 @@ impl PathTrie {
       rewrites: vec![],
     }
   }
+
   fn add_rewrite(&mut self, from: PathBuf, to: PathBuf) {
     self.rewrites.push((from, to));
   }
+
   fn rewrite(&self, s: &Path) -> PathBuf {
     let normalized = deno_path_util::normalize_path(s);
     for (from, to) in &self.rewrites {
@@ -133,6 +135,7 @@ impl PathTrie {
     }
     normalized
   }
+
   fn insert(&mut self, s: &Path) {
     let normalized = self.rewrite(s);
     let components = normalized.components().map(|c| c.as_os_str());
