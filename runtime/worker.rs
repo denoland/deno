@@ -17,7 +17,6 @@ use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
-use deno_core::FeatureChecker;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
@@ -55,6 +54,7 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
+use crate::FeatureChecker;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
@@ -526,7 +526,6 @@ impl MainWorker {
       extension_transpiler: None,
       inspector: true,
       is_main: true,
-      feature_checker: Some(services.feature_checker.clone()),
       op_metrics_factory_fn,
       wait_for_inspector_disconnect_callback: Some(
         wait_for_inspector_disconnect_callback,
@@ -597,6 +596,7 @@ impl MainWorker {
 
       state.put::<PermissionsContainer>(services.permissions);
       state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
