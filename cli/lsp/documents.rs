@@ -35,7 +35,6 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
@@ -60,6 +59,7 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
+use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
@@ -503,15 +503,16 @@ impl Documents {
     text: Arc<str>,
     notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
+    let uri = normalize_uri(&uri);
     self.server.remove(&uri);
     let doc = Arc::new(OpenDocument::new(
-      uri.clone(),
+      uri.as_ref().clone(),
       version,
       language_id,
       text,
       notebook_uri,
     ));
-    self.open.insert(uri, doc.clone());
+    self.open.insert(uri.into_owned(), doc.clone());
     if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
@@ -527,7 +528,8 @@ impl Documents {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
-    let Some((uri, doc)) = self.open.shift_remove_entry(uri) else {
+    let uri = normalize_uri(uri);
+    let Some((uri, doc)) = self.open.shift_remove_entry(uri.as_ref()) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -545,8 +547,11 @@ impl Documents {
   }
 
   fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
-    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != uri);
-    let doc = self.open.shift_remove(uri).ok_or_else(|| {
+    let uri = normalize_uri(uri);
+    self
+      .file_like_uris_by_url
+      .retain(|_, u| u.as_ref() != uri.as_ref());
+    let doc = self.open.shift_remove(uri.as_ref()).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -563,7 +568,7 @@ impl Documents {
     uri: Uri,
     cells: Vec<lsp::TextDocumentItem>,
   ) -> Vec<Arc<OpenDocument>> {
-    let uri = Arc::new(uri);
+    let uri = Arc::new(normalize_uri(&uri).into_owned());
     let mut documents = Vec::with_capacity(cells.len());
     for cell in cells {
       let language_id = cell.language_id.parse().unwrap_or_else(|err| {
@@ -598,7 +603,7 @@ impl Documents {
     structure: Option<lsp::NotebookDocumentCellChangeStructure>,
     content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
   ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
-    let uri = Arc::new(uri.clone());
+    let uri = Arc::new(normalize_uri(uri).into_owned());
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
       if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
@@ -610,7 +615,7 @@ impl Documents {
             .cells
             .into_iter()
             .flatten()
-            .map(|c| Arc::new(c.document)),
+            .map(|c| Arc::new(normalize_uri(&c.document).into_owned())),
         );
       }
       for closed in structure.did_close.into_iter().flatten() {
@@ -663,7 +668,9 @@ impl Documents {
   }
 
   pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
-    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri) else {
+    let uri = normalize_uri(uri);
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri.as_ref())
+    else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
         uri.as_str(),
@@ -685,33 +692,35 @@ impl Documents {
   }
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
-    if let Some(doc) = self.open.get(uri) {
+    let uri = normalize_uri(uri);
+    if let Some(doc) = self.open.get(uri.as_ref()) {
       return Some(Document::Open(doc.clone()));
     }
-    if let Some(doc) = ASSET_DOCUMENTS.get(uri) {
+    if let Some(doc) = ASSET_DOCUMENTS.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    if let Some(doc) = self.server.get(uri) {
+    if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(uri) {
+    let doc = if let Some(doc) = ServerDocument::load(&uri) {
       doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(uri) {
-      ServerDocument::data_url(uri, data_url.value().clone())?
+    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
+      ServerDocument::data_url(&uri, data_url.value().clone())?
     } else {
       return None;
     };
     let doc = Arc::new(doc);
-    self.server.insert(uri.clone(), doc.clone());
+    self.server.insert(uri.into_owned(), doc.clone());
     Some(Document::Server(doc))
   }
 
   /// This will not create any server entries, only retrieve existing entries.
   pub fn inspect(&self, uri: &Uri) -> Option<Document> {
-    if let Some(doc) = self.open.get(uri) {
+    let uri = normalize_uri(uri);
+    if let Some(doc) = self.open.get(uri.as_ref()) {
       return Some(Document::Open(doc.clone()));
     }
-    if let Some(doc) = self.server.get(uri) {
+    if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
     None
@@ -1193,6 +1202,7 @@ impl DocumentModules {
       &self.config,
       &self.cache,
     ));
+    self.resolver.did_create_module(&module);
     modules.insert(document, module.clone());
     Some(module)
   }
@@ -1454,14 +1464,6 @@ impl DocumentModules {
             if dep.scheme() == "node" {
               dep_info.has_node_specifier = true;
             }
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
-          }
-          if let Some(dep) = type_specifier {
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
           }
           if dependency.maybe_deno_types_specifier.is_some() {
             if let (Some(code_specifier), Some(type_specifier)) =
@@ -1473,15 +1475,6 @@ impl DocumentModules {
                   .insert(type_specifier.clone(), code_specifier.clone());
               }
             }
-          }
-        }
-        if let Some(dep) = module
-          .types_dependency
-          .as_ref()
-          .and_then(|d| d.dependency.maybe_specifier())
-        {
-          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            dep_info.npm_reqs.insert(reference.into_inner().req);
           }
         }
       };
@@ -1525,22 +1518,6 @@ impl DocumentModules {
             .insert(type_specifier, code_specifier);
           Some(())
         })();
-        // fill the reqs from the lockfile
-        if let Some(lockfile) = config_data.lockfile.as_ref() {
-          let lockfile = lockfile.lock();
-          for dep_req in lockfile.content.packages.specifiers.keys() {
-            if dep_req.kind == deno_semver::package::PackageKind::Npm {
-              dep_info.npm_reqs.insert(dep_req.req.clone());
-            }
-          }
-        }
-      }
-      if dep_info.has_node_specifier
-        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
-      {
-        dep_info
-          .npm_reqs
-          .insert(PackageReq::from_str("@types/node").unwrap());
       }
       (scope.cloned(), Arc::new(dep_info))
     };

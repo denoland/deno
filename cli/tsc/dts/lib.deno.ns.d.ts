@@ -5543,7 +5543,7 @@ declare namespace Deno {
   /**
    * @category FFI
    */
-  export const brand: unique symbol;
+  const brand: unique symbol;
 
   /**
    * @category FFI
