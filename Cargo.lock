@@ -8508,7 +8508,7 @@ dependencies = [
 name = "test_sqlite_extension"
 version = "0.1.0"
 dependencies = [
- "libsqlite3-sys",
+ "rusqlite",
  "test_server",
 ]
 

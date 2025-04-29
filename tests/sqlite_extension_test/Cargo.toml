@@ -13,7 +13,7 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-libsqlite3-sys.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 test_util.workspace = true

@@ -7,7 +7,7 @@
 use std::os::raw::c_char;
 use std::os::raw::c_int;
 
-use libsqlite3_sys::*;
+use rusqlite::ffi::*;
 
 #[no_mangle]
 pub static mut sqlite3_api: *const sqlite3_api_routines = std::ptr::null();
