@@ -555,8 +555,7 @@ fn create_external_formatter_for_typescript(
           None
         }
       }
-      // dprint-plugin-typescript only detects css, html, and sql for now
-      _ => unreachable!(),
+      _ => None,
     }
   }
 }
