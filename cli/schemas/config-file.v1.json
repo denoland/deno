@@ -431,7 +431,7 @@
         },
         "bracePosition": {
           "description": "The position of opening braces for blocks in JavaScript and TypeScript.",
-          "default": "sameLineUnlessHanging",
+          "default": "sameLine",
           "enum": [
             "maintain",
             "sameLine",
@@ -465,7 +465,7 @@
         },
         "operatorPosition": {
           "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
-          "default": "nextLine",
+          "default": "sameLine",
           "enum": [
             "maintain",
             "sameLine",
