@@ -18,7 +18,7 @@ declare namespace Deno {
    *
    *  | system            | winHandle     | displayHandle   |
    *  | ----------------- | ------------- | --------------- |
-   *  | "cocoa" (macOS)   | `NSView*`     | -               |
+   *  | "cocoa" (macOS)   | -             | `NSView*`       |
    *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
