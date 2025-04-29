@@ -1425,11 +1425,7 @@ pub fn exec(
 
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
-  extensions.push(deno_cli_tsc::init_ops_and_esm(
-    request,
-    root_map,
-    remapped_specifiers,
-  ));
+  extensions.push(deno_cli_tsc::init(request, root_map, remapped_specifiers));
   let extension_code_cache = code_cache.map(|cache| {
     Rc::new(TscExtCodeCache::new(cache)) as Rc<dyn deno_core::ExtCodeCache>
   });

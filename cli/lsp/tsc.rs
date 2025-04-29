@@ -4851,7 +4851,7 @@ fn run_tsc_thread(
   let has_inspector_server = maybe_inspector_server.is_some();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
-  extensions.push(deno_tsc::init_ops_and_esm(
+  extensions.push(deno_tsc::init(
     performance,
     specifier_map,
     request_rx,
