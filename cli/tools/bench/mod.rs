@@ -190,7 +190,7 @@ async fn bench_specifier_inner(
       WorkerExecutionMode::Bench,
       specifier.clone(),
       permissions_container,
-      vec![ops::bench::deno_bench::init_ops(sender.clone())],
+      vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
     )
     .await?;

@@ -65,7 +65,7 @@ async fn main() -> Result<(), AnyError> {
       fs,
     },
     WorkerOptions {
-      extensions: vec![hello_runtime::init_ops_and_esm()],
+      extensions: vec![hello_runtime::init()],
       ..Default::default()
     },
   );
