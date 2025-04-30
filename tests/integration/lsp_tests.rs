@@ -11406,6 +11406,9 @@ fn lsp_jupyter_import_map_and_diagnostics() {
 
           // Top-level-await should be allowed.
           await new Promise((r) => r(null));
+          for await (const foo of []) {
+            console.log(foo);
+          }
 
           // Local variables conflicting with globals.
           const name = "Hello";
