@@ -110,7 +110,7 @@ denort_helper = { version = "0.2.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.198.0", path = "./bench_util" }
 deno_features = { version = "0.1.0", path = "./runtime/features" }
-deno_lib = { version = "2.4.0", path = "./cli/lib" }
+deno_lib = { version = "2.3.1", path = "./cli/lib" }
 deno_npm_cache = { version = "0.23.0", path = "./resolvers/npm_cache" }
 deno_permissions = { version = "0.63.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.35.0", path = "./resolvers/deno" }
