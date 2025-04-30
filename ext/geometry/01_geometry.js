@@ -192,6 +192,8 @@ if (op_geometry_get_enable_window_features()) {
   ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
     __proto__: null,
     value: function setMatrixValue(transformList) {
+      const prefix = "Failed to execute 'setMatrixValue' on 'DOMMatrix'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
       op_geometry_matrix_set_matrix_value(this, transformList);
     },
     writable: true,

@@ -1617,6 +1617,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[rename("fromFloat32Array")]
+  #[required(1)]
   #[static_method]
   #[cppgc]
   pub fn from_float32_array<'a>(
@@ -1637,6 +1638,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[rename("fromFloat64Array")]
+  #[required(1)]
   #[static_method]
   #[cppgc]
   pub fn from_float64_array<'a>(
@@ -2135,6 +2137,7 @@ impl DOMMatrix {
 
   // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[rename("fromFloat32Array")]
+  #[required(1)]
   #[static_method]
   #[cppgc]
   pub fn from_float32_array<'a>(
@@ -2175,6 +2178,7 @@ impl DOMMatrix {
 
   // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[rename("fromFloat64Array")]
+  #[required(1)]
   #[static_method]
   #[cppgc]
   pub fn from_float64_array<'a>(
@@ -2935,10 +2939,7 @@ pub fn op_geometry_matrix_to_string<'a>(
   matrix: v8::Local<'a, v8::Value>,
 ) -> Result<String, GeometryError> {
   #[inline]
-  fn to_string(
-    scope: &mut v8::HandleScope,
-    value: f64,
-  ) -> String {
+  fn to_string(scope: &mut v8::HandleScope, value: f64) -> String {
     let number = v8::Number::new(scope, value);
     number.to_string(scope).unwrap().to_rust_string_lossy(scope)
   }
