@@ -1071,12 +1071,24 @@ internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
+  let serveFn;
+
   if (ObjectHasOwn(exports, "fetch")) {
     if (typeof exports.fetch !== "function") {
       throw new TypeError(
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
+
+    serveFn = exports.fetch;
+  } else if (
+    typeof exports === "object" && exports !== null &&
+    typeof exports.fetch === "function"
+  ) {
+    serveFn = exports.fetch;
+  }
+
+  if (serveFn !== undefined) {
     return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
@@ -1101,7 +1113,7 @@ function registerDeclarativeServer(exports) {
           }
         },
         handler: (req, connInfo) => {
-          return exports.fetch(req, connInfo);
+          return serveFn(req, connInfo);
         },
       });
     };
