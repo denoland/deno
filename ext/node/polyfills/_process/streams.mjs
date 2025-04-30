@@ -47,7 +47,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       cb(err);
       this._undestroy();
       if (!this._writableState.emitClose) {
-        nextTick(() => this.emit("close"));
+        // nextTick(() => this.emit("close"));
       }
     },
   });

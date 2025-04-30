@@ -217,7 +217,6 @@ export class LibuvStreamWrap extends HandleWrap {
     }
 
     this.readPromise
-      .then(onread)
       .catch((e) => onread(null, e));
 
     return 0;
