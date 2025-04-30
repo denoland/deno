@@ -197,7 +197,9 @@ mod linux {
         // A line like `4:memory:/foo/bar` means that memory is managed by v1.
         [_, "memory", cgroup_v1_relpath] => {
           cgroup_version = CgroupVersion::V1 {
-            cgroup_relpath: cgroup_v1_relpath,
+            cgroup_relpath: cgroup_v1_relpath
+              .strip_prefix("/")
+              .unwrap_or(cgroup_v1_relpath),
           };
           break;
         }
@@ -207,7 +209,9 @@ mod linux {
         // or an explicit memory line (indicating v1) is found.
         ["0", "", cgroup_v2_relpath] => {
           cgroup_version = CgroupVersion::V2 {
-            cgroup_relpath: cgroup_v2_relpath,
+            cgroup_relpath: cgroup_v2_relpath
+              .strip_prefix("/")
+              .unwrap_or(cgroup_v2_relpath),
           };
         }
         _ => {}
@@ -223,7 +227,7 @@ mod linux {
     let cgroup_version = parse_self_cgroup(self_cgroup);
     assert!(matches!(
       cgroup_version,
-      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "/user.slice/user-1000.slice/session-3.scope"
+      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
     ));
   }
 
@@ -246,7 +250,7 @@ mod linux {
     let cgroup_version = parse_self_cgroup(self_cgroup);
     assert!(matches!(
       cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "/user.slice/user-1000.slice/session-3.scope"
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
     ));
   }
 
@@ -267,7 +271,7 @@ mod linux {
     let cgroup_version = parse_self_cgroup(self_cgroup);
     assert!(matches!(
       cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "/"
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == ""
     ));
   }
 }
