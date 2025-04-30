@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -662,7 +663,7 @@ impl Inner {
   ) -> LspResult<Arc<tsc::NavigationTree>> {
     let mark = self.performance.mark_with_args(
       "lsp.get_navigation_tree",
-      json!({ "uri": &module.specifier }),
+      json!({ "specifier": &module.specifier }),
     );
     let result = module
       .navigation_tree
@@ -759,8 +760,8 @@ impl Inner {
     let global_cache_url = maybe_cache.and_then(|cache_str| {
       if let Ok(url) = Url::from_file_path(cache_str) {
         Some(url)
-      } else if let Some(root_uri) = self.config.root_url() {
-        root_uri.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
+      } else if let Some(root_url) = self.config.root_url() {
+        root_url.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
       } else {
         lsp_warn!(
           "The configured cache path \"{cache_str}\" is not resolvable outside of a workspace.",
@@ -774,7 +775,7 @@ impl Inner {
     let maybe_root_path = self
       .config
       .root_url()
-      .and_then(|uri| url_to_file_path(uri).ok());
+      .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -1136,7 +1137,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = CliFileFetcher::new(
-      self.cache.global().clone(),
+      GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
       Default::default(),
@@ -1164,7 +1165,7 @@ impl Inner {
       );
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let compiler_options = config_file.to_compiler_options().ok()??.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
@@ -1390,10 +1391,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.document_modules.dep_info_by_scope();
-    self
-      .resolver
-      .set_dep_info_by_scope(&dep_info_by_scope)
-      .await;
+    self.resolver.set_dep_info_by_scope(&dep_info_by_scope);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1422,6 +1420,7 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info().await;
+      self.diagnostics_server.invalidate(&[&document.uri]);
       let changed_specifier = self
         .document_modules
         .primary_specifier(&Document::Open(document.clone()))
@@ -1430,9 +1429,6 @@ impl Inner {
       // `self.project_changed()` so its module entries will be dropped.
       drop(document);
       self.project_changed(changed_specifier, ProjectScopesChange::None);
-      self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1459,7 +1455,7 @@ impl Inner {
             let specifier = self
               .document_modules
               .primary_specifier(&Document::Open((*d).clone()))?;
-            Some((specifier, ChangeKind::Closed))
+            Some((specifier, ChangeKind::Opened))
           })
           .collect::<Vec<_>>(),
         ProjectScopesChange::OpenNotebooks,
@@ -1568,23 +1564,27 @@ impl Inner {
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info().await;
-      self.project_changed(
-        diagnosable_documents
-          .iter()
-          .flat_map(|d| {
-            let specifier = self
-              .document_modules
-              .primary_specifier(&Document::Open((*d).clone()))?;
-            Some((specifier, ChangeKind::Closed))
-          })
-          .collect::<Vec<_>>(),
-        ProjectScopesChange::OpenNotebooks,
-      );
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
           .map(|d| d.uri.as_ref())
           .collect::<Vec<_>>(),
+      );
+      let changed_specifiers = diagnosable_documents
+        .iter()
+        .flat_map(|d| {
+          let specifier = self
+            .document_modules
+            .primary_specifier(&Document::Open((*d).clone()))?;
+          Some((specifier, ChangeKind::Closed))
+        })
+        .collect::<Vec<_>>();
+      // Invalidate the weak references of `documents` before calling
+      // `self.project_changed()` so their module entries will be dropped.
+      drop(documents);
+      self.project_changed(
+        changed_specifiers,
+        ProjectScopesChange::OpenNotebooks,
       );
       self.send_diagnostics_update();
     }
@@ -1824,7 +1824,7 @@ impl Inner {
           .and_then(|d| d.parsed_source.as_ref())
         {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options, &unstable_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
@@ -4584,17 +4584,13 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(dep_info) = self
-      .document_modules
-      .dep_info_by_scope()
-      .get(&scope)
-      .cloned()
-    {
+    } else {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
+      let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
       roots.extend(
-        dep_info
-          .npm_reqs
+        scoped_resolver
+          .npm_reqs()
           .iter()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );

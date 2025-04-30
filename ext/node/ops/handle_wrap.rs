@@ -236,7 +236,7 @@ mod tests {
   #[tokio::test]
   async fn test_handle_wrap() {
     js_test(
-      test_ext::init_ops(),
+      test_ext::init(),
       r#"
         const { HandleWrap } = Deno.core.ops;
 

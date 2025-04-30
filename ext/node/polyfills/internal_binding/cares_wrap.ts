@@ -37,6 +37,7 @@ import {
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
+  op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_node_getaddrinfo,
 } from "ext:core/ops";
@@ -198,9 +199,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     this.#tries = tries;
   }
 
-  async #query(query: string, recordType: Deno.RecordType) {
-    // TODO(@bartlomieju): TTL logic.
-
+  async #query(query: string, recordType: Deno.RecordType, ttl?: boolean) {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
@@ -217,6 +216,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           query,
           recordType,
           resolveOptions,
+          ttl,
         ));
 
         if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
@@ -224,7 +224,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
       }
     } else {
-      ({ code, ret } = await this.#resolve(query, recordType));
+      ({ code, ret } = await this.#resolve(query, recordType, null, ttl));
     }
 
     return { code: code!, ret: ret! };
@@ -234,15 +234,26 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     query: string,
     recordType: Deno.RecordType,
     resolveOptions?: Deno.ResolveDnsOptions,
+    ttl?: boolean,
   ): Promise<{
     code: number;
-    ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
+    // deno-lint-ignore no-explicit-any
+    ret: any[];
   }> {
-    let ret: Awaited<ReturnType<typeof Deno.resolveDns>> = [];
+    let ret = [];
     let code = 0;
 
     try {
-      ret = await Deno.resolveDns(query, recordType, resolveOptions);
+      const res = await op_dns_resolve({
+        query,
+        recordType,
+        options: resolveOptions,
+      });
+      if (ttl) {
+        ret = res;
+      } else {
+        ret = res.map((recordWithTtl) => recordWithTtl.data);
+      }
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
@@ -363,18 +374,34 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryA(req: QueryReqWrap, name: string): number {
-    this.#query(name, "A").then(({ code, ret }) => {
-      req.oncomplete(code, ret);
+    this.#query(name, "A", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: val?.data,
+          ttl: val?.ttl,
+        }));
+      }
+
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
   }
 
   queryAaaa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "AAAA").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => compressIPv6(record));
+    this.#query(name, "AAAA", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: compressIPv6(val?.data as string),
+          ttl: val?.ttl,
+        }));
+      } else {
+        ret = (ret as string[]).map((record) => compressIPv6(record));
+      }
 
-      req.oncomplete(code, records);
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;

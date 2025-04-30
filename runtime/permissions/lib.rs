@@ -1944,7 +1944,7 @@ impl UnaryPermission<EnvQueryDescriptor> {
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(None, false, None)
+    self.check_desc(None, true, None)
   }
 }
 
@@ -2610,13 +2610,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_read_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -2698,13 +2698,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_write_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -3395,6 +3395,10 @@ impl PermissionsContainer {
           .as_ref(),
       ),
     )
+  }
+
+  pub fn allows_all(&self) -> bool {
+    matches!(self.inner.lock().all.state, PermissionState::Granted)
   }
 }
 
@@ -5262,5 +5266,22 @@ mod tests {
         cmd_path
       );
     }
+  }
+
+  #[test]
+  fn test_env_check_all() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_env: Some(vec![]),
+        deny_env: Some(svec!["FOO"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.env.check_all().is_err());
   }
 }

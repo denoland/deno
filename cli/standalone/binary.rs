@@ -44,6 +44,7 @@ use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -55,6 +56,7 @@ use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
 
 use super::virtual_fs::output_vfs;
+use crate::args::get_default_v8_flags;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::cache::DenoDir;
@@ -267,6 +269,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -286,6 +289,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved denort: {}", binary_path.display());
 
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
@@ -655,7 +659,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
       permissions: self.cli_options.permissions_options(),
-      v8_flags: self.cli_options.v8_flags().clone(),
+      v8_flags: construct_v8_flags(
+        &get_default_v8_flags(),
+        self.cli_options.v8_flags(),
+        vec![],
+      ),
       unsafely_ignore_certificate_errors: self
         .cli_options
         .unsafely_ignore_certificate_errors()

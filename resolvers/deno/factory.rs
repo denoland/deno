@@ -8,7 +8,7 @@ use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::DenoDirResolutionError;
 use deno_cache_dir::GlobalHttpCacheRc;
-use deno_cache_dir::HttpCacheRc;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
@@ -253,11 +253,12 @@ impl<
 {
 }
 
-pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
+pub struct WorkspaceFactory<TSys: WorkspaceFactorySys + sys_traits::ThreadSleep>
+{
   sys: TSys,
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
-  http_cache: Deferred<HttpCacheRc>,
+  http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
@@ -440,7 +441,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
-  pub fn http_cache(&self) -> Result<&HttpCacheRc, HttpCacheCreateError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&deno_cache_dir::GlobalOrLocalHttpCache<TSys>, HttpCacheCreateError>
+  {
     self.http_cache.get_or_try_init(|| {
       let global_cache = self.global_http_cache()?.clone();
       match self.workspace_directory()?.workspace.vendor_dir_path() {
@@ -450,9 +454,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             global_cache,
             deno_cache_dir::GlobalToLocalCopy::Allow,
           );
-          Ok(new_rc(local_cache))
+          Ok(new_rc(local_cache).into())
         }
-        None => Ok(global_cache),
+        None => Ok(global_cache.into()),
       }
     })
   }
@@ -565,6 +569,8 @@ pub struct ResolverFactoryOptions {
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
+  /// Whether to resolve bare node builtins (ex. "path" as "node:path").
+  pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
 }
 
@@ -636,6 +642,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
+            bare_node_builtins: self.bare_node_builtins()?,
             is_byonm: self.use_byonm()?,
             maybe_vendor_dir: self
               .workspace_factory
@@ -798,11 +805,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             },
             specified_import_map,
             sloppy_imports_options: if self.options.unstable_sloppy_imports
-              || self
-                .workspace_factory
-                .workspace_directory()?
-                .workspace
-                .has_unstable("sloppy-imports")
+              || workspace.has_unstable("sloppy-imports")
             {
               SloppyImportsOptions::Enabled
             } else {
@@ -834,6 +837,17 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
+  }
+
+  pub fn bare_node_builtins(&self) -> Result<bool, anyhow::Error> {
+    Ok(
+      self.options.bare_node_builtins
+        || self
+          .workspace_factory
+          .workspace_directory()?
+          .workspace
+          .has_unstable("bare-node-builtins"),
+    )
   }
 
   pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {

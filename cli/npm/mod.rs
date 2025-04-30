@@ -19,7 +19,6 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
-use deno_npm::NpmPackageId;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -36,7 +35,6 @@ use thiserror::Error;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
-pub use self::managed::ResolveSnapshotError;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::managed::DefaultTarballUrl;
@@ -87,15 +85,7 @@ async fn get_infos(
       Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
         deno_lockfile::Lockfile5NpmInfo {
           tarball_url: version_info.dist.as_ref().and_then(|d| {
-            if d.tarball
-              == DefaultTarballUrl.default_tarball_url(&NpmPackageId {
-                nv: v.clone(),
-                // TODO(nathanwhit): this function takes an `NpmPackageId`
-                // but it should take a `PackageNv`. For now just
-                // use default here.
-                peer_dependencies: Default::default(),
-              })
-            {
+            if d.tarball == DefaultTarballUrl.default_tarball_url(v) {
               None
             } else {
               Some(d.tarball.clone())
@@ -109,8 +99,8 @@ async fn get_infos(
           cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
           os: version_info.os.iter().map(|s| s.to_string()).collect(),
           deprecated: version_info.deprecated.is_some(),
-          has_bin: version_info.bin.is_some(),
-          has_scripts: version_info.scripts.contains_key("preinstall")
+          bin: version_info.bin.is_some(),
+          scripts: version_info.scripts.contains_key("preinstall")
             || version_info.scripts.contains_key("install")
             || version_info.scripts.contains_key("postinstall"),
           optional_peers: version_info
@@ -188,7 +178,7 @@ impl WorkspaceNpmPatchPackages {
             log::warn!(
               "{} {}\n    at {}",
               colors::yellow("Warning"),
-              err.to_string(),
+              err,
               pkg_json.path.display(),
             );
           }

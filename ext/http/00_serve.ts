@@ -58,6 +58,7 @@ import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
+import { headerListFromHeaders } from "ext:deno_fetch/20_headers.js";
 import {
   abortRequest,
   fromInnerRequest,
@@ -295,32 +296,24 @@ class InnerRequest {
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
+    const method = this.#methodAndUri[0];
+    const scheme = this.#methodAndUri[5] !== undefined
+      ? `${this.#methodAndUri[5]}://`
+      : this.#context.scheme;
+    const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
     const path = this.#methodAndUri[2];
 
     // * is valid for OPTIONS
-    if (path === "*") {
-      return (this.#urlValue = "*");
-    }
-
-    // If the path is empty, return the authority (valid for CONNECT)
-    if (path == "") {
-      return (this.#urlValue = this.#methodAndUri[1]);
+    if (method === "OPTIONS" && path === "*") {
+      return (this.#urlValue = scheme + authority + "/" + path);
     }
 
     // CONNECT requires an authority
-    if (this.#methodAndUri[0] == "CONNECT") {
-      return (this.#urlValue = this.#methodAndUri[1]);
+    if (method === "CONNECT") {
+      return (this.#urlValue = scheme + this.#methodAndUri[1]);
     }
 
-    const hostname = this.#methodAndUri[1];
-    if (hostname) {
-      // Construct a URL from the scheme, the hostname, and the path
-      return (this.#urlValue = this.#context.scheme + hostname + path);
-    }
-
-    // Construct a URL from the scheme, the fallback hostname, and the path
-    return (this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path);
+    return this.#urlValue = scheme + authority + path;
   }
 
   get completed() {
@@ -508,8 +501,15 @@ function fastSyncResponseOrStream(
     return;
   }
 
-  const stream = respBody.streamOrStatic;
-  const body = stream.body;
+  let stream;
+  let body;
+  if (respBody.streamOrStatic) {
+    stream = respBody.streamOrStatic;
+    body = stream.body;
+  } else {
+    stream = respBody;
+    body = respBody;
+  }
   if (body !== undefined) {
     // We ensure the response has not been consumed yet in the caller of this
     // function.
@@ -640,8 +640,19 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    const status = inner.status;
-    const headers = inner.headerList;
+    let status;
+    let headers;
+    let body;
+    if (inner) {
+      status = inner.status;
+      headers = inner.headerList;
+      body = inner.body;
+    } else {
+      status = response.status;
+      headers = headerListFromHeaders(response.headers);
+      body = response.body;
+    }
+
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
@@ -650,7 +661,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    fastSyncResponseOrStream(req, body, status, innerRequest);
   };
 
   if (TRACING_ENABLED) {
@@ -899,7 +910,12 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      import.meta.log("info", `Listening on ${scheme}${host}:${addr.port}/`);
+      const url = `${scheme}${host}:${addr.port}/`;
+      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+        ? ` (${scheme}localhost:${addr.port}/)`
+        : "";
+
+      import.meta.log("info", `Listening on ${url}${helper}`);
     }
   };
 

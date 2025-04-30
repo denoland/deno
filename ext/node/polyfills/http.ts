@@ -130,15 +130,18 @@ function validateHost(host, name) {
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
+const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 
 class FakeSocket extends EventEmitter {
+  /** Stores the underlying request for lazily binding to abort signal */
+  #request: Request | undefined;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
-      signal?: AbortSignal | undefined;
+      request?: Request;
     } = {},
   ) {
     super();
@@ -148,8 +151,13 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
-    opts.signal?.addEventListener("abort", () => {
-      this.emit("error", opts.signal?.reason ?? new Error("aborted"));
+    this.#request = opts.request;
+  }
+
+  [kBindToAbortSignal]() {
+    const signal = this.#request?.signal;
+    signal?.addEventListener("abort", () => {
+      this.emit("error", signal.reason);
       this.emit("close");
     }, { once: true });
   }
@@ -1499,7 +1507,16 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-  this.socket?.on("close", () => this.end());
+  this.on("newListener", (event) => {
+    if (event === "close") {
+      this.socket?.[kBindToAbortSignal]();
+      this.socket?.on("close", () => {
+        if (!this.finished) {
+          this.emit("close");
+        }
+      });
+    }
+  });
   this._header = "";
 } as unknown as ServerResponseStatic;
 
@@ -1763,6 +1780,8 @@ Object.defineProperty(ServerResponse.prototype, "connection", {
   ),
 });
 
+const kRawHeaders = Symbol("rawHeaders");
+
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
@@ -1802,7 +1821,7 @@ export class IncomingMessageForServer extends NodeReadable {
     this.method = "";
     this.socket = socket;
     this.upgrade = null;
-    this.rawHeaders = [];
+    this[kRawHeaders] = [];
     socket?.on("error", (e) => {
       if (this.listenerCount("error") > 0) {
         this.emit("error", e);
@@ -1825,7 +1844,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.rawHeaders);
+      const entries = headersEntries(this[kRawHeaders]);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1836,6 +1855,16 @@ export class IncomingMessageForServer extends NodeReadable {
 
   set headers(val) {
     this.#headers = val;
+  }
+
+  get rawHeaders() {
+    const entries = headersEntries(this[kRawHeaders]);
+    const out = new Array(entries.length * 2);
+    for (let i = 0; i < entries.length; i++) {
+      out[i * 2] = entries[i][0];
+      out[i * 2 + 1] = entries[i][1];
+    }
+    return out;
   }
 
   // connection is deprecated, but still tested in unit test.
@@ -1932,7 +1961,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
-        signal: request.signal,
+        request,
       });
 
       const req = new IncomingMessageForServer(socket);
@@ -1942,7 +1971,7 @@ export class ServerImpl extends EventEmitter {
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
-      req.rawHeaders = request.headers;
+      req[kRawHeaders] = request.headers;
 
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);

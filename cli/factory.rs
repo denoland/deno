@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
@@ -16,7 +17,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::FeatureChecker;
 use deno_error::JsErrorBox;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::resolve_npm_resolution_snapshot;
@@ -49,6 +49,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::FeatureChecker;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolverOptions;
@@ -69,7 +70,6 @@ use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
@@ -511,7 +511,9 @@ impl CliFactory {
     Ok(self.workspace_factory()?.global_http_cache()?)
   }
 
-  pub fn http_cache(&self) -> Result<&Arc<dyn HttpCache>, AnyError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&GlobalOrLocalHttpCache<CliSys>, AnyError> {
     Ok(self.workspace_factory()?.http_cache()?)
   }
 
@@ -613,7 +615,6 @@ impl CliFactory {
           Ok(Arc::new(CliNpmGraphResolver::new(
             self.npm_installer_if_managed().await?.cloned(),
             self.services.found_pkg_json_dep_flag.clone(),
-            cli_options.unstable_bare_node_builtins(),
             cli_options.default_npm_caching_strategy(),
           )))
         }
@@ -1143,9 +1144,9 @@ impl CliFactory {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
-      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&granular_flag.name.to_string()) {
-          checker.enable_feature(granular_flag.name);
+      for feature in crate::UNSTABLE_FEATURES {
+        if unstable_features.contains(&feature.name.to_string()) {
+          checker.enable_feature(feature.name);
         }
       }
 
@@ -1406,6 +1407,7 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
+          bare_node_builtins: self.flags.unstable_config.bare_node_builtins,
           unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
           package_json_cache: Some(Arc::new(
             node_resolver::PackageJsonThreadLocalCache,
@@ -1461,6 +1463,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Clean(_)
     ),
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
