@@ -63,6 +63,7 @@ pub struct StreamWrap {
 struct ReadFuture<F> {
   fut: F,
   state: Rc<RefCell<OpState>>,
+  handle: ResourceId,
   on_read: v8::Global<v8::Function>,
   read_state: Rc<ReadState>,
 }
@@ -79,6 +80,18 @@ where
   ) -> Poll<Self::Output> {
     if !self.read_state.is_active() {
       return Poll::Ready(Ok(()));
+    }
+
+    if self
+      .state
+      .borrow()
+      .resource_table
+      .get_any(self.handle)
+      .is_err()
+    {
+      return Poll::Ready(Err(JsErrorBox::from_err(
+        ResourceError::BadResourceId,
+      )));
     }
 
     self.read_state.set_waker(cx.waker().clone());
@@ -127,6 +140,7 @@ async fn uv_read_start(
 
     let read_fut = ReadFuture {
       fut: resource.clone().read_byob(buf),
+      handle,
       state: state.clone(),
       on_read: on_read.clone(),
       read_state: read_state.clone(),
