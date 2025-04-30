@@ -54,8 +54,8 @@ import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
+  InnerResponse,
   newInnerResponse,
-  ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import {
@@ -556,6 +556,7 @@ function mapToCallback(context, callback, onError) {
     // 500 error.
     let innerRequest;
     let response;
+    let innerResponse: InnerResponse | undefined;
     try {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
@@ -567,8 +568,8 @@ function mapToCallback(context, callback, onError) {
 
       response = await callback(request, new ServeHandlerInfo(innerRequest));
 
-      // Throwing Error if the handler return value is not a Response class
-      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+      innerResponse = toInnerResponse(response);
+      if (innerResponse === undefined) {
         throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
         );
@@ -588,9 +589,23 @@ function mapToCallback(context, callback, onError) {
     } catch (error) {
       try {
         response = await onError(error);
-        if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+
+        innerResponse = toInnerResponse(response);
+        if (innerResponse === undefined) {
           throw new TypeError(
-            "Return value from onError handler must be a response or a promise resolving to a response",
+            "Return value from the onError handler must be a response or a promise resolving to a response",
+          );
+        }
+
+        if (response.type === "error") {
+          throw new TypeError(
+            "Return value from the onError handler must not be an error response (like Response.error())",
+          );
+        }
+
+        if (response.bodyUsed) {
+          throw new TypeError(
+            "The body of the Response returned from the onError handler has already been consumed",
           );
         }
       } catch (error) {
@@ -603,6 +618,7 @@ function mapToCallback(context, callback, onError) {
           error,
         );
         response = internalServerError();
+        innerResponse = toInnerResponse(response);
       }
     }
 
@@ -610,7 +626,6 @@ function mapToCallback(context, callback, onError) {
       updateSpanFromResponse(span, response);
     }
 
-    const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
@@ -632,8 +647,8 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    const status = inner.status;
-    const headers = inner.headerList;
+    const status = innerResponse.status;
+    const headers = innerResponse.headerList;
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
@@ -642,7 +657,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    fastSyncResponseOrStream(req, innerResponse.body, status, innerRequest);
   };
 
   if (TRACING_ENABLED) {
