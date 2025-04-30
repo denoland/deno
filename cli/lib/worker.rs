@@ -194,25 +194,29 @@ mod linux {
   }
 
   fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
+    // Initialize the cgroup version as None. This will be updated based on the parsed lines.
     let mut cgroup_version = CgroupVersion::None;
 
+    // Iterate through each line in the cgroup content. Each line represents a cgroup entry.
     for line in self_cgroup_content.lines() {
+      // Split the line into parts using ":" as the delimiter. The format is typically:
+      // "<hierarchy_id>:<subsystems>:<cgroup_path>"
       let split = line.split(":").collect::<Vec<_>>();
 
       match &split[..] {
-        // A line like `4:memory:/foo/bar` means that memory is managed by v1.
+        // If the line specifies "memory" as the subsystem, it indicates cgroup v1 is used
+        // for memory management. Extract the relative path and update the cgroup version.
         [_, "memory", cgroup_v1_relpath] => {
           cgroup_version = CgroupVersion::V1 {
             cgroup_relpath: cgroup_v1_relpath
               .strip_prefix("/")
               .unwrap_or(cgroup_v1_relpath),
           };
+          // Break early since v1 explicitly manages memory, and no further checks are needed.
           break;
         }
-        // A line like `0::/foo/bar` means that cgroup v2 is used.
-        // However, it is still possible that memory is managed by v1 when
-        // hybrid mode is enabled. We continue until the whole lines are checked
-        // or an explicit memory line (indicating v1) is found.
+        // If the line starts with "0::", it indicates cgroup v2 is used. However, in hybrid
+        // mode, memory might still be managed by v1. Continue checking other lines to confirm.
         ["0", "", cgroup_v2_relpath] => {
           cgroup_version = CgroupVersion::V2 {
             cgroup_relpath: cgroup_v2_relpath
