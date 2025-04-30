@@ -4658,7 +4658,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4685,7 +4685,7 @@ fn check_parse(
     doc_only: matches.get_flag("doc-only"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   Ok(())
 }
 
@@ -4833,7 +4833,7 @@ fn doc_parse(
   no_lock_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -5009,7 +5009,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -5204,7 +5204,7 @@ fn lint_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -5797,7 +5797,7 @@ fn permission_args_parse(
     flags.allow_all();
   }
 
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -5806,11 +5806,15 @@ fn permission_args_parse(
   Ok(())
 }
 
-fn allow_import_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn allow_import_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
-    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
+    let imports_allowlist = flags_net::parse(imports_wl.collect())?;
     flags.permissions.allow_import = Some(imports_allowlist);
   }
+  Ok(())
 }
 
 fn unsafely_ignore_certificate_errors_parse(
@@ -11859,6 +11863,20 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
       assert!(r.is_err());
     }
+  }
+
+  #[test]
+  fn allow_import_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-import=https://example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
   }
 
   #[test]
