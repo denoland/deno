@@ -129,10 +129,12 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
 /// Instead probe for the total memory on the system and use it instead
 /// as a default.
-pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
+pub fn create_isolate_create_params<TSys: DenoLibSys>(
+  sys: &TSys,
+) -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
-    linux::get_memory_limit().map(|memory_limit| {
+    linux::get_memory_limit(sys).map(|memory_limit| {
       v8::CreateParams::default()
         .heap_limits_from_system_memory(memory_limit, 0)
     })
@@ -150,11 +152,13 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
   /// Get memory limit with cgroup (either v1 or v2) taken into account.
-  pub(super) fn get_memory_limit() -> Option<u64> {
+  pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(
+    sys: &TSys,
+  ) -> Option<u64> {
     let system_total_memory = deno_runtime::deno_os::sys_info::mem_info()
       .map(|mem_info| mem_info.total);
 
-    let Ok(self_cgroup) = std::fs::read_to_string("/proc/self/cgroup") else {
+    let Ok(self_cgroup) = sys.fs_read_to_string("/proc/self/cgroup") else {
       return system_total_memory;
     };
 
@@ -163,7 +167,8 @@ mod linux {
         let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
           .join(cgroup_relpath)
           .join("memory.limit_in_bytes");
-        std::fs::read_to_string(limit_path)
+        sys
+          .fs_read_to_string(limit_path)
           .ok()
           .and_then(|s| s.trim().parse::<u64>().ok())
       }
@@ -171,7 +176,8 @@ mod linux {
         let limit_path = std::path::Path::new("/sys/fs/cgroup")
           .join(cgroup_relpath)
           .join("memory.max");
-        std::fs::read_to_string(limit_path)
+        sys
+          .fs_read_to_string(limit_path)
           .ok()
           .and_then(|s| s.trim().parse::<u64>().ok())
       }
@@ -187,7 +193,7 @@ mod linux {
     None,
   }
 
-  fn parse_self_cgroup<'a>(self_cgroup_content: &'a str) -> CgroupVersion<'a> {
+  fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
     let mut cgroup_version = CgroupVersion::None;
 
     for line in self_cgroup_content.lines() {
@@ -271,7 +277,7 @@ mod linux {
     let cgroup_version = parse_self_cgroup(self_cgroup);
     assert!(matches!(
       cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == ""
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath.is_empty()
     ));
   }
 }
@@ -464,7 +470,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(),
+        create_params: create_isolate_create_params(&shared.sys),
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
@@ -638,7 +644,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
-      create_params: create_isolate_create_params(),
+      create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
