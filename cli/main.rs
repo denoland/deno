@@ -49,7 +49,7 @@ use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_runtime::Unconfigured;
+use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
@@ -110,7 +110,7 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 
 async fn run_subcommand(
   flags: Arc<Flags>,
-  unconfigured: Option<Unconfigured>,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
@@ -223,11 +223,11 @@ async fn run_subcommand(
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
-        tools::run::run_from_stdin(flags.clone(), unconfigured, roots).boxed_local().await
+        tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots).boxed_local().await
       } else if flags.eszip {
-        tools::run::run_eszip(flags, run_flags, unconfigured, roots).boxed_local().await
+        tools::run::run_eszip(flags, run_flags, unconfigured_runtime, roots).boxed_local().await
       } else {
-        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch, unconfigured, roots.clone()).await;
+        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch, unconfigured_runtime, roots.clone()).await;
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
@@ -460,7 +460,7 @@ pub fn main() {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured, waited_args) =
+    let (waited_unconfigured_runtime, waited_args) =
       match wait_for_start(&args, roots.clone()) {
         Some(f) => match f.await {
           Ok(v) => match v {
@@ -475,7 +475,7 @@ pub fn main() {
       };
 
     #[cfg(not(unix))]
-    let (waited_unconfigured, waited_args) = (None, None);
+    let (waited_unconfigured_runtime, waited_args) = (None, None);
 
     let args = waited_args.unwrap_or(args);
 
@@ -484,11 +484,11 @@ pub fn main() {
     // V8 isolates.
     let flags = resolve_flags_and_init(args)?;
 
-    if waited_unconfigured.is_none() {
+    if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
 
-    run_subcommand(Arc::new(flags), waited_unconfigured, roots).await
+    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
   };
 
   let result = create_and_run_current_thread_with_maybe_metrics(future);
@@ -595,7 +595,10 @@ fn wait_for_start(
   roots: LibWorkerFactoryRoots,
 ) -> Option<
   impl Future<
-    Output = Result<Option<(Unconfigured, Vec<std::ffi::OsString>)>, AnyError>,
+    Output = Result<
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      AnyError,
+    >,
   >,
 > {
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
@@ -615,7 +618,7 @@ fn wait_for_start(
 
     init_v8(&Flags::default());
 
-    let unconfigured = deno_runtime::Unconfigured::new::<
+    let unconfigured = deno_runtime::UnconfiguredRuntime::new::<
       deno_resolver::npm::DenoInNpmPackageChecker,
       crate::npm::CliNpmResolver,
       crate::sys::CliSys,

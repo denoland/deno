@@ -370,11 +370,11 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  pub async fn create_main_worker_with_unconfigured(
+  pub async fn create_main_worker_with_unconfigured_runtime(
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    unconfigured: Option<deno_runtime::Unconfigured>,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
@@ -383,7 +383,7 @@ impl CliMainWorkerFactory {
         self.root_permissions.clone(),
         vec![],
         Default::default(),
-        unconfigured,
+        unconfigured_runtime,
       )
       .await
   }
@@ -395,7 +395,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-    unconfigured: Option<deno_runtime::Unconfigured>,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
@@ -452,7 +452,7 @@ impl CliMainWorkerFactory {
       permissions,
       custom_extensions,
       stdio,
-      unconfigured,
+      unconfigured_runtime,
     )?;
 
     if self.needs_test_modules {

@@ -53,7 +53,7 @@ pub async fn run_script(
   mode: WorkerExecutionMode,
   flags: Arc<Flags>,
   watch: Option<WatchFlagsWithPaths>,
-  unconfigured: Option<deno_runtime::Unconfigured>,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
@@ -89,10 +89,10 @@ pub async fn run_script(
     .create_cli_main_worker_factory_with_roots(roots)
     .await?;
   let mut worker = worker_factory
-    .create_main_worker_with_unconfigured(
+    .create_main_worker_with_unconfigured_runtime(
       mode,
       main_module.clone(),
-      unconfigured,
+      unconfigured_runtime,
     )
     .await?;
 
@@ -102,7 +102,7 @@ pub async fn run_script(
 
 pub async fn run_from_stdin(
   flags: Arc<Flags>,
-  unconfigured: Option<deno_runtime::Unconfigured>,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
@@ -126,10 +126,10 @@ pub async fn run_from_stdin(
   });
 
   let mut worker = worker_factory
-    .create_main_worker_with_unconfigured(
+    .create_main_worker_with_unconfigured_runtime(
       WorkerExecutionMode::Run,
       main_module.clone(),
-      unconfigured,
+      unconfigured_runtime,
     )
     .await?;
   let exit_code = worker.run().await?;
@@ -251,7 +251,7 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
 pub async fn run_eszip(
   flags: Arc<Flags>,
   run_flags: RunFlags,
-  unconfigured: Option<deno_runtime::Unconfigured>,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -271,10 +271,10 @@ pub async fn run_eszip(
     .create_cli_main_worker_factory_with_roots(roots)
     .await?;
   let mut worker = worker_factory
-    .create_main_worker_with_unconfigured(
+    .create_main_worker_with_unconfigured_runtime(
       mode,
       main_module.clone(),
-      unconfigured,
+      unconfigured_runtime,
     )
     .await?;
 

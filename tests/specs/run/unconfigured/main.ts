@@ -11,13 +11,19 @@ const command = new Deno.Command(Deno.execPath(), {
 
 const child = command.spawn();
 
+let i = 0;
 while (true) {
   try {
     await Deno.lstat(sockPath);
     break;
-  } catch {
-    await new Promise((r) => setTimeout(r, 10));
+  } catch {}
+
+  i += 1;
+  if (i > 100) {
+    throw new Error(`${sockPath} did not exist`);
   }
+
+  await new Promise((r) => setTimeout(r, 10));
 }
 
 const sock = await Deno.connect({
@@ -28,7 +34,7 @@ const sock = await Deno.connect({
 Deno.writeTextFile(
   testPath,
   `
-console.log(Deno[Deno.internal].isUnconfigured());
+console.log(Deno[Deno.internal].isFromUnconfiguredRuntime());
 console.log(Deno.env.get('A'));
 `,
 );

@@ -21,18 +21,18 @@ deno_core::extension!(
     op_bootstrap_stdout_no_color,
     op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
-    op_bootstrap_is_unconfigured,
+    op_bootstrap_is_from_unconfigured_runtime,
     op_snapshot_options,
   ],
   options = {
     snapshot_options: Option<SnapshotOptions>,
-    is_unconfigured: bool,
+    is_from_unconfigured_runtime: bool,
   },
   state = |state, options| {
     if let Some(snapshot_options) = options.snapshot_options {
       state.put::<SnapshotOptions>(snapshot_options);
     }
-    state.put(IsUnconfigured(options.is_unconfigured));
+    state.put(IsFromUnconfiguredRuntime(options.is_from_unconfigured_runtime));
   },
 );
 
@@ -44,7 +44,7 @@ pub struct SnapshotOptions {
   pub target: String,
 }
 
-struct IsUnconfigured(bool);
+struct IsFromUnconfiguredRuntime(bool);
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
@@ -158,6 +158,6 @@ pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_unconfigured(state: &mut OpState) -> bool {
-  state.borrow::<IsUnconfigured>().0
+pub fn op_bootstrap_is_from_unconfigured_runtime(state: &mut OpState) -> bool {
+  state.borrow::<IsFromUnconfiguredRuntime>().0
 }

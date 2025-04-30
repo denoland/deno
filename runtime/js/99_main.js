@@ -8,7 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_unconfigured,
+  op_bootstrap_is_from_unconfigured_runtime,
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_bootstrap_stderr_no_color,
@@ -117,7 +117,7 @@ ObjectDefineProperties(Symbol, {
   },
 });
 
-internals.isUnconfigured = op_bootstrap_is_unconfigured;
+internals.isFromUnconfiguredRuntime = op_bootstrap_is_from_unconfigured_runtime;
 
 // https://docs.rs/log/latest/log/enum.Level.html
 const LOG_LEVELS = {

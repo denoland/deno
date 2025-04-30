@@ -216,7 +216,7 @@ pub struct WorkerOptions {
   pub stdio: Stdio,
   pub enable_stack_trace_arg_in_ops: bool,
 
-  pub unconfigured: Option<Unconfigured>,
+  pub unconfigured_runtime: Option<UnconfiguredRuntime>,
 }
 
 impl Default for WorkerOptions {
@@ -241,7 +241,7 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       enable_stack_trace_arg_in_ops: false,
-      unconfigured: None,
+      unconfigured_runtime: None,
     }
   }
 }
@@ -390,11 +390,11 @@ impl MainWorker {
     let exit_code = ExitCode::default();
 
     // check options that require configuring a new jsruntime
-    if options.unconfigured.is_some()
+    if options.unconfigured_runtime.is_some()
       && (options.enable_stack_trace_arg_in_ops
         || op_metrics_factory_fn.is_some())
     {
-      options.unconfigured = None;
+      options.unconfigured_runtime = None;
     }
 
     #[cfg(feature = "hmr")]
@@ -406,8 +406,8 @@ impl MainWorker {
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
-    let mut js_runtime = if let Some(unconfigured) = options.unconfigured {
-      unconfigured.hydrate(services.module_loader)
+    let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
+      u.hydrate(services.module_loader)
     } else {
       let mut extensions = common_extensions::<
         TInNpmPackageChecker,
@@ -938,7 +938,7 @@ fn common_extensions<
   TExtNodeSys: ExtNodeSys + 'static,
 >(
   has_snapshot: bool,
-  unconfigured: bool,
+  unconfigured_runtime: bool,
 ) -> Vec<Extension> {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
@@ -986,7 +986,7 @@ fn common_extensions<
     ops::http::deno_http_runtime::init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
-      unconfigured,
+      unconfigured_runtime,
     ),
     runtime::init(),
     // NOTE(bartlomieju): this is done, just so that ops from this extension
@@ -1043,12 +1043,12 @@ fn common_runtime(
   })
 }
 
-pub struct Unconfigured {
+pub struct UnconfiguredRuntime {
   module_loader: Rc<PlaceholderModuleLoader>,
   js_runtime: JsRuntime,
 }
 
-impl Unconfigured {
+impl UnconfiguredRuntime {
   pub fn new<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
@@ -1083,7 +1083,7 @@ impl Unconfigured {
       false,
     );
 
-    Unconfigured {
+    UnconfiguredRuntime {
       module_loader,
       js_runtime,
     }

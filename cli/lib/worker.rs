@@ -424,7 +424,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-    unconfigured: Option<deno_runtime::Unconfigured>,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<LibMainWorker, CoreError> {
     let shared = &self.shared;
     let CreateModuleLoaderResult {
@@ -525,7 +525,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
-      unconfigured,
+      unconfigured_runtime,
     };
 
     let worker =
