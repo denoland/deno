@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
@@ -233,6 +234,38 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   }
 }
 
+/// Given a specifier and a referring specifier, determine if a value in the
+/// import map could be used as an import specifier that resolves using the
+/// import map.
+///
+/// This was inlined from the import_map crate in order to ignore more
+/// entries.
+pub fn import_map_lookup(
+  import_map: &ImportMap,
+  specifier: &Url,
+  referrer: &Url,
+) -> Option<String> {
+  let specifier_str = specifier.as_str();
+  for entry in import_map.entries_for_referrer(referrer) {
+    if let Some(address) = entry.value {
+      let address_str = address.as_str();
+      if referrer.as_str().starts_with(address_str) {
+        // ignore when the referrer has a common base with the
+        // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
+        // and there's a `"$src/": "./src/"` import map entry)
+        continue;
+      }
+      if address_str == specifier_str {
+        return Some(entry.raw_key.to_string());
+      }
+      if address_str.ends_with('/') && specifier_str.starts_with(address_str) {
+        return Some(specifier_str.replace(address_str, entry.raw_key));
+      }
+    }
+  }
+  None
+}
+
 /// Rewrites imports in quick fixes and code changes to be Deno specific.
 pub struct TsResponseImportMapper<'a> {
   document_modules: &'a DocumentModules,
@@ -335,14 +368,18 @@ impl<'a> TsResponseImportMapper<'a> {
       };
       let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
       if let Some(import_map) = self.maybe_import_map {
-        if let Some(result) = import_map.lookup(&specifier, referrer) {
+        if let Some(result) =
+          import_map_lookup(import_map, &specifier, referrer)
+        {
           return Some(result);
         }
         if let Some(req_ref_str) = specifier.as_str().strip_prefix("jsr:") {
           if !req_ref_str.starts_with('/') {
             let specifier_str = format!("jsr:/{req_ref_str}");
             if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str) {
-              if let Some(result) = import_map.lookup(&specifier, referrer) {
+              if let Some(result) =
+                import_map_lookup(import_map, &specifier, referrer)
+              {
                 return Some(result);
               }
             }
@@ -432,7 +469,7 @@ impl<'a> TsResponseImportMapper<'a> {
 
     // check if the import map has this specifier
     if let Some(import_map) = self.maybe_import_map {
-      if let Some(result) = import_map.lookup(specifier, referrer) {
+      if let Some(result) = import_map_lookup(import_map, specifier, referrer) {
         return Some(result);
       }
     }
