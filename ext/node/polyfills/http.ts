@@ -1780,8 +1780,6 @@ Object.defineProperty(ServerResponse.prototype, "connection", {
   ),
 });
 
-const kRawHeaders = Symbol("rawHeaders");
-
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
@@ -1821,7 +1819,7 @@ export class IncomingMessageForServer extends NodeReadable {
     this.method = "";
     this.socket = socket;
     this.upgrade = null;
-    this[kRawHeaders] = [];
+    this.rawHeaders = [];
     socket?.on("error", (e) => {
       if (this.listenerCount("error") > 0) {
         this.emit("error", e);
@@ -1844,7 +1842,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this[kRawHeaders]);
+      const entries = headersEntries(this.rawHeaders);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1855,16 +1853,6 @@ export class IncomingMessageForServer extends NodeReadable {
 
   set headers(val) {
     this.#headers = val;
-  }
-
-  get rawHeaders() {
-    const entries = headersEntries(this[kRawHeaders]);
-    const out = new Array(entries.length * 2);
-    for (let i = 0; i < entries.length; i++) {
-      out[i * 2] = entries[i][0];
-      out[i * 2 + 1] = entries[i][1];
-    }
-    return out;
   }
 
   // connection is deprecated, but still tested in unit test.
@@ -1971,7 +1959,7 @@ export class ServerImpl extends EventEmitter {
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
-      req[kRawHeaders] = request.headers;
+      req.rawHeaders = request.headers;
 
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
