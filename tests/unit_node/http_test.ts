@@ -939,7 +939,7 @@ Deno.test(
       req.end();
 
       req.on("upgrade", (_res, socket, _upgradeHead) => {
-        socket.destroy();
+        socket.end();
         // @ts-ignore it's a socket for real
         serverSocket!.end();
         server.close(() => {

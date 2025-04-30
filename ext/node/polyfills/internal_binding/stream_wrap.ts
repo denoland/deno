@@ -166,6 +166,8 @@ export class LibuvStreamWrap extends HandleWrap {
     }
 
     const onread = (nread, e) => {
+      if (!nread || e == null) erred = true;
+
       if (e) {
         // Try to read again if the underlying stream resource
         // changed. This can happen during TLS upgrades (eg. STARTTLS)
@@ -216,8 +218,13 @@ export class LibuvStreamWrap extends HandleWrap {
       core.unrefOpPromise(this.readPromise);
     }
 
+    let erred = false;
     this.readPromise
-      .catch((e) => onread(null, e));
+      .then((nread) => erred ? {} : onread(nread, null))
+      .catch((e) => {
+        erred = true;
+        onread(null, e);
+      });
 
     return 0;
   }
