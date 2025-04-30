@@ -11406,6 +11406,9 @@ fn lsp_jupyter_import_map_and_diagnostics() {
 
           // Top-level-await should be allowed.
           await new Promise((r) => r(null));
+          for await (const foo of []) {
+            console.log(foo);
+          }
 
           // Local variables conflicting with globals.
           const name = "Hello";
@@ -11450,8 +11453,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
           // for notebook cells. Figure out a workaround.
           {
             "range": {
-              "start": { "line": 9, "character": 16 },
-              "end": { "line": 9, "character": 20 },
+              "start": { "line": 12, "character": 16 },
+              "end": { "line": 12, "character": 20 },
             },
             "severity": 1,
             "code": 2451,

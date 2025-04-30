@@ -814,8 +814,8 @@ export function filterMapDiagnostic(diagnostic) {
   }
   const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
   if (isClassicScript) {
-    // Top-level-await.
-    if (diagnostic.code == 1375) {
+    // Top-level-await, standard and loops.
+    if (diagnostic.code == 1375 || diagnostic.code == 1431) {
       return false;
     }
   }
