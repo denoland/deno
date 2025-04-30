@@ -6,6 +6,63 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.0 / 2025.04.30
+
+- feat: add `--open` to `deno serve` to open server in browser (#25340)
+- feat: Allow access to NO_COLOR env var without --allow-env (#29090)
+- feat: allow forcing in-memory SQLite dbs (#29026)
+- feat: code sign deno.exe (#28963)
+- feat: Codegen feature flags (#28920)
+- feat: deno_core 0.344.0 (#29089)
+- feat: TypeScript 5.8 (#29041)
+- feat: use new feature checker (#29091)
+- feat(cache): add `DENO_EMIT_CACHE_MODE` (#29025)
+- feat(check): detect tsconfig.json at workspace root (#29092)
+- feat(check): support erasableSyntaxOnly for type checking (#29097)
+- feat(clean): `deno clean --except <paths>`, remove all cache data except
+  what's needed to run `paths` (#28424)
+- feat(cli): support `--single-threaded` v8 flag (#29066)
+- feat(ext/fetch): support `localAddress` option in custom HTTP client (#28781)
+- feat(ext/http): Show that is also listening on localhost (#28171)
+- feat(ext/net): add signal option to `Deno.connect()` (#27113)
+- feat(fmt): add fmt options (#28946)
+- feat(fmt): support formatting of embedded css, html, and sql (#29014)
+- feat(info): include deno version (#29080)
+- fix: better error message for bare run in file-like case (#29055)
+- fix: break unstable lockfile v5 to remove "has" from property names (#29095)
+- fix: correct reported typescript version (#29053)
+- fix: make --allow-env stronger that --deny-env (#29079)
+- fix: move otel logic into otel (#29073)
+- fix(compile): panic when compiled with --no-terminal flag (#28823)
+- fix(compile): pass default v8 args during compile (#29084)
+- fix(ext/ffi): unexport brand from dts (#28503)
+- fix(ext/node): fix deepStrictEqual(-0, 0) (#29060)
+- fix(ext/node): fix handling of abort signal in readFile (#29028)
+- fix(ext/node): handle "ttl" option in "dns" module (#27676)
+- fix(ext/node): implement DatabaseSync#loadExtension (#29050)
+- fix(ext/node): throw NotCapable on process.env accessor (#28280)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/hide_stack_frames.ts` (#29067)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/http.ts`
+  (#29082)
+- fix(ext/node): use primordials in ext/node/polyfills/_fs/_fs_opendir.ts
+  (#29063)
+- fix(ext/node): work correctly with wrapper Response objects, use correct
+  `rawHeaders` structure (#29056)
+- fix(ext/webgpu): fix incorrect description of UnsafeWindowSurface (#28976)
+- fix(lsp): add npm reqs to installer on resolution (#29061)
+- fix(lsp): normalize all uris originating from client (#29019)
+- fix(lsp): prefer relative auto-import specifier against import map (#29098)
+- fix(npm): support registries that have no shasums or integrity (#29093)
+- fix(otel): only start deno_telemetry thread when needed (#29065)
+- fix(otel): recording metrics with more than 3 attributes (#28898)
+- fix(otel): support attributes on links and events (#28584)
+- fix(repl): panic when user `delete globalThis.globalThis` (#28960)
+- perf(ext/node): improve node:http createServer performance (#29069)
+- perf(ext/node): lazily listen to the abort signal of request object (#29071)
+- perf(fs): don't canonicalize path when opening file if `--allow-all` is passed
+  (#28716)
+
 ### 2.2.12 / 2025.04.24
 
 - fix: correctly style rust logs with colors (#29040)

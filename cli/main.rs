@@ -59,6 +59,7 @@ const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
+use crate::args::get_default_v8_flags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::util::display;
@@ -133,8 +134,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       tools::check::check(flags, check_flags).await
     }),
-    DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean(flags)
+    DenoSubcommand::Clean(clean_flags) => spawn_subcommand(async move {
+      tools::clean::clean(flags, clean_flags).await
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
@@ -512,23 +513,24 @@ fn resolve_flags_and_init(
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
     ],
-    _ => {
-      vec![
-        "--stack-size=1024".to_string(),
-        "--js-explicit-resource-management".to_string(),
-        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-        // and its settings.
-        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-        "--no-harmony-import-assertions".to_string(),
-      ]
-    }
+    _ => get_default_v8_flags(),
   };
 
-  init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+  let env_v8_flags = get_v8_flags_from_env();
+  let is_single_threaded = env_v8_flags
+    .iter()
+    .chain(&flags.v8_flags)
+    .any(|flag| flag == "--single-threaded");
+  init_v8_flags(&default_v8_flags, &flags.v8_flags, env_v8_flags);
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
-    None, /* import assertions enabled */ false,
+    v8_platform,
+    /* import assertions enabled */ false,
   );
 
   Ok(flags)

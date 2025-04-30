@@ -35,10 +35,16 @@ struct DatabaseSyncOptions {
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
   read_only: bool,
+  #[serde(default = "false_fn")]
+  allow_extension: bool,
 }
 
 fn true_fn() -> bool {
   true
+}
+
+fn false_fn() -> bool {
+  false
 }
 
 impl Default for DatabaseSyncOptions {
@@ -47,6 +53,7 @@ impl Default for DatabaseSyncOptions {
       open: true,
       enable_foreign_key_constraints: true,
       read_only: false,
+      allow_extension: false,
     }
   }
 }
@@ -94,7 +101,9 @@ fn open_db(
   state: &mut OpState,
   readonly: bool,
   location: &str,
+  allow_extension: bool,
 ) -> Result<rusqlite::Connection, SqliteError> {
+  let perms = state.borrow::<PermissionsContainer>();
   if location == ":memory:" {
     let conn = rusqlite::Connection::open_in_memory()?;
     assert!(set_db_config(
@@ -102,19 +111,22 @@ fn open_db(
       SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
       false
     ));
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-      false
-    ));
+
+    if allow_extension {
+      perms.check_ffi_all()?;
+    } else {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+        false
+      ));
+    }
 
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
-  state
-    .borrow::<PermissionsContainer>()
-    .check_read_with_api_name(location, Some("node:sqlite"))?;
+  perms.check_read_with_api_name(location, Some("node:sqlite"))?;
 
   if readonly {
     let conn = rusqlite::Connection::open_with_flags(
@@ -126,26 +138,35 @@ fn open_db(
       SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
       false
     ));
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-      false
-    ));
+
+    if allow_extension {
+      perms.check_ffi_all()?;
+    } else {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+        false
+      ));
+    }
 
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
-  state
-    .borrow::<PermissionsContainer>()
-    .check_write_with_api_name(location, Some("node:sqlite"))?;
+  perms.check_write_with_api_name(location, Some("node:sqlite"))?;
 
   let conn = rusqlite::Connection::open(location)?;
-  assert!(set_db_config(
-    &conn,
-    SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-    false
-  ));
+
+  if allow_extension {
+    perms.check_ffi_all()?;
+  } else {
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
+  }
+
   conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
 
   Ok(conn)
@@ -170,7 +191,8 @@ impl DatabaseSync {
     let options = options.unwrap_or_default();
 
     let db = if options.open {
-      let db = open_db(state, options.read_only, &location)?;
+      let db =
+        open_db(state, options.read_only, &location, options.allow_extension)?;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])
@@ -199,7 +221,12 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(state, self.options.read_only, &self.location)?;
+    let db = open_db(
+      state,
+      self.options.read_only,
+      &self.location,
+      self.options.allow_extension,
+    )?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])
         .with_enhanced_errors(&db)?;
@@ -385,6 +412,80 @@ impl DatabaseSync {
       }
 
       Err(SqliteError::ChangesetApplyFailed)
+    }
+  }
+
+  // Loads a SQLite extension.
+  //
+  // This is a wrapper around `sqlite3_load_extension`. It requires FFI permission
+  // to be granted and allowExtension must be set to true when opening the database.
+  fn load_extension(
+    &self,
+    state: &mut OpState,
+    #[string] path: &str,
+    #[string] entry_point: Option<String>,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    if !self.options.allow_extension {
+      return Err(SqliteError::create_error(
+        "Cannot load SQLite extensions when allowExtension is not enabled",
+        "ERR_LOAD_SQLITE_EXTENSION",
+      ));
+    }
+
+    state.borrow::<PermissionsContainer>().check_ffi_all()?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+
+    let path_cstring = std::ffi::CString::new(path.as_bytes())?;
+    let entry_point_cstring =
+      entry_point.map(|ep| std::ffi::CString::new(ep).unwrap_or_default());
+
+    let entry_point_ptr = match &entry_point_cstring {
+      Some(cstr) => cstr.as_ptr(),
+      None => std::ptr::null(),
+    };
+
+    let mut err_msg: *mut c_char = std::ptr::null_mut();
+
+    // SAFETY: Using sqlite3_load_extension with proper error handling
+    let result = unsafe {
+      let res = libsqlite3_sys::sqlite3_load_extension(
+        raw_handle,
+        path_cstring.as_ptr(),
+        entry_point_ptr,
+        &mut err_msg,
+      );
+
+      if res != libsqlite3_sys::SQLITE_OK {
+        let error_message = if !err_msg.is_null() {
+          let c_str = std::ffi::CStr::from_ptr(err_msg);
+          let message = c_str.to_string_lossy().into_owned();
+          libsqlite3_sys::sqlite3_free(err_msg as *mut _);
+          message
+        } else {
+          format!("Failed to load extension with error code: {}", res)
+        };
+
+        return Err(SqliteError::create_error(
+          &error_message,
+          "ERR_LOAD_SQLITE_EXTENSION",
+        ));
+      }
+
+      res
+    };
+
+    if result == libsqlite3_sys::SQLITE_OK {
+      Ok(())
+    } else {
+      Err(SqliteError::create_error(
+        "Unknown error loading SQLite extension",
+        "ERR_LOAD_SQLITE_EXTENSION",
+      ))
     }
   }
 

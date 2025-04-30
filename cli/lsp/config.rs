@@ -1488,7 +1488,7 @@ impl ConfigData {
     );
 
     let ts_config = member_dir
-      .to_raw_user_provided_tsconfig()
+      .to_raw_user_provided_tsconfig(&CliSys::default())
       .map(LspTsConfig::new)
       .unwrap_or_default();
 

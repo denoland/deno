@@ -47,6 +47,7 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis;
+use super::analysis::import_map_lookup;
 use super::client::Client;
 use super::config::Config;
 use super::documents::Document;
@@ -1721,39 +1722,6 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  /// Given a specifier and a referring specifier, determine if a value in the
-  /// import map could be used as an import specifier that resolves using the
-  /// import map.
-  ///
-  /// This was inlined from the import_map crate in order to ignore more
-  /// entries.
-  fn import_map_lookup(
-    import_map: &ImportMap,
-    specifier: &Url,
-    referrer: &Url,
-  ) -> Option<String> {
-    let specifier_str = specifier.as_str();
-    for entry in import_map.entries_for_referrer(referrer) {
-      if let Some(address) = entry.value {
-        let address_str = address.as_str();
-        if referrer.as_str().starts_with(address_str) {
-          // ignore when the referrer has a common base with the
-          // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
-          // and there's a `"$src/": "./src/"` import map entry)
-          continue;
-        }
-        if address_str == specifier_str {
-          return Some(entry.raw_key.to_string());
-        }
-        if address_str.ends_with('/') && specifier_str.starts_with(address_str)
-        {
-          return Some(specifier_str.replace(address_str, entry.raw_key));
-        }
-      }
-    }
-    None
-  }
-
   if snapshot
     .resolver
     .in_node_modules(&referrer_module.specifier)

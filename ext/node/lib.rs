@@ -77,7 +77,7 @@ pub trait NodePermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
@@ -124,7 +124,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 
   fn check_read_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
