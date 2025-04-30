@@ -236,7 +236,7 @@ mod tests {
   #[tokio::test]
   async fn test_stream_wrap() {
     js_test(
-      test_ext::init_ops(),
+      test_ext::init(),
       r#"
         const { StreamWrap, op_test_resource } = Deno.core.ops;
 
