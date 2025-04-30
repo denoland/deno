@@ -42,6 +42,12 @@
           "deprecated": true,
           "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
         },
+        "erasableSyntaxOnly": {
+          "description": "Do not allow runtime constructs that are not part of ECMAScript.",
+          "type": ["boolean", "null"],
+          "default": false,
+          "markdownDescription": "Do not allow runtime constructs that are not part of ECMAScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#erasableSyntaxOnly"
+        },
         "exactOptionalPropertyTypes": {
           "description": "Interpret optional property types as written, rather than adding 'undefined'.",
           "type": "boolean",
