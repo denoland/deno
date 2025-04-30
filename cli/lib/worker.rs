@@ -130,7 +130,8 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// Instead probe for the total memory on the system and use it instead
 /// as a default.
 pub fn create_isolate_create_params<TSys: DenoLibSys>(
-  sys: &TSys,
+  // This is used only in Linux to get cgroup-constrained memory limit.
+  #[allow(unused_variables)] sys: &TSys,
 ) -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
