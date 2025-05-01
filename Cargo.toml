@@ -65,7 +65,7 @@ deno_lint = "=0.74.0"
 deno_lockfile = "=0.28.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.33.1"
+deno_npm = "=0.33.2"
 deno_package_json = { version = "=0.6.0", default-features = false }
 deno_path_util = "=0.3.2"
 deno_semver = "=0.7.1"
@@ -516,6 +516,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-deno_npm = { path = "../deno_npm" }
