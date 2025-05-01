@@ -45,6 +45,7 @@ use sys_traits::SystemRandom;
 use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
 use thiserror::Error;
+use url::Url;
 
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
@@ -125,6 +126,25 @@ pub enum ConfigDiscoveryOption {
   },
   Path(PathBuf),
   Disabled,
+}
+
+/// Resolves the JSR regsitry URL to use for the given system.
+pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
+  let env_var_name = "JSR_URL";
+  if let Ok(registry_url) = sys.env_var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  Url::parse("https://jsr.io/").unwrap()
 }
 
 #[async_trait::async_trait(?Send)]
@@ -259,6 +279,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys + sys_traits::ThreadSleep>
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
+  jsr_url: Deferred<Url>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
@@ -288,6 +309,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       sys,
       global_http_cache: Default::default(),
       http_cache: Default::default(),
+      jsr_url: Default::default(),
       node_modules_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
@@ -303,6 +325,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     workspace_directory: WorkspaceDirectoryRc,
   ) {
     self.workspace_directory = Deferred::from(workspace_directory);
+  }
+
+  pub fn jsr_url(&self) -> &Url {
+    self.jsr_url.get_or_init(|| resolve_jsr_url(&self.sys))
   }
 
   pub fn initial_cwd(&self) -> &PathBuf {
@@ -453,6 +479,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             local_path.clone(),
             global_cache,
             deno_cache_dir::GlobalToLocalCopy::Allow,
+            self.jsr_url().clone(),
           );
           Ok(new_rc(local_cache).into())
         }
