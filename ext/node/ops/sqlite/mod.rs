@@ -65,6 +65,9 @@ pub enum SqliteError {
   #[class(type)]
   #[error("Invalid callback: {0}")]
   InvalidCallback(&'static str),
+  #[class(type)]
+  #[error("FromUtf8Error: {0}")]
+  FromUtf8Error(#[from] std::ffi::NulError),
 }
 
 pub trait SqliteResultExt<T> {
@@ -95,6 +98,20 @@ impl SqliteError {
   pub const ERROR_CODE_GENERIC: i32 = 1;
 
   pub const ERROR_STR_UNKNOWN: &str = "unknown error";
+
+  pub fn create_error(message: &str, code: &str) -> Self {
+    let encoded_message = format!("{}\n  {{\n  code: '{}'\n}}", message, code);
+
+    let custom_error = rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error {
+        code: rusqlite::ErrorCode::Unknown,
+        extended_code: Self::ERROR_CODE_GENERIC,
+      },
+      Some(encoded_message),
+    );
+
+    SqliteError::SqliteError(custom_error)
+  }
 
   pub fn create_enhanced_error<T>(
     extended_code: i32,

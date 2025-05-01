@@ -40,6 +40,7 @@ const {
   PromisePrototypeCatch,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   Symbol,
@@ -768,43 +769,88 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
-    op_http_serve_address_override();
-  switch (overrideKind) {
-    case 1: {
-      // TCP
-      options = {
-        ...options,
-        hostname: overrideHost,
-        port: overridePort,
-      };
-      delete options.path;
-      delete options.cid;
-      break;
+  const {
+    0: overrideKind,
+    1: overrideHost,
+    2: overridePort,
+    3: duplicateListener,
+  } = op_http_serve_address_override();
+  if (overrideKind) {
+    let envOptions = duplicateListener ? { __proto__: null } : options;
+
+    switch (overrideKind) {
+      case 1: {
+        // TCP
+        envOptions = {
+          ...envOptions,
+          hostname: overrideHost,
+          port: overridePort,
+        };
+        delete envOptions.path;
+        delete envOptions.cid;
+        break;
+      }
+      case 2: {
+        // Unix
+        envOptions = {
+          ...envOptions,
+          path: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        break;
+      }
+      case 3: {
+        // Vsock
+        envOptions = {
+          ...envOptions,
+          cid: Number(overrideHost),
+          port: overridePort,
+        };
+        delete envOptions.hostname;
+        delete envOptions.path;
+        break;
+      }
     }
-    case 2: {
-      // Unix
-      options = {
-        ...options,
-        path: overrideHost,
+
+    if (duplicateListener) {
+      envOptions.onListen = () => {
+        // override default console.log behavior
       };
-      delete options.hostname;
-      delete options.port;
-      break;
-    }
-    case 3: {
-      // Vsock
-      options = {
-        ...options,
-        cid: Number(overrideHost),
-        port: overridePort,
+      const envListener = serveInner(envOptions, handler);
+      const userListener = serveInner(options, handler);
+
+      return {
+        addr: userListener.addr,
+        finished: SafePromiseAll([envListener.finished, userListener.finished]),
+        shutdown() {
+          return SafePromiseAll([
+            envListener.shutdown(),
+            userListener.shutdown(),
+          ]);
+        },
+        ref() {
+          envListener.ref();
+          userListener.ref();
+        },
+        unref() {
+          envListener.unref();
+          userListener.unref();
+        },
+        [SymbolAsyncDispose]() {
+          return this.shutdown();
+        },
       };
-      delete options.hostname;
-      delete options.path;
-      break;
     }
+
+    options = envOptions;
   }
 
+  return serveInner(options, handler);
+}
+
+function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
@@ -1052,41 +1098,52 @@ internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
-  if (ObjectHasOwn(exports, "fetch")) {
-    if (typeof exports.fetch !== "function") {
-      throw new TypeError(
-        "Invalid type for fetch: must be a function with a single or no parameter",
-      );
-    }
-    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
-      Deno.serve({
-        port: servePort,
-        hostname: serveHost,
-        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-          serveWorkerCount !== null,
-        onListen: ({ port, hostname }) => {
-          if (serveIsMain) {
-            const nThreads = serveWorkerCount > 1
-              ? ` with ${serveWorkerCount} threads`
-              : "";
-            const host = formatHostName(hostname);
+  if (!ObjectHasOwn(exports, "fetch")) return;
 
-            import.meta.log(
-              "info",
-              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
-              "color: green",
-              "color: inherit",
-              "color: yellow",
-              "color: inherit",
-            );
-          }
-        },
-        handler: (req, connInfo) => {
-          return exports.fetch(req, connInfo);
-        },
-      });
-    };
+  if (typeof exports.fetch !== "function") {
+    throw new TypeError("Invalid type for fetch: must be a function");
   }
+
+  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+    Deno.serve({
+      port: servePort,
+      hostname: serveHost,
+      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+        serveWorkerCount !== null,
+      onListen: ({ transport, port, hostname, path, cid }) => {
+        if (serveIsMain) {
+          const nThreads = serveWorkerCount > 1
+            ? ` with ${serveWorkerCount} threads`
+            : "";
+
+          let target;
+          switch (transport) {
+            case "tcp":
+              target = `http://${formatHostName(hostname)}:${port}/`;
+              break;
+            case "unix":
+              target = path;
+              break;
+            case "vsock":
+              target = `vsock:${cid}:${port}`;
+              break;
+          }
+
+          import.meta.log(
+            "info",
+            `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
+            "color: green",
+            "color: inherit",
+            "color: yellow",
+            "color: inherit",
+          );
+        }
+      },
+      handler: (req, connInfo) => {
+        return exports.fetch(req, connInfo);
+      },
+    });
+  };
 }
 
 export {

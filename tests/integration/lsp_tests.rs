@@ -9558,6 +9558,63 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_import_map_prefer_relative() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "src/": "./src/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("src/other.ts", "export const someValue = 1;\n");
+  let file = temp_dir.source_file("src/file.ts", "someValue;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "someValue")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "someValue",
+        "labelDetails": { "description": "./other.ts" },
+        "kind": 6,
+        "detail": "Add import from \"./other.ts\"\n\nconst someValue: 1",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { someValue } from \"./other.ts\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/25775.
 #[test]
 #[timeout(300_000)]
@@ -11349,6 +11406,9 @@ fn lsp_jupyter_import_map_and_diagnostics() {
 
           // Top-level-await should be allowed.
           await new Promise((r) => r(null));
+          for await (const foo of []) {
+            console.log(foo);
+          }
 
           // Local variables conflicting with globals.
           const name = "Hello";
@@ -11393,8 +11453,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
           // for notebook cells. Figure out a workaround.
           {
             "range": {
-              "start": { "line": 9, "character": 16 },
-              "end": { "line": 9, "character": 20 },
+              "start": { "line": 12, "character": 16 },
+              "end": { "line": 12, "character": 20 },
             },
             "severity": 1,
             "code": 2451,

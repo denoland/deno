@@ -454,6 +454,12 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub except_paths: Vec<String>,
+  pub dry_run: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
@@ -461,7 +467,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1900,6 +1906,31 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("except-paths")
+          .required_if_eq("except", "true")
+          .num_args(1..)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("except")
+          .long("except")
+          .short('e')
+          .help("Retain cache data needed by the given files")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .action(ArgAction::SetTrue)
+          .help("Show what would be removed without performing any actions")
+          .requires("except"),
+      )
+      .arg(node_modules_dir_arg().requires("except"))
+      .arg(vendor_arg().requires("except"))
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4627,7 +4658,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4654,12 +4685,25 @@ fn check_parse(
     doc_only: matches.get_flag("doc-only"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let mut clean_flags = CleanFlags {
+    except_paths: Vec::new(),
+    dry_run: false,
+  };
+  if matches.get_flag("except") {
+    clean_flags.except_paths = matches
+      .remove_many::<String>("except-paths")
+      .unwrap()
+      .collect::<Vec<_>>();
+    flags.cached_only = true;
+    clean_flags.dry_run = matches.get_flag("dry-run");
+    node_modules_and_vendor_dir_arg_parse(flags, matches);
+  }
+  flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
 
 fn compile_parse(
@@ -4789,7 +4833,7 @@ fn doc_parse(
   no_lock_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -4965,7 +5009,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -5160,7 +5204,7 @@ fn lint_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -5753,7 +5797,7 @@ fn permission_args_parse(
     flags.allow_all();
   }
 
-  allow_import_parse(flags, matches);
+  allow_import_parse(flags, matches)?;
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -5762,11 +5806,15 @@ fn permission_args_parse(
   Ok(())
 }
 
-fn allow_import_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn allow_import_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
-    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
+    let imports_allowlist = flags_net::parse(imports_wl.collect())?;
     flags.permissions.allow_import = Some(imports_allowlist);
   }
+  Ok(())
 }
 
 fn unsafely_ignore_certificate_errors_parse(
@@ -11818,6 +11866,20 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   }
 
   #[test]
+  fn allow_import_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-import=https://example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
   fn outdated_subcommand() {
     let cases = [
       (
@@ -11915,6 +11977,63 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       assert_eq!(
         r.subcommand,
         DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+  }
+
+  #[test]
+  fn clean_subcommand() {
+    let cases = [
+      (
+        svec![],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string()],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1", "path2"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string(), "path2".to_string()],
+          dry_run: false,
+        },
+      ),
+      (
+        svec!["--except", "path1", "--dry-run"],
+        CleanFlags {
+          except_paths: vec!["path1".to_string()],
+          dry_run: true,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let cached_only = !input.is_empty();
+      let mut args = svec!["deno", "clean"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone())
+        .inspect_err(|e| {
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!("error: {:?} on input: {:?}", e, args);
+          }
+        })
+        .unwrap();
+      assert_eq!(
+        r,
+        Flags {
+          subcommand: DenoSubcommand::Clean(expected),
+          cached_only,
+          ..Flags::default()
+        },
         "incorrect result for args: {:?}",
         args
       );

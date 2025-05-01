@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -1136,7 +1137,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = CliFileFetcher::new(
-      self.cache.global().clone(),
+      GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
       Default::default(),
@@ -1164,7 +1165,7 @@ impl Inner {
       );
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let compiler_options = config_file.to_compiler_options().ok()??.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
@@ -1823,7 +1824,7 @@ impl Inner {
           .and_then(|d| d.parsed_source.as_ref())
         {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options, &unstable_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {

@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::OpState;
+use deno_features::FeatureChecker;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
@@ -44,7 +45,7 @@ pub trait NetPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
-    p: &'a Path,
+    p: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -87,7 +88,7 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_write_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_path(
@@ -111,7 +112,7 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
   state
-    .feature_checker
+    .borrow::<Arc<FeatureChecker>>()
     .check_or_exit(UNSTABLE_FEATURE_NAME, api_name);
 }
 

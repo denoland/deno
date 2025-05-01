@@ -44,10 +44,10 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read<'a>(
     &mut self,
-    _resolved: bool,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
 }
@@ -88,7 +88,7 @@ impl deno_node::NodePermissions for Permissions {
   }
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -145,7 +145,7 @@ impl deno_net::NetPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -164,12 +164,12 @@ impl deno_net::NetPermissions for Permissions {
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
     &mut self,
-    _resolved: bool,
     _read: bool,
     _write: bool,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
 
@@ -231,7 +231,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -239,7 +239,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -257,7 +257,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 
   fn check_write<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -279,9 +279,9 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init(),
+    deno_geometry::deno_geometry::init(false),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
-    deno_geometry::deno_geometry::init(false),
     deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init::<Permissions>(
       "".to_owned(),
@@ -322,7 +322,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ops::permissions::deno_permissions::init(),
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
-    ops::bootstrap::deno_bootstrap::init(None),
+    ops::bootstrap::deno_bootstrap::init(None, false),
     runtime::init(),
     ops::web_worker::deno_web_worker::init(),
   ]

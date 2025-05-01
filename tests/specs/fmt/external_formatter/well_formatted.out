@@ -1,0 +1,23 @@
+const EqualDivider = styled.div`
+  margin: 0.5rem;
+  padding: 1rem;
+  background: papayawhip;
+
+  > * {
+    flex: 1;
+
+    &:not(:first-child) {
+      ${(props) => props.vertical ? "margin-top" : "margin-left"}: 1rem;
+    }
+  }
+`;
+
+htmlString = html`
+  <body>
+    <header>${header}</header>
+    <main>${main}</main>
+    <footer>${footer}</footer>
+  </body>
+`;
+
+query = sql`SELECT   ${table}.${field}    FROM  ${table};`;

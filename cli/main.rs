@@ -44,10 +44,12 @@ use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
@@ -59,6 +61,7 @@ const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
+use crate::args::get_default_v8_flags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::util::display;
@@ -105,7 +108,11 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   )
 }
 
-async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
+async fn run_subcommand(
+  flags: Arc<Flags>,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
+) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
@@ -133,8 +140,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       tools::check::check(flags, check_flags).await
     }),
-    DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean(flags)
+    DenoSubcommand::Clean(clean_flags) => spawn_subcommand(async move {
+      tools::clean::clean(flags, clean_flags).await
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
@@ -216,11 +223,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
-        tools::run::run_from_stdin(flags.clone()).boxed_local().await
+        tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots).boxed_local().await
       } else if flags.eszip {
-        tools::run::run_eszip(flags, run_flags).boxed_local().await
+        tools::run::run_eszip(flags, run_flags, unconfigured_runtime, roots).boxed_local().await
       } else {
-        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
+        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch, unconfigured_runtime, roots.clone()).await;
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
@@ -236,7 +243,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch, None, roots).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();
@@ -450,11 +457,38 @@ pub fn main() {
 
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
+    let roots = LibWorkerFactoryRoots::default();
+
+    #[cfg(unix)]
+    let (waited_unconfigured_runtime, waited_args) =
+      match wait_for_start(&args, roots.clone()) {
+        Some(f) => match f.await {
+          Ok(v) => match v {
+            Some((u, a)) => (Some(u), Some(a)),
+            None => (None, None),
+          },
+          Err(e) => {
+            panic!("Failure from control sock: {e}");
+          }
+        },
+        None => (None, None),
+      };
+
+    #[cfg(not(unix))]
+    let (waited_unconfigured_runtime, waited_args) = (None, None);
+
+    let args = waited_args.unwrap_or(args);
+
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
     let flags = resolve_flags_and_init(args)?;
-    run_subcommand(Arc::new(flags)).await
+
+    if waited_unconfigured_runtime.is_none() {
+      init_v8(&flags);
+    }
+
+    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
   };
 
   let result = create_and_run_current_thread_with_maybe_metrics(future);
@@ -504,6 +538,10 @@ fn resolve_flags_and_init(
     );
   }
 
+  Ok(flags)
+}
+
+fn init_v8(flags: &Flags) {
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
@@ -512,26 +550,26 @@ fn resolve_flags_and_init(
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
     ],
-    _ => {
-      vec![
-        "--stack-size=1024".to_string(),
-        "--js-explicit-resource-management".to_string(),
-        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-        // and its settings.
-        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-        "--no-harmony-import-assertions".to_string(),
-      ]
-    }
+    _ => get_default_v8_flags(),
   };
 
-  init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+  let env_v8_flags = get_v8_flags_from_env();
+  let is_single_threaded = env_v8_flags
+    .iter()
+    .chain(&flags.v8_flags)
+    .any(|flag| flag == "--single-threaded");
+  init_v8_flags(&default_v8_flags, &flags.v8_flags, env_v8_flags);
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
+
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
-    None, /* import assertions enabled */ false,
+    v8_platform,
+    /* import assertions enabled */ false,
   );
-
-  Ok(flags)
 }
 
 fn init_logging(
@@ -547,5 +585,105 @@ fn init_logging(
     // thread's state
     on_log_start: DrawThread::hide,
     on_log_end: DrawThread::show,
+  })
+}
+
+#[cfg(unix)]
+#[allow(clippy::type_complexity)]
+fn wait_for_start(
+  args: &[std::ffi::OsString],
+  roots: LibWorkerFactoryRoots,
+) -> Option<
+  impl Future<
+    Output = Result<
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      AnyError,
+    >,
+  >,
+> {
+  let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
+  let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
+  std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK");
+
+  let argv0 = args[0].clone();
+
+  Some(async move {
+    use tokio::io::AsyncBufReadExt;
+    use tokio::io::AsyncRead;
+    use tokio::io::BufReader;
+    use tokio::net::TcpListener;
+    use tokio::net::UnixSocket;
+    use tokio_vsock::VsockAddr;
+    use tokio_vsock::VsockListener;
+
+    init_v8(&Flags::default());
+
+    let unconfigured = deno_runtime::UnconfiguredRuntime::new::<
+      deno_resolver::npm::DenoInNpmPackageChecker,
+      crate::npm::CliNpmResolver,
+      crate::sys::CliSys,
+    >(
+      startup_snapshot,
+      deno_lib::worker::create_isolate_create_params(),
+      Some(roots.shared_array_buffer_store.clone()),
+      Some(roots.compiled_wasm_module_store.clone()),
+      vec![],
+    );
+
+    let stream: Box<dyn AsyncRead + Unpin> = match addr.split_once(':') {
+      Some(("tcp", addr)) => {
+        let listener = TcpListener::bind(addr).await?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      Some(("unix", path)) => {
+        let socket = UnixSocket::new_stream()?;
+        socket.bind(path)?;
+        let listener = socket.listen(1)?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      Some(("vsock", addr)) => {
+        let Some((cid, port)) = addr.split_once(':') else {
+          deno_core::anyhow::bail!("invalid vsock addr");
+        };
+        let cid = if cid == "-1" { u32::MAX } else { cid.parse()? };
+        let port = port.parse()?;
+        let addr = VsockAddr::new(cid, port);
+        let listener = VsockListener::bind(addr)?;
+        let (stream, _) = listener.accept().await?;
+        Box::new(stream)
+      }
+      _ => {
+        deno_core::anyhow::bail!("invalid control sock");
+      }
+    };
+
+    let mut stream = BufReader::new(stream);
+
+    let mut buf = Vec::with_capacity(1024);
+    stream.read_until(b'\n', &mut buf).await?;
+
+    #[derive(deno_core::serde::Deserialize)]
+    struct Start {
+      cwd: String,
+      args: Vec<String>,
+      env: Vec<(String, String)>,
+    }
+
+    let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
+
+    std::env::set_current_dir(cmd.cwd)?;
+
+    for (k, v) in cmd.env {
+      std::env::set_var(k, v);
+    }
+
+    let args = [argv0]
+      .into_iter()
+      .chain(cmd.args.into_iter().map(Into::into))
+      .collect();
+
+    Ok(Some((unconfigured, args)))
   })
 }

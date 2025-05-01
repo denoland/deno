@@ -2610,13 +2610,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_read_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -2698,13 +2698,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_write_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -3395,6 +3395,10 @@ impl PermissionsContainer {
           .as_ref(),
       ),
     )
+  }
+
+  pub fn allows_all(&self) -> bool {
+    matches!(self.inner.lock().all.state, PermissionState::Granted)
   }
 }
 

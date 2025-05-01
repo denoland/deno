@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
@@ -16,7 +17,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::FeatureChecker;
 use deno_error::JsErrorBox;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::resolve_npm_resolution_snapshot;
@@ -29,6 +29,7 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
@@ -49,6 +50,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::FeatureChecker;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolverOptions;
@@ -69,7 +71,6 @@ use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
@@ -511,7 +512,9 @@ impl CliFactory {
     Ok(self.workspace_factory()?.global_http_cache()?)
   }
 
-  pub fn http_cache(&self) -> Result<&Arc<dyn HttpCache>, AnyError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&GlobalOrLocalHttpCache<CliSys>, AnyError> {
     Ok(self.workspace_factory()?.http_cache()?)
   }
 
@@ -1202,6 +1205,15 @@ impl CliFactory {
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
+    self
+      .create_cli_main_worker_factory_with_roots(Default::default())
+      .await
+  }
+
+  pub async fn create_cli_main_worker_factory_with_roots(
+    &self,
+    roots: LibWorkerFactoryRoots,
+  ) -> Result<CliMainWorkerFactory, AnyError> {
     let cli_options = self.cli_options()?;
     let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
@@ -1284,6 +1296,7 @@ impl CliFactory {
       cli_options.resolve_storage_key_resolver(),
       self.sys(),
       self.create_lib_main_worker_options()?,
+      roots,
     );
 
     Ok(CliMainWorkerFactory::new(
@@ -1461,6 +1474,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Clean(_)
     ),
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,

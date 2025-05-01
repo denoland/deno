@@ -22,14 +22,10 @@ pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
+pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<&str>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
   // at https://nodejs.org/api/cli.html#environment-variables
-  let mut set = HashSet::new();
-  set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_OPTIONS".to_string());
-  set.insert("FORCE_COLOR".to_string());
-  set
+  HashSet::from(["NODE_DEBUG", "NODE_OPTIONS", "FORCE_COLOR", "NO_COLOR"])
 });
 
 #[derive(Clone, Default)]
@@ -195,7 +191,7 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key.as_str());
 
   if !skip_permission_check {
     state.borrow_mut::<PermissionsContainer>().check_env(&key)?;

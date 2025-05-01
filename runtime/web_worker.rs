@@ -28,7 +28,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
-use deno_core::FeatureChecker;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -68,6 +67,7 @@ use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
+use crate::FeatureChecker;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -492,6 +492,7 @@ impl WebWorker {
         Some(options.main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init(),
+      deno_geometry::deno_geometry::init(false),
       deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
@@ -504,7 +505,6 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_geometry::deno_geometry::init(false),
       deno_cache::deno_cache::init(create_cache),
       deno_websocket::deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
@@ -569,11 +569,8 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       ops::bootstrap::deno_bootstrap::init(
-        if options.startup_snapshot.is_some() {
-          None
-        } else {
-          Some(Default::default())
-        },
+        options.startup_snapshot.and_then(|_| Default::default()),
+        false,
       ),
       runtime::init(),
       ops::web_worker::deno_web_worker::init(),
@@ -618,7 +615,6 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
-      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
@@ -647,6 +643,7 @@ impl WebWorker {
 
       state.put::<PermissionsContainer>(services.permissions);
       state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
 
       // Put inspector handle into the op state so we can put a breakpoint when
       // executing a CJS entrypoint.

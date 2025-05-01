@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.0-rc.3"
+version = "2.3.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -114,6 +114,7 @@ dashmap.workspace = true
 dhat = { workspace = true, optional = true }
 dissimilar.workspace = true
 dotenvy.workspace = true
+dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
@@ -191,6 +192,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
+tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true

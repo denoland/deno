@@ -18,7 +18,6 @@ use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
-use deno_runtime::deno_core::FeatureChecker;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
@@ -43,6 +42,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_FEATURES;
@@ -188,6 +188,12 @@ pub struct LibMainWorkerOptions {
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+}
+
+#[derive(Default, Clone)]
+pub struct LibWorkerFactoryRoots {
+  pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
@@ -370,13 +376,14 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     storage_key_resolver: StorageKeyResolver,
     sys: TSys,
     options: LibMainWorkerOptions,
+    roots: LibWorkerFactoryRoots,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
         blob_store,
         broadcast_channel: Default::default(),
         code_cache,
-        compiled_wasm_module_store: Default::default(),
+        compiled_wasm_module_store: roots.compiled_wasm_module_store,
         deno_rt_native_addon_loader,
         feature_checker,
         fs,
@@ -386,7 +393,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         npm_process_state_provider,
         pkg_json_resolver,
         root_cert_store_provider,
-        shared_array_buffer_store: Default::default(),
+        shared_array_buffer_store: roots.shared_array_buffer_store,
         storage_key_resolver,
         sys,
         options,
@@ -406,6 +413,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       permissions,
       vec![],
       Default::default(),
+      None,
     )
   }
 
@@ -416,6 +424,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<LibMainWorker, CoreError> {
     let shared = &self.shared;
     let CreateModuleLoaderResult {
@@ -516,6 +525,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+      unconfigured_runtime,
     };
 
     let worker =

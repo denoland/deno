@@ -280,8 +280,8 @@ fn populate_lockfile_from_snapshot(
         }
       }),
       deprecated: pkg.is_deprecated,
-      has_bin: pkg.has_bin,
-      has_scripts: pkg.has_scripts,
+      bin: pkg.has_bin,
+      scripts: pkg.has_scripts,
       optional_peers,
     }
   }
