@@ -46,7 +46,7 @@ pub struct SerializedCachedPackageInfo {
   #[serde(
     default,
     skip_serializing_if = "Option::is_none",
-    rename = "_denoetag"
+    rename = "_deno.etag"
   )]
   pub etag: Option<String>,
 }
@@ -381,7 +381,10 @@ impl<
         )
         .await.map_err(JsErrorBox::from_err)?;
       match response {
-        NpmCacheHttpClientResponse::NotModified => Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap()))),
+        NpmCacheHttpClientResponse::NotModified => {
+          log::debug!("Respected etag for packument '{0}'", name); // used in the tests
+          Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())))
+        },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
           let future_result = deno_unsync::spawn_blocking(

@@ -309,7 +309,6 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     if let Some(auth) = maybe_auth {
       headers.append(
         http::header::AUTHORIZATION,
-        // todo(THIS PR): no unwrap
         http::header::HeaderValue::try_from(auth).unwrap(),
       );
     }

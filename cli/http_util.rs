@@ -338,7 +338,7 @@ impl HttpClient {
       .await
       .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
-    if status.is_redirection() {
+    if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
         let mut req = self.get(new_url.clone())?.build();
