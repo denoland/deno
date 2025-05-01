@@ -232,12 +232,6 @@ fn handle_custom_npm_registry_path(
         let mut response = Response::new(UnsyncBoxBody::new(
           http_body_util::Full::new(Bytes::from(vec![])),
         ));
-        response
-          .headers_mut()
-          .insert("Content-Type", HeaderValue::from_static("text/plain"));
-        response
-          .headers_mut()
-          .insert("Content-Length", HeaderValue::from_static("0"));
         *response.status_mut() = StatusCode::NOT_MODIFIED;
         return Ok(Some(response));
       }
