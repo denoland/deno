@@ -50,6 +50,8 @@ pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
 
+use self::rt::spawn_blocking;
+
 #[derive(Debug, deno_error::JsError)]
 #[class(generic)]
 pub struct DownloadError {
@@ -340,7 +342,7 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
       Err(err) => return Err(serde_json::Error::io(err)),
     };
 
-    deno_unsync::spawn_blocking(move || serde_json::from_slice(&file_bytes))
+    spawn_blocking(move || serde_json::from_slice(&file_bytes))
       .await
       .unwrap()
   }

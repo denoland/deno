@@ -796,7 +796,7 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
         if: '!(matrix.skip)'
       - name: Cargo build
-        run: cargo build --target wasm32-unknown-unknown -p deno_resolver
+        run: cargo build --target wasm32-unknown-unknown -p deno_resolver -p deno_npm_cache
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
