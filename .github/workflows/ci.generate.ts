@@ -1220,8 +1220,9 @@ const ci = {
         },
         {
           name: "Cargo build",
-          // we want this crate to be wasm compatible
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          // we want these crates to be wasm compatible
+          run:
+            "cargo build --target wasm32-unknown-unknown -p deno_resolver -p deno_npm_cache",
         },
       ]),
     },

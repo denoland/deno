@@ -16,12 +16,14 @@ use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
 use parking_lot::Mutex;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
+use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::SystemRandom;
@@ -31,6 +33,7 @@ use url::Url;
 mod fs_util;
 mod registry_info;
 mod remote;
+mod rt;
 mod tarball;
 mod tarball_extract;
 
@@ -137,20 +140,49 @@ impl NpmCacheSetting {
   }
 }
 
-/// Stores a single copy of npm packages in a cache.
-#[derive(Debug)]
-pub struct NpmCache<
-  TSys: FsCreateDirAll
+pub trait NpmCacheSys:
+  FsCanonicalize
+  + FsCreateDirAll
+  + FsHardLink
+  + FsMetadata
+  + FsOpen
+  + FsRead
+  + FsReadDir
+  + FsRemoveDirAll
+  + FsRemoveFile
+  + FsRename
+  + ThreadSleep
+  + SystemRandom
+  + Send
+  + Sync
+  + Clone
+  + 'static
+{
+}
+
+impl<T> NpmCacheSys for T where
+  T: FsCanonicalize
+    + FsCreateDirAll
     + FsHardLink
     + FsMetadata
     + FsOpen
     + FsRead
     + FsReadDir
+    + FsRemoveDirAll
     + FsRemoveFile
     + FsRename
     + ThreadSleep
-    + SystemRandom,
-> {
+    + SystemRandom
+    + Send
+    + Sync
+    + Clone
+    + 'static
+{
+}
+
+/// Stores a single copy of npm packages in a cache.
+#[derive(Debug)]
+pub struct NpmCache<TSys: NpmCacheSys> {
   cache_dir: Arc<NpmCacheDir>,
   sys: TSys,
   cache_setting: NpmCacheSetting,
@@ -158,19 +190,7 @@ pub struct NpmCache<
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom,
-  > NpmCache<TSys>
-{
+impl<TSys: NpmCacheSys> NpmCache<TSys> {
   pub fn new(
     cache_dir: Arc<NpmCacheDir>,
     sys: TSys,
@@ -228,10 +248,10 @@ impl<
       registry_url,
     );
 
-    if package_folder.exists()
+    if self.sys.fs_exists_no_err(&package_folder)
       // if this file exists, then the package didn't successfully initialize
       // the first time, or another process is currently extracting the zip file
-      && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && !self.sys.fs_exists_no_err(package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME))
       && self.cache_setting.should_use_for_npm_package(&folder_id.nv.name)
     {
       return Ok(());
@@ -246,7 +266,7 @@ impl<
 
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
-    with_folder_sync_lock(&folder_id.nv, &package_folder, || {
+    with_folder_sync_lock(&self.sys, &folder_id.nv, &package_folder, || {
       hard_link_dir_recursive(
         &self.sys,
         &original_package_folder,
@@ -381,17 +401,18 @@ pub enum WithFolderSyncLockError {
   },
 }
 
-// todo(dsherret): use `sys` here instead of `std::fs`.
 fn with_folder_sync_lock(
+  sys: &(impl FsCreateDirAll + FsOpen + FsRemoveDirAll + FsRemoveFile),
   package: &PackageNv,
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), JsErrorBox>,
 ) -> Result<(), WithFolderSyncLockError> {
   fn inner(
+    sys: &(impl FsCreateDirAll + FsOpen + FsRemoveFile),
     output_folder: &Path,
     action: impl FnOnce() -> Result<(), JsErrorBox>,
   ) -> Result<(), WithFolderSyncLockError> {
-    std::fs::create_dir_all(output_folder).map_err(|source| {
+    sys.fs_create_dir_all(output_folder).map_err(|source| {
       WithFolderSyncLockError::CreateDir {
         path: output_folder.to_path_buf(),
         source,
@@ -407,16 +428,15 @@ fn with_folder_sync_lock(
     // then wait until the other process finishes with a timeout), but
     // for now this is good enough.
     let sync_lock_path = output_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME);
-    match std::fs::OpenOptions::new()
-      .write(true)
-      .create(true)
-      .truncate(false)
-      .open(&sync_lock_path)
-    {
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.write = true;
+    open_options.create = true;
+    open_options.truncate = false;
+    match sys.fs_open(&sync_lock_path, &open_options) {
       Ok(_) => {
         action()?;
         // extraction succeeded, so only now delete this file
-        let _ignore = std::fs::remove_file(&sync_lock_path);
+        let _ignore = sys.fs_remove_file(&sync_lock_path);
         Ok(())
       }
       Err(err) => Err(WithFolderSyncLockError::CreateLockFile {
@@ -426,10 +446,10 @@ fn with_folder_sync_lock(
     }
   }
 
-  match inner(output_folder, action) {
+  match inner(sys, output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = std::fs::remove_dir_all(output_folder) {
+      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
             package: Box::new(package.clone()),
