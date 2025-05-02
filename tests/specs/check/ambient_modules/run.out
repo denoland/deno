@@ -1,2 +1,2 @@
 error: Module not found "file:///logo.svg".
-    at file:///[WILDLINE]/ambient_modules/foo.ts:[WILDLINE]
+    at file:///[WILDLINE]/ambient_modules/[WILDLINE].ts:[WILDLINE]
