@@ -49,6 +49,7 @@ use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
 pub use crate::args::NpmCachingStrategy;
 use crate::cache;
 use crate::cache::FetchCacher;
@@ -79,6 +80,7 @@ pub struct GraphValidOptions<'a> {
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
+  pub ignore_graph_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -106,6 +108,7 @@ pub fn graph_valid(
       check_js: options.check_js,
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
+      ignore_graph_errors: options.ignore_graph_errors,
     },
   );
   if let Some(error) = errors.next() {
@@ -145,6 +148,7 @@ pub fn fill_graph_from_lockfile(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
 }
 
@@ -204,6 +208,7 @@ pub fn graph_walk_errors<'a>(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
+    ignore_graph_errors: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -215,7 +220,8 @@ pub fn graph_walk_errors<'a>(
       return true;
     }
 
-    if should_ignore_module_graph_error_for_types(error) {
+    if ignore_graph_errors && should_ignore_module_graph_error_for_types(error)
+    {
       return true;
     }
 
@@ -240,6 +246,7 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
+        options.ignore_graph_errors,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -1012,6 +1019,10 @@ impl ModuleGraphBuilder {
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
         allow_unknown_media_types,
+        ignore_graph_errors: !matches!(
+          self.cli_options.sub_command(),
+          DenoSubcommand::Install { .. }
+        ),
       },
     )
   }
