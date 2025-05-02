@@ -328,7 +328,7 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
       })
   }
 
-  pub fn load_package_info(
+  pub async fn load_package_info(
     &self,
     name: &str,
   ) -> Result<Option<SerializedCachedPackageInfo>, serde_json::Error> {
@@ -340,8 +340,9 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
       Err(err) => return Err(serde_json::Error::io(err)),
     };
 
-    // todo(dsherret): deserialize in a blocking task
-    serde_json::from_slice(&file_bytes)
+    deno_unsync::spawn_blocking(move || serde_json::from_slice(&file_bytes))
+      .await
+      .unwrap()
   }
 
   pub fn save_package_info(
