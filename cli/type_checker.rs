@@ -230,7 +230,7 @@ impl TypeChecker {
         BuildFastCheckGraphOptions {
           workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
         },
-      );
+      )?;
     }
 
     let graph = Arc::new(graph);

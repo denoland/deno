@@ -10,7 +10,6 @@ use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use deno_path_util::url_to_file_path;
-use deno_resolver::graph::to_node_resolution_mode;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -167,7 +166,7 @@ pub async fn get_import_completions(
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
-    .map(to_node_resolution_mode)
+    .map(node_resolver::ResolutionMode::from_deno_graph)
     .unwrap_or_else(|| module.resolution_mode);
   let range = to_narrow_lsp_range(module.text_info(), graph_range.range);
   let scoped_resolver = resolver.get_scoped_resolver(module.scope.as_deref());

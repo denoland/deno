@@ -17,26 +17,6 @@ use crate::DenoResolveErrorKind;
 use crate::DenoResolverRc;
 use crate::DenoResolverSys;
 
-pub fn to_node_resolution_kind(
-  kind: deno_graph::source::ResolutionKind,
-) -> node_resolver::NodeResolutionKind {
-  use deno_graph::source::ResolutionKind::*;
-  match kind {
-    Execution => node_resolver::NodeResolutionKind::Execution,
-    Types => node_resolver::NodeResolutionKind::Types,
-  }
-}
-
-pub fn to_node_resolution_mode(
-  mode: deno_graph::source::ResolutionMode,
-) -> node_resolver::ResolutionMode {
-  use deno_graph::source::ResolutionMode::*;
-  match mode {
-    Import => node_resolver::ResolutionMode::Import,
-    Require => node_resolver::ResolutionMode::Require,
-  }
-}
-
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
   crate::sync::MaybeArc<FoundPackageJsonDepFlag>;
@@ -279,13 +259,13 @@ impl<
       referrer_range.range.start,
       referrer_range
         .resolution_mode
-        .map(to_node_resolution_mode)
+        .map(node_resolver::ResolutionMode::from_deno_graph)
         .unwrap_or_else(|| {
           self
             .cjs_tracker
             .get_referrer_kind(&referrer_range.specifier)
         }),
-      to_node_resolution_kind(resolution_kind),
+      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
     )
   }
 }

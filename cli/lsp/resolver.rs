@@ -22,8 +22,6 @@ use deno_npm::NpmSystemInfo;
 use deno_npm_cache::TarballCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
-use deno_resolver::graph::to_node_resolution_kind;
-use deno_resolver::graph::to_node_resolution_mode;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
@@ -1121,9 +1119,9 @@ impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
       referrer_range.range.start,
       referrer_range
         .resolution_mode
-        .map(to_node_resolution_mode)
+        .map(node_resolver::ResolutionMode::from_deno_graph)
         .unwrap_or(self.module_resolution_mode),
-      to_node_resolution_kind(resolution_kind),
+      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
     )
   }
 }

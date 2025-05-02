@@ -41,7 +41,6 @@ use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
