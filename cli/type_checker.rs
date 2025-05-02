@@ -437,9 +437,8 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
-pub fn ambient_modules_to_regex_string(
-  ambient_modules: &[String],
-) -> String {
+/// Converts the list of ambient module names to regex string
+pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
   regex_string.push('(');
   let last = ambient_modules.len() - 1;
@@ -575,9 +574,11 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       regex_string.push_str("^Cannot find module '");
       regex_string.push_str(&ambient_modules_to_regex_string(&ambient_modules));
       regex_string.push('\'');
-      regex::Regex::new(&regex_string).inspect_err(|e| {
-        log::warn!("Failed to create regex for ambient modules: {}", e);
-      }).ok()
+      regex::Regex::new(&regex_string)
+        .inspect_err(|e| {
+          log::warn!("Failed to create regex for ambient modules: {}", e);
+        })
+        .ok()
     };
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
@@ -587,7 +588,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     let mut diagnostics = missing_diagnostics.filter(|d| {
       if let Some(ambient_modules_regex) = &ambient_modules_regex {
         if let Some(message_text) = &d.message_text {
-          return !ambient_modules_regex.is_match(message_text)
+          return !ambient_modules_regex.is_match(message_text);
         }
       }
       return true;
@@ -1059,9 +1060,9 @@ fn get_leading_comments(file_text: &str) -> Vec<String> {
 mod test {
   use deno_ast::MediaType;
 
+  use super::ambient_modules_to_regex_string;
   use super::get_leading_comments;
   use super::has_ts_check;
-  use super::ambient_modules_to_regex_string;
 
   #[test]
   fn get_leading_comments_test() {

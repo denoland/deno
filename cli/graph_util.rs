@@ -108,7 +108,6 @@ pub fn graph_valid(
       allow_unknown_media_types: options.allow_unknown_media_types,
     },
   );
-
   if let Some(error) = errors.next() {
     Err(error)
   } else {
