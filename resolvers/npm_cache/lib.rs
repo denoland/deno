@@ -10,20 +10,17 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
-use http::HeaderName;
-use http::HeaderValue;
-use http::StatusCode;
 use parking_lot::Mutex;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
@@ -45,14 +42,15 @@ pub use fs_util::HardLinkFileError;
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
 pub use registry_info::RegistryInfoProvider;
-pub use remote::maybe_auth_header_for_npm_registry;
+pub use registry_info::SerializedCachedPackageInfo;
+pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
 
 #[derive(Debug, deno_error::JsError)]
 #[class(generic)]
 pub struct DownloadError {
-  pub status_code: Option<StatusCode>,
+  pub status_code: Option<u16>,
   pub error: JsErrorBox,
 }
 
@@ -68,13 +66,25 @@ impl std::fmt::Display for DownloadError {
   }
 }
 
+pub enum NpmCacheHttpClientResponse {
+  NotFound,
+  NotModified,
+  Bytes(NpmCacheHttpClientBytesResponse),
+}
+
+pub struct NpmCacheHttpClientBytesResponse {
+  pub bytes: Vec<u8>,
+  pub etag: Option<String>,
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait NpmCacheHttpClient: Send + Sync + 'static {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
-    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<Option<Vec<u8>>, DownloadError>;
+    maybe_auth: Option<String>,
+    maybe_etag: Option<String>,
+  ) -> Result<NpmCacheHttpClientResponse, DownloadError>;
 }
 
 /// Indicates how cached source files should be handled.
@@ -134,6 +144,7 @@ pub struct NpmCache<
     + FsHardLink
     + FsMetadata
     + FsOpen
+    + FsRead
     + FsReadDir
     + FsRemoveFile
     + FsRename
@@ -152,6 +163,7 @@ impl<
       + FsHardLink
       + FsMetadata
       + FsOpen
+      + FsRead
       + FsReadDir
       + FsRemoveFile
       + FsRename
@@ -296,24 +308,27 @@ impl<
       })
   }
 
-  pub fn load_package_info(
+  pub async fn load_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, serde_json::Error> {
+  ) -> Result<Option<SerializedCachedPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
-    let file_text = match std::fs::read_to_string(file_cache_path) {
+    let file_bytes = match self.sys.fs_read(&file_cache_path) {
       Ok(file_text) => file_text,
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(serde_json::Error::io(err)),
     };
-    serde_json::from_str(&file_text)
+
+    deno_unsync::spawn_blocking(move || serde_json::from_slice(&file_bytes))
+      .await
+      .unwrap()
   }
 
   pub fn save_package_info(
     &self,
     name: &str,
-    package_info: &NpmPackageInfo,
+    package_info: &SerializedCachedPackageInfo,
   ) -> Result<(), JsErrorBox> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text =

@@ -15,10 +15,13 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
+use serde::Deserialize;
+use serde::Serialize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
@@ -26,13 +29,27 @@ use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use url::Url;
 
-use crate::remote::maybe_auth_header_for_npm_registry;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
+use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerializedCachedPackageInfo {
+  #[serde(flatten)]
+  pub info: NpmPackageInfo,
+  /// Custom property that includes the etag.
+  #[serde(
+    default,
+    skip_serializing_if = "Option::is_none",
+    rename = "_deno.etag"
+  )]
+  pub etag: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -122,6 +139,7 @@ pub struct LoadPackageInfoError {
 #[class(inherit)]
 #[error("{0}")]
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
+
 // todo(#27198): refactor to store this only in the http cache
 
 /// Downloads packuments from the npm registry.
@@ -134,6 +152,7 @@ pub struct RegistryInfoProvider<
     + FsHardLink
     + FsMetadata
     + FsOpen
+    + FsRead
     + FsReadDir
     + FsRemoveFile
     + FsRename
@@ -158,6 +177,7 @@ impl<
       + FsHardLink
       + FsMetadata
       + FsOpen
+      + FsRead
       + FsReadDir
       + FsRemoveFile
       + FsRename
@@ -312,9 +332,9 @@ impl<
     let downloader = self.clone();
     let package_url = get_package_url(&self.npmrc, name);
     let registry_config = self.npmrc.get_registry_config(name);
-    let maybe_auth_header =
-      match maybe_auth_header_for_npm_registry(registry_config) {
-        Ok(maybe_auth_header) => maybe_auth_header,
+    let maybe_auth_header_value =
+      match maybe_auth_header_value_for_npm_registry(registry_config) {
+        Ok(maybe_auth_header_value) => maybe_auth_header_value,
         Err(err) => {
           return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
             .boxed_local()
@@ -322,17 +342,19 @@ impl<
       };
     let name = name.to_string();
     async move {
-      if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
-        // if this has been previously reloaded, then try loading from the
-        // file system cache
+      let maybe_file_cached = if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
+        // if this has been previously reloaded, then try loading from the file system cache
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(info) = downloader.cache.load_package_info(&name).map_err(JsErrorBox::from_err)? {
-          let result = Arc::new(info);
-          return Ok(FutureResult::SavedFsCache(result));
+        if let Some(cached_info) = downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? {
+          return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+        } else {
+          None
         }
-      }
+      } else {
+        downloader.cache.load_package_info(&name).await.ok().flatten()
+      };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
         return Err(JsErrorBox::new(
@@ -345,21 +367,33 @@ impl<
 
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
-      let maybe_bytes = downloader
+      let (maybe_etag, maybe_cached_info) = match maybe_file_cached {
+        Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
+        None => (None, None)
+      };
+
+      let response = downloader
         .http_client
         .download_with_retries_on_any_tokio_runtime(
           package_url,
-          maybe_auth_header,
+          maybe_auth_header_value,
+          maybe_etag,
         )
         .await.map_err(JsErrorBox::from_err)?;
-      match maybe_bytes {
-        Some(bytes) => {
+      match response {
+        NpmCacheHttpClientResponse::NotModified => {
+          log::debug!("Respected etag for packument '{0}'", name); // used in the tests
+          Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())))
+        },
+        NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
+        NpmCacheHttpClientResponse::Bytes(response) => {
           let future_result = deno_unsync::spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
-              let package_info = serde_json::from_slice(&bytes).map_err(JsErrorBox::from_err)?;
+              let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
+              package_info.etag = response.etag;
               match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
-                  Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
+                  Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
                 }
                 Err(err) => {
                   log::debug!(
@@ -367,7 +401,7 @@ impl<
                     name,
                     err
                   );
-                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
+                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
                 }
               }
             },
@@ -375,8 +409,7 @@ impl<
           .await
           .map_err(JsErrorBox::from_err)??;
           Ok(future_result)
-        }
-        None => Ok(FutureResult::PackageNotExists),
+        },
       }
     }
     .map(|r| r.map_err(Arc::new))
@@ -390,6 +423,7 @@ pub struct NpmRegistryApiAdapter<
     + FsHardLink
     + FsMetadata
     + FsOpen
+    + FsRead
     + FsReadDir
     + FsRemoveFile
     + FsRename
@@ -407,6 +441,7 @@ impl<
       + FsHardLink
       + FsMetadata
       + FsOpen
+      + FsRead
       + FsReadDir
       + FsRemoveFile
       + FsRename

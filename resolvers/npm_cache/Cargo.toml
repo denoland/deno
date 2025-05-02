@@ -26,12 +26,12 @@ deno_unsync = { workspace = true, features = ["tokio"] }
 faster-hex.workspace = true
 flate2 = { workspace = true, features = ["zlib-ng-compat"] }
 futures.workspace = true
-http.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
 rand.workspace = true
 ring.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 tar.workspace = true
