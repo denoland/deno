@@ -995,12 +995,6 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
-
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
@@ -1023,6 +1017,12 @@ internals.__bootstrapNodeProcess = function (
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
 
     delete internals.__bootstrapNodeProcess;
   } else {
