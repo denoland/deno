@@ -136,9 +136,44 @@ pub enum DownloadErrorKind {
   #[class("Http")]
   #[error("Not Found.")]
   NotFound,
+  #[class("Http")]
+  #[error("Received unhandled Not Modified response.")]
+  UnhandledNotModified,
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
+}
+
+#[derive(Debug)]
+pub enum HttpClientResponse {
+  Success {
+    headers: HeaderMap<HeaderValue>,
+    body: Vec<u8>,
+  },
+  NotFound,
+  NotModified,
+}
+
+impl HttpClientResponse {
+  pub fn into_bytes(self) -> Result<Vec<u8>, DownloadError> {
+    match self {
+      Self::Success { body, .. } => Ok(body),
+      Self::NotFound => Err(DownloadErrorKind::NotFound.into_box()),
+      Self::NotModified => {
+        Err(DownloadErrorKind::UnhandledNotModified.into_box())
+      }
+    }
+  }
+
+  pub fn into_maybe_bytes(self) -> Result<Option<Vec<u8>>, DownloadError> {
+    match self {
+      Self::Success { body, .. } => Ok(Some(body)),
+      Self::NotFound => Ok(None),
+      Self::NotModified => {
+        Err(DownloadErrorKind::UnhandledNotModified.into_box())
+      }
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -226,27 +261,18 @@ impl HttpClient {
   }
 
   pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
-    let maybe_bytes = self.download_inner(url, None, None).await?;
-    match maybe_bytes {
-      Some(bytes) => Ok(bytes),
-      None => Err(DownloadErrorKind::NotFound.into_box()),
-    }
+    let response = self.download_inner(url, &Default::default(), None).await?;
+    response.into_bytes()
   }
 
   pub async fn download_with_progress_and_retries(
     &self,
     url: Url,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
+    headers: &HeaderMap,
     progress_guard: &UpdateGuard,
-  ) -> Result<Option<Vec<u8>>, DownloadError> {
+  ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || {
-        self.download_inner(
-          url.clone(),
-          maybe_header.clone(),
-          Some(progress_guard),
-        )
-      },
+      || self.download_inner(url.clone(), headers, Some(progress_guard)),
       |e| {
         matches!(
           e.as_kind(),
@@ -260,22 +286,24 @@ impl HttpClient {
   pub async fn get_redirected_url(
     &self,
     url: Url,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
+    headers: &HeaderMap<HeaderValue>,
   ) -> Result<Url, AnyError> {
-    let (_, url) = self.get_redirected_response(url, maybe_header).await?;
+    let (_, url) = self.get_redirected_response(url, headers).await?;
     Ok(url)
   }
 
   async fn download_inner(
     &self,
     url: Url,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
+    headers: &HeaderMap<HeaderValue>,
     progress_guard: Option<&UpdateGuard>,
-  ) -> Result<Option<Vec<u8>>, DownloadError> {
-    let (response, _) = self.get_redirected_response(url, maybe_header).await?;
+  ) -> Result<HttpClientResponse, DownloadError> {
+    let (response, _) = self.get_redirected_response(url, headers).await?;
 
     if response.status() == 404 {
-      return Ok(None);
+      return Ok(HttpClientResponse::NotFound);
+    } else if response.status() == 304 {
+      return Ok(HttpClientResponse::NotModified);
     } else if !response.status().is_success() {
       let status = response.status();
       let maybe_response_text = body_to_string(response).await.ok();
@@ -292,19 +320,17 @@ impl HttpClient {
 
     get_response_body_with_progress(response, progress_guard)
       .await
-      .map(|(_, body)| Some(body))
+      .map(|(headers, body)| HttpClientResponse::Success { headers, body })
       .map_err(|err| DownloadErrorKind::Other(err).into_box())
   }
 
   async fn get_redirected_response(
     &self,
     mut url: Url,
-    mut maybe_header: Option<(HeaderName, HeaderValue)>,
+    headers: &HeaderMap<HeaderValue>,
   ) -> Result<(http::Response<deno_fetch::ResBody>, Url), DownloadError> {
     let mut req = self.get(url.clone())?.build();
-    if let Some((header_name, header_value)) = maybe_header.as_ref() {
-      req.headers_mut().append(header_name, header_value.clone());
-    }
+    *req.headers_mut() = headers.clone();
     let mut response = self
       .client
       .clone()
@@ -312,18 +338,17 @@ impl HttpClient {
       .await
       .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
-    if status.is_redirection() {
+    if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
         let mut req = self.get(new_url.clone())?.build();
 
-        if new_url.origin() == url.origin() {
-          if let Some((header_name, header_value)) = maybe_header.as_ref() {
-            req.headers_mut().append(header_name, header_value.clone());
-          }
-        } else {
-          maybe_header = None;
+        let mut headers = headers.clone();
+        // SECURITY: Do NOT forward auth headers to a new origin
+        if new_url.origin() != url.origin() {
+          headers.remove(http::header::AUTHORIZATION);
         }
+        *req.headers_mut() = headers;
 
         let new_response = self
           .client

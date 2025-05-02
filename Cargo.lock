@@ -2355,9 +2355,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.33.1"
+version = "0.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "823d70f758afa8ba0f80ee212a79f35dee1b6f19a6d81cebb02c2c5cee3f1f15"
+checksum = "5217eb9aaebd02e92baeea7b474ca3f663b611204ccbfba11f8d296be08abe69"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2390,12 +2390,12 @@ dependencies = [
  "faster-hex",
  "flate2",
  "futures",
- "http 1.1.0",
  "log",
  "parking_lot",
  "percent-encoding",
  "rand",
  "ring",
+ "serde",
  "serde_json",
  "sys_traits",
  "tar",
@@ -7403,9 +7403,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.122"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "784b6203951c57ff748476b126ccb5e8e2959a5c19e5c617ab1956be3dbc68da"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
  "indexmap 2.8.0",
  "itoa",
