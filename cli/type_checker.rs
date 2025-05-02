@@ -591,7 +591,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
           return !ambient_modules_regex.is_match(message_text);
         }
       }
-      return true;
+      true
     });
     diagnostics.extend(response_diagnostics);
 

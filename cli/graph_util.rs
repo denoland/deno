@@ -194,10 +194,9 @@ pub fn graph_walk_errors<'a>(
       ModuleGraphError::TypesResolutionError(err) => {
         should_ignore_resolution_error_for_types(err)
       }
-      ModuleGraphError::ModuleError(module_error) => match module_error {
-        ModuleError::Missing { .. } => true,
-        _ => false,
-      },
+      ModuleGraphError::ModuleError(module_error) => {
+        matches!(module_error, ModuleError::Missing { .. })
+      }
     }
   }
 
@@ -216,7 +215,7 @@ pub fn graph_walk_errors<'a>(
       return true;
     }
 
-    if should_ignore_module_graph_error_for_types(&error) {
+    if should_ignore_module_graph_error_for_types(error) {
       return true;
     }
 
