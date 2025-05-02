@@ -60,7 +60,7 @@ deno_cache_dir = "=0.20.0"
 deno_config = { version = "=0.54.2", features = ["workspace"] }
 deno_doc = "=0.172.0"
 deno_error = "=0.5.6"
-deno_graph = "=0.90.0"
+deno_graph = { version = "=0.90.0", default-features = false }
 deno_lint = "=0.74.0"
 deno_lockfile = "=0.28.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }

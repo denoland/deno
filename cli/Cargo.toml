@@ -75,7 +75,7 @@ deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph.workspace = true
+deno_graph = { workspace = true, features = ["fast_check"] }
 deno_lib.workspace = true
 deno_lint.workspace = true
 deno_lockfile.workspace = true
