@@ -1,0 +1,13 @@
+Check file:///[WILDLINE]/ambient_modules/foo.ts
+TS2307 [ERROR]: Cannot find module 'file:///logo.svg'.
+    at file:///[WILDLINE]/ambient_modules/foo.ts:[WILDLINE]
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/ambient_modules/global.css'.
+    at file:///[WILDLINE]/ambient_modules/foo.ts:[WILDLINE]
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/ambient_modules/styles.module.css'.
+    at file:///[WILDLINE]/ambient_modules/foo.ts:[WILDLINE]
+
+Found 3 errors.
+
+error: Type checking failed.
