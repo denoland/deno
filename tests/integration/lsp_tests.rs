@@ -11208,6 +11208,24 @@ fn lsp_root_with_global_reference_types() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_file_casing_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("other.ts", "");
+  temp_dir.write("Other.ts", "");
+  let file = temp_dir.source_file("file.ts", "import \"./Other.ts\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // There shouldn't be a TS1149 diagnostic.
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_refresh_dependents() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

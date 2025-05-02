@@ -317,6 +317,12 @@ const CACHE_URL_PREFIX = "cache:///";
 /** Diagnostics that are intentionally ignored when compiling TypeScript in
  * Deno, as they provide misleading or incorrect information. */
 const IGNORED_DIAGNOSTICS = [
+  // TS1149: File name '...' differs from already included file name '...' only
+  // in casing.
+  1149,
+  // TS1261: File name '...' differs from already included file name '...' only
+  // in casing.
+  1261,
   // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
   // We specify the resolution mode to be CommonJS for some npm files and this
   // diagnostic gets generated even though we're using custom module resolution.
