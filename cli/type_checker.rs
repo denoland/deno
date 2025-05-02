@@ -566,6 +566,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     log::debug!("{}", response.stats);
+    log::debug!("Ambient Modules: {:?}", response.ambient_modules);
 
     Ok(diagnostics)
   }

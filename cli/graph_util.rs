@@ -108,6 +108,7 @@ pub fn graph_valid(
       allow_unknown_media_types: options.allow_unknown_media_types,
     },
   );
+
   if let Some(error) = errors.next() {
     Err(error)
   } else {
@@ -216,6 +217,10 @@ pub fn graph_walk_errors<'a>(
       return true;
     }
 
+    if should_ignore_module_graph_error_for_types(&error) {
+      return true;
+    }
+
     // surface these as typescript diagnostics instead
     graph_kind.include_types()
       && has_module_graph_error_for_tsc_diagnostic(sys, error)
@@ -259,25 +264,6 @@ pub fn graph_walk_errors<'a>(
           EnhanceGraphErrorMode::ShowRange
         },
       );
-
-      if graph.graph_kind() == GraphKind::TypesOnly
-        && matches!(
-          error,
-          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
-        )
-      {
-        log::debug!("Ignoring: {}", message);
-        return None;
-      }
-
-      if graph.graph_kind().include_types()
-        && (message.contains(RUN_WITH_SLOPPY_IMPORTS_MSG)
-          || should_ignore_module_graph_error_for_types(&error))
-      {
-        // ignore and let typescript surface this as a diagnostic instead
-        log::debug!("Ignoring: {}", message);
-        return None;
-      }
 
       Some(JsErrorBox::new(error.get_class(), message))
     })
