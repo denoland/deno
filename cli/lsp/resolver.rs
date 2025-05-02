@@ -22,6 +22,9 @@ use deno_npm::NpmSystemInfo;
 use deno_npm_cache::TarballCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::graph::to_node_resolution_kind;
+use deno_resolver::graph::to_node_resolution_mode;
+use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
@@ -55,8 +58,6 @@ use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::factory::Deferred;
-use crate::graph_util::to_node_resolution_kind;
-use crate::graph_util::to_node_resolution_mode;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -77,11 +78,11 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmResolutionInitializer;
 use crate::npm::WorkspaceNpmPatchPackages;
+use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::FoundPackageJsonDepFlag;
 use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -952,6 +953,7 @@ impl<'a> ResolverFactory<'a> {
       Arc::new(CliResolver::new(
         deno_resolver,
         self.services.found_pkg_json_dep_flag.clone(),
+        Box::new(on_resolve_diagnostic),
       ))
     })
   }

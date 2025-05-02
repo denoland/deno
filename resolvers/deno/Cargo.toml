@@ -14,6 +14,7 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
+graph = ["deno_graph"]
 sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
 
 [dependencies]
@@ -26,12 +27,14 @@ dashmap = { workspace = true, optional = true }
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
+deno_graph = { workspace = true, optional = true }
 deno_media_type.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_terminal.workspace = true
+deno_unsync.workspace = true
 futures.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
