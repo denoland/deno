@@ -6,7 +6,28 @@ import { $, GitLogOutput, semver } from "./deps.ts";
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
+const denoRtCrate = workspace.getDenoRtCrate();
+const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
+
+if (Deno.args.some((a) => a === "--rc")) {
+  const cliVersion = semver.parse(cliCrate.version)!;
+
+  if (cliVersion.prerelease[0] != "rc") {
+    cliVersion.increment("minor");
+  }
+  cliVersion.increment("pre", "rc");
+
+  const version = cliVersion.toString();
+
+  await cliCrate.setVersion(version);
+  await denoRtCrate.setVersion(version);
+  await denoLibCrate.setVersion(version);
+  // Force lockfile update
+  await workspace.getCliCrate().cargoUpdate("--workspace");
+
+  Deno.exit(0);
+}
 
 await bumpCiCacheVersion();
 
@@ -20,6 +41,9 @@ if (Deno.args.some((a) => a === "--patch")) {
 } else {
   await cliCrate.promptAndIncrement();
 }
+
+await denoRtCrate.setVersion(cliCrate.version);
+await denoLibCrate.setVersion(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {

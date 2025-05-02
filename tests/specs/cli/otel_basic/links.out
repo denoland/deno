@@ -1,0 +1,103 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [
+        {
+          "traceId": "1234567890abcdef1234567890abcdef",
+          "spanId": "1234567890abcdef",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 0,
+          "flags": 1
+        }
+      ],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000002",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [
+        {
+          "traceId": "1234567890abcdef1234567890abcdef",
+          "spanId": "1234567890abcdef",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 0,
+          "flags": 1
+        }
+      ],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000003",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [
+        {
+          "traceId": "1234567890abcdef1234567890abcdef",
+          "spanId": "1234567890abcdef",
+          "traceState": "",
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 1,
+          "flags": 1
+        }
+      ],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

@@ -1,8 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
 
@@ -43,7 +45,14 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
+
+  if serve_flags.open_site {
+    let url = resolve_serve_url(serve_flags.host, serve_flags.port);
+    let _ = open::that_detached(url);
+  }
+
   let hmr = serve_flags
     .watch
     .map(|watch_flags| watch_flags.hmr)
@@ -58,7 +67,7 @@ pub async fn serve(
 }
 
 async fn do_serve(
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   worker_count: Option<usize>,
   hmr: bool,
@@ -116,7 +125,7 @@ async fn do_serve(
 
 async fn run_worker(
   worker_count: usize,
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
@@ -164,7 +173,8 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let worker_factory = factory.create_cli_main_worker_factory().await?;
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         do_serve(worker_factory, main_module.clone(), worker_count, hmr)
           .await?;
@@ -173,6 +183,44 @@ async fn serve_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
   Ok(0)
+}
+
+fn resolve_serve_url(host: String, port: u16) -> String {
+  let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
+    "127.0.0.1".to_string()
+  } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
+    format!("[{}]", host)
+  } else {
+    host
+  };
+  if port == 80 {
+    format!("http://{host}/")
+  } else {
+    format!("http://{host}:{port}/")
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_resolve_serve_url() {
+    assert_eq!(
+      resolve_serve_url("localhost".to_string(), 80),
+      "http://localhost/"
+    );
+    assert_eq!(
+      resolve_serve_url("0.0.0.0".to_string(), 80),
+      "http://127.0.0.1/"
+    );
+    assert_eq!(resolve_serve_url("::".to_string(), 80), "http://127.0.0.1/");
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 90),
+      "http://127.0.0.1:90/"
+    );
+  }
 }

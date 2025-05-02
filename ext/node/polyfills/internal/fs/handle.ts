@@ -5,7 +5,8 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { Mode, promises, read, write } from "node:fs";
+import { Mode, promises, read, ReadStream, write, WriteStream } from "node:fs";
+import { core } from "ext:core/mod.js";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
@@ -14,7 +15,14 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { core } from "ext:core/mod.js";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
+import {
+  CreateReadStreamOptions,
+  CreateWriteStreamOptions,
+} from "node:fs/promises";
 
 interface WriteResult {
   bytesWritten: number;
@@ -64,7 +72,7 @@ export class FileHandle extends EventEmitter {
           position,
           (err, bytesRead, buffer) => {
             if (err) reject(err);
-            else resolve({ buffer: buffer, bytesRead: bytesRead });
+            else resolve({ buffer, bytesRead });
           },
         );
       });
@@ -72,7 +80,7 @@ export class FileHandle extends EventEmitter {
       return new Promise((resolve, reject) => {
         read(this.fd, bufferOrOpt, (err, bytesRead, buffer) => {
           if (err) reject(err);
-          else resolve({ buffer: buffer, bytesRead: bytesRead });
+          else resolve({ buffer, bytesRead });
         });
       });
     }
@@ -137,6 +145,10 @@ export class FileHandle extends EventEmitter {
     return fsCall(promises.writeFile, this, data, options);
   }
 
+  writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
+    return fsCall(writevPromise, this, buffers, position);
+  }
+
   close(): Promise<void> {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
@@ -151,6 +163,35 @@ export class FileHandle extends EventEmitter {
   chmod(mode: Mode): Promise<void> {
     assertNotClosed(this, promises.chmod.name);
     return promises.chmod(this.#path, mode);
+  }
+
+  datasync(): Promise<void> {
+    return fsCall(fdatasyncPromise, this);
+  }
+
+  sync(): Promise<void> {
+    return fsCall(fsyncPromise, this);
+  }
+
+  utimes(
+    atime: number | string | Date,
+    mtime: number | string | Date,
+  ): Promise<void> {
+    assertNotClosed(this, promises.utimes.name);
+    return promises.utimes(this.#path, atime, mtime);
+  }
+
+  chown(uid: number, gid: number): Promise<void> {
+    assertNotClosed(this, promises.chown.name);
+    return promises.chown(this.#path, uid, gid);
+  }
+
+  createReadStream(options?: CreateReadStreamOptions): ReadStream {
+    return new ReadStream(undefined, { ...options, fd: this.fd });
+  }
+
+  createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
+    return new WriteStream(undefined, { ...options, fd: this.fd });
   }
 }
 

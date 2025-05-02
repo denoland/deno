@@ -1,13 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
-use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::deno_json::CompilerOptionTypesDeserializeError;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
+use deno_config::workspace::JsxImportSourceConfig;
+use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -18,6 +23,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
+use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
@@ -29,22 +35,21 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
-use import_map::ImportMapError;
-use node_resolver::InNpmPackageChecker;
+use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 pub use crate::args::NpmCachingStrategy;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -52,25 +57,28 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
-use crate::tools::check;
-use crate::tools::check::CheckError;
-use crate::tools::check::TypeChecker;
+use crate::type_checker::CheckError;
+use crate::type_checker::CheckOptions;
+use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone)]
-pub struct GraphValidOptions {
-  pub check_js: bool,
+pub struct GraphValidOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
   /// Whether to exit the process for integrity check errors such as
   /// lockfile checksum mismatches and JSR integrity failures.
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
+  pub allow_unknown_media_types: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -97,6 +105,7 @@ pub fn graph_valid(
     GraphWalkErrorsOptions {
       check_js: options.check_js,
       kind: options.kind,
+      allow_unknown_media_types: options.allow_unknown_media_types,
     },
   );
   if let Some(error) = errors.next() {
@@ -133,9 +142,10 @@ pub fn fill_graph_from_lockfile(
 }
 
 #[derive(Clone)]
-pub struct GraphWalkErrorsOptions {
-  pub check_js: bool,
+pub struct GraphWalkErrorsOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub allow_unknown_media_types: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -144,7 +154,7 @@ pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
-  options: GraphWalkErrorsOptions,
+  options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
   fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
     match err {
@@ -191,6 +201,26 @@ pub fn graph_walk_errors<'a>(
     }
   }
 
+  fn should_ignore_error(
+    sys: &CliSys,
+    graph_kind: GraphKind,
+    allow_unknown_media_types: bool,
+    error: &ModuleGraphError,
+  ) -> bool {
+    if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
+      && matches!(
+        error,
+        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+      )
+    {
+      return true;
+    }
+
+    // surface these as typescript diagnostics instead
+    graph_kind.include_types()
+      && has_module_graph_error_for_tsc_diagnostic(sys, error)
+  }
+
   graph
     .walk(
       roots.iter(),
@@ -202,7 +232,17 @@ pub fn graph_walk_errors<'a>(
       },
     )
     .errors()
-    .flat_map(|error| {
+    .flat_map(move |error| {
+      if should_ignore_error(
+        sys,
+        graph.graph_kind(),
+        options.allow_unknown_media_types,
+        &error,
+      ) {
+        log::debug!("Ignoring: {}", error);
+        return None;
+      }
+
       let is_root = match &error {
         ModuleGraphError::ResolutionError(_)
         | ModuleGraphError::TypesResolutionError(_) => false,
@@ -241,6 +281,90 @@ pub fn graph_walk_errors<'a>(
 
       Some(JsErrorBox::new(error.get_class(), message))
     })
+}
+
+fn has_module_graph_error_for_tsc_diagnostic(
+  sys: &CliSys,
+  error: &ModuleGraphError,
+) -> bool {
+  match error {
+    ModuleGraphError::ModuleError(error) => {
+      module_error_for_tsc_diagnostic(sys, error).is_some()
+    }
+    ModuleGraphError::ResolutionError(error) => {
+      resolution_error_for_tsc_diagnostic(error).is_some()
+    }
+    ModuleGraphError::TypesResolutionError(error) => {
+      resolution_error_for_tsc_diagnostic(error).is_some()
+    }
+  }
+}
+
+pub struct ModuleNotFoundGraphErrorRef<'a> {
+  pub specifier: &'a ModuleSpecifier,
+  pub maybe_range: Option<&'a deno_graph::Range>,
+}
+
+pub fn module_error_for_tsc_diagnostic<'a>(
+  sys: &CliSys,
+  error: &'a ModuleError,
+) -> Option<ModuleNotFoundGraphErrorRef<'a>> {
+  match error {
+    ModuleError::Missing(specifier, maybe_range) => {
+      Some(ModuleNotFoundGraphErrorRef {
+        specifier,
+        maybe_range: maybe_range.as_ref(),
+      })
+    }
+    ModuleError::LoadingErr(
+      specifier,
+      maybe_range,
+      ModuleLoadError::Loader(_),
+    ) => {
+      if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
+        if sys.fs_is_dir_no_err(path) {
+          return Some(ModuleNotFoundGraphErrorRef {
+            specifier,
+            maybe_range: maybe_range.as_ref(),
+          });
+        }
+      }
+      None
+    }
+    _ => None,
+  }
+}
+
+pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
+  pub specifier: &'a str,
+  pub maybe_range: Option<&'a deno_graph::Range>,
+}
+
+pub fn resolution_error_for_tsc_diagnostic(
+  error: &ResolutionError,
+) -> Option<ModuleNotFoundNodeResolutionErrorRef> {
+  match error {
+    ResolutionError::ResolverError {
+      error,
+      specifier,
+      range,
+    } => match error.as_ref() {
+      ResolveError::Other(error) => {
+        // would be nice if there were an easier way of doing this
+        let text = error.to_string();
+        if text.contains("[ERR_MODULE_NOT_FOUND]") {
+          Some(ModuleNotFoundNodeResolutionErrorRef {
+            specifier,
+            maybe_range: Some(range),
+          })
+        } else {
+          None
+        }
+      }
+      _ => None,
+    },
+    _ => None,
+  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -306,7 +430,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
 }
@@ -314,13 +438,13 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      npm_resolver,
+      npm_installer,
       module_graph_builder,
       type_checker,
     }
@@ -368,7 +492,7 @@ impl ModuleGraphCreator {
         specifier: &deno_ast::ModuleSpecifier,
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
-        if specifier.scheme() == "bun" {
+        if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
           return Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
@@ -443,9 +567,9 @@ impl ModuleGraphCreator {
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_installer) = &self.npm_installer {
       if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
 
@@ -491,10 +615,9 @@ impl ModuleGraphCreator {
       .type_checker
       .check(
         graph,
-        check::CheckOptions {
+        CheckOptions {
           build_fast_check_graph: true,
           lib: self.options.ts_type_lib_window(),
-          log_ignored_options: true,
           reload: self.options.reload_flag(),
           type_check_mode: self.options.type_check_mode(),
         },
@@ -513,12 +636,13 @@ pub struct BuildFastCheckGraphOptions<'a> {
 pub enum BuildGraphWithNpmResolutionError {
   #[class(inherit)]
   #[error(transparent)]
+  CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
+  #[class(inherit)]
+  #[error(transparent)]
   SerdeJson(#[from] serde_json::Error),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
-  ),
+  ToMaybeJsxImportSourceConfig(#[from] ToMaybeJsxImportSourceConfigError),
   #[class(inherit)]
   #[error(transparent)]
   NodeModulesDirParse(#[from] deno_json::NodeModulesDirParseError),
@@ -532,38 +656,44 @@ pub enum BuildGraphWithNpmResolutionError {
 
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_graph_resolver: Arc<CliNpmGraphResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<cache::Caches>,
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     cli_options: Arc<CliOptions>,
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_graph_resolver: Arc<CliNpmGraphResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -575,25 +705,28 @@ impl ModuleGraphBuilder {
       lockfile,
       maybe_file_watcher_reporter,
       module_info_cache,
+      npm_graph_resolver,
+      npm_installer,
       npm_resolver,
       parsed_source_cache,
       resolver,
       root_permissions_container,
       sys,
+      tsconfig_resolver,
     }
   }
 
-  pub async fn build_graph_with_npm_resolution<'a>(
+  pub async fn build_graph_with_npm_resolution(
     &self,
     graph: &mut ModuleGraph,
-    options: CreateGraphOptions<'a>,
+    options: CreateGraphOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
       Owned(cache::FetchCacher),
     }
 
-    impl<'a> MutLoaderRef<'a> {
+    impl MutLoaderRef<'_> {
       pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
         match self {
           Self::Borrowed(loader) => *loader,
@@ -604,7 +737,7 @@ impl ModuleGraphBuilder {
 
     struct LockfileLocker<'a>(&'a CliLockfile);
 
-    impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
+    impl deno_graph::source::Locker for LockfileLocker<'_> {
       fn get_remote_checksum(
         &self,
         specifier: &deno_ast::ModuleSpecifier,
@@ -664,7 +797,16 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = if options.graph_kind.include_types() {
-      self.cli_options.to_compiler_option_types()?
+      // Resolve all the imports from every deno.json. We'll separate
+      // them later based on the folder we're type checking.
+      let mut imports = Vec::new();
+      for deno_json in self.cli_options.workspace().deno_jsons() {
+        let maybe_imports = deno_json.to_compiler_option_types()?;
+        imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
+          deno_graph::ReferrerImports { referrer, imports }
+        }));
+      }
+      imports
     } else {
       Vec::new()
     };
@@ -673,10 +815,7 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver =
-      cli_resolver.create_graph_npm_resolver(options.npm_caching);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -692,12 +831,14 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           imports: maybe_imports,
+          skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
+            && graph.graph_kind() == GraphKind::CodeOnly,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
           file_system: &self.sys,
           jsr_url_provider: &CliJsrUrlProvider,
-          npm_resolver: Some(&graph_npm_resolver),
+          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
@@ -720,17 +861,16 @@ impl ModuleGraphBuilder {
     // opted into using a node_modules directory
     if self
       .cli_options
-      .node_modules_dir()?
-      .map(|m| m.uses_node_modules_dir())
+      .specified_node_modules_dir()?
+      .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
     {
-      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        let already_done =
-          npm_resolver.ensure_top_level_package_json_install().await?;
+      if let Some(npm_installer) = &self.npm_installer {
+        let already_done = npm_installer
+          .ensure_top_level_package_json_install()
+          .await?;
         if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
-          npm_resolver
-            .cache_packages(crate::npm::PackageCaching::All)
-            .await?;
+          npm_installer.cache_packages(PackageCaching::All).await?;
         }
       }
     }
@@ -749,8 +889,7 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
-    if roots.iter().any(|r| r.scheme() == "npm")
-      && self.npm_resolver.as_byonm().is_some()
+    if roots.iter().any(|r| r.scheme() == "npm") && self.npm_resolver.is_byonm()
     {
       return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
     }
@@ -803,7 +942,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: BuildFastCheckGraphOptions,
-  ) -> Result<(), deno_json::ToMaybeJsxImportSourceConfigError> {
+  ) -> Result<(), ToMaybeJsxImportSourceConfigError> {
     if !graph.graph_kind().include_types() {
       return Ok(());
     }
@@ -818,11 +957,7 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
-      self.cli_options.default_npm_caching_strategy(),
-    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -831,7 +966,6 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: options.workspace_fast_check,
       },
     );
@@ -871,6 +1005,7 @@ impl ModuleGraphBuilder {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
+      false,
     )
   }
 
@@ -878,6 +1013,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
+    allow_unknown_media_types: bool,
   ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
@@ -889,24 +1025,33 @@ impl ModuleGraphBuilder {
         } else {
           GraphKind::CodeOnly
         },
-        check_js: self.cli_options.check_js(),
+        check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
+        allow_unknown_media_types,
       },
     )
   }
 
   fn create_graph_resolver(
     &self,
-  ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
-  {
-    let jsx_import_source_config = self
+  ) -> Result<CliGraphResolver, ToMaybeJsxImportSourceConfigError> {
+    let jsx_import_source_config_unscoped = self
       .cli_options
-      .workspace()
+      .start_dir
       .to_maybe_jsx_import_source_config()?;
+    let mut jsx_import_source_config_by_scope = BTreeMap::default();
+    for (dir_url, _) in self.cli_options.workspace().config_folders() {
+      let dir = self.cli_options.workspace().resolve_member_dir(dir_url);
+      let jsx_import_source_config_unscoped =
+        dir.to_maybe_jsx_import_source_config()?;
+      jsx_import_source_config_by_scope
+        .insert(dir_url.clone(), jsx_import_source_config_unscoped);
+    }
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
       resolver: &self.resolver,
-      jsx_import_source_config,
+      jsx_import_source_config_unscoped,
+      jsx_import_source_config_by_scope,
     })
   }
 }
@@ -918,11 +1063,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let maybe_hint = if let Some(specifier) =
     get_resolution_error_bare_node_specifier(error)
   {
-    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
-    } else {
-      None
-    }
+    Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
@@ -964,11 +1105,14 @@ pub fn maybe_additional_sloppy_imports_message(
   sys: &CliSys,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
+  let (resolved, sloppy_reason) = sloppy_imports_resolve(
+    specifier,
+    deno_resolver::workspace::ResolutionKind::Execution,
+    sys.clone(),
+  )?;
   Some(format!(
     "{} {}",
-    CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
-      .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-      .as_suggestion_message(),
+    sloppy_reason.suggestion_message_for_specifier(&resolved),
     RUN_WITH_SLOPPY_IMPORTS_MSG
   ))
 }
@@ -1066,14 +1210,11 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(
+    if let ResolveError::ImportMap(error) = (*error).as_ref() {
+      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
         specifier,
         _,
-      )) = error
-        .as_any()
-        .downcast_ref::<ImportMapError>()
-        .map(|e| &**e)
+      ) = error.as_kind()
       {
         Some(specifier.as_str())
       } else {
@@ -1088,6 +1229,13 @@ fn get_resolution_error_bare_specifier(
 }
 
 fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  // not exact, but ok because this is just a hint
+  let media_type =
+    MediaType::from_specifier_and_headers(&error.range().specifier, None);
+  if media_type == MediaType::Wasm {
+    return None;
+  }
+
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },
@@ -1145,7 +1293,7 @@ pub fn has_graph_root_local_dependent_changed(
       follow_dynamic: true,
       kind: GraphKind::All,
       prefer_fast_check_graph: true,
-      check_js: true,
+      check_js: CheckJsOption::True,
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
@@ -1270,30 +1418,49 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
 
 #[derive(Debug)]
 struct CliGraphResolver<'a> {
-  cjs_tracker: &'a CjsTracker,
+  cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
-  jsx_import_source_config: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_unscoped: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_by_scope:
+    BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
 }
 
-impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+impl CliGraphResolver<'_> {
+  fn resolve_jsx_import_source_config(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<&JsxImportSourceConfig> {
     self
-      .jsx_import_source_config
-      .as_ref()
-      .and_then(|c| c.default_specifier.clone())
+      .jsx_import_source_config_by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
+  }
+}
+
+impl deno_graph::source::Resolver for CliGraphResolver<'_> {
+  fn default_jsx_import_source(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
+    self
+      .resolve_jsx_import_source_config(referrer)
+      .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
-      .jsx_import_source_config
-      .as_ref()
-      .and_then(|c| c.default_types_specifier.clone())
+      .resolve_jsx_import_source_config(referrer)
+      .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .resolve_jsx_import_source_config(referrer)
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }
@@ -1366,7 +1533,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(JsErrorBox::from_err(err))),
+        error: Arc::new(ResolveError::ImportMap(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,

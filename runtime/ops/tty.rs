@@ -50,13 +50,12 @@ impl TtyModeStore {
   }
 }
 
+#[cfg(unix)]
+use deno_process::JsNixError;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
-
-#[cfg(unix)]
-use crate::ops::process::JsNixError;
 
 deno_core::extension!(
   deno_tty,
@@ -64,6 +63,8 @@ deno_core::extension!(
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
+    #[cfg(not(unix))]
+    let _ = state;
   },
 );
 

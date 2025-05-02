@@ -5,7 +5,7 @@
 // deno-lint-ignore-file
 
 import assert from "node:assert";
-import test from "node:test";
+import test, { describe, it, suite } from "node:test";
 import util from "node:util";
 import { setImmediate } from "node:timers";
 
@@ -13,7 +13,7 @@ test("sync pass todo", (t) => {
   t.todo();
 });
 
-test("sync pass todo with message", (t) => {
+test.test("sync pass todo with message", (t) => {
   t.todo("this is a passing todo");
 });
 
@@ -77,6 +77,80 @@ test("resolve pass", () => {
 
 test("reject fail", () => {
   return Promise.reject(new Error("rejected from reject fail"));
+});
+
+suite("suite", () => {
+  test("test 1", () => {});
+  test("test 2", () => {});
+
+  suite("sub suite 1", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {});
+  });
+
+  suite("sub suite 2", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {});
+  });
+});
+
+describe("describe", () => {
+  it("test 1", () => {});
+  it("test 2", () => {});
+
+  describe("sub describe 1", () => {
+    it("nested test 1", () => {});
+    it("nested test 2", () => {});
+  });
+
+  describe("sub describe 2", () => {
+    it("nested test 1", () => {});
+    it("nested test 2", () => {});
+  });
+});
+
+suite("suite", () => {
+  test("test 1", () => {});
+  test("test 2", () => {
+    throw new Error("thrown from test 2");
+  });
+
+  suite("sub suite 1", () => {
+    test("nested test 1", () => {});
+    test("nested test 2", () => {
+      throw new Error("thrown from nested test 2");
+    });
+  });
+
+  suite("sub suite 2", () => {
+    test("nested test 1", () => {
+      throw new Error("thrown from nested test 1");
+    });
+    test("nested test 2", () => {});
+  });
+});
+
+test("assertions available via text context", async (t) => {
+  assert.strictEqual(t.assert.deepEqual, assert.deepEqual);
+  assert.strictEqual(t.assert.deepStrictEqual, assert.deepStrictEqual);
+  assert.strictEqual(t.assert.doesNotMatch, assert.doesNotMatch);
+  assert.strictEqual(t.assert.doesNotReject, assert.doesNotReject);
+  assert.strictEqual(t.assert.doesNotThrow, assert.doesNotThrow);
+  assert.strictEqual(t.assert.equal, assert.equal);
+  assert.strictEqual(t.assert.fail, assert.fail);
+  assert.strictEqual(t.assert.ifError, assert.ifError);
+  assert.strictEqual(t.assert.match, assert.match);
+  assert.strictEqual(t.assert.notDeepEqual, assert.notDeepEqual);
+  assert.strictEqual(t.assert.notDeepStrictEqual, assert.notDeepStrictEqual);
+  assert.strictEqual(t.assert.notEqual, assert.notEqual);
+  assert.strictEqual(t.assert.notStrictEqual, assert.notStrictEqual);
+  assert.strictEqual(
+    t.assert.partialDeepStrictEqual,
+    assert.partialDeepStrictEqual,
+  );
+  assert.strictEqual(t.assert.rejects, assert.rejects);
+  assert.strictEqual(t.assert.strictEqual, assert.strictEqual);
+  assert.strictEqual(t.assert.throws, assert.throws);
 });
 
 test("unhandled rejection - passes but warns", () => {

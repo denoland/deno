@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
-
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;
@@ -11,7 +9,6 @@ use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use crate::worker::CliCodeCache;
 
 pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(
@@ -82,12 +79,6 @@ impl CodeCache {
       CacheDBHash::new(source_hash),
       data,
     ));
-  }
-}
-
-impl CliCodeCache for CodeCache {
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache> {
-    self
   }
 }
 

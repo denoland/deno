@@ -30,9 +30,15 @@ gclient_config.py_entries
 
 /ext/websocket/autobahn/reports
 
+# Coverage files
+/coverage
+
 # JUnit files produced by deno test --junit
 junit.xml
 
 # Jupyter files
 .ipynb_checkpoints/
 Untitled*.ipynb
+
+# playwright browser binary cache
+/.ms-playwright

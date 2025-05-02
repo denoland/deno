@@ -1,13 +1,19 @@
-error: TS2769 [ERROR]: No overload matches this call.
-  [WILDCARD]
+TS2769 [ERROR]: No overload matches this call.
+  Overload 1 of 3, '(path: PathOrFileDescriptor, options?: { encoding?: null | undefined; flag?: string | undefined; } | null | undefined): Buffer<ArrayBufferLike>', gave the following error.
+    Type '123' has no properties in common with type '{ encoding?: null | undefined; flag?: string | undefined; }'.
+  Overload 2 of 3, '(path: PathOrFileDescriptor, options: { encoding: BufferEncoding; flag?: string | undefined; } | BufferEncoding): string', gave the following error.
+    Argument of type '123' is not assignable to parameter of type '{ encoding: BufferEncoding; flag?: string | undefined; } | BufferEncoding'.
+  Overload 3 of 3, '(path: PathOrFileDescriptor, options?: BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined): string | Buffer<...>', gave the following error.
+    Argument of type '123' is not assignable to parameter of type 'BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined'.
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
-    at file:///[WILDCARD]/mod.ts:2:52
+    at file:///[WILDLINE]/mod.ts:2:52
 
-TS2322 [ERROR]: Type 'string[]' is not assignable to type 'number[]'.
-  Type 'string' is not assignable to type 'number'.
+TS4104 [ERROR]: The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.
 const _testString: number[] = builtinModules;
       ~~~~~~~~~~~
-    at file:///[WILDCARD]/mod.ts:9:7
+    at file:///[WILDLINE]/mod.ts:9:7
 
 Found 2 errors.
+
+error: Type checking failed.

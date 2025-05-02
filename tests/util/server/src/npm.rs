@@ -186,6 +186,17 @@ impl TestNpmRegistry {
       return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
     }
 
+    let prefix1 = format!("/{}/", "@types");
+    let prefix2 = format!("/{}%2f", "@types");
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      if package_name_with_path.starts_with("denotest") {
+        return Some(("@types", package_name_with_path));
+      }
+    }
+
     None
   }
 }
@@ -297,16 +308,16 @@ fn get_npm_package(
       encoder.finish()?;
     }
 
-    // get tarball hash
-    let tarball_checksum = get_tarball_checksum(&tarball_bytes);
-
     // create the registry file JSON for this version
     let mut dist = serde_json::Map::new();
-    dist.insert(
-      "integrity".to_string(),
-      format!("sha512-{tarball_checksum}").into(),
-    );
-    dist.insert("shasum".to_string(), "dummy-value".into());
+    if package_name != "@denotest/no-shasums" {
+      let tarball_checksum = get_tarball_checksum(&tarball_bytes);
+      dist.insert(
+        "integrity".to_string(),
+        format!("sha512-{tarball_checksum}").into(),
+      );
+      dist.insert("shasum".to_string(), "dummy-value".into());
+    }
     dist.insert(
       "tarball".to_string(),
       format!("{registry_hostname}/{package_name}/{version}.tgz").into(),

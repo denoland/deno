@@ -1,0 +1,10 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fpeer-dep-test-child
+Download http://localhost:4260/@denotest/peer-dep-test-child/1.0.0.tgz
+Download http://localhost:4260/@denotest/peer-dep-test-child/2.0.0.tgz
+Download http://localhost:4260/@denotest/peer-dep-test-grandchild/1.0.0.tgz
+Download http://localhost:4260/@denotest/peer-dep-test-peer/1.0.0.tgz
+Download http://localhost:4260/@denotest/peer-dep-test-peer/2.0.0.tgz
+[UNORDERED_END]
+1
+2

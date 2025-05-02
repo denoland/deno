@@ -1,0 +1,608 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "doubleValue": 200
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000002",
+      "traceState": "",
+      "parentSpanId": "0000000000000001",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000003",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "doubleValue": 200
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000004",
+      "traceState": "",
+      "parentSpanId": "0000000000000003",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000005",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "doubleValue": 200
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000006",
+      "traceState": "",
+      "parentSpanId": "0000000000000005",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": [
+    {
+      "name": "http.server.active_requests",
+      "description": "Number of active HTTP server requests.",
+      "unit": "{request}",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "http.request.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "url.scheme",
+                "value": {
+                  "stringValue": "http"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asInt": 0
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": false
+      }
+    },
+    {
+      "name": "http.server.request.body.size",
+      "description": "Size of HTTP server request bodies.",
+      "unit": "By",
+      "metadata": [],
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "http.request.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "http.response.status_code",
+                "value": {
+                  "intValue": "200"
+                }
+              },
+              {
+                "key": "network.protocol.version",
+                "value": {
+                  "stringValue": "1.1"
+                }
+              },
+              {
+                "key": "url.scheme",
+                "value": {
+                  "stringValue": "http"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "count": 3,
+            "sum": 0,
+            "bucketCounts": [
+              3,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "explicitBounds": [
+              0,
+              100,
+              1000,
+              10000,
+              100000,
+              1000000,
+              10000000,
+              100000000,
+              1000000000
+            ],
+            "exemplars": [],
+            "flags": 0,
+            "min": 0,
+            "max": 0
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    },
+    {
+      "name": "http.server.request.duration",
+      "description": "Duration of HTTP server requests.",
+      "unit": "s",
+      "metadata": [],
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "http.request.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "http.response.status_code",
+                "value": {
+                  "intValue": "200"
+                }
+              },
+              {
+                "key": "network.protocol.version",
+                "value": {
+                  "stringValue": "1.1"
+                }
+              },
+              {
+                "key": "url.scheme",
+                "value": {
+                  "stringValue": "http"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "count": 3,
+            "sum": [WILDCARD],
+            "bucketCounts": [
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
+            ],
+            "explicitBounds": [
+              0.005,
+              0.01,
+              0.025,
+              0.05,
+              0.075,
+              0.1,
+              0.25,
+              0.5,
+              0.75,
+              1,
+              2.5,
+              5,
+              7.5,
+              10
+            ],
+            "exemplars": [],
+            "flags": 0,
+            "min": [WILDCARD],
+            "max": [WILDCARD]
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    },
+    {
+      "name": "http.server.response.body.size",
+      "description": "Size of HTTP server response bodies.",
+      "unit": "By",
+      "metadata": [],
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "http.request.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "http.response.status_code",
+                "value": {
+                  "intValue": "200"
+                }
+              },
+              {
+                "key": "network.protocol.version",
+                "value": {
+                  "stringValue": "1.1"
+                }
+              },
+              {
+                "key": "url.scheme",
+                "value": {
+                  "stringValue": "http"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "count": 3,
+            "sum": 0,
+            "bucketCounts": [
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
+            ],
+            "explicitBounds": [
+              0,
+              100,
+              1000,
+              10000,
+              100000,
+              1000000,
+              10000000,
+              100000000,
+              1000000000
+            ],
+            "exemplars": [],
+            "flags": 0,
+            "min": 0,
+            "max": 0
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    }
+  ]
+}

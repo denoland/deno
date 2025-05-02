@@ -12,6 +12,7 @@ use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -67,6 +68,7 @@ use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use tokio::signal;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -76,6 +78,7 @@ use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -87,6 +90,7 @@ use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
+use crate::worker::CreateCustomWorkerError;
 
 mod channel;
 pub mod fmt;
@@ -106,6 +110,8 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::cover_files;
+use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
@@ -344,28 +350,28 @@ impl TestFailure {
       }
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
-        write!(f, "Leaks detected:").unwrap();
+        write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).unwrap();
+          write!(f, "\n  - {}", detail).ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).unwrap();
+          write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
+        write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
+        write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
@@ -614,21 +620,27 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), CoreError> {
+  sender: UnboundedSender<jupyter_runtime::messaging::content::StreamContent>,
+) -> Result<
+  (Option<Box<dyn CoverageCollector>>, MainWorker),
+  CreateCustomWorkerError,
+> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
       permissions_container,
       vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint::init_ops(),
+        ops::testing::deno_test::init(worker_sender.sender),
+        ops::lint::deno_lint_ext_for_test::init(),
+        ops::jupyter::deno_jupyter_for_test::init(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
@@ -639,7 +651,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {
@@ -647,7 +659,7 @@ async fn configure_main_worker(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
       )
-      .map_err(JsErrorBox::from_err)?;
+      .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e)))?;
       Ok(())
     }
     Err(err) => Err(err),
@@ -668,12 +680,14 @@ pub async fn test_specifier(
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
+  let jupyter_channel = tokio::sync::mpsc::unbounded_channel();
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
     permissions_container,
     worker_sender,
     &options,
+    jupyter_channel.0,
   )
   .await?;
 
@@ -687,7 +701,7 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(CoreError::Js(err)) => {
+    Err(TestSpecifierError::Core(CoreError::Js(err))) => {
       send_test_event(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
@@ -696,6 +710,16 @@ pub async fn test_specifier(
     }
     Err(e) => Err(e.into()),
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TestSpecifierError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  RunTestsForWorker(#[from] RunTestsForWorkerErr),
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -707,19 +731,21 @@ async fn test_specifier_inner(
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
-) -> Result<(), CoreError> {
+) -> Result<(), TestSpecifierError> {
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event()?;
+  worker.dispatch_load_event().map_err(CoreError::Js)?;
 
   run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
     .await?;
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event()?;
-  worker.dispatch_unload_event()?;
+  worker
+    .dispatch_beforeunload_event()
+    .map_err(CoreError::Js)?;
+  worker.dispatch_unload_event().map_err(CoreError::Js)?;
 
   // Ensure all output has been flushed
   _ = worker
@@ -780,12 +806,25 @@ pub fn send_test_event(
     .send(event)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum RunTestsForWorkerErr {
+  #[class(inherit)]
+  #[error(transparent)]
+  ChannelClosed(#[from] ChannelClosedError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  SerdeV8(#[from] serde_v8::Error),
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
   let TestContainer(tests, test_functions) =
@@ -814,7 +853,7 @@ async fn run_tests_for_worker_inner(
   test_functions: Vec<v8::Global<v8::Function>>,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let unfiltered = tests.len();
   let state_rc = worker.js_runtime.op_state();
 
@@ -1109,7 +1148,7 @@ async fn wait_for_activity_to_stabilize(
   before: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
-) -> Result<Option<RuntimeActivityDiff>, AnyError> {
+) -> Result<Option<RuntimeActivityDiff>, CoreError> {
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);
@@ -1527,7 +1566,7 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
@@ -1570,7 +1609,10 @@ pub async fn run_tests(
   main_graph_container
     .check_specifiers(
       &specifiers_for_typecheck_and_test,
-      cli_options.ext_flag().as_ref(),
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
     )
     .await?;
 
@@ -1611,6 +1653,34 @@ pub async fn run_tests(
     },
   )
   .await?;
+
+  if test_flags.coverage_raw_data_only {
+    return Ok(());
+  }
+
+  if let Some(ref coverage) = test_flags.coverage_dir {
+    let reporters: [&dyn reporter::CoverageReporter; 3] = [
+      &reporter::SummaryCoverageReporter::new(),
+      &reporter::LcovCoverageReporter::new(),
+      &reporter::HtmlCoverageReporter::new(),
+    ];
+    if let Err(err) = cover_files(
+      flags,
+      vec![coverage.clone()],
+      vec![],
+      vec![],
+      vec![],
+      Some(
+        PathBuf::from(coverage)
+          .join("lcov.info")
+          .to_string_lossy()
+          .to_string(),
+      ),
+      &reporters,
+    ) {
+      log::info!("Error generating coverage report: {}", err);
+    }
+  }
 
   Ok(())
 }
@@ -1753,7 +1823,10 @@ pub async fn run_tests_with_watch(
         main_graph_container
           .check_specifiers(
             &specifiers_for_typecheck_and_test,
-            cli_options.ext_flag().as_ref(),
+            crate::graph_container::CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              ..Default::default()
+            },
           )
           .await?;
 

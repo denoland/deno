@@ -2,7 +2,6 @@
 
 //! Code for global npm cache resolution.
 
-use std::path::Path;
 use std::path::PathBuf;
 
 use deno_npm::NpmPackageCacheFolderId;
@@ -14,32 +13,52 @@ use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPathRef;
 use url::Url;
 
-use super::resolution::NpmResolutionRc;
+use super::resolution::NpmResolutionCellRc;
 use super::NpmCacheDirRc;
-use super::NpmPackageFsResolver;
-use crate::ResolvedNpmRcRc;
+use crate::npmrc::ResolvedNpmRcRc;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCacheDirRc,
   npm_rc: ResolvedNpmRcRc,
-  resolution: NpmResolutionRc,
+  resolution: NpmResolutionCellRc,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCacheDirRc,
     npm_rc: ResolvedNpmRcRc,
-    resolution: NpmResolutionRc,
+    resolution: NpmResolutionCellRc,
   ) -> Self {
     Self {
       cache,
       npm_rc,
       resolution,
     }
+  }
+
+  pub fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    let folder_copy_index = self
+      .resolution
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
+    let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
+    Some(self.cache.package_folder_for_id(
+      &id.nv.name,
+      &id.nv.version.to_string(),
+      folder_copy_index,
+      registry_url,
+    ))
+  }
+
+  pub fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &Url,
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
+    Ok(self.resolve_package_cache_folder_id_from_specifier_inner(specifier))
   }
 
   fn resolve_package_cache_folder_id_from_specifier_inner(
@@ -65,15 +84,15 @@ impl NpmPackageFolderResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
-    let Some(referrer_cache_folder_id) =
-      self.resolve_package_cache_folder_id_from_specifier_inner(referrer)
+    let Some(referrer_cache_folder_id) = self
+      .resolve_package_cache_folder_id_from_specifier_inner(referrer.url()?)
     else {
       return Err(
         ReferrerNotFoundError {
-          referrer: referrer.clone(),
+          referrer: referrer.display(),
           referrer_extra: None,
         }
         .into(),
@@ -88,7 +107,7 @@ impl NpmPackageFolderResolver for GlobalNpmPackageResolver {
         None => Err(
           PackageNotFoundError {
             package_name: name.to_string(),
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(format!(
               "{} -> {}",
               referrer_cache_folder_id,
@@ -101,7 +120,7 @@ impl NpmPackageFolderResolver for GlobalNpmPackageResolver {
       Err(err) => match *err {
         PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => Err(
           ReferrerNotFoundError {
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(cache_folder_id.to_string()),
           }
           .into(),
@@ -112,38 +131,12 @@ impl NpmPackageFolderResolver for GlobalNpmPackageResolver {
         } => Err(
           PackageNotFoundError {
             package_name: name,
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(cache_folder_id_referrer.to_string()),
           }
           .into(),
         ),
       },
     }
-  }
-}
-
-impl NpmPackageFsResolver for GlobalNpmPackageResolver {
-  fn node_modules_path(&self) -> Option<&Path> {
-    None
-  }
-
-  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let folder_copy_index = self
-      .resolution
-      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
-    let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
-    Some(self.cache.package_folder_for_id(
-      &id.nv.name,
-      &id.nv.version.to_string(),
-      folder_copy_index,
-      registry_url,
-    ))
-  }
-
-  fn resolve_package_cache_folder_id_from_specifier(
-    &self,
-    specifier: &Url,
-  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
-    Ok(self.resolve_package_cache_folder_id_from_specifier_inner(specifier))
   }
 }

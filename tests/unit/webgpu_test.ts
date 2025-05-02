@@ -36,68 +36,98 @@ Deno.test({
     code: shaderCode,
   });
 
-  const size = new Uint32Array(numbers).byteLength;
+  const size = new Float32Array(numbers).byteLength;
 
-  const stagingBuffer = device.createBuffer({
+  const inputDataBuffer = device.createBuffer({
+    label: "Input Data Buffer",
     size: size,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-  });
-
-  const storageBuffer = device.createBuffer({
-    label: "Storage Buffer",
-    size: size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
-      GPUBufferUsage.COPY_SRC,
+    usage: GPUBufferUsage.STORAGE,
     mappedAtCreation: true,
   });
-
-  const buf = new Uint32Array(storageBuffer.getMappedRange());
-
+  const buf = new Float32Array(inputDataBuffer.getMappedRange());
   buf.set(numbers);
+  inputDataBuffer.unmap();
 
-  storageBuffer.unmap();
-
-  const computePipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
+  const outputDataBuffer = device.createBuffer({
+    label: "Output Data Buffer",
+    size: size,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
-  const bindGroupLayout = computePipeline.getBindGroupLayout(0);
 
+  const downloadBuffer = device.createBuffer({
+    label: "Download Buffer",
+    size: size,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      // input buffer
+      {
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "read-only-storage",
+          minBindingSize: 4,
+        },
+      },
+      // output buffer
+      {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "storage",
+          minBindingSize: 4,
+        },
+      },
+    ],
+  });
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
     entries: [
       {
         binding: 0,
         resource: {
-          buffer: storageBuffer,
+          buffer: inputDataBuffer,
+        },
+      },
+      {
+        binding: 1,
+        resource: {
+          buffer: outputDataBuffer,
         },
       },
     ],
   });
-
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
+  });
+  const computePipeline = device.createComputePipeline({
+    layout: pipelineLayout,
+    compute: {
+      module: shaderModule,
+      entryPoint: "doubleMe",
+    },
+  });
   const encoder = device.createCommandEncoder();
 
   const computePass = encoder.beginComputePass();
   computePass.setPipeline(computePipeline);
   computePass.setBindGroup(0, bindGroup);
-  computePass.insertDebugMarker("compute collatz iterations");
   computePass.dispatchWorkgroups(numbers.length);
   computePass.end();
 
-  encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
+  encoder.copyBufferToBuffer(outputDataBuffer, 0, downloadBuffer, 0, size);
 
   device.queue.submit([encoder.finish()]);
 
-  await stagingBuffer.mapAsync(1);
+  await downloadBuffer.mapAsync(GPUMapMode.READ);
 
-  const data = stagingBuffer.getMappedRange();
+  const data = downloadBuffer.getMappedRange();
 
-  assertEquals(new Uint32Array(data), new Uint32Array([0, 2, 7, 55]));
+  assertEquals(new Float32Array(data), new Float32Array([2, 8, 6, 590]));
 
-  stagingBuffer.unmap();
+  downloadBuffer.unmap();
 
   device.destroy();
 });
@@ -199,8 +229,7 @@ Deno.test({
     dimensions,
   );
 
-  const bundle = encoder.finish();
-  device.queue.submit([bundle]);
+  device.queue.submit([encoder.finish()]);
 
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
@@ -576,7 +605,6 @@ Deno.test({
     "maxVertexBuffers",
     "maxVertexAttributes",
     "maxVertexBufferArrayStride",
-    "maxInterStageShaderComponents",
     "maxComputeWorkgroupStorageSize",
     "maxComputeInvocationsPerWorkgroup",
     "maxComputeWorkgroupSizeX",
@@ -591,7 +619,7 @@ Deno.test({
   for (const limitName of limitNames) {
     // deno-lint-ignore ban-ts-comment
     // @ts-ignore
-    assertEquals(typeof adapter.limits[limitName], "number");
+    assertEquals(typeof adapter.limits[limitName], "number", limitName);
   }
 
   const device = await adapter.requestDevice({

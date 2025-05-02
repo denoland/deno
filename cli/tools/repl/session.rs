@@ -5,9 +5,9 @@ use std::sync::Arc;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -32,6 +32,7 @@ use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -41,11 +42,12 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::CliNpmResolver;
+use crate::npm::installer::NpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
@@ -181,7 +183,7 @@ struct ReplJsxState {
 }
 
 pub struct ReplSession {
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
@@ -198,15 +200,21 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     resolver: Arc<CliResolver>,
+    tsconfig_resolver: &TsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker
@@ -257,15 +265,12 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_for_emit.ts_config,
-      )?;
-    let experimental_decorators = transpile_options.use_ts_decorators;
+    let experimental_decorators = tsconfig_resolver
+      .transpile_and_emit_options(&cwd_url)?
+      .transpile
+      .use_ts_decorators;
     let mut repl_session = ReplSession {
-      npm_resolver,
+      npm_installer,
       resolver,
       worker,
       session,
@@ -308,12 +313,10 @@ impl ReplSession {
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
-    let closed = self
-      .evaluate_expression(&expression)
-      .await?
-      .result
+    let result = self.evaluate_expression(&expression).await?.result;
+    let closed = result
       .value
-      .unwrap()
+      .ok_or_else(|| anyhow!(result.description.unwrap()))?
       .as_bool()
       .unwrap();
 
@@ -402,18 +405,16 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match crate::util::result::any_and_jserrorbox_downcast_ref::<
-            deno_ast::ParseDiagnostic,
-          >(&err)
-          {
+          match any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(
+            &err,
+          ) {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
             None => {
-              match crate::util::result::any_and_jserrorbox_downcast_ref::<
-                ParseDiagnosticsError,
-              >(&err)
-              {
+              match any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(
+                &err,
+              ) {
                 Some(diagnostics) => Ok(EvaluationOutput::Error(
                   diagnostics
                     .0
@@ -704,8 +705,8 @@ impl ReplSession {
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
-    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
-      return Ok(()); // don't auto-install for byonm
+    let Some(npm_installer) = &self.npm_installer else {
+      return Ok(());
     };
 
     let mut collector = ImportCollector::new();
@@ -737,13 +738,13 @@ impl ReplSession {
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      npm_resolver
+      npm_installer
         .add_and_cache_package_reqs(&npm_imports)
         .await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())
