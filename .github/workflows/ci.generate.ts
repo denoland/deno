@@ -1218,11 +1218,14 @@ const ci = {
           name: "Install wasm target",
           run: "rustup target add wasm32-unknown-unknown",
         },
+        // we want these crates to be Wasm compatible
         {
-          name: "Cargo build",
-          // we want these crates to be wasm compatible
-          run:
-            "cargo build --target wasm32-unknown-unknown -p deno_resolver -p deno_npm_cache",
+          name: "Cargo build (deno_resolver)",
+          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+        },
+        {
+          name: "Cargo build (deno_npm_cache)",
+          run: "cargo build --target wasm32-unknown-unknown -p deno_npm_cache",
         },
       ]),
     },
