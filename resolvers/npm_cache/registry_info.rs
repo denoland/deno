@@ -347,13 +347,13 @@ impl<
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(cached_info) = downloader.cache.load_package_info(&name).map_err(JsErrorBox::from_err)? {
+        if let Some(cached_info) = downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? {
           return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
         } else {
           None
         }
       } else {
-        downloader.cache.load_package_info(&name).ok().flatten()
+        downloader.cache.load_package_info(&name).await.ok().flatten()
       };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
