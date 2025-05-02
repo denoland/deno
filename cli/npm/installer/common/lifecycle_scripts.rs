@@ -130,9 +130,11 @@ impl<'a> LifecycleScripts<'a> {
       PackagesAllowedScripts::None => false,
     }
   }
+
   pub fn has_run_scripts(&self, package: &NpmResolutionPackage) -> bool {
     self.strategy.has_run(package)
   }
+
   /// Register a package for running lifecycle scripts, if applicable.
   ///
   /// `package_path` is the path containing the package's code (its root dir).
@@ -452,6 +454,7 @@ async fn resolve_custom_commands_from_packages<
       bin_entries.add(package, &extra, package_path);
     }
   }
+
   let bins: Vec<(String, PathBuf)> = bin_entries.collect_bin_files(snapshot);
   for (bin_name, script_path) in bins {
     commands.insert(
