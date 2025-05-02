@@ -15,8 +15,11 @@ use sha2::Digest;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
 use sys_traits::FsRemoveDirAll;
+use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
+use sys_traits::OpenOptions;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
@@ -48,13 +51,15 @@ pub enum VerifyAndExtractTarballError {
 }
 
 pub fn verify_and_extract_tarball(
-  sys: &(impl ThreadSleep
+  sys: &(impl FsCanonicalize
       + FsCreateDirAll
       + FsMetadata
-      + FsRemoveDirAll
+      + FsOpen
       + FsRename
-      + FsCanonicalize
-      + SystemRandom),
+      + FsRemoveDirAll
+      + FsRemoveFile
+      + SystemRandom
+      + ThreadSleep),
   package_nv: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
@@ -201,7 +206,7 @@ pub enum ExtractTarballError {
 }
 
 fn extract_tarball(
-  sys: &(impl FsCanonicalize + FsCreateDirAll),
+  sys: &(impl FsCanonicalize + FsCreateDirAll + FsOpen + FsRemoveFile),
   data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
@@ -245,8 +250,9 @@ fn extract_tarball(
     let entry_type = entry.header().entry_type();
     match entry_type {
       EntryType::Regular => {
-        // todo(THIS PR): need to not use the real fs apis under the hood here
-        entry.unpack(&absolute_path)?;
+        let open_options = OpenOptions::new_write();
+        let mut f = sys.fs_open(&absolute_path, &open_options)?;
+        std::io::copy(&mut entry, &mut f)?;
       }
       EntryType::Symlink | EntryType::Link => {
         // At the moment, npm doesn't seem to support uploading hardlinks or
