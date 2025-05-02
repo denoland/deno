@@ -546,11 +546,38 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       code_cache,
     )?;
 
+    let ambient_modules = response.ambient_modules;
+    log::debug!("Ambient Modules: {:?}", ambient_modules);
+    let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
+    regex_string.push('(');
+    let last = ambient_modules.len() - 1;
+    for (idx, part) in ambient_modules.into_iter().enumerate() {
+      let trimmed = part.trim_matches('"');
+      let escaped = regex::escape(trimmed);
+      let regex = escaped.replace("\\*", ".*");
+      regex_string.push_str(&regex);
+      if idx != last {
+        regex_string.push('|');
+      }
+    }
+    regex_string.push(')');
+
+    let ambient_modules_regex = regex::Regex::new(&regex_string).inspect_err(|e| {
+      log::warn!("Failed to create regex for ambient modules: {}", e);
+    }).ok();
+
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
-    let mut diagnostics = missing_diagnostics;
+    let mut diagnostics = missing_diagnostics.filter(|d| {
+      if let Some(ambient_modules_regex) = &ambient_modules_regex {
+        if let Some(message_text) = &d.message_text {
+          return !ambient_modules_regex.is_match(message_text)
+        }
+      }
+      return true;
+    });
     diagnostics.extend(response_diagnostics);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
@@ -566,7 +593,6 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     log::debug!("{}", response.stats);
-    log::debug!("Ambient Modules: {:?}", response.ambient_modules);
 
     Ok(diagnostics)
   }

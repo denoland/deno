@@ -1449,13 +1449,16 @@ pub fn exec(
   let state = op_state.take::<State>();
 
   if let Some(response) = state.maybe_response {
+    let diagnostics = response.diagnostics;
+    let ambient_modules = response.ambient_modules;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
+    let stats = response.stats;
 
     Ok(Response {
-      diagnostics: response.diagnostics,
-      ambient_modules: response.ambient_modules,
+      diagnostics,
+      ambient_modules,
       maybe_tsbuildinfo,
-      stats: response.stats,
+      stats,
     })
   } else {
     Err(ExecError::ResponseNotSet)
