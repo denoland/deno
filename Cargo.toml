@@ -225,10 +225,10 @@ saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.149", features = ["derive"] }
 serde-value = "0.7"
 serde_bytes = "0.11"
-serde_json = "1.0.140"
+serde_json = "1.0.85"
 serde_repr = "=0.1.19"
 simd-json = "0.14.0"
 slab = "0.4"
