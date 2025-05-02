@@ -199,6 +199,34 @@ pub enum ExtractTarballError {
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[class(generic)]
+  #[error("Failed creating '{}'", path.display())]
+  FailedCreatingDir {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
+  #[class(generic)]
+  #[error("Failed canonicalizing '{}'", path.display())]
+  FailedCanonicalizing {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
+  #[class(generic)]
+  #[error("Failed opening '{}'", path.display())]
+  FailedOpening {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
+  #[class(generic)]
+  #[error("Failed writing '{}'", path.display())]
+  FailedWriting {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
+  #[class(generic)]
   #[error(
     "Extracted directory '{0}' of npm tarball was not in output directory."
   )]
@@ -210,8 +238,18 @@ fn extract_tarball(
   data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
-  sys.fs_create_dir_all(output_folder)?;
-  let output_folder = sys.fs_canonicalize(output_folder)?;
+  sys.fs_create_dir_all(output_folder).map_err(|source| {
+    ExtractTarballError::FailedCreatingDir {
+      path: output_folder.to_path_buf(),
+      source,
+    }
+  })?;
+  let output_folder = sys.fs_canonicalize(output_folder).map_err(|source| {
+    ExtractTarballError::FailedCanonicalizing {
+      path: output_folder.to_path_buf(),
+      source,
+    }
+  })?;
   let tar = GzDecoder::new(data);
   let mut archive = Archive::new(tar);
   archive.set_overwrite(true);
@@ -238,8 +276,19 @@ fn extract_tarball(
       absolute_path.parent().unwrap()
     };
     if created_dirs.insert(dir_path.to_path_buf()) {
-      sys.fs_create_dir_all(dir_path)?;
-      let canonicalized_dir = sys.fs_canonicalize(dir_path)?;
+      sys.fs_create_dir_all(dir_path).map_err(|source| {
+        ExtractTarballError::FailedCreatingDir {
+          path: output_folder.to_path_buf(),
+          source,
+        }
+      })?;
+      let canonicalized_dir =
+        sys.fs_canonicalize(dir_path).map_err(|source| {
+          ExtractTarballError::FailedCanonicalizing {
+            path: output_folder.to_path_buf(),
+            source,
+          }
+        })?;
       if !canonicalized_dir.starts_with(&output_folder) {
         return Err(ExtractTarballError::NotInOutputDirectory(
           canonicalized_dir.to_path_buf(),
@@ -251,8 +300,19 @@ fn extract_tarball(
     match entry_type {
       EntryType::Regular => {
         let open_options = OpenOptions::new_write();
-        let mut f = sys.fs_open(&absolute_path, &open_options)?;
-        std::io::copy(&mut entry, &mut f)?;
+        let mut f =
+          sys
+            .fs_open(&absolute_path, &open_options)
+            .map_err(|source| ExtractTarballError::FailedOpening {
+              path: absolute_path.to_path_buf(),
+              source,
+            })?;
+        std::io::copy(&mut entry, &mut f).map_err(|source| {
+          ExtractTarballError::FailedWriting {
+            path: absolute_path,
+            source,
+          }
+        })?;
       }
       EntryType::Symlink | EntryType::Link => {
         // At the moment, npm doesn't seem to support uploading hardlinks or
