@@ -3,28 +3,21 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dashmap::DashSet;
-use deno_core::ModuleSpecifier;
+use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
-use deno_graph::source::ResolveError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
+use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::workspace::MappedResolutionDiagnostic;
-use deno_resolver::workspace::MappedResolutionError;
-use deno_runtime::colors;
 use deno_semver::package::PackageReq;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 
 use crate::args::NpmCachingStrategy;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
-use crate::util::sync::AtomicFlag;
 
 pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
@@ -42,82 +35,25 @@ pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   CliNpmResolver,
   CliSys,
 >;
+pub type CliResolver = deno_resolver::graph::DenoGraphResolver<
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 
-#[derive(Debug, Default)]
-pub struct FoundPackageJsonDepFlag(AtomicFlag);
-
-/// A resolver that takes care of resolution, taking into account loaded
-/// import map, JSX settings.
-#[derive(Debug)]
-pub struct CliResolver {
-  deno_resolver: Arc<CliDenoResolver>,
-  found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-  warned_pkgs: DashSet<PackageReq>,
-}
-
-impl CliResolver {
-  pub fn new(
-    deno_resolver: Arc<CliDenoResolver>,
-    found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-  ) -> Self {
-    Self {
-      deno_resolver,
-      found_package_json_dep_flag,
-      warned_pkgs: Default::default(),
-    }
-  }
-
-  pub fn resolve(
-    &self,
-    raw_specifier: &str,
-    referrer: &ModuleSpecifier,
-    referrer_range_start: deno_graph::Position,
-    resolution_mode: ResolutionMode,
-    resolution_kind: NodeResolutionKind,
-  ) -> Result<ModuleSpecifier, ResolveError> {
-    let resolution = self
-      .deno_resolver
-      .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-      .map_err(|err| match err.into_kind() {
-        deno_resolver::DenoResolveErrorKind::MappedResolution(
-          mapped_resolution_error,
-        ) => match mapped_resolution_error {
-          MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
-          // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-          MappedResolutionError::Workspace(e) => {
-            ResolveError::Other(JsErrorBox::from_err(e))
-          }
-        },
-        err => ResolveError::Other(JsErrorBox::from_err(err)),
-      })?;
-
-    if resolution.found_package_json_dep {
-      // mark that we need to do an "npm install" later
-      self.found_package_json_dep_flag.0.raise();
-    }
-
-    if let Some(diagnostic) = resolution.maybe_diagnostic {
-      match &*diagnostic {
-        MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-          reference,
-          ..
-        } => {
-          if self.warned_pkgs.insert(reference.req().clone()) {
-            log::warn!(
-              "{} {}\n    at {}:{}",
-              colors::yellow("Warning"),
-              diagnostic,
-              referrer,
-              referrer_range_start,
-            );
-          }
-        }
-      }
-    }
-
-    Ok(resolution.url)
-  }
+pub fn on_resolve_diagnostic(
+  diagnostic: &deno_resolver::workspace::MappedResolutionDiagnostic,
+  referrer: &ModuleSpecifier,
+  position: deno_graph::Position,
+) {
+  log::warn!(
+    "{} {}\n    at {}:{}",
+    deno_runtime::colors::yellow("Warning"),
+    diagnostic,
+    referrer,
+    position,
+  );
 }
 
 #[derive(Debug)]
@@ -159,8 +95,7 @@ impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
   ) -> NpmResolvePkgReqsResult {
     match &self.npm_installer {
       Some(npm_installer) => {
-        let top_level_result = if self.found_package_json_dep_flag.0.is_raised()
-        {
+        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
           npm_installer
             .ensure_top_level_package_json_install()
             .await
