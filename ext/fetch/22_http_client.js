@@ -25,6 +25,57 @@ const { ObjectDefineProperty } = primordials;
  */
 function createHttpClient(options) {
   options.caCerts ??= [];
+  if (options.proxy) {
+    if ("transport" in options.proxy) {
+      switch (options.proxy.transport) {
+        case "http": {
+          const url = options.proxy.url;
+          if (
+            url.startsWith("https:") || url.startsWith("socks5:") ||
+            url.startsWith("socks5h:")
+          ) {
+            throw new TypeError(
+              `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
+            );
+          }
+          options.proxy.transport = "http";
+          break;
+        }
+        case "https": {
+          const url = options.proxy.url;
+          if (
+            url.startsWith("http:") || url.startsWith("socks5:") ||
+            url.startsWith("socks5h:")
+          ) {
+            throw new TypeError(
+              `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
+            );
+          }
+          options.proxy.transport = "http";
+          break;
+        }
+        case "socks5": {
+          const url = options.proxy.url;
+          if (!url.startsWith("socks5:") || !url.startsWith("socks5h:")) {
+            throw new TypeError(
+              `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
+            );
+          }
+          options.proxy.transport = "http";
+          break;
+        }
+        default: {
+          throw new TypeError(
+            `Invalid value for 'proxy.transport' option: ${
+              JSON.stringify(options.proxy.transport)
+            }`,
+          );
+        }
+      }
+    } else {
+      options.proxy.transport = "http";
+    }
+  }
   const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
   return new HttpClient(
     op_fetch_custom_client(
