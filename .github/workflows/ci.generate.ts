@@ -1220,12 +1220,13 @@ const ci = {
         },
         // we want these crates to be Wasm compatible
         {
-          name: "Cargo build (deno_resolver)",
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
         },
         {
-          name: "Cargo build (deno_npm_cache)",
-          run: "cargo build --target wasm32-unknown-unknown -p deno_npm_cache",
+          name: "Cargo check (deno_npm_cache)",
+          run: "cargo check --target wasm32-unknown-unknown -p deno_npm_cache",
         },
       ]),
     },
