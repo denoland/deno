@@ -32,6 +32,13 @@ import {
   readableStreamForRid,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
+import {
+  builtinTracer,
+  ContextManager,
+  enterSpan,
+  restoreSnapshot,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 
 class CacheStorage {
   constructor() {
@@ -43,10 +50,35 @@ class CacheStorage {
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    const cacheId = await op_cache_storage_open(cacheName);
-    const cache = webidl.createBranded(Cache);
-    cache[_id] = cacheId;
-    return cache;
+
+    let span;
+    let snapshot;
+    try {
+      if (TRACING_ENABLED) {
+        span = builtinTracer().startSpan(`cache open ${cacheName}`, {
+          kind: 0, // INTERNAL kind
+          attributes: {
+            "cache.name": cacheName,
+          },
+        });
+        snapshot = enterSpan(span);
+      }
+
+      const cacheId = await op_cache_storage_open(cacheName);
+      const cache = webidl.createBranded(Cache);
+      cache[_id] = cacheId;
+      cache[_name] = cacheName;
+      return cache;
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   async has(cacheName) {
@@ -54,7 +86,33 @@ class CacheStorage {
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    return await op_cache_storage_has(cacheName);
+
+    let span;
+    let snapshot;
+    try {
+      if (TRACING_ENABLED) {
+        span = builtinTracer().startSpan(`cache has`, {
+          kind: 0, // INTERNAL kind
+          attributes: {
+            "cache.name": cacheName,
+          },
+        });
+        snapshot = enterSpan(span);
+      }
+
+      const result = await op_cache_storage_has(cacheName);
+      span?.setAttribute("cache.exists", result);
+      return result;
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   async delete(cacheName) {
@@ -62,7 +120,34 @@ class CacheStorage {
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    return await op_cache_storage_delete(cacheName);
+
+    let span;
+    let snapshot;
+    try {
+      if (TRACING_ENABLED) {
+        span = builtinTracer().startSpan(`cache delete`, {
+          kind: 0, // INTERNAL kind
+          attributes: {
+            "cache.name": cacheName,
+          },
+        });
+        span.setAttribute("cache.name", cacheName);
+        snapshot = enterSpan(span);
+      }
+
+      const result = await op_cache_storage_delete(cacheName);
+      span?.setAttribute("cache.deleted", result);
+      return result;
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -72,10 +157,13 @@ class CacheStorage {
 
 const _matchAll = Symbol("[[matchAll]]");
 const _id = Symbol("id");
+const _name = Symbol("name");
 
 class Cache {
   /** @type {number} */
   [_id];
+  /** @type {string} */
+  [_name];
 
   constructor() {
     webidl.illegalConstructor();
@@ -134,36 +222,64 @@ class Cache {
       throw new TypeError("Response body is already used");
     }
 
-    const stream = innerResponse.body?.stream;
-    let rid = null;
-    if (stream) {
-      const resourceBacking = getReadableStreamResourceBacking(
-        innerResponse.body?.stream,
-      );
-      if (resourceBacking) {
-        rid = resourceBacking.rid;
-      } else {
-        rid = resourceForReadableStream(stream, innerResponse.body?.length);
-      }
-    }
-
     // Remove fragment from request URL before put.
     reqUrl.hash = "";
 
-    // Step 9-11.
-    // Step 12-19: TODO(@satyarohith): do the insertion in background.
-    await op_cache_put(
-      {
-        cacheId: this[_id],
-        // deno-lint-ignore prefer-primordials
-        requestUrl: reqUrl.toString(),
-        responseHeaders: innerResponse.headerList,
-        requestHeaders: innerRequest.headerList,
-        responseStatus: innerResponse.status,
-        responseStatusText: innerResponse.statusMessage,
-        responseRid: rid,
-      },
-    );
+    let span;
+    let snapshot;
+    try {
+      if (TRACING_ENABLED) {
+        // TODO: add cache-tags / deno-cache-tags
+        // TODO: add response etag header
+        span = builtinTracer().startSpan(`cache entry put ${this[_name]}`, {
+          kind: 0,
+          attributes: {
+            "cache.name": this[_name],
+            "url.full": reqUrl.href,
+            "http.response.status": innerResponse.status,
+            "http.response.body.size": innerResponse.body?.length,
+          },
+        }); // INTERNAL kind
+        snapshot = enterSpan(span);
+      }
+
+      const stream = innerResponse.body?.stream;
+      let rid = null;
+      if (stream) {
+        const resourceBacking = getReadableStreamResourceBacking(
+          innerResponse.body?.stream,
+        );
+        if (resourceBacking) {
+          rid = resourceBacking.rid;
+        } else {
+          rid = resourceForReadableStream(stream, innerResponse.body?.length);
+        }
+      }
+
+      // Step 9-11.
+      // Step 12-19: TODO(@satyarohith): do the insertion in background.
+      await op_cache_put(
+        {
+          cacheId: this[_id],
+          // deno-lint-ignore prefer-primordials
+          requestUrl: reqUrl.toString(),
+          responseHeaders: innerResponse.headerList,
+          requestHeaders: innerRequest.headerList,
+          responseStatus: innerResponse.status,
+          responseStatusText: innerResponse.statusMessage,
+          responseRid: rid,
+        },
+      );
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-match */
@@ -194,24 +310,52 @@ class Cache {
       prefix,
       "Argument 1",
     );
-    // Step 1.
+
+    let span;
+    let snapshot;
     let r = null;
+
+    // Step 1.
     // Step 2.
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
       r = request;
-      if (request.method !== "GET") {
-        return false;
-      }
-    } else if (
-      typeof request === "string" ||
-      ObjectPrototypeIsPrototypeOf(URLPrototype, request)
-    ) {
+    } else {
       r = new Request(request);
     }
-    return await op_cache_delete({
-      cacheId: this[_id],
-      requestUrl: r.url,
-    });
+
+    try {
+      if (TRACING_ENABLED) {
+        span = builtinTracer().startSpan(`cache entry delete ${this[_name]}`, {
+          kind: 0, // INTERNAL kind
+          attributes: {
+            "cache.name": this[_name],
+            "url.full": r.url,
+          },
+        });
+        snapshot = enterSpan(span);
+      }
+
+      if (request.method !== "GET") {
+        span?.setAttribute("cache.deleted", false);
+        return false;
+      }
+
+      const result = await op_cache_delete({
+        cacheId: this[_id],
+        requestUrl: r.url,
+      });
+      span?.setAttribute("cache.deleted", true);
+      return result;
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-matchall
@@ -222,64 +366,97 @@ class Cache {
    * The function will return an array of responses.
    */
   async [_matchAll](request, _options) {
+    let span;
+    let snapshot;
+
     // Step 1.
     let r = null;
     // Step 2.
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
       r = request;
-      if (request.method !== "GET") {
-        return [];
-      }
-    } else if (
-      typeof request === "string" ||
-      ObjectPrototypeIsPrototypeOf(URLPrototype, request)
-    ) {
+    } else {
       r = new Request(request);
     }
 
-    // Step 5.
-    const responses = [];
-    // Step 5.2
-    if (r === null) {
-      // Step 5.3
-      // Note: we have to return all responses in the cache when
-      // the request is null.
-      // We deviate from the spec here and return an empty array
-      // as we don't expose matchAll() API.
-      return responses;
-    } else {
-      // Remove the fragment from the request URL.
-      const url = new URL(r.url);
-      url.hash = "";
-      const innerRequest = toInnerRequest(r);
-      const matchResult = await op_cache_match(
-        {
-          cacheId: this[_id],
-          // deno-lint-ignore prefer-primordials
-          requestUrl: url.toString(),
-          requestHeaders: innerRequest.headerList,
-        },
-      );
-      if (matchResult) {
-        const { 0: meta, 1: responseBodyRid } = matchResult;
-        let body = null;
-        if (responseBodyRid !== null) {
-          body = readableStreamForRid(responseBodyRid);
-        }
-        const response = new Response(
-          body,
+    const url = new URL(r.url);
+    // Remove the fragment from the request URL.
+    url.hash = "";
+
+    try {
+      if (TRACING_ENABLED) {
+        span = builtinTracer().startSpan(`cache entry match ${this[_name]}`, {
+          kind: 0, // INTERNAL kind
+          attributes: {
+            "cache.name": this[_name],
+            "url.full": url.href,
+          },
+        });
+        snapshot = enterSpan(span);
+      }
+
+      if (request.method !== "GET") {
+        span?.setAttribute("cache.matched", false);
+        return [];
+      }
+
+      // Step 5.
+      const responses = [];
+      // Step 5.2
+      if (r === null) {
+        // Step 5.3
+        // Note: we have to return all responses in the cache when
+        // the request is null.
+        // We deviate from the spec here and return an empty array
+        // as we don't expose matchAll() API.
+        span?.setAttribute("cache.matched", false);
+        return responses;
+      } else {
+        const innerRequest = toInnerRequest(r);
+        const matchResult = await op_cache_match(
           {
-            headers: meta.responseHeaders,
-            status: meta.responseStatus,
-            statusText: meta.responseStatusText,
+            cacheId: this[_id],
+            requestUrl: url.href,
+            requestHeaders: innerRequest.headerList,
           },
         );
-        ArrayPrototypePush(responses, response);
-      }
-    }
-    // Step 5.4-5.5: don't apply in this context.
 
-    return responses;
+        if (matchResult) {
+          const { 0: meta, 1: responseBodyRid } = matchResult;
+          let body = null;
+          if (responseBodyRid !== null) {
+            body = readableStreamForRid(responseBodyRid);
+          }
+          const response = new Response(
+            body,
+            {
+              headers: meta.responseHeaders,
+              status: meta.responseStatus,
+              statusText: meta.responseStatusText,
+            },
+          );
+
+          span?.setAttribute("cache.matched", true);
+
+          ArrayPrototypePush(responses, response);
+        }
+      }
+      // Step 5.4-5.5: don't apply in this context.
+
+      if (span && responses.length === 0) {
+        span.setAttribute("cache.matched", false);
+      }
+
+      return responses;
+    } catch (error) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: 2, message: error.message }); // ERROR status
+      }
+      throw error;
+    } finally {
+      if (span) span.end();
+      if (snapshot) restoreSnapshot(snapshot);
+    }
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
