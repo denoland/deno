@@ -17,7 +17,13 @@ import { op_fetch_custom_client } from "ext:core/ops";
 import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 
 const { internalRidSymbol } = core;
-const { ObjectDefineProperty } = primordials;
+const {
+  JSONStringify,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  StringPrototypeStartsWith,
+  TypeError,
+} = primordials;
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -26,13 +32,14 @@ const { ObjectDefineProperty } = primordials;
 function createHttpClient(options) {
   options.caCerts ??= [];
   if (options.proxy) {
-    if ("transport" in options.proxy) {
+    if (ObjectHasOwn(options.proxy, "transport")) {
       switch (options.proxy.transport) {
         case "http": {
           const url = options.proxy.url;
           if (
-            url.startsWith("https:") || url.startsWith("socks5:") ||
-            url.startsWith("socks5h:")
+            StringPrototypeStartsWith(url, "https:") ||
+            StringPrototypeStartsWith(url, "socks5:") ||
+            StringPrototypeStartsWith(url, "socks5h:")
           ) {
             throw new TypeError(
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
@@ -44,8 +51,9 @@ function createHttpClient(options) {
         case "https": {
           const url = options.proxy.url;
           if (
-            url.startsWith("http:") || url.startsWith("socks5:") ||
-            url.startsWith("socks5h:")
+            StringPrototypeStartsWith(url, "http:") ||
+            StringPrototypeStartsWith(url, "socks5:") ||
+            StringPrototypeStartsWith(url, "socks5h:")
           ) {
             throw new TypeError(
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
@@ -56,7 +64,10 @@ function createHttpClient(options) {
         }
         case "socks5": {
           const url = options.proxy.url;
-          if (!url.startsWith("socks5:") || !url.startsWith("socks5h:")) {
+          if (
+            !StringPrototypeStartsWith(url, "socks5:") ||
+            !StringPrototypeStartsWith(url, "socks5h:")
+          ) {
             throw new TypeError(
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
             );
@@ -70,7 +81,7 @@ function createHttpClient(options) {
         default: {
           throw new TypeError(
             `Invalid value for 'proxy.transport' option: ${
-              JSON.stringify(options.proxy.transport)
+              JSONStringify(options.proxy.transport)
             }`,
           );
         }
