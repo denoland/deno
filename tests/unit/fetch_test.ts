@@ -2222,3 +2222,45 @@ Deno.test("fetch string object", async () => {
   const res = new Response(Object("hello"));
   assertEquals(await res.text(), "hello");
 });
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchUnixSocket() {
+    const tempDir = await Deno.makeTempDir();
+    const socketPath = `${tempDir}/unix.sock`;
+
+    await using _server = Deno.serve({
+      path: socketPath,
+      transport: "unix",
+      onListen: () => {},
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "unix",
+        path: socketPath,
+      },
+    });
+
+    const resp1 = await fetch("http://localhost/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "http://localhost/ping");
+
+    const resp2 = await fetch("http://localhost/not-found", { client });
+    assertEquals(resp2.status, 404);
+    assertEquals(await resp2.text(), "Not found");
+  },
+);
