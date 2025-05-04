@@ -250,9 +250,12 @@ fn extract_tarball(
     let entry_type = entry.header().entry_type();
     match entry_type {
       EntryType::Regular => {
-        let open_options = OpenOptions::new_write();
-        let mut f = sys.fs_open(&absolute_path, &open_options)?;
-        std::io::copy(&mut entry, &mut f)?;
+        // todo(dsherret): switch back to using the sys so that this
+        // crate can work in Wasm
+        // let open_options = OpenOptions::new_write();
+        // let mut f = sys.fs_open(&absolute_path, &open_options)?;
+        // std::io::copy(&mut entry, &mut f)?;
+        entry.unpack(&absolute_path)?;
       }
       EntryType::Symlink | EntryType::Link => {
         // At the moment, npm doesn't seem to support uploading hardlinks or
