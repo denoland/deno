@@ -17,11 +17,10 @@ import {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
-  op_otel_span_add_link,
-  op_otel_span_attribute1,
-  op_otel_span_attribute2,
-  op_otel_span_attribute3,
-  op_otel_span_update_name,
+  // op_otel_span_attribute1,
+  // op_otel_span_attribute2,
+  // op_otel_span_attribute3,
+  // op_otel_span_update_name,
   OtelMeter,
   OtelSpan,
   OtelTracer,
@@ -248,7 +247,36 @@ interface OtelSpan {
     name: string,
     startTime: number,
   ): void;
-  dropEvent(): void;
+  setAttribute1(
+    location: SpanAttributesLocation,
+    key1: string,
+    value1: string,
+  ): void;
+  setAttribute2(
+    location: SpanAttributesLocation,
+    key1: string,
+    value1: string,
+    key2: string,
+    value2: string,
+  ): void;
+  setAttribute3(
+    location: SpanAttributesLocation,
+    key1: string,
+    value1: string,
+    key2: string,
+    value2: string,
+    key3: string,
+    value3: string,
+  ): void;
+  addLink(
+    traceId: string,
+    spanId: string,
+    traceFlags: number,
+    isRemote: boolean,
+    droppedAttributesCount: number,
+  ): void;
+  updateName(name: string): void;
+
   end(endTime: number): void;
 }
 
@@ -267,8 +295,7 @@ function spanAddAttributes(
   let i = 0;
   while (i < attributeKvs.length) {
     if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        span,
+      span.setAttribute3(
         attributesLocation,
         attributeKvs[i][0],
         attributeKvs[i][1],
@@ -279,8 +306,7 @@ function spanAddAttributes(
       );
       i += 3;
     } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        span,
+      span.setAttribute2(
         attributesLocation,
         attributeKvs[i][0],
         attributeKvs[i][1],
@@ -289,8 +315,7 @@ function spanAddAttributes(
       );
       i += 2;
     } else {
-      op_otel_span_attribute1(
-        span,
+      span.setAttribute1(
         attributesLocation,
         attributeKvs[i][0],
         attributeKvs[i][1],
@@ -483,8 +508,7 @@ class Span {
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
-      this.#otelSpan,
+    const valid = this.#otelSpan.addLink(
       link.context.traceId,
       link.context.spanId,
       link.context.traceFlags,
@@ -570,7 +594,7 @@ class Span {
 
   updateName(name: string): this {
     if (!this.#otelSpan) return this;
-    op_otel_span_update_name(this.#otelSpan, name);
+    this.#otelSpan.updateName(name);
     return this;
   }
 }

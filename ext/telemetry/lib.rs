@@ -101,11 +101,6 @@ deno_core::extension!(
     op_otel_enable_isolate_metrics,
     op_otel_log,
     op_otel_log_foreign,
-    op_otel_span_attribute1,
-    op_otel_span_attribute2,
-    op_otel_span_attribute3,
-    op_otel_span_add_link,
-    op_otel_span_update_name,
     op_otel_metric_attribute3,
     op_otel_metric_record0,
     op_otel_metric_record1,
@@ -1418,6 +1413,125 @@ impl OtelSpan {
   }
 
   #[fast]
+  fn set_attribute1<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    #[smi] location: u32,
+    key: v8::Local<'s, v8::Value>,
+    value: v8::Local<'s, v8::Value>,
+  ) {
+    let mut state = self.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      let Some((attributes, dropped_attributes_count)) =
+        span_attributes(span, location)
+      else {
+        return;
+      };
+      attr!(scope, attributes => *dropped_attributes_count, key, value);
+    }
+  }
+
+  #[fast]
+  fn set_attribute2<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    #[smi] location: u32,
+    key1: v8::Local<'s, v8::Value>,
+    value1: v8::Local<'s, v8::Value>,
+    key2: v8::Local<'s, v8::Value>,
+    value2: v8::Local<'s, v8::Value>,
+  ) {
+    let mut state = self.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      let Some((attributes, dropped_attributes_count)) =
+        span_attributes(span, location)
+      else {
+        return;
+      };
+      attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+      attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+    }
+  }
+
+  #[fast]
+  fn set_attribute3<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    #[smi] location: u32,
+    key1: v8::Local<'s, v8::Value>,
+    value1: v8::Local<'s, v8::Value>,
+    key2: v8::Local<'s, v8::Value>,
+    value2: v8::Local<'s, v8::Value>,
+    key3: v8::Local<'s, v8::Value>,
+    value3: v8::Local<'s, v8::Value>,
+  ) {
+    let mut state = self.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      let Some((attributes, dropped_attributes_count)) =
+        span_attributes(span, location)
+      else {
+        return;
+      };
+      attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+      attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+      attr!(scope, attributes => *dropped_attributes_count, key3, value3);
+    }
+  }
+
+  #[fast]
+  fn update_name<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    name: v8::Local<'s, v8::Value>,
+  ) {
+    let Ok(name) = name.try_cast() else {
+      return;
+    };
+    let name = owned_string(scope, name);
+    let mut state = self.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      span.name = Cow::Owned(name)
+    }
+  }
+
+  #[fast]
+  fn add_link<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    trace_id: v8::Local<'s, v8::Value>,
+    span_id: v8::Local<'s, v8::Value>,
+    #[smi] trace_flags: u8,
+    is_remote: bool,
+    #[smi] dropped_attributes_count: u32,
+  ) -> bool {
+    let trace_id = parse_trace_id(scope, trace_id);
+    if trace_id == TraceId::INVALID {
+      return false;
+    };
+    let span_id = parse_span_id(scope, span_id);
+    if span_id == SpanId::INVALID {
+      return false;
+    };
+    let span_context = SpanContext::new(
+      trace_id,
+      span_id,
+      TraceFlags::new(trace_flags),
+      is_remote,
+      TraceState::NONE,
+    );
+
+    let mut state = self.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      span.links.links.push(Link::new(
+        span_context,
+        vec![],
+        dropped_attributes_count,
+      ));
+    }
+    true
+  }
+
+  #[fast]
   fn end(&self, end_time: f64) {
     let end_time = if end_time.is_nan() {
       SystemTime::now()
@@ -1466,151 +1580,6 @@ fn span_attributes(
       .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
     _ => None,
   }
-}
-
-#[op2(fast)]
-fn op_otel_span_attribute1<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
-  key: v8::Local<'s, v8::Value>,
-  value: v8::Local<'s, v8::Value>,
-) {
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return;
-  };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key, value);
-  }
-}
-
-#[op2(fast)]
-fn op_otel_span_attribute2<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
-  key1: v8::Local<'s, v8::Value>,
-  value1: v8::Local<'s, v8::Value>,
-  key2: v8::Local<'s, v8::Value>,
-  value2: v8::Local<'s, v8::Value>,
-) {
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return;
-  };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
-  }
-}
-
-#[allow(clippy::too_many_arguments)]
-#[op2(fast)]
-fn op_otel_span_attribute3<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
-  key1: v8::Local<'s, v8::Value>,
-  value1: v8::Local<'s, v8::Value>,
-  key2: v8::Local<'s, v8::Value>,
-  value2: v8::Local<'s, v8::Value>,
-  key3: v8::Local<'s, v8::Value>,
-  value3: v8::Local<'s, v8::Value>,
-) {
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return;
-  };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
-  }
-}
-
-#[op2(fast)]
-fn op_otel_span_update_name<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  span: v8::Local<'s, v8::Value>,
-  name: v8::Local<'s, v8::Value>,
-) {
-  let Ok(name) = name.try_cast() else {
-    return;
-  };
-  let name = owned_string(scope, name);
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return;
-  };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    span.name = Cow::Owned(name)
-  }
-}
-
-#[op2(fast)]
-fn op_otel_span_add_link<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  span: v8::Local<'s, v8::Value>,
-  trace_id: v8::Local<'s, v8::Value>,
-  span_id: v8::Local<'s, v8::Value>,
-  #[smi] trace_flags: u8,
-  is_remote: bool,
-  #[smi] dropped_attributes_count: u32,
-) -> bool {
-  let trace_id = parse_trace_id(scope, trace_id);
-  if trace_id == TraceId::INVALID {
-    return false;
-  };
-  let span_id = parse_span_id(scope, span_id);
-  if span_id == SpanId::INVALID {
-    return false;
-  };
-  let span_context = SpanContext::new(
-    trace_id,
-    span_id,
-    TraceFlags::new(trace_flags),
-    is_remote,
-    TraceState::NONE,
-  );
-
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return true;
-  };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    span.links.links.push(Link::new(
-      span_context,
-      vec![],
-      dropped_attributes_count,
-    ));
-  }
-  true
 }
 
 struct OtelMeter(opentelemetry::metrics::Meter);
