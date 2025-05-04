@@ -1897,6 +1897,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
+      .arg(env_file_arg())
   })
 }
 
@@ -4659,6 +4660,7 @@ fn cache_parse(
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
   allow_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -7581,6 +7583,18 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "cache", "--env-file", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Cache(CacheFlags {
+          files: svec!["script.ts"],
+        }),
+        env_file: Some(vec![".env".to_string()]),
         ..Flags::default()
       }
     );
