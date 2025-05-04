@@ -64,6 +64,9 @@ function createHttpClient(options) {
           options.proxy.transport = "http";
           break;
         }
+        case "unix": {
+          break;
+        }
         default: {
           throw new TypeError(
             `Invalid value for 'proxy.transport' option: ${
