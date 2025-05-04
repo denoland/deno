@@ -2257,10 +2257,53 @@ Deno.test(
     const resp1 = await fetch("http://localhost/ping", { client });
     assertEquals(resp1.status, 200);
     assertEquals(resp1.headers.get("content-type"), "text/plain");
-    assertEquals(await resp1.text(), "http://localhost/ping");
+    assertEquals(await resp1.text(), "http+unix://localhost/ping");
 
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
     assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientThrowsWhenProxyTransportMismatch() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "socks5", // Mismatch with "http://" URL
+            url: "http://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "http", // Mismatch with "https://" URL
+            url: "https://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "https", // Mismatch with "socks5://" URL
+            url: "socks5://localhost:1080",
+          },
+        });
+      },
+      TypeError,
+    );
   },
 );
