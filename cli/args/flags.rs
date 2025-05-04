@@ -7594,7 +7594,7 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
         }),
-        env_file: Some(vec![".env".to_string()]),
+        env_file: Some(svec![".env"]),
         ..Flags::default()
       }
     );
