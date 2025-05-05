@@ -642,10 +642,21 @@ fn format_embedded_css(
       continue;
     }
     let mut chars = l.chars();
+
+    // indent width option is disregarded when use tabs is true since
+    // only one tab will be inserted when indented once
+    // https://malva.netlify.app/config/indent-width.html
+    let indent_width = if config.use_tabs {
+      1
+    } else {
+      config.indent_width as usize
+    };
+
     // drop the indentation
-    for _ in 0..config.indent_width {
+    for _ in 0..indent_width {
       chars.next();
     }
+
     buf.push(chars.as_str());
   }
   Some(buf.join("\n").to_string())
