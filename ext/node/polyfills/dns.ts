@@ -134,8 +134,6 @@ function onlookupall(
   }
 
   if (this.callback.length > 1) {
-    // If the callback has more than one argument, we need to pass the
-    // addresses as an array.
     this.callback(null, parsedAddresses, undefined, netPermToken);
   } else {
     this.callback(null, parsedAddresses);
