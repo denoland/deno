@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file formatting utilities using
-//! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
+//! [`dpr is only consumed using CLI but in
+//int-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
 //!
-//! At the moment it is only consumed using CLI but in
-//! the future it can be easily extended to provide
+//! At the moment it! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
 use std::borrow::Cow;
@@ -618,6 +618,8 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
+      declaration_order_group_by:
+        config::DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
     },
   };
   // Wraps the text in a css block of `a { ... }`
@@ -711,6 +713,7 @@ fn format_embedded_html(
       script_formatter: None,
       ignore_comment_directive: "deno-fmt-ignore".into(),
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+      single_attr_same_line: true,
     },
   };
   let Ok(text) = markup_fmt::format_text(
@@ -1463,6 +1466,8 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    declaration_order_group_by:
+      DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
   };
 
   FormatOptions {
@@ -1523,6 +1528,7 @@ fn get_resolved_markup_fmt_config(
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    single_attr_same_line: true,
   };
 
   FormatOptions {
