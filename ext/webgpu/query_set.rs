@@ -26,7 +26,11 @@ impl WebIdlInterfaceConverter for GPUQuerySet {
   const NAME: &'static str = "GPUQuerySet";
 }
 
-impl GarbageCollected for GPUQuerySet {}
+impl GarbageCollected for GPUQuerySet {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUQuerySet"
+  }
+}
 
 #[op2]
 impl GPUQuerySet {
