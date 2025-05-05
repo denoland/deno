@@ -90,53 +90,53 @@ thread_local! {
   pub static REPL_INTERNAL_OBJECT_ID: RefCell<Option<RemoteObjectId>> = const { RefCell::new(None) };
 }
 fn get_prelude() -> String {
-  r#"
-const repl_internal = {
-    lastEvalResult: undefined,
-    lastThrownError: undefined,
-    inspectArgs: Deno[Deno.internal].inspectArgs,
-    noColor: Deno.noColor,
-    get closed() {
-      try {
-        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-      } catch {
-        return false;
+  r#"(() => {
+  const repl_internal = {
+      lastEvalResult: undefined,
+      lastThrownError: undefined,
+      inspectArgs: Deno[Deno.internal].inspectArgs,
+      noColor: Deno.noColor,
+      get closed() {
+        try {
+          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+        } catch {
+          return false;
+        }
       }
     }
-  }
-Object.defineProperty(globalThis, "_", {
-  configurable: true,
-  get: () => repl_internal.lastEvalResult,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-   console.log("Last evaluation result is no longer saved to _.");
-  },
-});
+  Object.defineProperty(globalThis, "_", {
+    configurable: true,
+    get: () => repl_internal.lastEvalResult,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
+     console.log("Last evaluation result is no longer saved to _.");
+    },
+  });
 
-Object.defineProperty(globalThis, "_error", {
-  configurable: true,
-  get: () => repl_internal.lastThrownError,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_error", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
+  Object.defineProperty(globalThis, "_error", {
+    configurable: true,
+    get: () => repl_internal.lastThrownError,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_error", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
 
-   console.log("Last thrown error is no longer saved to _error.");
-  },
-});
+     console.log("Last thrown error is no longer saved to _error.");
+    },
+  });
 
-globalThis.clear = console.clear.bind(console);
+  globalThis.clear = console.clear.bind(console);
 
-repl_internal
-"#.to_string()
+  return repl_internal
+})()"#.to_string()
 }
 
 pub enum EvaluationOutput {
