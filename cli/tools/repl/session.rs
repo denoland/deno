@@ -636,13 +636,14 @@ impl ReplSession {
         &[evaluate_result.clone()],
       )
       .await?;
-    let value = response
+    let s = response
       .result
       .value
+      .map(|v| v.as_str().unwrap().to_string())
+      .or(response.result.description)
       .ok_or_else(|| anyhow!("failed to evaluate expression"))?;
-    let s = value.as_str().unwrap();
 
-    Ok(s.to_string())
+    Ok(s)
   }
 
   async fn evaluate_ts_expression(
