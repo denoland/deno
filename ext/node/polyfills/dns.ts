@@ -116,6 +116,7 @@ function onlookupall(
   this: GetAddrInfoReqWrap,
   err: number | null,
   addresses: string[],
+  netPermToken: object | undefined,
 ) {
   if (err) {
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
@@ -132,7 +133,13 @@ function onlookupall(
     };
   }
 
-  this.callback(null, parsedAddresses);
+  if (this.callback.length > 1) {
+    // If the callback has more than one argument, we need to pass the
+    // addresses as an array.
+    this.callback(null, parsedAddresses, undefined, netPermToken);
+  } else {
+    this.callback(null, parsedAddresses);
+  }
 }
 
 type LookupCallback = (
