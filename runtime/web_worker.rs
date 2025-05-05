@@ -568,11 +568,8 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       ops::bootstrap::deno_bootstrap::init(
-        if options.startup_snapshot.is_some() {
-          None
-        } else {
-          Some(Default::default())
-        },
+        options.startup_snapshot.and_then(|_| Default::default()),
+        false,
       ),
       runtime::init(),
       ops::web_worker::deno_web_worker::init(),

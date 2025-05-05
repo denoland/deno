@@ -42,6 +42,8 @@ use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
 pub mod factory;
+#[cfg(feature = "graph")]
+pub mod graph;
 pub mod npm;
 pub mod npmrc;
 mod sync;
@@ -128,12 +130,22 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
+pub trait DenoResolverSys:
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
+{
+}
+
+impl<T> DenoResolverSys for T where
+  T: FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
+{
+}
+
 pub struct DenoResolverOptions<
   'a,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_and_req_resolver: Option<
@@ -185,7 +197,7 @@ pub struct DenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   node_and_npm_resolver: Option<
@@ -206,7 +218,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+    TSys: DenoResolverSys,
   >
   DenoResolver<
     TInNpmPackageChecker,

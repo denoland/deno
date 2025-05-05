@@ -29,6 +29,7 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
@@ -37,6 +38,7 @@ use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
+use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -99,12 +101,12 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmResolutionInitializer;
 use crate::npm::WorkspaceNpmPatchPackages;
+use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::FoundPackageJsonDepFlag;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
@@ -824,6 +826,7 @@ impl CliFactory {
           Ok(Arc::new(CliResolver::new(
             self.deno_resolver().await?.clone(),
             self.services.found_pkg_json_dep_flag.clone(),
+            Box::new(on_resolve_diagnostic),
           )))
         }
         .boxed_local(),
@@ -1204,6 +1207,15 @@ impl CliFactory {
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
+    self
+      .create_cli_main_worker_factory_with_roots(Default::default())
+      .await
+  }
+
+  pub async fn create_cli_main_worker_factory_with_roots(
+    &self,
+    roots: LibWorkerFactoryRoots,
+  ) -> Result<CliMainWorkerFactory, AnyError> {
     let cli_options = self.cli_options()?;
     let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
@@ -1286,6 +1298,7 @@ impl CliFactory {
       cli_options.resolve_storage_key_resolver(),
       self.sys(),
       self.create_lib_main_worker_options()?,
+      roots,
     );
 
     Ok(CliMainWorkerFactory::new(

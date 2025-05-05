@@ -126,7 +126,7 @@ impl ExtraInfoProvider {
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     let package_json_path = package_path.join("package.json");
     let extra_info: NpmPackageExtraInfo =
-      tokio::task::spawn_blocking(move || {
+      deno_core::unsync::spawn_blocking(move || {
         let package_json = std::fs::read_to_string(&package_json_path)
           .map_err(JsErrorBox::from_err)?;
         let extra_info: NpmPackageExtraInfo =
