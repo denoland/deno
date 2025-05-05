@@ -292,7 +292,7 @@ async fn run_subcommand(
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
-      tools::serve::serve(flags, serve_flags).await
+      tools::serve::serve(flags, serve_flags, unconfigured_runtime, roots).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
