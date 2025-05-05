@@ -410,6 +410,14 @@ fn setup_panic_hook() {
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));
+
+  fn error_handler(file: &str, line: i32, message: &str) {
+    // Override C++ abort with a rust panic, so we
+    // get our message above and a nice backtrace.
+    panic!("Fatal error in {file}:{line}: {message}");
+  }
+
+  deno_core::v8::V8::set_fatal_error_handler(error_handler);
 }
 
 fn exit_with_message(message: &str, code: i32) -> ! {
