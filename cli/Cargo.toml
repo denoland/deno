@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.2.11"
+version = "2.3.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -75,7 +75,7 @@ deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph.workspace = true
+deno_graph = { workspace = true, features = ["fast_check"] }
 deno_lib.workspace = true
 deno_lint.workspace = true
 deno_lockfile.workspace = true
@@ -85,7 +85,7 @@ deno_npm_cache.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["sync"] }
+deno_resolver = { workspace = true, features = ["graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_snapshots.workspace = true
@@ -94,7 +94,7 @@ deno_telemetry.workspace = true
 deno_terminal.workspace = true
 eszip.workspace = true
 libsui.workspace = true
-node_resolver.workspace = true
+node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
 async-trait.workspace = true
@@ -114,6 +114,7 @@ dashmap.workspace = true
 dhat = { workspace = true, optional = true }
 dissimilar.workspace = true
 dotenvy.workspace = true
+dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
@@ -191,6 +192,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
+tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true

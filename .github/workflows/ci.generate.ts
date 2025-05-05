@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 53;
+const cacheVersion = 55;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -318,6 +318,7 @@ const ci = {
   name: "ci",
   permissions: {
     contents: "write",
+    "id-token": "write", // Required for GitHub OIDC with Azure for code signing
   },
   on: {
     push: {
@@ -368,6 +369,12 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
+      // This is required to successfully authenticate with Azure using OIDC for
+      // code signing.
+      environment: {
+        name:
+          "${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'build' || '' }}",
+      },
       "timeout-minutes": 240,
       defaults: {
         run: {
@@ -835,6 +842,69 @@ const ci = {
             .join("\n"),
         },
         {
+          // Note: Azure OIDC credentials are only valid for 5 minutes, so
+          // authentication must be done right before signing.
+          name: "Authenticate with Azure (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/login@v1",
+          with: {
+            "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+            "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+            "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "enable-AzPSSession": true,
+          },
+        },
+        {
+          name: "Code sign deno.exe (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/trusted-signing-action@v0",
+          with: {
+            "endpoint": "https://eus.codesigning.azure.net/",
+            "trusted-signing-account-name": "deno-cli-code-signing",
+            "certificate-profile-name": "deno-cli-code-signing-cert",
+            "files-folder": "target/release",
+            "files-folder-filter": "deno.exe",
+            "file-digest": "SHA256",
+            "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+            "timestamp-digest": "SHA256",
+            "exclude-environment-credential": true,
+            "exclude-workload-identity-credential": true,
+            "exclude-managed-identity-credential": true,
+            "exclude-shared-token-cache-credential": true,
+            "exclude-visual-studio-credential": true,
+            "exclude-visual-studio-code-credential": true,
+            "exclude-azure-cli-credential": false,
+          },
+        },
+        {
+          name: "Verify signature (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          shell: "pwsh",
+          run: [
+            '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+            "$SignToolPath = $SignTool.FullName",
+            "& $SignToolPath verify /pa /v target\\release\\deno.exe",
+          ].join("\n"),
+        },
+        {
           name: "Pre-release (windows)",
           if: [
             "matrix.os == 'windows' &&",
@@ -1148,10 +1218,15 @@ const ci = {
           name: "Install wasm target",
           run: "rustup target add wasm32-unknown-unknown",
         },
+        // we want these crates to be Wasm compatible
         {
-          name: "Cargo build",
-          // we want this crate to be wasm compatible
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
+        },
+        {
+          name: "Cargo check (deno_npm_cache)",
+          run: "cargo check --target wasm32-unknown-unknown -p deno_npm_cache",
         },
       ]),
     },

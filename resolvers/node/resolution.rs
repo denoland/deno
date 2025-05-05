@@ -48,6 +48,7 @@ use crate::errors::ResolveBinaryCommandsError;
 use crate::errors::ResolvePkgJsonBinExportError;
 use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
+use crate::errors::UnknownBuiltInNodeModuleError;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::path::UrlOrPath;
@@ -105,6 +106,15 @@ impl ResolutionMode {
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(mode: deno_graph::source::ResolutionMode) -> Self {
+    use deno_graph::source::ResolutionMode::*;
+    match mode {
+      Import => Self::Import,
+      Require => Self::Require,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -116,6 +126,15 @@ pub enum NodeResolutionKind {
 impl NodeResolutionKind {
   pub fn is_types(&self) -> bool {
     matches!(self, NodeResolutionKind::Types)
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(kind: deno_graph::source::ResolutionKind) -> Self {
+    use deno_graph::source::ResolutionKind::*;
+    match kind {
+      Execution => Self::Execution,
+      Types => Self::Types,
+    }
   }
 }
 
@@ -255,6 +274,13 @@ impl<
     self.in_npm_pkg_checker.in_npm_package(specifier)
   }
 
+  #[inline(always)]
+  pub fn is_builtin_node_module(&self, specifier: &str) -> bool {
+    self
+      .is_built_in_node_module_checker
+      .is_builtin_node_module(specifier)
+  }
+
   /// This function is an implementation of `defaultResolve` in
   /// `lib/internal/modules/esm/resolve.js` from Node.
   pub fn resolve(
@@ -267,10 +293,7 @@ impl<
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-    if self
-      .is_built_in_node_module_checker
-      .is_builtin_node_module(specifier)
-    {
+    if self.is_builtin_node_module(specifier) {
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
@@ -282,7 +305,7 @@ impl<
       }
 
       if let Some(module_name) =
-        get_module_name_from_builtin_node_module_specifier(&url)
+        self.get_module_name_from_builtin_node_module_url(&url)?
       {
         return Ok(NodeResolution::BuiltIn(module_name.to_string()));
       }
@@ -927,7 +950,8 @@ impl<
         let target_url = Url::parse(target);
         match target_url {
           Ok(url) => {
-            if get_module_name_from_builtin_node_module_specifier(&url)
+            if self
+              .get_module_name_from_builtin_node_module_url(&url)?
               .is_some()
             {
               return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(url)));
@@ -959,6 +983,7 @@ impl<
                 | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
                 | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
                 | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+                | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
                 | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
                   Err(PackageTargetResolveErrorKind::PackageResolve(err).into())
                 }
@@ -1905,6 +1930,28 @@ impl<
 
     None
   }
+
+  /// Ex. returns `fs` for `node:fs`
+  fn get_module_name_from_builtin_node_module_url<'url>(
+    &self,
+    url: &'url Url,
+  ) -> Result<Option<&'url str>, UnknownBuiltInNodeModuleError> {
+    if url.scheme() != "node" {
+      return Ok(None);
+    }
+
+    let module_name = url.path();
+
+    if !self
+      .is_built_in_node_module_checker
+      .is_builtin_node_module(module_name)
+    {
+      return Err(UnknownBuiltInNodeModuleError {
+        module_name: module_name.to_string(),
+      });
+    }
+    Ok(Some(module_name))
+  }
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -2194,18 +2241,6 @@ pub fn types_package_name(package_name: &str) -> String {
     "@types/{}",
     package_name.trim_start_matches('@').replace('/', "__")
   )
-}
-
-/// Ex. returns `fs` for `node:fs`
-fn get_module_name_from_builtin_node_module_specifier(
-  specifier: &Url,
-) -> Option<&str> {
-  if specifier.scheme() != "node" {
-    return None;
-  }
-
-  let (_, specifier) = specifier.as_str().split_once(':')?;
-  Some(specifier)
 }
 
 /// Node is more lenient joining paths than the url crate is,

@@ -631,15 +631,16 @@ async fn configure_main_worker(
       specifier.clone(),
       permissions_container,
       vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint_ext_for_test::init_ops(),
-        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
+        ops::testing::deno_test::init(worker_sender.sender),
+        ops::lint::deno_lint_ext_for_test::init(),
+        ops::jupyter::deno_jupyter_for_test::init(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;

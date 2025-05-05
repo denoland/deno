@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
@@ -13,6 +12,7 @@ use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::colors;
 use deno_semver::package::PackageReq;
+pub use local::SetupCache;
 use rustc_hash::FxHashSet;
 
 pub use self::common::NpmPackageFsInstaller;
@@ -20,14 +20,14 @@ use self::global::GlobalNpmPackageInstaller;
 use self::local::LocalNpmPackageInstaller;
 pub use self::resolution::AddPkgReqsResult;
 pub use self::resolution::NpmResolutionInstaller;
+use super::CliNpmCache;
+use super::CliNpmTarballCache;
 use super::NpmResolutionInitializer;
 use super::WorkspaceNpmPatchPackages;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::PackageJsonDepValueParseWithLocationError;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -200,19 +200,6 @@ impl NpmInstaller {
     }
 
     result
-  }
-
-  /// Sets package requirements to the resolver, removing old requirements and adding new ones.
-  ///
-  /// This will retrieve and resolve package information, but not cache any package files.
-  pub async fn set_package_reqs(
-    &self,
-    packages: &[PackageReq],
-  ) -> Result<(), AnyError> {
-    self
-      .npm_resolution_installer
-      .set_package_reqs(packages)
-      .await
   }
 
   pub async fn inject_synthetic_types_node_package(

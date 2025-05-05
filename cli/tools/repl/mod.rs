@@ -63,9 +63,13 @@ impl Repl {
 
           // We check for close and break here instead of making it a loop condition to get
           // consistent behavior in when the user evaluates a call to close().
-          if self.session.closing().await? {
-            break;
-          }
+          match self.session.closing().await {
+            Ok(closing) if closing => break,
+            Ok(_) => {}
+            Err(err) => {
+              println!("Error: {:?}", err)
+            }
+          };
 
           println!("{}", output);
         }
@@ -186,8 +190,9 @@ pub async fn run(
       WorkerExecutionMode::Repl,
       main_module.clone(),
       permissions.clone(),
-      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
+      vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
+      None,
     )
     .await?;
   worker.setup_repl().await?;

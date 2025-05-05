@@ -1857,23 +1857,24 @@ impl QuickInfo {
     module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::Hover {
-    let mut parts = Vec::<lsp::MarkedString>::new();
+    let mut parts = Vec::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_language_code(
-        "typescript".to_string(),
-        display_string,
-      ));
+      if !display_string.is_empty() {
+        parts.push(format!("```typescript\n{}\n```", display_string));
+      }
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
     {
-      parts.push(lsp::MarkedString::from_markdown(documentation));
+      if !documentation.is_empty() {
+        parts.push(documentation);
+      }
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
@@ -1884,13 +1885,15 @@ impl QuickInfo {
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{tags_preview}"
-        )));
+        parts.push(tags_preview);
       }
     }
+    let value = parts.join("\n\n");
     lsp::Hover {
-      contents: lsp::HoverContents::Array(parts),
+      contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value,
+      }),
       range: Some(self.text_span.to_range(module.line_index.clone())),
     }
   }
@@ -5035,7 +5038,7 @@ fn run_tsc_thread(
   let has_inspector_server = maybe_inspector_server.is_some();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
-  extensions.push(deno_tsc::init_ops_and_esm(
+  extensions.push(deno_tsc::init(
     performance,
     specifier_map,
     request_rx,

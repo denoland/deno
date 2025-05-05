@@ -36,8 +36,8 @@ Object.defineProperty(globalThis, "URLSearchParams", {
 });
 ```
 
-Then from rust, provide `deno_url::deno_url::init_ops_and_esm()` in the
-`extensions` field of your `RuntimeOptions`
+Then from rust, provide `deno_url::deno_url::init()` in the `extensions` field
+of your `RuntimeOptions`
 
 ## Dependencies
 

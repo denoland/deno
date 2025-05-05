@@ -125,6 +125,7 @@ async fn rust_test_client_with_resolver(
       dns_resolver: resolver,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: None,
     },
   )

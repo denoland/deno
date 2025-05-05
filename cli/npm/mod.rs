@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_config::workspace::Workspace;
+use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
@@ -19,7 +20,8 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
-use deno_npm::NpmPackageId;
+use deno_npm_cache::NpmCacheHttpClientBytesResponse;
+use deno_npm_cache::NpmCacheHttpClientResponse;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -28,15 +30,12 @@ use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
-use http::HeaderName;
-use http::HeaderValue;
 use indexmap::IndexMap;
 use thiserror::Error;
 
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
-pub use self::managed::ResolveSnapshotError;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::managed::DefaultTarballUrl;
@@ -71,6 +70,7 @@ impl NpmPackageInfoApiAdapter {
     }
   }
 }
+
 async fn get_infos(
   info_provider: &(dyn NpmRegistryApi + Send + Sync),
   workspace_patch_packages: &WorkspaceNpmPatchPackages,
@@ -87,15 +87,7 @@ async fn get_infos(
       Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
         deno_lockfile::Lockfile5NpmInfo {
           tarball_url: version_info.dist.as_ref().and_then(|d| {
-            if d.tarball
-              == DefaultTarballUrl.default_tarball_url(&NpmPackageId {
-                nv: v.clone(),
-                // TODO(nathanwhit): this function takes an `NpmPackageId`
-                // but it should take a `PackageNv`. For now just
-                // use default here.
-                peer_dependencies: Default::default(),
-              })
-            {
+            if d.tarball == DefaultTarballUrl.default_tarball_url(v) {
               None
             } else {
               Some(d.tarball.clone())
@@ -109,8 +101,8 @@ async fn get_infos(
           cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
           os: version_info.os.iter().map(|s| s.to_string()).collect(),
           deprecated: version_info.deprecated.is_some(),
-          has_bin: version_info.bin.is_some(),
-          has_scripts: version_info.scripts.contains_key("preinstall")
+          bin: version_info.bin.is_some(),
+          scripts: version_info.scripts.contains_key("preinstall")
             || version_info.scripts.contains_key("install")
             || version_info.scripts.contains_key("postinstall"),
           optional_peers: version_info
@@ -188,7 +180,7 @@ impl WorkspaceNpmPatchPackages {
             log::warn!(
               "{} {}\n    at {}",
               colors::yellow("Warning"),
-              err.to_string(),
+              err,
               pkg_json.path.display(),
             );
           }
@@ -303,8 +295,9 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
-    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<Option<Vec<u8>>, deno_npm_cache::DownloadError> {
+    maybe_auth: Option<String>,
+    maybe_etag: Option<String>,
+  ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
     let guard = self.progress_bar.update(url.as_str());
     let client = self.http_client_provider.get_or_create().map_err(|err| {
       deno_npm_cache::DownloadError {
@@ -312,9 +305,38 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         error: err,
       }
     })?;
+    let mut headers = http::HeaderMap::new();
+    if let Some(auth) = maybe_auth {
+      headers.append(
+        http::header::AUTHORIZATION,
+        http::header::HeaderValue::try_from(auth).unwrap(),
+      );
+    }
+    if let Some(etag) = maybe_etag {
+      headers.append(
+        http::header::IF_NONE_MATCH,
+        http::header::HeaderValue::try_from(etag).unwrap(),
+      );
+    }
     client
-      .download_with_progress_and_retries(url, maybe_auth_header, &guard)
+      .download_with_progress_and_retries(url, &headers, &guard)
       .await
+      .map(|response| match response {
+        crate::http_util::HttpClientResponse::Success { headers, body } => {
+          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          })
+        }
+        crate::http_util::HttpClientResponse::NotFound => {
+          NpmCacheHttpClientResponse::NotFound
+        }
+        crate::http_util::HttpClientResponse::NotModified => {
+          NpmCacheHttpClientResponse::NotModified
+        }
+      })
       .map_err(|err| {
         use crate::http_util::DownloadErrorKind::*;
         let status_code = match err.as_kind() {
@@ -325,10 +347,11 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           | ToStr { .. }
           | RedirectHeaderParse { .. }
           | TooManyRedirects
+          | UnhandledNotModified
           | NotFound
           | Other(_) => None,
           BadResponse(bad_response_error) => {
-            Some(bad_response_error.status_code)
+            Some(bad_response_error.status_code.as_u16())
           }
         };
         deno_npm_cache::DownloadError {
@@ -396,8 +419,18 @@ impl NpmFetchResolver {
       let registry_config = self.npmrc.get_registry_config(name);
       // TODO(bartlomieju): this should error out, not use `.ok()`.
       let maybe_auth_header =
-        deno_npm_cache::maybe_auth_header_for_npm_registry(registry_config)
-          .ok()?;
+        deno_npm_cache::maybe_auth_header_value_for_npm_registry(
+          registry_config,
+        )
+        .map_err(AnyError::from)
+        .and_then(|value| match value {
+          Some(value) => Ok(Some((
+            http::header::AUTHORIZATION,
+            http::HeaderValue::try_from(value.into_bytes())?,
+          ))),
+          None => Ok(None),
+        })
+        .ok()?;
       let file = self
         .file_fetcher
         .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
