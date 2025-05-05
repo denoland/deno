@@ -15,6 +15,8 @@ use std::net::SocketAddr;
 use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::ready;
 use std::task::Context;
@@ -80,6 +82,7 @@ use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
@@ -201,6 +204,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    op_http_notify_serving,
     http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
@@ -1761,6 +1765,20 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)
     }
+  }
+}
+
+pub static SERVE_NOTIFIER: Notify = Notify::const_new();
+
+#[op2(fast)]
+fn op_http_notify_serving() {
+  static ONCE: AtomicBool = AtomicBool::new(false);
+
+  if ONCE
+    .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+    .is_ok()
+  {
+    SERVE_NOTIFIER.notify_one();
   }
 }
 
