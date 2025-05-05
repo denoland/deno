@@ -31,6 +31,7 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { JsStream } from "ext:core/ops";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -137,8 +138,17 @@ export class TLSSocket extends net.Socket {
     function _wrapHandle(tlsOptions: any, wrap: net.Socket | undefined) {
       let handle: any;
 
-      if (wrap) {
+      if (wrap instanceof net.Socket && wrap._handle) {
         handle = wrap._handle;
+      } else {
+        console.log("wrap", wrap);
+        wrap.onread = (limit: number) => {
+          console.log("onread", limit);
+        };
+        wrap.onwrite = (data: any) => {
+          console.log("onwrite", data);
+         };
+        handle = new JsStream(wrap);
       }
 
       const options = tlsOptions;

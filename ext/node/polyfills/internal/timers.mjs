@@ -29,7 +29,7 @@ import {
 export const TIMEOUT_MAX = 2 ** 31 - 1;
 
 export const kTimerId = Symbol("timerId");
-export const kTimeout = Symbol("timeout");
+export const kTimeout = Symbol.for("timeout");
 const kRefed = Symbol("refed");
 const createTimer = Symbol("createTimer");
 

@@ -108,7 +108,7 @@ export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
   }
 }
 
-export const kStreamBaseField = Symbol("kStreamBaseField");
+export const kStreamBaseField = Symbol.for("kStreamBaseField");
 
 const SUGGESTED_SIZE = 64 * 1024;
 
