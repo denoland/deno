@@ -227,7 +227,7 @@ impl Cipher {
 
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
-      "aes-256-ctr" => {
+      "aes256-ctr" | "aes-256-ctr" => {
         if key.len() != 32 {
           return Err(CipherError::InvalidKeyLength);
         }
@@ -236,7 +236,7 @@ impl Cipher {
         }
         Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
-      "aes-192-ctr" => {
+      "aes192-ctr" | "aes-192-ctr" => {
         if key.len() != 24 {
           return Err(CipherError::InvalidKeyLength);
         }
@@ -245,7 +245,7 @@ impl Cipher {
         }
         Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
-      "aes-128-ctr" => {
+      "aes128-ctr" | "aes-128-ctr" => {
         if key.len() != 16 {
           return Err(CipherError::InvalidKeyLength);
         }
@@ -499,7 +499,7 @@ impl Decipher {
 
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
-      "aes-256-ctr" => {
+      "aes256-ctr" | "aes-256-ctr" => {
         if key.len() != 32 {
           return Err(DecipherError::InvalidKeyLength);
         }
@@ -508,7 +508,7 @@ impl Decipher {
         }
         Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
-      "aes-192-ctr" => {
+      "aes192-ctr" | "aes-192-ctr" => {
         if key.len() != 24 {
           return Err(DecipherError::InvalidKeyLength);
         }
@@ -517,7 +517,7 @@ impl Decipher {
         }
         Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
-      "aes-128-ctr" => {
+      "aes128-ctr" | "aes-128-ctr" => {
         if key.len() != 16 {
           return Err(DecipherError::InvalidKeyLength);
         }

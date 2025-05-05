@@ -187,8 +187,7 @@ export class Cipheriv extends Transform implements Cipher {
     this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
+        cipher.endsWith("-ctr"));
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
@@ -345,10 +344,10 @@ export class Decipheriv extends Transform implements Cipher {
     });
     this.#cache = new BlockModeCache(this.#autoPadding);
     this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
+        cipher.endsWith("-ctr"));
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
