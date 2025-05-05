@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file formatting utilities using
-//! [`dpr is only consumed using CLI but in
-//int-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
+//! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
 //!
-//! At the moment it! the future it can be easily extended to provide
+//! At the moment it is only consumed using CLI but in
+//! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
 use std::borrow::Cow;
