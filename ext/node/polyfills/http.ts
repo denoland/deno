@@ -1392,7 +1392,7 @@ function onError(self, error, cb) {
 }
 
 export type ServerResponse = {
-  req: IncomingMessage;
+  req: IncomingMessageForServer;
   statusCode: number;
   statusMessage?: string;
 
