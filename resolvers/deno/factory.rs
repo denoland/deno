@@ -47,6 +47,9 @@ use sys_traits::ThreadSleep;
 use thiserror::Error;
 use url::Url;
 
+use crate::cjs::CjsTracker;
+use crate::cjs::CjsTrackerRc;
+use crate::cjs::IsCjsResolutionMode;
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
@@ -590,6 +593,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
 #[derive(Debug, Default)]
 pub struct ResolverFactoryOptions {
+  pub is_cjs_resolution_mode: IsCjsResolutionMode,
   pub npm_system_info: NpmSystemInfo,
   pub node_resolver_options: NodeResolverOptions,
   pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
@@ -604,6 +608,7 @@ pub struct ResolverFactoryOptions {
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
   sys: NodeResolutionSys<TSys>,
+  cjs_tracker: Deferred<CjsTrackerRc<DenoInNpmPackageChecker, TSys>>,
   deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -639,6 +644,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         workspace_factory.sys.clone(),
         options.node_resolution_cache.clone(),
       ),
+      cjs_tracker: Default::default(),
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -683,6 +689,18 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
+  }
+
+  pub fn cjs_tracker(
+    &self,
+  ) -> Result<&CjsTrackerRc<DenoInNpmPackageChecker, TSys>, anyhow::Error> {
+    self.cjs_tracker.get_or_try_init(|| {
+      Ok(new_rc(CjsTracker::new(
+        self.in_npm_package_checker()?.clone(),
+        self.pkg_json_resolver().clone(),
+        self.options.is_cjs_resolution_mode,
+      )))
+    })
   }
 
   pub fn in_npm_package_checker(

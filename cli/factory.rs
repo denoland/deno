@@ -306,7 +306,6 @@ struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
   cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
-  cjs_tracker: Deferred<Arc<CliCjsTracker>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
   deno_dir_path_provider: Deferred<Arc<CliDenoDirPathProvider>>,
@@ -1117,20 +1116,7 @@ impl CliFactory {
   }
 
   pub fn cjs_tracker(&self) -> Result<&Arc<CliCjsTracker>, AnyError> {
-    self.services.cjs_tracker.get_or_try_init(|| {
-      let options = self.cli_options()?;
-      Ok(Arc::new(CliCjsTracker::new(
-        self.in_npm_pkg_checker()?.clone(),
-        self.pkg_json_resolver()?.clone(),
-        if options.is_node_main() || options.unstable_detect_cjs() {
-          IsCjsResolutionMode::ImplicitTypeCommonJs
-        } else if options.detect_cjs() {
-          IsCjsResolutionMode::ExplicitTypeCommonJs
-        } else {
-          IsCjsResolutionMode::Disabled
-        },
-      )))
-    })
+    self.resolver_factory()?.cjs_tracker()
   }
 
   pub fn permission_desc_parser(
@@ -1396,9 +1382,19 @@ impl CliFactory {
 
   pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
     self.services.resolver_factory.get_or_try_init(|| {
+      let options = self.cli_options()?;
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
+          is_cjs_resolution_mode: if options.is_node_main()
+            || options.unstable_detect_cjs()
+          {
+            IsCjsResolutionMode::ImplicitTypeCommonJs
+          } else if options.detect_cjs() {
+            IsCjsResolutionMode::ExplicitTypeCommonJs
+          } else {
+            IsCjsResolutionMode::Disabled
+          },
           node_resolver_options: NodeResolverOptions {
             conditions_from_resolution_mode: Default::default(),
             typescript_version: Some(
@@ -1411,7 +1407,7 @@ impl CliFactory {
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
-            cli_options: self.cli_options()?.clone(),
+            cli_options: options.clone(),
             eszip_module_loader_provider: self
               .eszip_module_loader_provider()?
               .clone(),
