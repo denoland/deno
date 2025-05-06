@@ -85,6 +85,7 @@ import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
+import { IncomingMessage } from "node:http";
 
 const { internalRidSymbol } = core;
 const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
@@ -1392,6 +1393,7 @@ function onError(self, error, cb) {
 }
 
 export type ServerResponse = {
+  req: IncomingMessage;
   statusCode: number;
   statusMessage?: string;
 
@@ -1456,9 +1458,11 @@ type ServerResponseStatic = {
 
 export const ServerResponse = function (
   this: ServerResponse,
+  req: IncomingMessage,
   resolve: (value: Response | PromiseLike<Response>) => void,
   socket: FakeSocket,
 ) {
+  this.req = req;
   this.statusCode = 200;
   this.statusMessage = undefined;
   this._headers = { __proto__: null };
@@ -1996,7 +2000,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve, socket);
+          const res = new ServerResponse(req, resolve, socket);
 
           if (request.headers.has("expect")) {
             if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {
