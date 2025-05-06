@@ -384,7 +384,7 @@ const nodeCustomInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 
 // for prototype checks (Temporal, Intl.Locale)
-// todo: use temporal when available?
+// todo(#29165): use temporal when available?
 const globalThis_ = globalThis;
 
 function getUserOptions(ctx, isCrossContext) {
