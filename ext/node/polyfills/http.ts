@@ -85,7 +85,6 @@ import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
-import { IncomingMessage } from "node:http";
 
 const { internalRidSymbol } = core;
 const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
