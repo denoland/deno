@@ -1457,7 +1457,7 @@ type ServerResponseStatic = {
 
 export const ServerResponse = function (
   this: ServerResponse,
-  req: IncomingMessage,
+  req: IncomingMessageForServer,
   resolve: (value: Response | PromiseLike<Response>) => void,
   socket: FakeSocket,
 ) {
