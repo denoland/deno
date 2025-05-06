@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
+  op_http_notify_serving,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
@@ -1048,6 +1049,8 @@ function serveHttpOn(context, addr, callback) {
       context.closed = true;
     }
   })();
+
+  op_http_notify_serving();
 
   return {
     addr,

@@ -71,7 +71,11 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {}
+impl GarbageCollected for DatabaseSync {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DatabaseSync"
+  }
+}
 
 fn set_db_config(
   conn: &rusqlite::Connection,

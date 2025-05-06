@@ -7,6 +7,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
+use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_runtime::UnconfiguredRuntime;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -20,6 +22,8 @@ use crate::worker::CliMainWorkerFactory;
 pub async fn serve(
   flags: Arc<Flags>,
   serve_flags: ServeFlags,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
@@ -45,8 +49,11 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory_with_roots(roots)
+      .await?,
+  );
 
   if serve_flags.open_site {
     let url = resolve_serve_url(serve_flags.host, serve_flags.port);
@@ -62,6 +69,7 @@ pub async fn serve(
     main_module.clone(),
     serve_flags.worker_count,
     hmr,
+    unconfigured_runtime,
   )
   .await
 }
@@ -71,14 +79,16 @@ async fn do_serve(
   main_module: ModuleSpecifier,
   worker_count: Option<usize>,
   hmr: bool,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
 ) -> Result<i32, AnyError> {
   let mut worker = worker_factory
-    .create_main_worker(
+    .create_main_worker_with_unconfigured_runtime(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: true,
         worker_count,
       },
       main_module.clone(),
+      unconfigured_runtime,
     )
     .await?;
   let worker_count = match worker_count {
@@ -176,7 +186,7 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(worker_factory, main_module.clone(), worker_count, hmr)
+        do_serve(worker_factory, main_module.clone(), worker_count, hmr, None)
           .await?;
 
         Ok(())
