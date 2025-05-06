@@ -401,7 +401,7 @@ pub async fn op_node_http_await_response(
     ))
   })?;
 
-  let res = resource.response.await.unwrap().unwrap();
+  let res = resource.response.await??;
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
