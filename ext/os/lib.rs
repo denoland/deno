@@ -588,7 +588,7 @@ fn rss() -> u64 {
   assert_eq!(r, libc::KERN_SUCCESS);
   // SAFETY: we just asserted that it was success
   let task_info = unsafe { task_info.assume_init() };
-  task_info.resident_size as u64
+  task_info.resident_size
 }
 
 #[cfg(target_os = "openbsd")]
