@@ -515,8 +515,14 @@ class ClientRequest extends OutgoingMessage {
           span.setAttribute("url.query", parsedUrl.search.slice(1));
         }
 
-        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        let baseConnRid;
+        try {
+          baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        } catch (err) {
+          throw (this.socket.errored || err);
+        }
         if (this._encrypted) {
+          console.log("tls path");
           const hasCaCerts = this.agent?.options?.ca !== undefined;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
