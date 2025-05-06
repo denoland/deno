@@ -52,6 +52,7 @@ use lazy_regex::lazy_regex;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -4867,6 +4868,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
             scope,
+            NodeResolutionKind::Types,
             ResolutionMode::Import,
           ) else {
             lsp_log!("failed to resolve {req_ref} to file URL");
