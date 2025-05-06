@@ -108,6 +108,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       __proto__: null,
       enumerable: true,
       configurable: true,
+      writable: true,
       value: () => op_bootstrap_color_depth(),
     },
   });
