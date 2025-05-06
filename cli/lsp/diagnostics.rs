@@ -1579,6 +1579,7 @@ fn maybe_ambient_specifier_resolution_err(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
