@@ -718,6 +718,10 @@ function revokeObjectURL(url) {
 URL.createObjectURL = createObjectURL;
 URL.revokeObjectURL = revokeObjectURL;
 
+function isBlob(obj) {
+  return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
+}
+
 export {
   Blob,
   blobFromObjectUrl,
@@ -725,4 +729,5 @@ export {
   File,
   FilePrototype,
   getParts,
+  isBlob,
 };

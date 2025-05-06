@@ -24,7 +24,6 @@ use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::hard_link_file;
@@ -40,15 +39,16 @@ use sys_traits::FsDirEntry;
 use sys_traits::FsReadDir;
 
 use super::common::bin_entries;
+use super::common::NpmPackageExtraInfoProvider;
 use super::common::NpmPackageFsInstaller;
+use super::CliNpmCache;
+use super::CliNpmTarballCache;
 use super::PackageCaching;
+use super::WorkspaceNpmPatchPackages;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::colors;
-use crate::npm::installer::common::NpmPackageExtraInfoProvider;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
@@ -70,6 +70,7 @@ pub struct LocalNpmPackageInstaller {
   system_info: NpmSystemInfo,
   npm_registry_info_provider:
     Arc<dyn deno_npm::registry::NpmRegistryApi + Send + Sync>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
 impl std::fmt::Debug for LocalNpmPackageInstaller {
@@ -103,6 +104,7 @@ impl LocalNpmPackageInstaller {
     npm_registry_info_provider: Arc<
       dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
     >,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
       cache,
@@ -115,6 +117,7 @@ impl LocalNpmPackageInstaller {
       root_node_modules_path: node_modules_folder,
       system_info,
       npm_registry_info_provider,
+      workspace_patch_packages,
     }
   }
 }
@@ -140,6 +143,7 @@ impl NpmPackageFsInstaller for LocalNpmPackageInstaller {
       &self.sys,
       &self.system_info,
       &self.lifecycle_scripts,
+      &self.workspace_patch_packages,
     )
     .await
     .map_err(JsErrorBox::from_err)
@@ -202,37 +206,6 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn handle_package_scripts_bin_deprecated<'a>(
-  package: &'a NpmResolutionPackage,
-  extra: &NpmPackageExtraInfo,
-  package_path: PathBuf,
-  bin_entries: &RefCell<bin_entries::BinEntries<'a>>,
-  lifecycle_scripts: &RefCell<
-    super::common::lifecycle_scripts::LifecycleScripts<'a>,
-  >,
-  packages_with_deprecation_warnings: &Mutex<Vec<(PackageNv, String)>>,
-) {
-  if package.has_bin {
-    bin_entries
-      .borrow_mut()
-      .add(package, extra, package_path.to_path_buf());
-  }
-
-  if package.has_scripts {
-    lifecycle_scripts
-      .borrow_mut()
-      .add(package, extra, package_path.into());
-  }
-
-  if package.is_deprecated {
-    if let Some(deprecated) = &extra.deprecated {
-      packages_with_deprecation_warnings
-        .lock()
-        .push((package.id.nv.clone(), deprecated.clone()));
-    }
-  }
-}
-
 /// Creates a pnpm style folder structure.
 #[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
@@ -246,6 +219,7 @@ async fn sync_resolution_with_fs(
   sys: &CliSys,
   system_info: &NpmSystemInfo,
   lifecycle_scripts_config: &LifecycleScriptsConfig,
+  workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
 ) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -318,6 +292,7 @@ async fn sync_resolution_with_fs(
   let extra_info_provider = Arc::new(super::common::ExtraInfoProvider::new(
     cache.clone(),
     npm_registry_info_provider.clone(),
+    workspace_patch_packages.clone(),
   ));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
@@ -414,12 +389,17 @@ async fn sync_resolution_with_fs(
                 Ok::<_, SyncResolutionWithFsError>(())
               }
             });
-            let extra_fut = if package.has_bin
+            let extra_fut = if (package.has_bin
               || package.has_scripts
-              || package.is_deprecated && package.extra.is_none()
+              || package.is_deprecated)
+              && package.extra.is_none()
             {
               extra_info_provider
-                .get_package_extra_info(&package.id.nv, package.is_deprecated)
+                .get_package_extra_info(
+                  &package.id.nv,
+                  &package_path,
+                  super::common::ExpectedExtraInfo::from_package(package),
+                )
                 .boxed_local()
             } else {
               std::future::ready(Ok(package.extra.clone().unwrap_or_default()))
@@ -432,14 +412,29 @@ async fn sync_resolution_with_fs(
               .map_err(JsErrorBox::from_err)?;
             let extra = extra.map_err(JsErrorBox::from_err)?;
 
-            handle_package_scripts_bin_deprecated(
-              package,
-              &extra,
-              package_path,
-              &bin_entries_to_setup,
-              &lifecycle_scripts,
-              &packages_with_deprecation_warnings,
-            );
+            if package.has_bin {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path.to_path_buf(),
+              );
+            }
+
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
+            }
+
+            if package.is_deprecated {
+              if let Some(deprecated) = &extra.deprecated {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.nv.clone(), deprecated.clone()));
+              }
+            }
 
             // finally stop showing the progress bar
             drop(pb_guard); // explicit for clarity
@@ -453,30 +448,40 @@ async fn sync_resolution_with_fs(
         write_initialized_file(&initialized_file, &tags)?;
       }
 
-      if package.has_bin || package.has_scripts || package.is_deprecated {
+      if package.has_bin || package.has_scripts {
         let bin_entries_to_setup = bin_entries.clone();
         let lifecycle_scripts = lifecycle_scripts.clone();
         let extra_info_provider = extra_info_provider.clone();
-        let packages_with_deprecation_warnings =
-          packages_with_deprecation_warnings.clone();
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
         cache_futures.push(
           async move {
             let extra = extra_info_provider
-              .get_package_extra_info(&package.id.nv, package.is_deprecated)
+              .get_package_extra_info(
+                &package.id.nv,
+                &package_path,
+                super::common::ExpectedExtraInfo::from_package(package),
+              )
               .await
               .map_err(JsErrorBox::from_err)?;
 
-            handle_package_scripts_bin_deprecated(
-              package,
-              &extra,
-              package_path,
-              &bin_entries_to_setup,
-              &lifecycle_scripts,
-              &packages_with_deprecation_warnings,
-            );
+            if package.has_bin {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path.to_path_buf(),
+              );
+            }
+
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
+            }
+
             Ok(())
           }
           .boxed_local(),
@@ -1045,7 +1050,7 @@ struct SetupCacheData {
 /// cache what we've setup on the last run and only update what is necessary.
 /// Obviously this could lead to issues if the cache gets out of date with the
 /// file system, such as if the user manually deletes a symlink.
-struct SetupCache {
+pub struct SetupCache {
   file_path: PathBuf,
   previous: Option<SetupCacheData>,
   current: SetupCacheData,
@@ -1080,6 +1085,14 @@ impl SetupCache {
       .ok()
     });
     true
+  }
+
+  pub fn remove_root_symlink(&mut self, name: &str) {
+    self.current.root_symlinks.remove(name);
+  }
+
+  pub fn remove_deno_symlink(&mut self, name: &str) {
+    self.current.deno_symlinks.remove(name);
   }
 
   /// Inserts and checks for the existence of a root symlink
@@ -1134,7 +1147,7 @@ impl SetupCache {
     }
   }
 
-  pub fn with_dep(&mut self, parent_name: &str) -> SetupCacheDep<'_> {
+  fn with_dep(&mut self, parent_name: &str) -> SetupCacheDep<'_> {
     SetupCacheDep {
       previous: self
         .previous

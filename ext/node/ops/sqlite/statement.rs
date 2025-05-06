@@ -81,7 +81,11 @@ impl<'a> Iterator for ColumnIterator<'a> {
   }
 }
 
-impl GarbageCollected for StatementSync {}
+impl GarbageCollected for StatementSync {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"StatementSync"
+  }
+}
 
 impl StatementSync {
   // Clear the prepared statement back to its initial state.

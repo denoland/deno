@@ -62,7 +62,7 @@ pub async fn kernel(
 
   let factory = CliFactory::from_flags(flags);
   let registry_provider =
-    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api());
+    Arc::new(factory.lockfile_npm_package_info_provider()?);
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
@@ -100,8 +100,8 @@ pub async fn kernel(
       main_module.clone(),
       permissions,
       vec![
-        ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
-        ops::testing::deno_test::init_ops(test_event_sender),
+        ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
+        ops::testing::deno_test::init(test_event_sender),
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
@@ -109,6 +109,7 @@ pub async fn kernel(
         stdout: StdioPipe::file(stdout),
         stderr: StdioPipe::file(stderr),
       },
+      None,
     )
     .await?;
   worker.setup_repl().await?;

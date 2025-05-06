@@ -18,7 +18,7 @@ declare namespace Deno {
    *
    *  | system            | winHandle     | displayHandle   |
    *  | ----------------- | ------------- | --------------- |
-   *  | "cocoa" (macOS)   | `NSView*`     | -               |
+   *  | "cocoa" (macOS)   | -             | `NSView*`       |
    *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
@@ -4395,6 +4395,40 @@ declare namespace Deno {
       | TSTypeAnnotation
       | TSTypeParameterDeclaration
       | TSTypeParameter;
+
+    export {}; // only export exports
+  }
+
+  /**
+   * The webgpu namespace provides additional APIs that the WebGPU specification
+   * does not specify.
+   *
+   * @category GPU
+   * @experimental
+   */
+  export namespace webgpu {
+    /**
+     * Starts a frame capture.
+     *
+     * This API is useful for debugging issues related to graphics, and makes
+     * the captured data available to RenderDoc or XCode
+     * (or other software for debugging frames)
+     *
+     * @category GPU
+     * @experimental
+     */
+    export function deviceStartCapture(device: GPUDevice): void;
+    /**
+     * Stops a frame capture.
+     *
+     * This API is useful for debugging issues related to graphics, and makes
+     * the captured data available to RenderDoc or XCode
+     * (or other software for debugging frames)
+     *
+     * @category GPU
+     * @experimental
+     */
+    export function deviceStopCapture(device: GPUDevice): void;
 
     export {}; // only export exports
   }

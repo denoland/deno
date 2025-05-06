@@ -14,7 +14,11 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {}
+impl GarbageCollected for Hasher {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Hasher"
+  }
+}
 
 impl Hasher {
   pub fn new(

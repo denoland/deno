@@ -434,7 +434,14 @@ fn run_step(
     false => command,
   };
   let command = match &step.input {
-    Some(input) => command.stdin_text(input),
+    Some(input) => {
+      if input.ends_with(".in") {
+        let test_input_path = cwd.join(input);
+        command.stdin_text(std::fs::read_to_string(test_input_path).unwrap())
+      } else {
+        command.stdin_text(input)
+      }
+    }
     None => command,
   };
   let output = command.run();
@@ -442,6 +449,10 @@ fn run_step(
     let test_output_path = cwd.join(&step.output);
     output.assert_matches_file(test_output_path);
   } else {
+    assert!(
+      step.output.len() <= 160,
+      "The \"output\" property in your __test__.jsonc file is too long. Please extract this to an `.out` file to improve readability."
+    );
     output.assert_matches_text(&step.output);
   }
   output.assert_exit_code(step.exit_code);

@@ -47,6 +47,7 @@ use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
+use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -66,34 +67,8 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
-
 pub fn jsr_url() -> &'static Url {
-  static JSR_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "JSR_URL";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
-      // ensure there is a trailing slash for the directory
-      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-      match Url::parse(&registry_url) {
-        Ok(url) => {
-          return url;
-        }
-        Err(err) => {
-          log::debug!(
-            "Invalid {} environment variable: {:#}",
-            env_var_name,
-            err,
-          );
-        }
-      }
-    }
-
-    Url::parse("https://jsr.io/").unwrap()
-  });
+  static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
 
   &JSR_URL
 }
@@ -838,7 +813,7 @@ impl CliOptions {
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -1089,10 +1064,6 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
-  pub fn unstable_lockfile_v5(&self) -> bool {
-    unstable_lockfile_v5(&self.flags, self.workspace())
-  }
-
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1126,21 +1097,10 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
         .iter()
-        .map(|granular_flag| granular_flag.name)
-        .chain([
-          "byonm",
-          "bare-node-builtins",
-          "detect-cjs",
-          "fmt-component",
-          "fmt-sql",
-          "lazy-dynamic-imports",
-          "npm-lazy-caching",
-          "npm-patch",
-          "sloppy-imports",
-          "lockfile-v5",
-        ])
+        .map(|feature| feature.name)
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
@@ -1225,19 +1185,20 @@ impl CliOptions {
   }
 
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
-    if self.flags.unstable_config.npm_lazy_caching {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+      )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      NpmCachingStrategy::Manual
+    } else if self.flags.unstable_config.npm_lazy_caching {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager
     }
   }
-}
-
-pub(crate) fn unstable_lockfile_v5(
-  flags: &Flags,
-  workspace: &Workspace,
-) -> bool {
-  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(
@@ -1343,6 +1304,18 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
       }
     }
   }
+}
+
+pub fn get_default_v8_flags() -> Vec<String> {
+  vec![
+    "--stack-size=1024".to_string(),
+    "--js-explicit-resource-management".to_string(),
+    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+    // and its settings.
+    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+    "--no-harmony-import-assertions".to_string(),
+  ]
 }
 
 /// Gets the --allow-import host from the provided url

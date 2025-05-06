@@ -62,7 +62,11 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
-impl GarbageCollected for KeyObjectHandle {}
+impl GarbageCollected for KeyObjectHandle {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandle"
+  }
+}
 
 #[derive(Clone)]
 pub enum AsymmetricPrivateKey {
@@ -1916,7 +1920,11 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
-impl GarbageCollected for KeyObjectHandlePair {}
+impl GarbageCollected for KeyObjectHandlePair {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandlePair"
+  }
+}
 
 impl KeyObjectHandlePair {
   pub fn new(
