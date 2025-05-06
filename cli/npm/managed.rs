@@ -6,14 +6,13 @@ use std::sync::Arc;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
-use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use thiserror::Error;
 
-use super::CliNpmRegistryInfoProvider;
+use super::WorkspaceNpmPatchPackages;
 use crate::args::CliLockfile;
 use crate::sys::CliSys;
 
@@ -35,21 +34,21 @@ enum SyncState {
 
 #[derive(Debug)]
 pub struct NpmResolutionInitializer {
-  npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_resolution: Arc<NpmResolutionCell>,
+  patch_packages: Arc<WorkspaceNpmPatchPackages>,
   queue: tokio::sync::Mutex<()>,
   sync_state: Mutex<SyncState>,
 }
 
 impl NpmResolutionInitializer {
   pub fn new(
-    npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     npm_resolution: Arc<NpmResolutionCell>,
+    patch_packages: Arc<WorkspaceNpmPatchPackages>,
     snapshot_option: CliNpmResolverManagedSnapshotOption,
   ) -> Self {
     Self {
-      npm_registry_info_provider,
       npm_resolution,
+      patch_packages,
       queue: tokio::sync::Mutex::new(()),
       sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
     }
@@ -95,9 +94,7 @@ impl NpmResolutionInitializer {
       }
     };
 
-    match resolve_snapshot(&self.npm_registry_info_provider, snapshot_option)
-      .await
-    {
+    match resolve_snapshot(snapshot_option, &self.patch_packages) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -127,38 +124,19 @@ pub struct ResolveSnapshotError {
   source: SnapshotFromLockfileError,
 }
 
-impl ResolveSnapshotError {
-  pub fn maybe_integrity_check_error(
-    &self,
-  ) -> Option<&deno_npm::resolution::IntegrityCheckFailedError> {
-    match &self.source {
-      SnapshotFromLockfileError::SnapshotFromLockfile(
-        deno_npm::resolution::SnapshotFromLockfileError::IntegrityCheckFailed(
-          err,
-        ),
-      ) => Some(err),
-      _ => None,
-    }
-  }
-}
-
-async fn resolve_snapshot(
-  registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
+fn resolve_snapshot(
   snapshot: CliNpmResolverManagedSnapshotOption,
+  patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(
-          lockfile.clone(),
-          &registry_info_provider.as_npm_registry_api(),
-        )
-        .await
-        .map_err(|source| ResolveSnapshotError {
-          lockfile_path: lockfile.filename.clone(),
-          source,
-        })?;
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), patch_packages)
+          .map_err(|source| ResolveSnapshotError {
+            lockfile_path: lockfile.filename.clone(),
+            source,
+          })?;
         Ok(Some(snapshot))
       } else {
         Ok(None)
@@ -172,32 +150,43 @@ async fn resolve_snapshot(
 pub enum SnapshotFromLockfileError {
   #[error(transparent)]
   #[class(inherit)]
-  IncompleteError(
-    #[from] deno_npm::resolution::IncompleteSnapshotFromLockfileError,
-  ),
-  #[error(transparent)]
-  #[class(inherit)]
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
-async fn snapshot_from_lockfile(
-  lockfile: Arc<CliLockfile>,
-  api: &dyn NpmRegistryApi,
-) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
-  let (incomplete_snapshot, skip_integrity_check) = {
-    let lock = lockfile.lock();
-    (
-      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
-      lock.overwrite,
+pub(crate) struct DefaultTarballUrl;
+
+impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
+  fn default_tarball_url(
+    &self,
+    nv: &deno_semver::package::PackageNv,
+  ) -> String {
+    let scope = nv.scope();
+    let package_name = if let Some(scope) = scope {
+      nv.name
+        .strip_prefix(scope)
+        .unwrap_or(&nv.name)
+        .trim_start_matches('/')
+    } else {
+      &nv.name
+    };
+    format!(
+      "https://registry.npmjs.org/{}/-/{}-{}.tgz",
+      nv.name, package_name, nv.version
     )
-  };
+  }
+}
+
+fn snapshot_from_lockfile(
+  lockfile: Arc<CliLockfile>,
+  patch_packages: &WorkspaceNpmPatchPackages,
+) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
-      incomplete_snapshot,
-      api,
-      skip_integrity_check,
+      patch_packages: &patch_packages.0,
+      lockfile: &lockfile.lock(),
+      default_tarball_url: &DefaultTarballUrl,
     },
-  )
-  .await?;
+  )?;
+
   Ok(snapshot)
 }

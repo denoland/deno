@@ -33,6 +33,8 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
@@ -46,6 +48,10 @@ pub struct DenoRtSys(Arc<FileBackedVfs>);
 impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
     Self(vfs)
+  }
+
+  pub fn as_deno_rt_native_addon_loader(&self) -> DenoRtNativeAddonLoaderRc {
+    self.0.clone()
   }
 
   pub fn is_specifier_in_vfs(&self, specifier: &Url) -> bool {
@@ -1231,6 +1237,7 @@ pub struct FileBackedVfsMetadata {
   pub name: String,
   pub file_type: sys_traits::FileType,
   pub len: u64,
+  pub mtime: Option<u128>,
 }
 
 impl FileBackedVfsMetadata {
@@ -1247,17 +1254,23 @@ impl FileBackedVfsMetadata {
         VfsEntryRef::File(file) => file.offset.len,
         VfsEntryRef::Symlink(_) => 0,
       },
+      mtime: match vfs_entry {
+        VfsEntryRef::Dir(_) => None,
+        VfsEntryRef::File(file) => file.mtime,
+        VfsEntryRef::Symlink(_) => None,
+      },
     }
   }
   pub fn as_fs_stat(&self) -> FsStat {
+    // to use lower overhead, use mtime instead of all time params
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
       is_symlink: self.file_type == sys_traits::FileType::Symlink,
-      atime: None,
-      birthtime: None,
-      mtime: None,
-      ctime: None,
+      atime: Some(self.get_mtime()),
+      birthtime: Some(self.get_mtime()),
+      mtime: Some(self.get_mtime()),
+      ctime: Some(self.get_mtime()),
       blksize: 0,
       size: self.len,
       dev: 0,
@@ -1273,6 +1286,13 @@ impl FileBackedVfsMetadata {
       is_fifo: false,
       is_socket: false,
     }
+  }
+
+  /// if `mtime` is `None`, return `0`.
+  ///
+  /// if `mtime` is greater than `u64::MAX`, return `u64::MAX`.
+  fn get_mtime(&self) -> u64 {
+    self.mtime.unwrap_or(0).try_into().unwrap_or(u64::MAX)
   }
 }
 
@@ -1451,6 +1471,16 @@ impl FileBackedVfs {
   }
 }
 
+impl DenoRtNativeAddonLoader for FileBackedVfs {
+  fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>> {
+    if !self.is_path_within(path) {
+      return None;
+    }
+    let file = self.file_entry(path).ok()?;
+    self.read_file_offset_with_len(file.offset).ok()
+  }
+}
+
 #[cfg(test)]
 mod test {
   use std::io::Write;
@@ -1480,19 +1510,28 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into(), None)
       .unwrap();
     builder
-      .add_file_with_data_raw(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data_raw(
+        &src_path.join("b.txt"),
+        "data".into(),
+        Some(
+          SystemTime::UNIX_EPOCH
+            .checked_add(Duration::from_secs(2))
+            .unwrap(),
+        ),
+      )
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into(), None)
       .unwrap();
     builder
       .add_file_with_data_raw(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
+        None,
       )
       .unwrap();
     builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
@@ -1527,6 +1566,10 @@ mod test {
         .unwrap()
         .file_type,
       sys_traits::FileType::Symlink,
+    );
+    assert_eq!(
+      virtual_fs.lstat(&dest_path.join("b.txt")).unwrap().mtime,
+      Some(2_000),
     );
     assert_eq!(
       virtual_fs
@@ -1653,6 +1696,7 @@ mod test {
       .add_file_with_data_raw(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
+        None,
       )
       .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);

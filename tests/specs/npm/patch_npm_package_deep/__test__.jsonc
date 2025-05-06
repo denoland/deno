@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_auto": {
+      "args": "run --node-modules-dir=auto main/main.ts",
+      "output": "auto.out"
+    },
+    "node_modules_dir_manual": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]",
+        "cwd": "main"
+      }, {
+        "args": "run main/main.ts",
+        "output": "PATCHED\n"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('./main/deno.lock').trim())"
+        ],
+        "output": "expected_lockfile.out"
+      }]
+    }
+  }
+}

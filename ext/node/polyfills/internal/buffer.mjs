@@ -49,6 +49,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
@@ -74,9 +75,13 @@ import {
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
-import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateBuffer,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
   NodeError,
@@ -227,6 +232,47 @@ const BufferFrom = Buffer.from = function from(
   length,
 ) {
   return _from(value, encodingOrOffset, length);
+};
+
+Buffer.copyBytesFrom = function copyBytesFrom(
+  view,
+  offset,
+  length,
+) {
+  if (!isTypedArray(view)) {
+    throw new ERR_INVALID_ARG_TYPE("view", ["TypedArray"], view);
+  }
+
+  const viewLength = TypedArrayPrototypeGetLength(view);
+  if (viewLength === 0) {
+    return Buffer.alloc(0);
+  }
+
+  if (offset !== undefined || length !== undefined) {
+    if (offset !== undefined) {
+      validateInteger(offset, "offset", 0);
+      if (offset >= viewLength) return Buffer.alloc(0);
+    } else {
+      offset = 0;
+    }
+    let end;
+    if (length !== undefined) {
+      validateInteger(length, "length", 0);
+      end = offset + length;
+    } else {
+      end = viewLength;
+    }
+
+    view = TypedArrayPrototypeSlice(view, offset, end);
+  }
+
+  return fromArrayLike(
+    new Uint8Array(
+      TypedArrayPrototypeGetBuffer(view),
+      TypedArrayPrototypeGetByteOffset(view),
+      TypedArrayPrototypeGetByteLength(view),
+    ),
+  );
 };
 
 const BufferPrototype = Buffer.prototype;

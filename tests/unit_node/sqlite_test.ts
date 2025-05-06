@@ -319,3 +319,17 @@ RETURNING id
   const id1 = insertPeople.run({ name: "Flash", birthdate: "1956-07-16" });
   assertEquals(id1, { lastInsertRowid: 1, changes: 1 });
 });
+
+Deno.test("[node/sqlite] StatementSync empty blob", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a BLOB NOT NULL)");
+
+  db.prepare("INSERT into foo (a) values (?)")
+    .all(new Uint8Array([]));
+
+  const result = db.prepare("SELECT * from foo").get();
+  assertEquals(result, { a: new Uint8Array([]), __proto__: null });
+
+  db.close();
+});

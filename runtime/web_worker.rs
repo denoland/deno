@@ -28,7 +28,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
-use deno_core::FeatureChecker;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -41,6 +40,7 @@ use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
@@ -67,6 +67,7 @@ use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
+use crate::FeatureChecker;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -342,6 +343,7 @@ pub struct WebWorkerServiceOptions<
 > {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
@@ -439,17 +441,6 @@ impl WebWorker {
     >,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
-    deno_core::extension!(deno_permissions_web_worker,
-      options = {
-        permissions: PermissionsContainer,
-        enable_testing_features: bool,
-      },
-      state = |state, options| {
-        state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
-      },
-    );
-
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
 
@@ -491,18 +482,18 @@ impl WebWorker {
     // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
     // and `runtime/snapshot.rs`!
     let mut extensions = vec![
-      deno_telemetry::deno_telemetry::init_ops_and_esm(),
+      deno_telemetry::deno_telemetry::init(),
       // Web APIs
-      deno_webidl::deno_webidl::init_ops_and_esm(),
-      deno_console::deno_console::init_ops_and_esm(),
-      deno_url::deno_url::init_ops_and_esm(),
-      deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init(),
+      deno_console::deno_console::init(),
+      deno_url::deno_url::init(),
+      deno_web::deno_web::init::<PermissionsContainer>(
         services.blob_store,
         Some(options.main_module.clone()),
       ),
-      deno_webgpu::deno_webgpu::init_ops_and_esm(),
-      deno_canvas::deno_canvas::init_ops_and_esm(),
-      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
+      deno_webgpu::deno_webgpu::init(),
+      deno_canvas::deno_canvas::init(),
+      deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -513,24 +504,26 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops_and_esm(create_cache),
-      deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
+      deno_cache::deno_cache::init(create_cache),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
-      deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
+      deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_crypto::deno_crypto::init(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init(
         services.broadcast_channel,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
+      deno_ffi::deno_ffi::init::<PermissionsContainer>(
+        services.deno_rt_native_addon_loader.clone(),
+      ),
+      deno_net::deno_net::init::<PermissionsContainer>(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
+      deno_tls::deno_tls::init(),
+      deno_kv::deno_kv::init(
         MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           None,
           options.seed,
@@ -546,46 +539,40 @@ impl WebWorker {
         ),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm(deno_http::Options::default()),
-      deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        services.fs.clone(),
+      deno_cron::deno_cron::init(LocalCronHandler::new()),
+      deno_napi::deno_napi::init::<PermissionsContainer>(
+        services.deno_rt_native_addon_loader.clone(),
       ),
-      deno_os::deno_os_worker::init_ops_and_esm(),
-      deno_process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
-      deno_node::deno_node::init_ops_and_esm::<
+      deno_http::deno_http::init(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
+      deno_io::deno_io::init(Some(options.stdio)),
+      deno_fs::deno_fs::init::<PermissionsContainer>(services.fs.clone()),
+      deno_os::deno_os::init(None),
+      deno_process::deno_process::init(services.npm_process_state_provider),
+      deno_node::deno_node::init::<
         PermissionsContainer,
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
       >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
-      ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops_and_esm(
+      ops::runtime::deno_runtime::init(options.main_module.clone()),
+      ops::worker_host::deno_worker_host::init(
         options.create_web_worker_cb,
         options.format_js_error_fn,
       ),
-      ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::tty::deno_tty::init_ops_and_esm(),
-      ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
-        if options.startup_snapshot.is_some() {
-          None
-        } else {
-          Some(Default::default())
-        },
+      ops::fs_events::deno_fs_events::init(),
+      ops::permissions::deno_permissions::init(),
+      ops::tty::deno_tty::init(),
+      ops::http::deno_http_runtime::init(),
+      ops::bootstrap::deno_bootstrap::init(
+        options.startup_snapshot.and_then(|_| Default::default()),
+        false,
       ),
-      deno_permissions_web_worker::init_ops_and_esm(
-        services.permissions,
-        enable_testing_features,
-      ),
-      runtime::init_ops_and_esm(),
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      runtime::init(),
+      ops::web_worker::deno_web_worker::init(),
     ];
 
     #[cfg(feature = "hmr")]
@@ -627,7 +614,6 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
-      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
@@ -650,11 +636,18 @@ impl WebWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
-    // Put inspector handle into the op state so we can put a breakpoint when
-    // executing a CJS entrypoint.
-    let op_state = js_runtime.op_state();
-    let inspector = js_runtime.inspector();
-    op_state.borrow_mut().put(inspector);
+    {
+      let state = js_runtime.op_state();
+      let mut state = state.borrow_mut();
+
+      state.put::<PermissionsContainer>(services.permissions);
+      state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      state.put(js_runtime.inspector());
+    }
 
     if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(

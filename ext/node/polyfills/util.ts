@@ -28,12 +28,10 @@ const {
   StringPrototypePadStart,
   StringPrototypeToWellFormed,
   PromiseResolve,
+  PromiseWithResolvers,
 } = primordials;
 
-import {
-  createDeferredPromise,
-  promisify,
-} from "ext:deno_node/internal/util.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
@@ -317,7 +315,7 @@ export async function aborted(
   if (signal.aborted) {
     return PromiseResolve();
   }
-  const abortPromise = createDeferredPromise();
+  const abortPromise = PromiseWithResolvers();
   signal[abortSignal.add](abortPromise.resolve);
   return abortPromise.promise;
 }

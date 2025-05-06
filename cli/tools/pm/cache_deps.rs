@@ -23,12 +23,11 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_installer = factory.npm_installer()?;
-  let cli_options = factory.cli_options()?;
+  let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()
     .await?;
-  if let Some(lockfile) = cli_options.maybe_lockfile() {
+  if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.error_if_changed()?;
   }
   // cache as many entries in the import map as we can
@@ -49,7 +48,7 @@ pub async fn cache_top_level_deps(
       .acquire_update_permit()
       .await;
     let graph = graph_permit.graph_mut();
-    if let Some(lockfile) = cli_options.maybe_lockfile() {
+    if let Some(lockfile) = factory.maybe_lockfile().await? {
       let lockfile = lockfile.lock();
       crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
     }

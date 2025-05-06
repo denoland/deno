@@ -3,10 +3,13 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
@@ -260,6 +263,8 @@ pub struct VirtualFile {
   pub cjs_export_analysis_offset: Option<OffsetWithLength>,
   #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
   pub source_map_offset: Option<OffsetWithLength>,
+  #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
+  pub mtime: Option<u128>, // mtime in milliseconds
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -432,6 +437,7 @@ impl FilesData {
 
 pub struct AddFileDataOptions {
   pub data: Vec<u8>,
+  pub mtime: Option<SystemTime>,
   pub maybe_transpiled: Option<Vec<u8>>,
   pub maybe_source_map: Option<Vec<u8>>,
   pub maybe_cjs_export_analysis: Option<Vec<u8>>,
@@ -444,6 +450,7 @@ pub struct VfsBuilder {
   /// The minimum root directory that should be included in the VFS.
   min_root_dir: Option<WindowsSystemRootablePath>,
   case_sensitivity: FileSystemCaseSensitivity,
+  exclude_paths: HashSet<PathBuf>,
 }
 
 impl Default for VfsBuilder {
@@ -471,6 +478,7 @@ impl VfsBuilder {
       } else {
         FileSystemCaseSensitivity::Sensitive
       },
+      exclude_paths: Default::default(),
     }
   }
 
@@ -484,6 +492,10 @@ impl VfsBuilder {
 
   pub fn file_bytes(&self, offset: OffsetWithLength) -> Option<&[u8]> {
     self.files.file_bytes(offset)
+  }
+
+  pub fn add_exclude_path(&mut self, path: PathBuf) {
+    self.exclude_paths.insert(path);
   }
 
   /// Add a directory that might be the minimum root directory
@@ -534,6 +546,9 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
     self.add_dir_raw(path);
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
@@ -547,34 +562,55 @@ impl VfsBuilder {
     for entry in dir_entries {
       let file_type = entry.file_type()?;
       let path = entry.path();
+      self.add_path_with_file_type(&path, file_type)?;
+    }
 
-      if file_type.is_dir() {
-        self.add_dir_recursive_not_symlink(&path)?;
-      } else if file_type.is_file() {
-        self.add_file_at_path_not_symlink(&path)?;
-      } else if file_type.is_symlink() {
-        match self.add_symlink(&path) {
-          Ok(target) => match target {
-            SymlinkTarget::File(target) => {
-              self.add_file_at_path_not_symlink(&target)?
-            }
-            SymlinkTarget::Dir(target) => {
-              self.add_dir_recursive_not_symlink(&target)?;
-            }
-          },
-          Err(err) => {
-            log::warn!(
+    Ok(())
+  }
+
+  pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let file_type = path.metadata()?.file_type();
+    self.add_path_with_file_type(path, file_type)
+  }
+
+  fn add_path_with_file_type(
+    &mut self,
+    path: &Path,
+    file_type: std::fs::FileType,
+  ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
+    if file_type.is_dir() {
+      self.add_dir_recursive_not_symlink(path)
+    } else if file_type.is_file() {
+      self.add_file_at_path_not_symlink(path)
+    } else if file_type.is_symlink() {
+      match self.add_symlink(path) {
+        Ok(target) => match target {
+          SymlinkTarget::File(target) => {
+            self.add_file_at_path_not_symlink(&target)
+          }
+          SymlinkTarget::Dir(target) => {
+            self.add_dir_recursive_not_symlink(&target)
+          }
+        },
+        Err(err) => {
+          log::warn!(
             "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
             colors::yellow("Warning"),
             path.display(),
             err
           );
-          }
+          Ok(())
         }
       }
+    } else {
+      // ignore
+      Ok(())
     }
-
-    Ok(())
   }
 
   fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {
@@ -639,14 +675,15 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    // ok, building fs implementation
-    #[allow(clippy::disallowed_methods)]
-    let file_bytes = std::fs::read(path)
-      .with_context(|| format!("Reading {}", path.display()))?;
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
+    let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
     self.add_file_with_data(
       path,
       AddFileDataOptions {
         data: file_bytes,
+        mtime,
         maybe_cjs_export_analysis: None,
         maybe_transpiled: None,
         maybe_source_map: None,
@@ -658,11 +695,31 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
+    let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
+    self.add_file_with_data_raw(path, file_bytes, mtime)
+  }
+
+  fn read_file_bytes_and_mtime(
+    &self,
+    path: &Path,
+  ) -> Result<(Vec<u8>, Option<SystemTime>), AnyError> {
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
-    let file_bytes = std::fs::read(path)
-      .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data_raw(path, file_bytes)
+    {
+      let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_context(|| format!("Opening {}", path.display()))?;
+      let mtime = file.metadata().ok().and_then(|m| m.modified().ok());
+      let mut file_bytes = Vec::new();
+      file
+        .read_to_end(&mut file_bytes)
+        .with_context(|| format!("Reading {}", path.display()))?;
+      Ok((file_bytes, mtime))
+    }
   }
 
   pub fn add_file_with_data(
@@ -687,11 +744,13 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
     data: Vec<u8>,
+    mtime: Option<SystemTime>,
   ) -> Result<(), AnyError> {
     self.add_file_with_data_raw_options(
       path,
       AddFileDataOptions {
         data,
+        mtime,
         maybe_transpiled: None,
         maybe_cjs_export_analysis: None,
         maybe_source_map: None,
@@ -720,6 +779,11 @@ impl VfsBuilder {
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
 
+    let mtime = options
+      .mtime
+      .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
+      .map(|m| m.as_millis());
+
     dir.entries.insert_or_modify(
       &name,
       case_sensitivity,
@@ -730,6 +794,7 @@ impl VfsBuilder {
           transpiled_offset,
           cjs_export_analysis_offset,
           source_map_offset,
+          mtime,
         })
       },
       |entry| match entry {
@@ -746,6 +811,7 @@ impl VfsBuilder {
             virtual_file.cjs_export_analysis_offset =
               cjs_export_analysis_offset;
           }
+          virtual_file.mtime = mtime;
         }
         VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
       },

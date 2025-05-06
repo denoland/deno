@@ -4,11 +4,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   op_getegid,
   op_geteuid,
+  op_node_load_env_file,
   op_node_process_kill,
   op_process_abort,
 } from "ext:core/ops";
@@ -17,9 +18,14 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateNumber,
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
@@ -64,7 +70,7 @@ export let argv0 = "";
 
 export let arch = "";
 
-export let platform = "";
+export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
 
@@ -78,6 +84,8 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import { setProcess } from "ext:deno_node/_events.mjs";
+
+const { NumberMAX_SAFE_INTEGER } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -142,6 +150,48 @@ function addReadOnlyProcessAlias(
       value,
     });
   }
+}
+
+interface CpuUsage {
+  user: number;
+  system: number;
+}
+
+// Ensure that a previously passed in value is valid. Currently, the native
+// implementation always returns numbers <= Number.MAX_SAFE_INTEGER.
+function previousCpuUsageValueIsValid(num) {
+  return typeof num === "number" && num >= 0 && num <= NumberMAX_SAFE_INTEGER;
+}
+
+export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
+  const cpuValues = Deno.cpuUsage(previousValue);
+
+  if (previousValue) {
+    if (!previousCpuUsageValueIsValid(previousValue.user)) {
+      validateObject(previousValue, "prevValue");
+
+      validateNumber(previousValue.user, "prevValue.user");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.user",
+        previousValue.user,
+      );
+    }
+
+    if (!previousCpuUsageValueIsValid(previousValue.system)) {
+      validateNumber(previousValue.system, "prevValue.system");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.system",
+        previousValue.system,
+      );
+    }
+
+    return {
+      user: cpuValues.user - previousValue.user,
+      system: cpuValues.system - previousValue.system,
+    };
+  }
+
+  return cpuValues;
 }
 
 function createWarningObject(
@@ -574,9 +624,7 @@ process.config = {
   },
 };
 
-process.cpuUsage = function () {
-  return Deno.cpuUsage();
-};
+process.cpuUsage = cpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
@@ -740,6 +788,10 @@ process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
+
+process.loadEnvFile = (path = ".env") => {
+  return op_node_load_env_file(path);
+};
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
