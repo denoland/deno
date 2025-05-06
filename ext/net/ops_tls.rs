@@ -258,7 +258,7 @@ pub fn op_tls_cert_resolver_resolve_error(
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
-  #[cppgc] key_pair: &TlsKeysHolder,
+  #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -305,6 +305,8 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
+  let tls_null = TlsKeysHolder::from(TlsKeys::Null);
+  let key_pair = key_pair.unwrap_or(&tls_null);
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
