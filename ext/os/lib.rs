@@ -496,7 +496,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 #[op2(fast)]
 fn op_runtime_memory_usage(
   scope: &mut v8::HandleScope,
-  #[buffer] out: &mut [u32]
+  #[buffer] out: &mut [u32],
 ) {
   let s = scope.get_heap_statistics();
 

@@ -34,7 +34,7 @@ import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
-const { ObjectDefineProperties } = primordials;
+const { ObjectDefineProperties, Uint32Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
@@ -63,21 +63,28 @@ const denoNs = {
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
   cpuUsage: () => {
-    const outBuffer = new Uint32Array(2)
+    const outBuffer = new Uint32Array(2);
     op_runtime_cpu_usage(outBuffer);
+    const { 0: system, 1: user } = outBuffer;
     return {
-      system: outBuffer.at(0),
-      user: outBuffer.at(1)
+      system,
+      user,
     };
   },
   memoryUsage: () => {
-    const outBuffer = new Uint32Array(4)
+    const outBuffer = new Uint32Array(4);
     op_runtime_memory_usage(outBuffer);
+    const {
+      0: rss,
+      1: heapTotal,
+      2: heapUsed,
+      3: external,
+    } = outBuffer;
     return {
-      rss: outBuffer.at(0),
-      heapTotal: outBuffer.at(1),
-      heapUsed: outBuffer.at(2),
-      external: outBuffer.at(3),
+      rss,
+      heapTotal,
+      heapUsed,
+      external,
     };
   },
   mkdirSync: fs.mkdirSync,
