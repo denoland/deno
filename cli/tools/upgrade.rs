@@ -918,11 +918,11 @@ async fn download_package(
   // provide an empty string here in order to prefer the downloading
   // text above which will stay alive after the progress bars are complete
   let progress = progress_bar.update("");
-  let maybe_bytes = client
-    .download_with_progress_and_retries(download_url.clone(), None, &progress)
+  let response = client
+    .download_with_progress_and_retries(download_url.clone(), &Default::default(), &progress)
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
-  Ok(maybe_bytes)
+  Ok(response.into_maybe_bytes()?)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {

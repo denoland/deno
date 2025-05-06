@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -183,6 +184,13 @@ pub struct StateSnapshot {
   pub resolver: Arc<LspResolver>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum ProjectScopesChange {
+  None,
+  OpenNotebooks,
+  Config,
+}
+
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 
 /// Used to queue tasks from inside of the language server lock that must be
@@ -221,9 +229,8 @@ impl LanguageServerTaskQueue {
   }
 }
 
-#[derive(Debug)]
 pub struct Inner {
-  cache: LspCache,
+  pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   /// Configuration information.
@@ -253,18 +260,57 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-
+  registry_provider:
+    Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
+impl std::fmt::Debug for Inner {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Inner")
+      .field("cache", &self.cache)
+      .field("client", &self.client)
+      .field("config", &self.config)
+      .field("diagnostics_state", &self.diagnostics_state)
+      .field("diagnostics_server", &self.diagnostics_server)
+      .field("document_modules", &self.document_modules)
+      .field("http_client_provider", &self.http_client_provider)
+      .field("initial_cwd", &self.initial_cwd)
+      .field("jsr_search_api", &self.jsr_search_api)
+      .field("module_registry", &self.module_registry)
+      .field("maybe_testing_server", &self.maybe_testing_server)
+      .field("npm_search_api", &self.npm_search_api)
+      .field("project_version", &self.project_version)
+      .field("performance", &self.performance)
+      .field(
+        "registered_semantic_tokens_capabilities",
+        &self.registered_semantic_tokens_capabilities,
+      )
+      .field("resolver", &self.resolver)
+      .field("task_queue", &self.task_queue)
+      .field("ts_fixable_diagnostics", &self.ts_fixable_diagnostics)
+      .field("ts_server", &self.ts_server)
+      .field("workspace_files", &self.workspace_files)
+      .field("workspace_files_hash", &self.workspace_files_hash)
+      .field("_tracing", &self._tracing)
+      .finish()
+  }
+}
+
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
+  pub fn new(
+    client: Client,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
       inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
+        registry_provider,
       ))),
       init_flag: Default::default(),
       performance,
@@ -318,20 +364,16 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(cli_options) = factory.cli_options() {
-        if let Some(lockfile) = cli_options.maybe_lockfile() {
-          if let Err(err) = &lockfile.write_if_changed() {
-            lsp_warn!("{:#}", err);
-          }
+      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await {
+        if let Err(err) = &lockfile.write_if_changed() {
+          lsp_warn!("{:#}", err);
         }
       }
 
       Ok(())
     }
 
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
 
     // prepare the cache inside the lock
     let mark = self
@@ -378,9 +420,7 @@ impl LanguageServer {
     &self,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     Ok(
       self
         .inner
@@ -396,9 +436,7 @@ impl LanguageServer {
     &self,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     Ok(Some(self.inner.read().await.get_performance()))
   }
 
@@ -406,9 +444,7 @@ impl LanguageServer {
     &self,
     _token: CancellationToken,
   ) -> LspResult<Vec<TaskDefinition>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.task_definitions()
   }
 
@@ -417,9 +453,7 @@ impl LanguageServer {
     params: Option<Value>,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.test_run_request(params).await
   }
 
@@ -428,9 +462,7 @@ impl LanguageServer {
     params: Option<Value>,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.test_run_cancel_request(params)
   }
 
@@ -439,9 +471,7 @@ impl LanguageServer {
     params: Option<Value>,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => Ok(Some(
         serde_json::to_value(
@@ -503,7 +533,13 @@ impl LanguageServer {
 }
 
 impl Inner {
-  fn new(client: Client, performance: Arc<Performance>) -> Self {
+  fn new(
+    client: Client,
+    performance: Arc<Performance>,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
@@ -550,6 +586,7 @@ impl Inner {
       workspace_files: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
+      registry_provider,
     }
   }
 
@@ -626,7 +663,7 @@ impl Inner {
   ) -> LspResult<Arc<tsc::NavigationTree>> {
     let mark = self.performance.mark_with_args(
       "lsp.get_navigation_tree",
-      json!({ "uri": &module.specifier }),
+      json!({ "specifier": &module.specifier }),
     );
     let result = module
       .navigation_tree
@@ -637,6 +674,7 @@ impl Inner {
             self.snapshot(),
             &module.specifier,
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -722,8 +760,8 @@ impl Inner {
     let global_cache_url = maybe_cache.and_then(|cache_str| {
       if let Ok(url) = Url::from_file_path(cache_str) {
         Some(url)
-      } else if let Some(root_uri) = self.config.root_url() {
-        root_uri.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
+      } else if let Some(root_url) = self.config.root_url() {
+        root_url.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
       } else {
         lsp_warn!(
           "The configured cache path \"{cache_str}\" is not resolvable outside of a workspace.",
@@ -737,7 +775,7 @@ impl Inner {
     let maybe_root_path = self
       .config
       .root_url()
-      .and_then(|uri| url_to_file_path(uri).ok());
+      .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -1100,7 +1138,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = CliFileFetcher::new(
-      self.cache.global().clone(),
+      GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
       Default::default(),
@@ -1118,6 +1156,7 @@ impl Inner {
         &self.workspace_files,
         &file_fetcher,
         self.cache.deno_dir(),
+        &self.registry_provider,
       )
       .await;
     self
@@ -1127,7 +1166,7 @@ impl Inner {
       );
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let compiler_options = config_file.to_compiler_options().ok()??.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
@@ -1185,18 +1224,20 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed([], true);
+    self.project_changed([], ProjectScopesChange::Config);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let language_id =
@@ -1216,21 +1257,23 @@ impl Inner {
       );
     }
     let document = self.document_modules.open_document(
-      params.text_document.uri.clone(),
+      params.text_document.uri,
       params.text_document.version,
-      params.text_document.language_id.parse().unwrap(),
+      language_id,
       params.text_document.text.into(),
+      None,
     );
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
       self.project_changed(
-        [(&params.text_document.uri, ChangeKind::Opened)],
-        false,
+        self
+          .document_modules
+          .primary_specifier(&Document::Open(document.clone()))
+          .map(|s| (s, ChangeKind::Opened)),
+        ProjectScopesChange::None,
       );
-      self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
+      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1240,12 +1283,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let document = match self.document_modules.change_document(
@@ -1272,8 +1317,15 @@ impl Inner {
         config_changed = true;
       }
       self.project_changed(
-        [(document.uri.as_ref(), ChangeKind::Modified)],
-        config_changed,
+        self
+          .document_modules
+          .primary_specifier(&Document::Open(document.clone()))
+          .map(|s| (s, ChangeKind::Modified)),
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
       );
       self.diagnostics_server.invalidate(&[&document.uri]);
       self.send_diagnostics_update();
@@ -1340,21 +1392,20 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.document_modules.dep_info_by_scope();
-    self
-      .resolver
-      .set_dep_info_by_scope(&dep_info_by_scope)
-      .await;
+    self.resolver.set_dep_info_by_scope(&dep_info_by_scope);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     self.diagnostics_state.clear(&params.text_document.uri);
@@ -1370,18 +1421,174 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info().await;
+      self.diagnostics_server.invalidate(&[&document.uri]);
+      let changed_specifier = self
+        .document_modules
+        .primary_specifier(&Document::Open(document.clone()))
+        .map(|s| (s, ChangeKind::Closed));
+      // Invalidate the weak references of `document` before calling
+      // `self.project_changed()` so its module entries will be dropped.
       drop(document);
-      self.project_changed(
-        [(&params.text_document.uri, ChangeKind::Closed)],
-        false,
-      );
-      self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
+      self.project_changed(changed_specifier, ProjectScopesChange::None);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
     self.performance.measure(mark);
+  }
+
+  async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_open");
+    let documents = self.document_modules.open_notebook_document(
+      params.notebook_document.uri,
+      params.cell_text_documents,
+    );
+    let diagnosable_documents = documents
+      .iter()
+      .filter(|d| d.is_diagnosable())
+      .collect::<Vec<_>>();
+    if !diagnosable_documents.is_empty() {
+      self.check_semantic_tokens_capabilities();
+      self.refresh_dep_info().await;
+      self.project_changed(
+        diagnosable_documents
+          .iter()
+          .flat_map(|d| {
+            let specifier = self
+              .document_modules
+              .primary_specifier(&Document::Open((*d).clone()))?;
+            Some((specifier, ChangeKind::Opened))
+          })
+          .collect::<Vec<_>>(),
+        ProjectScopesChange::OpenNotebooks,
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_documents
+          .iter()
+          .map(|d| d.uri.as_ref())
+          .collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
+  }
+
+  async fn notebook_did_change(
+    &mut self,
+    params: DidChangeNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_change");
+    let Some(cells) = params.change.cells else {
+      return;
+    };
+    let documents = self.document_modules.change_notebook_document(
+      &params.notebook_document.uri,
+      cells.structure,
+      cells.text_content,
+    );
+    let diagnosable_documents = documents
+      .iter()
+      .filter(|(d, _)| d.is_diagnosable())
+      .collect::<Vec<_>>();
+    if !diagnosable_documents.is_empty() {
+      let old_scopes_with_node_specifier =
+        self.document_modules.scopes_with_node_specifier();
+      self.refresh_dep_info().await;
+      let mut config_changed = false;
+      if !self
+        .document_modules
+        .scopes_with_node_specifier()
+        .equivalent(&old_scopes_with_node_specifier)
+      {
+        config_changed = true;
+      }
+      self.project_changed(
+        diagnosable_documents
+          .iter()
+          .flat_map(|(d, k)| {
+            let specifier = self
+              .document_modules
+              .primary_specifier(&Document::Open(d.clone()))?;
+            Some((specifier, *k))
+          })
+          .collect::<Vec<_>>(),
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_documents
+          .iter()
+          .map(|(d, _)| d.uri.as_ref())
+          .collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
+  }
+
+  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_save");
+    let Some(cell_uris) = self
+      .document_modules
+      .documents
+      .cells_by_notebook_uri()
+      .get(&params.notebook_document.uri)
+      .cloned()
+    else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        params.notebook_document.uri.as_str()
+      );
+      return;
+    };
+    for cell_uri in cell_uris {
+      self.did_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier {
+          uri: cell_uri.as_ref().clone(),
+        },
+        text: None,
+      });
+    }
+  }
+
+  async fn notebook_did_close(
+    &mut self,
+    params: DidCloseNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_close");
+    let documents = self
+      .document_modules
+      .close_notebook_document(&params.notebook_document.uri);
+    let diagnosable_documents = documents
+      .iter()
+      .filter(|d| d.is_diagnosable())
+      .collect::<Vec<_>>();
+    if !diagnosable_documents.is_empty() {
+      self.refresh_dep_info().await;
+      self.diagnostics_server.invalidate(
+        &diagnosable_documents
+          .iter()
+          .map(|d| d.uri.as_ref())
+          .collect::<Vec<_>>(),
+      );
+      let changed_specifiers = diagnosable_documents
+        .iter()
+        .flat_map(|d| {
+          let specifier = self
+            .document_modules
+            .primary_specifier(&Document::Open((*d).clone()))?;
+          Some((specifier, ChangeKind::Closed))
+        })
+        .collect::<Vec<_>>();
+      // Invalidate the weak references of `documents` before calling
+      // `self.project_changed()` so their module entries will be dropped.
+      drop(documents);
+      self.project_changed(
+        changed_specifiers,
+        ProjectScopesChange::OpenNotebooks,
+      );
+      self.send_diagnostics_update();
+    }
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1465,8 +1672,19 @@ impl Inner {
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
       self.project_changed(
-        changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
-        false,
+        changes
+          .iter()
+          .filter_map(|(_, e)| {
+            let document = self.document_modules.documents.inspect(&e.uri)?;
+            if !document.is_diagnosable() {
+              return None;
+            }
+            let specifier =
+              self.document_modules.primary_specifier(&document)?;
+            Some((specifier, ChangeKind::Modified))
+          })
+          .collect::<Vec<_>>(),
+        ProjectScopesChange::None,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.diagnostics_server.invalidate_all();
@@ -1607,7 +1825,7 @@ impl Inner {
           .and_then(|d| d.parsed_source.as_ref())
         {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options, &unstable_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
@@ -1741,6 +1959,7 @@ impl Inner {
           &module.specifier,
           position,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -1887,6 +2106,7 @@ impl Inner {
                   &module.specifier,
                 ),
                 module.scope.as_ref(),
+                module.notebook_uri.as_ref(),
                 token,
               )
               .await
@@ -1999,6 +2219,7 @@ impl Inner {
         params.context.trigger_kind,
         only,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2099,6 +2320,7 @@ impl Inner {
             &module.specifier,
           ),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2182,6 +2404,7 @@ impl Inner {
             &module.specifier,
           )),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2394,6 +2617,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         vec![module.specifier.as_ref().clone()],
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2465,6 +2689,8 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position.position)?,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -2531,6 +2757,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2593,6 +2820,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2716,6 +2944,7 @@ impl Inner {
             .options)
             .into(),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2809,6 +3038,7 @@ impl Inner {
             )),
             data.data.clone(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await;
@@ -2892,6 +3122,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position_params.position)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2958,6 +3189,7 @@ impl Inner {
         self.snapshot(),
         &module.specifier,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3027,6 +3259,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.item.selection_range.start)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3094,6 +3327,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.item.selection_range.start)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3156,6 +3390,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3244,6 +3479,8 @@ impl Inner {
             &module.specifier,
           ),
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3320,6 +3557,7 @@ impl Inner {
           &module.specifier,
           module.line_index.offset_tsc(position)?,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3373,6 +3611,7 @@ impl Inner {
             &module.specifier,
             0..module.line_index.text_content_length_utf16().into(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -3441,6 +3680,7 @@ impl Inner {
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3509,6 +3749,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         options,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3598,6 +3839,8 @@ impl Inner {
             ..Default::default()
           },
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3645,6 +3888,8 @@ impl Inner {
           Some(256),
           None,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3679,34 +3924,39 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn project_changed<'a>(
     &mut self,
-    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
-    config_changed: bool,
+    changed_specifiers: impl IntoIterator<Item = (Arc<Url>, ChangeKind)>,
+    scopes_change: ProjectScopesChange,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    let modified_scripts = changed_docs
-      .into_iter()
-      .filter_map(|(u, k)| {
-        Some((self.document_modules.documents.inspect(u)?, k))
-      })
-      .flat_map(|(d, k)| {
-        self
-          .document_modules
-          .inspect_modules_by_scope(&d)
-          .values()
-          .map(|m| (m.specifier.clone(), k))
-          .collect::<Vec<_>>()
-      })
-      .collect::<IndexMap<_, _>>();
+    let changed_specifiers = changed_specifiers.into_iter().collect::<Vec<_>>();
     self.ts_server.project_changed(
       self.snapshot(),
-      modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
-      config_changed.then(|| {
+      changed_specifiers.iter().map(|(u, k)| (u.as_ref(), *k)),
+      matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .config
           .tree
           .data_by_scope()
           .iter()
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
+      matches!(
+        scopes_change,
+        ProjectScopesChange::OpenNotebooks | ProjectScopesChange::Config
+      )
+      .then(|| {
+        self
+          .document_modules
+          .documents
+          .cells_by_notebook_uri()
+          .keys()
+          .map(|u| {
+            (
+              u.clone(),
+              self.document_modules.primary_scope(u).flatten().cloned(),
+            )
+          })
           .collect()
       }),
     );
@@ -3741,9 +3991,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: ExecuteCommandParams,
     _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     if params.command == "deno.cache" {
       #[derive(Default, Deserialize)]
       #[serde(rename_all = "camelCase")]
@@ -3825,40 +4073,50 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.write().await.did_change(params).await;
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.write().await.did_close(params).await;
+  }
+
+  async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
+    self.init_flag.wait_raised().await;
+    self.inner.write().await.notebook_did_open(params).await
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    self.init_flag.wait_raised().await;
+    self.inner.write().await.notebook_did_change(params).await
+  }
+
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
+    self.init_flag.wait_raised().await;
+    self.inner.write().await.notebook_did_save(params)
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    self.init_flag.wait_raised().await;
+    self.inner.write().await.notebook_did_close(params).await
   }
 
   async fn did_change_configuration(
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     let mark = self
       .performance
       .mark_with_args("lsp.did_change_configuration", &params);
@@ -3876,9 +4134,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWatchedFilesParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .write()
@@ -3891,9 +4147,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     let mark = self
       .performance
       .mark_with_args("lsp.did_change_workspace_folders", &params);
@@ -3917,9 +4171,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DocumentSymbolParams,
     token: CancellationToken,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -3933,9 +4185,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DocumentFormattingParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.formatting(params, &token).await
   }
 
@@ -3944,9 +4194,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: HoverParams,
     token: CancellationToken,
   ) -> LspResult<Option<Hover>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.hover(params, &token).await
   }
 
@@ -3955,9 +4203,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: InlayHintParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.inlay_hint(params, &token).await
   }
 
@@ -3966,9 +4212,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CodeActionParams,
     token: CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.code_action(params, &token).await
   }
 
@@ -3977,9 +4221,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CodeAction,
     token: CancellationToken,
   ) -> LspResult<CodeAction> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -3993,9 +4235,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CodeLensParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.code_lens(params, &token).await
   }
 
@@ -4004,9 +4244,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CodeLens,
     token: CancellationToken,
   ) -> LspResult<CodeLens> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4020,9 +4258,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DocumentHighlightParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4036,9 +4272,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: ReferenceParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<Location>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.references(params, &token).await
   }
 
@@ -4047,9 +4281,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: GotoDefinitionParams,
     token: CancellationToken,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4063,9 +4295,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: GotoTypeDefinitionParams,
     token: CancellationToken,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4079,9 +4309,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CompletionParams,
     token: CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.completion(params, &token).await
   }
 
@@ -4090,9 +4318,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CompletionItem,
     token: CancellationToken,
   ) -> LspResult<CompletionItem> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4106,9 +4332,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: GotoImplementationParams,
     token: CancellationToken,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4122,9 +4346,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: FoldingRangeParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.folding_range(params, &token).await
   }
 
@@ -4133,9 +4355,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CallHierarchyIncomingCallsParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.incoming_calls(params, &token).await
   }
 
@@ -4144,9 +4364,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CallHierarchyOutgoingCallsParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.outgoing_calls(params, &token).await
   }
 
@@ -4155,9 +4373,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: CallHierarchyPrepareParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4171,9 +4387,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: RenameParams,
     token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.rename(params, &token).await
   }
 
@@ -4182,9 +4396,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: SelectionRangeParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4198,9 +4410,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: SemanticTokensParams,
     token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4214,9 +4424,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: SemanticTokensRangeParams,
     token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4230,9 +4438,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: SignatureHelpParams,
     token: CancellationToken,
   ) -> LspResult<Option<SignatureHelp>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.signature_help(params, &token).await
   }
 
@@ -4241,9 +4447,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: RenameFilesParams,
     token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self
       .inner
       .read()
@@ -4257,9 +4461,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: WorkspaceSymbolParams,
     token: CancellationToken,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
+    self.init_flag.wait_raised().await;
     self.inner.read().await.symbol(params, &token).await
   }
 }
@@ -4383,17 +4585,13 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(dep_info) = self
-      .document_modules
-      .dep_info_by_scope()
-      .get(&scope)
-      .cloned()
-    {
+    } else {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
+      let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
       roots.extend(
-        dep_info
-          .npm_reqs
+        scoped_resolver
+          .npm_reqs()
           .iter()
           .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
       );
@@ -4461,7 +4659,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed([], true);
+    self.project_changed([], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -4620,6 +4818,7 @@ impl Inner {
           &module.specifier,
         ),
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await

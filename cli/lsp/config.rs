@@ -1270,6 +1270,9 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1303,7 +1306,14 @@ impl ConfigData {
     };
     match discover_result {
       Ok(member_dir) => {
-        Self::load_inner(member_dir, scope, settings, Some(file_fetcher)).await
+        Self::load_inner(
+          member_dir,
+          scope,
+          settings,
+          Some(file_fetcher),
+          lockfile_package_info_provider,
+        )
+        .await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
@@ -1317,6 +1327,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
+          lockfile_package_info_provider,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1359,6 +1370,9 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1475,7 +1489,7 @@ impl ConfigData {
     );
 
     let ts_config = member_dir
-      .to_raw_user_provided_tsconfig()
+      .to_raw_user_provided_tsconfig(&CliSys::default())
       .map(LspTsConfig::new)
       .unwrap_or_default();
 
@@ -1503,7 +1517,12 @@ impl ConfigData {
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
-    let lockfile = resolve_lockfile_from_workspace(&member_dir).map(Arc::new);
+    let lockfile = resolve_lockfile_from_workspace(
+      &member_dir,
+      lockfile_package_info_provider,
+    )
+    .await
+    .map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1915,6 +1934,9 @@ impl ConfigTree {
     workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
     deno_dir: &DenoDir,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1947,6 +1969,7 @@ impl ConfigTree {
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
+                lockfile_package_info_provider,
               )
               .await,
             ),
@@ -1980,6 +2003,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          lockfile_package_info_provider,
         )
         .await,
       );
@@ -1996,6 +2020,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          lockfile_package_info_provider,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2010,7 +2035,13 @@ impl ConfigTree {
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
+  pub async fn inject_config_file(
+    &mut self,
+    config_file: ConfigFile,
+    lockfile_package_info_provider: &Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
@@ -2040,6 +2071,7 @@ impl ConfigTree {
         scope.clone(),
         &Default::default(),
         None,
+        lockfile_package_info_provider,
       )
       .await,
     );
@@ -2048,8 +2080,11 @@ impl ConfigTree {
   }
 }
 
-fn resolve_lockfile_from_workspace(
+async fn resolve_lockfile_from_workspace(
   workspace: &WorkspaceDirectory,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -2064,7 +2099,12 @@ fn resolve_lockfile_from_workspace(
     .root_deno_json()
     .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
     .unwrap_or(false);
-  resolve_lockfile_from_path(lockfile_path, frozen)
+  resolve_lockfile_from_path(
+    lockfile_path,
+    frozen,
+    lockfile_package_info_provider,
+  )
+  .await
 }
 
 fn resolve_node_modules_dir(
@@ -2097,9 +2137,12 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(
+async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
+  lockfile_package_info_provider: &Arc<
+    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+  >,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
@@ -2108,7 +2151,10 @@ fn resolve_lockfile_from_path(
       frozen,
       skip_write: false,
     },
-  ) {
+    &**lockfile_package_info_provider,
+  )
+  .await
+  {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
@@ -2432,6 +2478,26 @@ mod tests {
     );
   }
 
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
+    async fn get_npm_package_info(
+      &self,
+      values: &[deno_semver::package::PackageNv],
+    ) -> Result<
+      Vec<deno_lockfile::Lockfile5NpmInfo>,
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      Ok(values.iter().map(|_| Default::default()).collect())
+    }
+  }
+
+  fn default_registry(
+  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
+
   #[tokio::test]
   async fn config_enable_via_config_file_detection() {
     let root_uri = root_dir();
@@ -2442,6 +2508,7 @@ mod tests {
       .tree
       .inject_config_file(
         ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2499,6 +2566,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(
@@ -2524,6 +2592,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
 
@@ -2541,6 +2610,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        &default_registry(),
       )
       .await;
     assert!(

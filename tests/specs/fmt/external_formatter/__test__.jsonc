@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "format": {
+      "args": "fmt -",
+      "input": "badly_formatted.in",
+      "output": "well_formatted.out"
+    },
+    "format_with_unstable_sql": {
+      "args": "fmt --unstable-sql -",
+      "input": "badly_formatted.in",
+      "output": "well_formatted_unstable_sql.out"
+    }
+
+  }
+}

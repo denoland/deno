@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -23,6 +24,10 @@ pub struct ContextifyScript {
 impl v8::cppgc::GarbageCollected for ContextifyScript {
   fn trace(&self, visitor: &v8::cppgc::Visitor) {
     visitor.trace(&self.script);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyScript"
   }
 }
 
@@ -261,6 +266,10 @@ impl deno_core::GarbageCollected for ContextifyContext {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);
   }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyContext"
+  }
 }
 
 impl Drop for ContextifyContext {
@@ -334,7 +343,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(AllowCodeGenWasm(allow_code_gen_wasm));
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -521,23 +530,23 @@ pub fn init_global_template<'a>(
 //
 // See NOTE in ext/node/global.rs#L12
 thread_local! {
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = property_query.map_fn_to();
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = property_deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback<'static> = property_descriptor.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback = property_descriptor.map_fn_to();
 }
 
 thread_local! {
-  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_getter.map_fn_to();
-  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback<'static> = indexed_property_setter.map_fn_to();
-  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback<'static> = indexed_property_deleter.map_fn_to();
-  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback<'static> = indexed_property_definer.map_fn_to();
-  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback<'static> = indexed_property_descriptor.map_fn_to();
-  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback<'static> = indexed_property_enumerator.map_fn_to();
-  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback<'static> = indexed_property_query.map_fn_to();
+  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback = indexed_property_getter.map_fn_to();
+  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback = indexed_property_setter.map_fn_to();
+  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback = indexed_property_deleter.map_fn_to();
+  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback = indexed_property_definer.map_fn_to();
+  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback = indexed_property_descriptor.map_fn_to();
+  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback = indexed_property_enumerator.map_fn_to();
+  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
 pub fn init_global_template_inner<'a>(

@@ -126,6 +126,26 @@ export async function getDenoTests() {
 let testSerialId = 0;
 const cwd = new URL(".", import.meta.url);
 
+/** Checks if the test file uses `node:test` module */
+export function usesNodeTestModule(testSource: string): boolean {
+  return testSource.includes("'node:test'");
+}
+
+export const RUN_ARGS = [
+  "-A",
+  "--quiet",
+  "--unstable-unsafe-proto",
+  "--unstable-bare-node-builtins",
+  "--unstable-node-globals",
+];
+
+export const TEST_ARGS = [
+  "test",
+  ...RUN_ARGS,
+  "--no-check",
+  "--unstable-detect-cjs",
+];
+
 export async function runNodeCompatTestCase(
   testCase: string,
   signal?: AbortSignal,
@@ -154,19 +174,10 @@ export async function runNodeCompatTestCase(
   if (knownGlobals.length > 0) {
     envVars["NODE_TEST_KNOWN_GLOBALS"] = knownGlobals.join(",");
   }
-  // TODO(nathanwhit): once we match node's behavior on executing
-  // `node:test` tests when we run a file, we can remove this
-  const usesNodeTest = testSource.includes("node:test");
+  const usesNodeTest = usesNodeTestModule(testSource);
   const args = [
-    usesNodeTest ? "test" : "run",
-    "-A",
-    "--quiet",
-    "--unstable-unsafe-proto",
-    "--unstable-bare-node-builtins",
-    "--unstable-fs",
-    "--unstable-node-globals",
+    ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
     "--v8-flags=" + v8Flags.join(),
-    "--no-check",
     testCase,
   ];
 
@@ -186,7 +197,7 @@ export async function runNodeCompatTestCase(
 }
 
 /** Parses the special "Flags:"" syntax in Node.js test files */
-function parseFlags(source: string): string[] {
+export function parseFlags(source: string): string[] {
   const line = /^\/\/ Flags: (.+)$/um.exec(source);
   if (line == null) return [];
   return line[1].split(" ");

@@ -9,6 +9,7 @@ import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   op_getegid,
   op_geteuid,
+  op_node_load_env_file,
   op_node_process_kill,
   op_process_abort,
 } from "ext:core/ops";
@@ -69,7 +70,7 @@ export let argv0 = "";
 
 export let arch = "";
 
-export let platform = "";
+export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
 
@@ -167,19 +168,19 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
 
   if (previousValue) {
     if (!previousCpuUsageValueIsValid(previousValue.user)) {
-      validateObject(previousValue, "previousValue");
+      validateObject(previousValue, "prevValue");
 
-      validateNumber(previousValue.user, "previousValue.user");
+      validateNumber(previousValue.user, "prevValue.user");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
-        "previousValue.user",
+        "prevValue.user",
         previousValue.user,
       );
     }
 
     if (!previousCpuUsageValueIsValid(previousValue.system)) {
-      validateNumber(previousValue.system, "previousValue.system");
+      validateNumber(previousValue.system, "prevValue.system");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
-        "previousValue.system",
+        "prevValue.system",
         previousValue.system,
       );
     }
@@ -787,6 +788,10 @@ process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
+
+process.loadEnvFile = (path = ".env") => {
+  return op_node_load_env_file(path);
+};
 
 /** https://nodejs.org/api/process.html#processexecpath */
 

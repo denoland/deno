@@ -87,6 +87,7 @@ impl CliCjsCodeAnalyzer {
     source: &str,
     esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CliCjsAnalysis, JsErrorBox> {
+    let source = source.strip_prefix('\u{FEFF}').unwrap_or(source); // strip BOM
     let source_hash = CacheDBHash::from_hashable(source);
     if let Some(analysis) =
       self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
