@@ -1,0 +1,5 @@
+{
+  "args": "run npm:mkdirp@0.5.125",
+  "output": "deno_run_non_existent.out",
+  "exitCode": 1
+}

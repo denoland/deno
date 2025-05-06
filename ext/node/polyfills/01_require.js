@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -11,6 +11,7 @@ import {
   op_require_can_parse_as_esm,
   op_require_init_paths,
   op_require_is_deno_dir_package,
+  op_require_is_maybe_cjs,
   op_require_is_request_relative,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
@@ -19,7 +20,6 @@ import {
   op_require_path_is_absolute,
   op_require_path_resolve,
   op_require_proxy_path,
-  op_require_read_closest_package_json,
   op_require_read_file,
   op_require_read_package_scope,
   op_require_real_path,
@@ -121,10 +121,9 @@ import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
-import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.mjs";
-import internalStreamsBufferList from "ext:deno_node/internal/streams/buffer_list.mjs";
-import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
-import internalStreamsState from "ext:deno_node/internal/streams/state.mjs";
+import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
+import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
@@ -142,6 +141,7 @@ import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
+import sqlite from "node:sqlite";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
@@ -225,7 +225,6 @@ function setupBuiltinModules() {
     "internal/http": internalHttp,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
-    "internal/streams/buffer_list": internalStreamsBufferList,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
@@ -253,6 +252,7 @@ function setupBuiltinModules() {
     readline,
     "readline/promises": readlinePromises,
     repl,
+    sqlite,
     stream,
     "stream/consumers": streamConsumers,
     "stream/promises": streamPromises,
@@ -523,17 +523,13 @@ function resolveExports(
     return;
   }
 
-  if (!parentPath) {
-    return false;
-  }
-
   return op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,
     request,
     name,
     expansion,
-    parentPath,
+    parentPath ?? "",
   ) ?? false;
 }
 
@@ -950,7 +946,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1007,7 +1003,10 @@ Module.prototype._compile = function (content, filename, format) {
   try {
     compiledWrapper = wrapSafe(filename, content, this, format);
   } catch (err) {
-    if (err instanceof SyntaxError && op_require_can_parse_as_esm(content)) {
+    if (
+      format !== "commonjs" && err instanceof SyntaxError &&
+      op_require_can_parse_as_esm(content)
+    ) {
       return loadESMFromCJS(this, filename, content);
     }
     throw err;
@@ -1032,6 +1031,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1050,6 +1050,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1062,35 +1063,50 @@ Module.prototype._compile = function (content, filename, format) {
 };
 
 Module._extensions[".js"] = function (module, filename) {
-  const content = op_require_read_file(filename);
-
-  let format;
-  if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = op_require_read_closest_package_json(filename);
-    if (pkg?.typ === "module") {
-      format = "module";
-    } else if (pkg?.type === "commonjs") {
-      format = "commonjs";
-    }
-  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
-    format = "commonjs";
+  // We don't define everything on Module.extensions in
+  // order to prevent probing for these files
+  if (
+    StringPrototypeEndsWith(filename, ".js") ||
+    StringPrototypeEndsWith(filename, ".ts") ||
+    StringPrototypeEndsWith(filename, ".jsx") ||
+    StringPrototypeEndsWith(filename, ".tsx")
+  ) {
+    return loadMaybeCjs(module, filename);
+  } else if (StringPrototypeEndsWith(filename, ".mts")) {
+    return loadESMFromCJS(module, filename);
+  } else if (StringPrototypeEndsWith(filename, ".cts")) {
+    return loadCjs(module, filename);
+  } else {
+    return loadMaybeCjs(module, filename);
   }
-
-  module._compile(content, filename, format);
 };
+
+Module._extensions[".cjs"] = loadCjs;
+Module._extensions[".mjs"] = loadESMFromCJS;
+Module._extensions[".wasm"] = loadESMFromCJS;
+
+function loadMaybeCjs(module, filename) {
+  const content = op_require_read_file(filename);
+  const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
+  module._compile(content, filename, format);
+}
+
+function loadCjs(module, filename) {
+  const content = op_require_read_file(filename);
+  module._compile(content, filename, "commonjs");
+}
 
 function loadESMFromCJS(module, filename, code) {
   const namespace = op_import_sync(
     url.pathToFileURL(filename).toString(),
     code,
   );
-
-  module.exports = namespace;
+  if (ObjectHasOwn(namespace, "module.exports")) {
+    module.exports = namespace["module.exports"];
+  } else {
+    module.exports = namespace;
+  }
 }
-
-Module._extensions[".mjs"] = function (module, filename) {
-  loadESMFromCJS(module, filename);
-};
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
@@ -1209,6 +1225,24 @@ function isBuiltin(moduleName) {
     !StringPrototypeStartsWith(moduleName, "internal/");
 }
 
+function getBuiltinModule(id) {
+  if (!isBuiltin(id)) {
+    return undefined;
+  }
+
+  if (StringPrototypeStartsWith(id, "node:")) {
+    // Slice 'node:' prefix
+    id = StringPrototypeSlice(id, 5);
+  }
+
+  const mod = loadNativeModule(id, id);
+  if (mod) {
+    return mod.exports;
+  }
+
+  return undefined;
+}
+
 Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
@@ -1288,6 +1322,8 @@ export function findSourceMap(_path) {
   return undefined;
 }
 
+Module.findSourceMap = findSourceMap;
+
 /**
  * @param {string | URL} _specifier
  * @param {string | URL} _parentUrl
@@ -1301,7 +1337,7 @@ export function register(_specifier, _parentUrl, _options) {
   return undefined;
 }
 
-export { builtinModules, createRequire, isBuiltin, Module };
+export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

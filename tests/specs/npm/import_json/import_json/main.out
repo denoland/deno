@@ -1,0 +1,10 @@
+{
+  name: "@denotest/binary-package",
+  version: "1.0.0",
+  main: "index.js",
+  optionalDependencies: {
+    "@denotest/binary-package-linux": "1.0.0",
+    "@denotest/binary-package-mac": "1.0.0",
+    "@denotest/binary-package-windows": "1.0.0"
+  }
+}

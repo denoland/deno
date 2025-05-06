@@ -1,4 +1,4 @@
 {
-  "args": "cache --quiet check_local_by_default2.ts",
+  "args": "cache --quiet --allow-import check_local_by_default2.ts",
   "output": "check_local_by_default2.out"
 }

@@ -1,8 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
-use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -11,11 +10,7 @@ use deno_core::RcRef;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[cfg(unix)]
-pub type RawBiPipeHandle = std::os::fd::RawFd;
-
-#[cfg(windows)]
-pub type RawBiPipeHandle = std::os::windows::io::RawHandle;
+pub type RawBiPipeHandle = super::RawIoHandle;
 
 /// One end of a bidirectional pipe. This implements the
 /// `Resource` trait.
@@ -75,13 +70,16 @@ impl BiPipeResource {
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, std::io::Error> {
     let mut rd = RcRef::map(&self, |r| &r.read_half).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel);
-    Ok(rd.read(data).try_or_cancel(cancel_handle).await?)
+    rd.read(data).try_or_cancel(cancel_handle).await
   }
 
-  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, std::io::Error> {
     let mut wr = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
@@ -185,9 +183,10 @@ fn from_raw(
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
   // Safety: The fd is part of a pair of connected sockets
-  let unix_stream = tokio::net::UnixStream::from_std(unsafe {
-    std::os::unix::net::UnixStream::from_raw_fd(stream)
-  })?;
+  let unix_stream =
+    unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
+  unix_stream.set_nonblocking(true)?;
+  let unix_stream = tokio::net::UnixStream::from_std(unix_stream)?;
   let (read, write) = unix_stream.into_split();
   Ok((BiPipeRead { inner: read }, BiPipeWrite { inner: write }))
 }
@@ -274,15 +273,15 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError>
-{
+pub fn bi_pipe_pair_raw(
+) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS
     // https://github.com/nix-rust/nix/issues/861
     let mut fds = [-1, -1];
     #[cfg(not(target_os = "macos"))]
-    let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+    let flags = libc::SOCK_CLOEXEC;
 
     #[cfg(target_os = "macos")]
     let flags = 0;
@@ -297,19 +296,19 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
       )
     };
     if ret != 0 {
-      return Err(std::io::Error::last_os_error().into());
+      return Err(std::io::Error::last_os_error());
     }
 
     if cfg!(target_os = "macos") {
       let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
         // SAFETY: libc call, fd is valid
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
 
         if flags == -1 {
           return Err(fail(fds));
         }
         // SAFETY: libc call, fd is valid
-        let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | flag) };
+        let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, flags | flag) };
         if ret == -1 {
           return Err(fail(fds));
         }
@@ -325,13 +324,9 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
         std::io::Error::last_os_error()
       }
 
-      // SOCK_NONBLOCK is not supported on macOS.
-      (fcntl)(fds[0], libc::O_NONBLOCK)?;
-      (fcntl)(fds[1], libc::O_NONBLOCK)?;
-
       // SOCK_CLOEXEC is not supported on macOS.
-      (fcntl)(fds[0], libc::FD_CLOEXEC)?;
-      (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      fcntl(fds[0], libc::FD_CLOEXEC)?;
+      fcntl(fds[1], libc::FD_CLOEXEC)?;
     }
 
     let fd1 = fds[0];
@@ -343,6 +338,11 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
     // TODO(nathanwhit): more granular unsafe blocks
     // SAFETY: win32 calls
     unsafe {
+      use std::io;
+      use std::os::windows::ffi::OsStrExt;
+      use std::path::Path;
+      use std::ptr;
+
       use windows_sys::Win32::Foundation::CloseHandle;
       use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
       use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
@@ -359,11 +359,6 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
       use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
       use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
       use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-
-      use std::io;
-      use std::os::windows::ffi::OsStrExt;
-      use std::path::Path;
-      use std::ptr;
 
       let (path, hd1) = loop {
         let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
@@ -393,7 +388,7 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
             continue;
           }
 
-          return Err(err.into());
+          return Err(err);
         }
 
         break (path, hd1);
@@ -412,10 +407,10 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
         &s,
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED,
-        0,
+        std::ptr::null_mut(),
       );
       if hd2 == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error().into());
+        return Err(io::Error::last_os_error());
       }
 
       // Will not block because we have create the pair.
@@ -423,7 +418,7 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
           CloseHandle(hd2);
-          return Err(err.into());
+          return Err(err);
         }
       }
 

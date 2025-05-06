@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -10,7 +10,12 @@ import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
-for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
+// Increase the timeout for the auto select family to avoid flakiness
+net.setDefaultAutoSelectFamilyAttemptTimeout(
+  net.getDefaultAutoSelectFamilyAttemptTimeout() * 30,
+);
+
+for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
     ignore: Deno.build.os === "windows",
   }, async () => {
@@ -147,6 +152,7 @@ Deno.test("[node/http2.createServer()]", {
   // TODO(satyarohith): enable the test on windows.
   ignore: Deno.build.os === "windows",
 }, async () => {
+  const serverListening = Promise.withResolvers<number>();
   const server = http2.createServer((_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.setHeader("X-Foo", "bar");
@@ -154,8 +160,10 @@ Deno.test("[node/http2.createServer()]", {
     res.write("Hello, World!");
     res.end();
   });
-  server.listen(0);
-  const port = (<net.AddressInfo> server.address()).port;
+  server.listen(0, () => {
+    serverListening.resolve((server.address() as net.AddressInfo).port);
+  });
+  const port = await serverListening.promise;
   const endpoint = `http://localhost:${port}`;
 
   const response = await curlRequest([

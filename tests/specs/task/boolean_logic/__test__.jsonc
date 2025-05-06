@@ -1,7 +1,4 @@
 {
   "args": "task -q --config deno.json boolean_logic",
-  "output": "task_boolean_logic.out",
-  "envs": {
-    "NO_COLOR": "1"
-  }
+  "output": "task_boolean_logic.out"
 }

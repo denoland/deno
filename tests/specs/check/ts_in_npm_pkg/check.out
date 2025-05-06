@@ -1,0 +1,7 @@
+Check file:///[WILDLINE]/main.ts
+TS2322 [ERROR]: Type 'string' is not assignable to type 'Test'.
+const test: Test = "";
+      ~~~~
+    at file:///[WILDLINE]/main.ts:3:7
+
+error: Type checking failed.

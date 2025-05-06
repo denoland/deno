@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // vendored from std/assert/mod.ts
 
 import { primordials } from "ext:core/mod.js";
@@ -103,7 +103,7 @@ export function equal(c: unknown, d: unknown): boolean {
       return aTime === bTime;
     }
     if (typeof a === "number" && typeof b === "number") {
-      return NumberIsNaN(a) && NumberIsNaN(b) || a === b;
+      return ObjectIs(a, b);
     }
     if (ObjectIs(a, b)) {
       return true;

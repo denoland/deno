@@ -1,11 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_url.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
 import {
@@ -31,6 +31,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _components = Symbol("components");
+const urlPatternSettings = { groupStringFallback: false };
 
 /**
  * @typedef Components
@@ -349,7 +350,11 @@ class URLPattern {
           const groups = res.groups;
           for (let i = 0; i < groupList.length; ++i) {
             // TODO(lucacasonato): this is vulnerable to override mistake
-            groups[groupList[i]] = match[i + 1] ?? ""; // TODO(@crowlKats): remove fallback for 2.0
+            if (urlPatternSettings.groupStringFallback) {
+              groups[groupList[i]] = match[i + 1] ?? "";
+            } else {
+              groups[groupList[i]] = match[i + 1];
+            }
           }
           break;
         }
@@ -422,4 +427,4 @@ webidl.converters.URLPatternOptions = webidl
     },
   ]);
 
-export { URLPattern };
+export { URLPattern, urlPatternSettings };

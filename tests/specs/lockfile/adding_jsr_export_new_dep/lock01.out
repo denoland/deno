@@ -1,15 +1,15 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@denotest/add@1": "1.0.0",
     "jsr:@denotest/different-deps-per-export@1": "1.0.0"
   },
   "jsr": {
     "@denotest/add@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "3b2e675c1ad7fba2a45bc251992e01aff08a3c974ac09079b11e6a5b95d4bfcb"
     },
     "@denotest/different-deps-per-export@1.0.0": {
-      "integrity": "[WILDLINE]",
+      "integrity": "412d881f790cd17da45b885883a009b06e1e83f80ecca43199eb9af34a1740ef",
       "dependencies": [
         "jsr:@denotest/add"
       ]

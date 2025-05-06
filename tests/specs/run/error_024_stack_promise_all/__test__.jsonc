@@ -1,0 +1,5 @@
+{
+  "args": "run error_024_stack_promise_all.ts",
+  "output": "error_024_stack_promise_all.ts.out",
+  "exitCode": 1
+}

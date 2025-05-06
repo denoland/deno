@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -8,15 +8,13 @@ use std::time::Instant;
 use deno_core::parking_lot::Mutex;
 use deno_runtime::ops::tty::ConsoleSize;
 
-use crate::colors;
-
 use self::renderer::ProgressBarRenderer;
 use self::renderer::ProgressData;
 use self::renderer::ProgressDataDisplayEntry;
-
 use super::draw_thread::DrawThread;
 use super::draw_thread::DrawThreadGuard;
 use super::draw_thread::DrawThreadRenderer;
+use crate::colors;
 
 mod renderer;
 

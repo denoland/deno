@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -126,8 +126,6 @@ Deno.test(
     const listener = Deno.listen({ port: listenPort });
     const p = listener.accept();
     listener.close();
-    // TODO(piscisaureus): the error type should be `Interrupted` here, which
-    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
     await assertRejects(
       () => p,
       Deno.errors.BadResource,
@@ -168,7 +166,7 @@ Deno.test(
       } else if (e.message === "Another accept task is ongoing") {
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);
@@ -1278,6 +1276,26 @@ Deno.test({
     await Promise.race([p1, p2]);
   }
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpWithAbortSignal() {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const error = await assertRejects(
+      async () => {
+        await Deno.connect({
+          hostname: "deno.com",
+          port: 50000,
+          transport: "tcp",
+          signal: controller.signal,
+        });
+      },
+    );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
+  },
+);
 
 Deno.test({
   ignore: Deno.build.os === "linux",

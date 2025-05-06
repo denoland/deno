@@ -8,6 +8,8 @@ import { $ } from "jsr:@david/dax@0.41.0";
 async function uploadCanaryForCurrentArch(currentGitSha) {
   const currentGitRev = await $`git rev-parse HEAD`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/${currentGitRev}/`;
+  await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/${currentGitRev}/`;
+  await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/${currentGitRev}/`;
   const llvmTriple = await $`rustc -vV | sed -n "s|host: ||p"`;
   const latestCanaryHash =
     await $`gsutil cat gs://dl.deno.land/canary-${llvmTriple}-latest.txt`;
@@ -35,7 +37,7 @@ async function uploadCanaryLatest(currentGitSha) {
 
 function printUsage() {
   throw new Error(
-    "Usage: `./upload_canary_hash.ts arch|latest <currentGitSha>",
+    "Usage: `./upload_canary.ts arch|latest <currentGitSha>",
   );
 }
 

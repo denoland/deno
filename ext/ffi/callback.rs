@@ -1,20 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::symbol::NativeType;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::v8::TryCatch;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use deno_core::V8CrossThreadTaskSpawner;
-use libffi::middle::Cif;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -28,10 +13,39 @@ use std::sync::atomic;
 use std::sync::atomic::AtomicU32;
 use std::task::Poll;
 
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::TryCatch;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::V8CrossThreadTaskSpawner;
+use libffi::middle::Cif;
+use serde::Deserialize;
+
+use crate::symbol::NativeType;
+use crate::FfiPermissions;
+use crate::ForeignFunction;
+
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 thread_local! {
   static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CallbackError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] deno_error::JsErrorBox),
 }
 
 #[derive(Clone)]
@@ -44,7 +58,7 @@ impl PtrSymbol {
   pub fn new(
     fn_ptr: *mut c_void,
     def: &ForeignFunction,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, CallbackError> {
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       def
@@ -522,7 +536,7 @@ unsafe fn do_ffi_callback(
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+) -> Result<impl Future<Output = ()>, CallbackError> {
   let state = state.borrow();
   let callback_resource =
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
@@ -536,7 +550,6 @@ pub fn op_ffi_unsafe_callback_ref(
       .into_future()
       .or_cancel(callback_resource.cancel.clone())
       .await;
-    Ok(())
   })
 }
 
@@ -546,13 +559,13 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
   #[serde] args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, CallbackError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -624,7 +637,7 @@ pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<(), CallbackError> {
   // SAFETY: This drops the closure and the callback info associated with it.
   // Any retained function pointers to the closure become dangling pointers.
   // It is up to the user to know that it is safe to call the `close()` on the

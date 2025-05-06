@@ -1,5 +1,5 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { join, ROOT_PATH } from "./util.js";
 
 const subcommand = Deno.args.includes("--check") ? "check" : "fmt";

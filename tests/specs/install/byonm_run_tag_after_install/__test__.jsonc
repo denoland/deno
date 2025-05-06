@@ -1,0 +1,44 @@
+{
+  "tempDir": true,
+
+  "tests": {
+    "tag_with_byonm": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A main.ts",
+          "output": ""
+        }
+      ]
+    },
+    "no_tag_then_tag": {
+      "steps": [
+        {
+          "args": "run -A replace-version-req.ts 1.0.0",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A replace-version-req.ts latest",
+          "output": ""
+        },
+        {
+          "args": "run -A main.ts",
+          "output": "node_modules_out_of_date.out",
+          "exitCode": 1
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        { "args": "run -A main.ts", "output": "" }
+      ]
+    }
+  }
+}

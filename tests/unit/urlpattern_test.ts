@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
 import { assertType, IsExact } from "@std/testing/types";
 
@@ -62,10 +62,4 @@ Deno.test(function urlPatternWithPrototypePollution() {
   } finally {
     RegExp.prototype.exec = originalExec;
   }
-});
-
-Deno.test(function urlPatternEmptyFallback() {
-  const p = new URLPattern({ pathname: "/foo/bar{/:qaz}?" });
-  const match = p.exec("https://example.com/foo/bar");
-  assertEquals(match!.pathname.groups.qaz, "");
 });

@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -14,7 +14,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
@@ -269,19 +268,29 @@ class Request {
   /** @type {AbortSignal} */
   get [_signal]() {
     const signal = this[_signalCache];
-    // This signal not been created yet, and the request is still in progress
-    if (signal === undefined) {
-      const signal = newSignal();
-      this[_signalCache] = signal;
-      return signal;
-    }
     // This signal has not been created yet, but the request has already completed
     if (signal === false) {
       const signal = newSignal();
       this[_signalCache] = signal;
-      signal[signalAbort](signalAbortError);
+      signal[signalAbort](
+        new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+      );
       return signal;
     }
+
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      this[_request].onCancel?.(() => {
+        signal[signalAbort](
+          new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+        );
+      });
+
+      return signal;
+    }
+
     return signal;
   }
   get [_mimeType]() {
@@ -596,15 +605,13 @@ function fromInnerRequest(inner, guard) {
   return request;
 }
 
-const signalAbortError = new DOMException(
-  "The request has been cancelled.",
-  "AbortError",
-);
-ObjectFreeze(signalAbortError);
+const MESSAGE_REQUEST_CANCELLED = "The request has been cancelled.";
 
 function abortRequest(request) {
   if (request[_signalCache] !== undefined) {
-    request[_signal][signalAbort](signalAbortError);
+    request[_signal][signalAbort](
+      new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+    );
   } else {
     request[_signalCache] = false;
   }

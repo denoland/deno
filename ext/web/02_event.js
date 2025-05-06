@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -7,7 +7,6 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeMap,
@@ -982,12 +981,7 @@ class EventTarget {
     );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && listeners[type]) {
-      listeners[type] = ArrayPrototypeFilter(
-        listeners[type],
-        (listener) => listener.callback !== callback,
-      );
-    } else if (callback === null || !listeners[type]) {
+    if (callback === null || !listeners[type]) {
       return;
     }
 
@@ -1037,11 +1031,11 @@ class EventTarget {
     }
 
     if (getDispatched(event)) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     if (event.eventPhase !== Event.NONE) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     return dispatch(self, event);
@@ -1526,6 +1520,7 @@ export {
   ErrorEvent,
   Event,
   EventTarget,
+  EventTargetPrototype,
   listenerCount,
   MessageEvent,
   ProgressEvent,

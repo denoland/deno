@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use test_util::itest;
 use url::Url;
@@ -15,147 +13,6 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(cjs_with_deps {
-  args: "run --allow-read --allow-env npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_sub_path {
-  args: "run --allow-read npm/cjs_sub_path/main.js",
-  output: "npm/cjs_sub_path/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_local_global_decls {
-  args: "run --allow-read npm/cjs_local_global_decls/main.ts",
-  output: "npm/cjs_local_global_decls/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_reexport_collision {
-  args: "run -A --quiet npm/cjs_reexport_collision/main.ts",
-  output: "npm/cjs_reexport_collision/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_this_in_exports {
-  args: "run --allow-read --quiet npm/cjs_this_in_exports/main.js",
-  output: "npm/cjs_this_in_exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(cjs_invalid_name_exports {
-  args: "run --allow-read --quiet npm/cjs-invalid-name-exports/main.ts",
-  output: "npm/cjs-invalid-name-exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_require_esm {
-  args: "run --allow-read --quiet npm/cjs_require_esm/main.ts",
-  output: "npm/cjs_require_esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_require_esm_mjs {
-  args: "run --allow-read --quiet npm/cjs_require_esm_mjs/main.ts",
-  output: "npm/cjs_require_esm_mjs/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(require_esm {
-  args: "run --allow-read --quiet node/require_esm/main.ts",
-  output: "node/require_esm/main.out",
-});
-
-itest!(dynamic_import_deno_ts_from_npm {
-  args: "run --allow-read --quiet npm/dynamic_import_deno_ts_from_npm/main.ts",
-  output: "npm/dynamic_import_deno_ts_from_npm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(translate_cjs_to_esm {
-  args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
-  output: "npm/translate_cjs_to_esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(compare_globals {
-  args: "run --allow-read --check=all npm/compare_globals/main.ts",
-  output: "npm/compare_globals/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(dual_cjs_esm {
-  args: "run -A --quiet npm/dual_cjs_esm/main.ts",
-  output: "npm/dual_cjs_esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(child_process_fork_test {
-  args: "run -A --quiet npm/child_process_fork_test/main.ts",
-  output: "npm/child_process_fork_test/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_module_export_assignment {
-  args: "run -A --quiet --check=all npm/cjs_module_export_assignment/main.ts",
-  output: "npm/cjs_module_export_assignment/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(cjs_module_export_assignment_number {
-  args:
-    "run -A --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
-  output: "npm/cjs_module_export_assignment_number/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(mixed_case_package_name_global_dir {
-  args: "run npm/mixed_case_package_name/global.ts",
-  output: "npm/mixed_case_package_name/global.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(mixed_case_package_name_local_dir {
-  args:
-    "run --node-modules-dir=auto -A $TESTDATA/npm/mixed_case_package_name/local.ts",
-  output: "npm/mixed_case_package_name/local.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(local_dir_resolves_symlinks {
-//   args: "run -A index.js",
-//   output: "npm/local_dir_resolves_symlinks/index.out",
-//   exit_code: 0,
-//   envs: env_vars_for_npm_tests(),
-//   cwd: Some("npm/local_dir_resolves_symlinks/"),
-//   copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
-//   http_server: true,
-// });
-
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -164,211 +21,6 @@ itest!(mixed_case_package_name_local_dir {
 //   envs: env_vars_for_npm_tests(),
 //   http_server: true,
 // });
-
-itest!(dynamic_import_reload_same_package {
-  args: "run -A --reload npm/dynamic_import_reload_same_package/main.ts",
-  output: "npm/dynamic_import_reload_same_package/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(dynamic_import_invalid_package_name {
-  args: "run -A --reload npm/dynamic_import_invalid_package_name/main.ts",
-  output: "npm/dynamic_import_invalid_package_name/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(env_var_re_export_dev {
-  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
-  output_str: Some("dev\n"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(env_var_re_export_prod {
-  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
-  output_str: Some("prod\n"),
-  envs: {
-    let mut vars = env_vars_for_npm_tests();
-    vars.push(("NODE_ENV".to_string(), "production".to_string()));
-    vars
-  },
-  http_server: true,
-});
-
-itest!(cached_only {
-  args: "run --cached-only npm/cached_only/main.ts",
-  output: "npm/cached_only/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
-itest!(import_map {
-  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-  output: "npm/import_map/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(sub_paths {
-  args: "run -A --quiet npm/sub_paths/main.jsx",
-  output: "npm/sub_paths/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(remote_npm_specifier {
-  args: "run --quiet -A npm/remote_npm_specifier/main.ts",
-  output: "npm/remote_npm_specifier/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(tarball_with_global_header {
-  args: "run -A --quiet npm/tarball_with_global_header/main.js",
-  output: "npm/tarball_with_global_header/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(node_modules_deno_node_modules {
-  args: "run --quiet npm/node_modules_deno_node_modules/main.ts",
-  output: "npm/node_modules_deno_node_modules/main.out",
-  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(node_modules_deno_node_modules_local {
-  args:
-    "run --quiet --node-modules-dir npm/node_modules_deno_node_modules/main.ts",
-  output: "npm/node_modules_deno_node_modules/main.out",
-  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(nonexistent_file {
-  args: "run -A --quiet npm/nonexistent_file/main.js",
-  output: "npm/nonexistent_file/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(nonexistent_file_node_modules_dir {
-  // there was a bug where the message was different when using a node_modules dir
-  args: "run -A --quiet --node-modules-dir npm/nonexistent_file/main.js",
-  output: "npm/nonexistent_file/main.out",
-  copy_temp_dir: Some("npm/nonexistent_file/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(require_json {
-  args: "run -A --quiet npm/require_json/main.js",
-  output: "npm/require_json/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(error_version_after_subpath {
-  args: "run -A --quiet npm/error_version_after_subpath/main.js",
-  output: "npm/error_version_after_subpath/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(deno_cache {
-  args: "cache --reload npm:chalk npm:mkdirp",
-  output: "npm/deno_cache.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(check_all {
-  args: "check --all npm/check_errors/main.ts",
-  output: "npm/check_errors/main_all.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_local {
-  args: "check npm/check_errors/main.ts",
-  output: "npm/check_errors/main_local.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_ambient_module {
-  args: "check --quiet npm/types_ambient_module/main.ts",
-  output: "npm/types_ambient_module/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_ambient_module_import_map {
-  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
-  output: "npm/types_ambient_module/main_import_map.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_entry_value_not_exists {
-  args: "check --all npm/types_entry_value_not_exists/main.ts",
-  output: "npm/types_entry_value_not_exists/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_exports_import_types {
-  args: "check --all npm/types_exports_import_types/main.ts",
-  output: "npm/types_exports_import_types/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_no_types_entry {
-  args: "check --all npm/types_no_types_entry/main.ts",
-  output: "npm/types_no_types_entry/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(types_d_ext {
-  args: "check --all npm/d_ext/main.ts",
-  output: "npm/d_ext/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(typescript_file_in_package {
-  args: "run npm/typescript_file_in_package/main.ts",
-  output: "npm/typescript_file_in_package/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(permissions_outside_package {
-  args: "run --allow-read npm/permissions_outside_package/main.ts",
-  output: "npm/permissions_outside_package/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 itest!(run_existing_npm_package {
   args: "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
@@ -380,22 +32,14 @@ itest!(run_existing_npm_package {
   copy_temp_dir: Some("npm/run_existing_npm_package/"),
 });
 
-itest!(run_existing_npm_package_with_subpath {
-  args:
-    "run --allow-read --node-modules-dir=auto npm:@denotest/bin/cli-esm dev --help",
-  output: "npm/run_existing_npm_package_with_subpath/main.out",
+itest!(require_resolve_url_paths {
+  args: "run -A --quiet --node-modules-dir=auto url_paths.ts",
+  output: "npm/require_resolve_url/url_paths.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  temp_cwd: true,
-  cwd: Some("npm/run_existing_npm_package_with_subpath/"),
-  copy_temp_dir: Some("npm/run_existing_npm_package_with_subpath/"),
-});
-
-itest!(cjs_pkg_imports {
-  args: "run -A npm/cjs_pkg_imports/main.ts",
-  output: "npm/cjs_pkg_imports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
+  exit_code: 0,
+  cwd: Some("npm/require_resolve_url/"),
+  copy_temp_dir: Some("npm/require_resolve_url/"),
 });
 
 #[test]
@@ -457,7 +101,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier not found in cache: \"ansi-styles\", --cached-only is specified."
+    "npm package not found in cache: \"ansi-styles\", --cached-only is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -677,77 +321,6 @@ fn deno_run_cjs_module() {
   assert!(deno_dir.path().join("test_dir").exists());
 }
 
-itest!(deno_run_cowsay {
-  args: "run -A --quiet npm:cowsay@1.5.0 Hello",
-  output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_cowsay_with_node_modules_dir {
-  args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
-  temp_cwd: true,
-  output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_cowsay_explicit {
-  args: "run -A --quiet npm:cowsay@1.5.0/cowsay Hello",
-  output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_cowthink {
-  args: "run -A --quiet npm:cowsay@1.5.0/cowthink Hello",
-  output: "npm/deno_run_cowthink.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_esm {
-  args: "run -A --quiet npm:@denotest/bin/cli-esm this is a test",
-  output: "npm/deno_run_esm.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_esm_no_bin_entrypoint {
-  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli.mjs this is a test",
-  output: "npm/deno_run_esm.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_cjs_no_bin_entrypoint {
-  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli-cjs.js this is a test",
-  output: "npm/deno_run_cjs.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_special_chars {
-  args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
-  output: "npm/deno_run_special_chars_in_bin_name.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_no_ext {
-  args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
-  output: "npm/deno_run_no_ext.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(deno_run_bin_cjs {
-  args: "run -A --quiet npm:@denotest/bin/cli-cjs this is a test",
-  output: "npm/deno_run_cjs.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 #[test]
 fn deno_run_bin_lockfile() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -760,88 +333,6 @@ fn deno_run_bin_lockfile() {
   output.assert_matches_file("npm/deno_run_esm.out");
   assert!(temp_dir.path().join("deno.lock").exists());
 }
-
-itest!(deno_run_non_existent {
-  args: "run npm:mkdirp@0.5.125",
-  output: "npm/deno_run_non_existent.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(deno_run_no_bin_entrypoint {
-  args: "run -A --quiet npm:@denotest/esm-basic",
-  output: "npm/deno_run_no_bin_entrypoint.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(deno_run_no_bin_entrypoint_non_existent_subpath {
-  args: "run -A --quiet npm:@denotest/esm-basic/non-existent.js",
-  output: "npm/deno_run_no_bin_entrypoint_non_existent_subpath.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(directory_import_folder_index_js {
-  args: "run npm/directory_import/folder_index_js.ts",
-  output: "npm/directory_import/folder_index_js.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(directory_import_folder_no_index {
-  args: "run npm/directory_import/folder_no_index.ts",
-  output: "npm/directory_import/folder_no_index.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(builtin_module_module {
-  args: "run --allow-read --quiet npm/builtin_module_module/main.js",
-  output: "npm/builtin_module_module/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(node_modules_dir_require_added_node_modules_folder {
-  args:
-    "run --node-modules-dir=auto -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
-  output: "npm/require_added_nm_folder/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-  temp_cwd: true,
-});
-
-itest!(node_modules_dir_require_main_entry {
-  args: "run --node-modules-dir -A --quiet $TESTDATA/npm/require_main/main.js",
-  output: "npm/require_main/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-  temp_cwd: true,
-});
-
-itest!(node_modules_dir_with_deps {
-  args: "run --allow-read --allow-env --node-modules-dir=auto $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_node_modules.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
-
-itest!(node_modules_dir_yargs {
-  args: "run --allow-read --allow-env --node-modules-dir=auto $TESTDATA/npm/cjs_yargs/main.js",
-  output: "npm/cjs_yargs/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
 
 #[test]
 fn node_modules_dir_cache() {
@@ -904,79 +395,30 @@ fn node_modules_dir_cache() {
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
   let registry_dir_path = util::tests_path().join("registry").join("npm");
-  for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
+  for entry in walkdir::WalkDir::new(&registry_dir_path).max_depth(2) {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
-      let registry_json_path = registry_dir_path
-        .join(entry.file_name())
-        .join("registry.json");
+      let registry_json_path = entry.path().join("registry.json");
 
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
         if file_text.contains(&format!(
           "https://registry.npmjs.org/{}/-/",
-          entry.file_name().to_string_lossy()
+          entry
+            .path()
+            .strip_prefix(&registry_dir_path)
+            .unwrap()
+            .to_string_lossy()
         )) {
           panic!(
             "file {} contained a reference to the npm registry",
-            registry_json_path
+            registry_json_path.display()
           );
         }
       }
     }
   }
 }
-
-itest!(info_chalk_display {
-  args: "info --quiet npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_info.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(info_chalk_display_node_modules_dir {
-  args: "info --quiet --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_info.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
-
-itest!(info_chalk_json {
-  args: "info --quiet --json npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_info_json.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(info_chalk_json_node_modules_dir {
-  args:
-    "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_info_json.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
-
-itest!(info_cli_chalk_display {
-  args: "info --quiet npm:chalk@4",
-  output: "npm/info/chalk.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(info_cli_chalk_json {
-  args: "info --quiet --json npm:chalk@4",
-  output: "npm/info/chalk_json.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 #[test]
 fn lock_file_missing_top_level_package() {
@@ -1207,7 +649,7 @@ fn lock_file_lock_write() {
 
   temp_dir.write("deno.json", "{}");
   let lock_file_content = r#"{
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:cowsay@1.5.0": "1.5.0"
   },
@@ -1393,6 +835,10 @@ fn lock_file_lock_write() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
+  eprintln!(
+    "output: {}",
+    String::from_utf8(output.stderr.clone()).unwrap()
+  );
   assert!(output.status.success());
   assert_eq!(output.status.code(), Some(0));
 
@@ -1417,13 +863,14 @@ fn auto_discover_lock_file() {
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
-        "integrity": "sha512-foobar"
+        "integrity": "sha512-foobar",
+        "tarball": "http://localhost:4260/@denotest/bin/1.0.0.tgz"
       }
     }
   }"#;
@@ -1435,131 +882,17 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4260/@denotest/bin
-error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
-is the same as when the lockfile was generated.
+r#"Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+error: Failed caching npm package '@denotest/bin@1.0.0'
 
-Actual: sha512-[WILDCARD]
-Expected: sha512-foobar
-
-This could be caused by:
-  * the lock file may be corrupt
-  * the source itself may be corrupt
-
-Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
+Caused by:
+    Tarball checksum did not match what was provided by npm registry for @denotest/bin@1.0.0.
+    
+    Expected: foobar
+    Actual: [WILDCARD]
 "#)
-    .assert_exit_code(10);
+    .assert_exit_code(1);
 }
-
-#[test]
-fn peer_deps_with_copied_folders_and_lockfile() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
-    .cwd("npm/peer_deps_with_copied_folders")
-    .build();
-
-  let deno_dir = context.deno_dir();
-  let temp_dir = context.temp_dir();
-  let temp_dir_sub_path =
-    temp_dir.path().join("npm/peer_deps_with_copied_folders");
-
-  // write empty config file
-  temp_dir.write("npm/peer_deps_with_copied_folders/deno.json", "{}");
-
-  let output = context.new_command().args("run -A main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
-
-  assert!(temp_dir_sub_path.join("deno.lock").exists());
-  let grandchild_path = deno_dir
-    .path()
-    .join("npm")
-    .join("localhost_4260")
-    .join("@denotest")
-    .join("peer-dep-test-grandchild");
-  assert!(grandchild_path.join("1.0.0").exists());
-  assert!(grandchild_path.join("1.0.0_1").exists()); // copy folder, which is hardlinked
-
-  // run again
-  let output = context.new_command().args("run -A main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_text("1\n2\n");
-
-  // run with reload
-  let output = context.new_command().args("run -A --reload main.ts").run();
-  output.assert_exit_code(0);
-  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
-
-  // now run with local node modules
-  let output = context
-    .new_command()
-    .args("run -A --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules.out",
-  );
-
-  let deno_folder = temp_dir_sub_path.join("node_modules").join(".deno");
-  assert!(deno_folder
-    .join("@denotest+peer-dep-test-grandchild@1.0.0")
-    .exists());
-  assert!(deno_folder
-    .join("@denotest+peer-dep-test-grandchild@1.0.0_1")
-    .exists()); // copy folder
-
-  // now again run with local node modules
-  let output = context
-    .new_command()
-    .args("run -A --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_text("1\n2\n");
-
-  // now ensure it works with reloading
-  let output = context
-    .new_command()
-    .args("run -A --reload --node-modules-dir=auto main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
-  );
-
-  // now ensure it works with reloading and no lockfile
-  let output = context
-    .new_command()
-    .args("run -A --reload --node-modules-dir=auto --no-lock main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.assert_matches_file(
-    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
-  );
-}
-
-itest!(info_peer_deps {
-  args: "info --quiet npm/peer_deps_with_copied_folders/main.ts",
-  output: "npm/peer_deps_with_copied_folders/main_info.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(info_peer_deps_json {
-  args: "info --quiet --json npm/peer_deps_with_copied_folders/main.ts",
-  output: "npm/peer_deps_with_copied_folders/main_info_json.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(create_require {
-  args: "run --reload --allow-read npm/create_require/main.ts",
-  output: "npm/create_require/main.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_run {
@@ -1582,34 +915,6 @@ itest!(create_require {
 //   copy_temp_dir: Some("npm/node_modules_import/"),
 //   exit_code: 1,
 // });
-
-itest!(non_existent_dep {
-  args: "cache npm:@denotest/non-existent-dep",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-  output_str: Some(concat!(
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep\n",
-    "Download http://localhost:4260/@denotest/non-existent\n",
-    "[UNORDERED_END]\n",
-    "error: npm package '@denotest/non-existent' does not exist.\n"
-  )),
-});
-
-itest!(non_existent_dep_version {
-  args: "cache npm:@denotest/non-existent-dep-version",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-  output_str: Some(concat!(
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
-    "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
-  )),
-});
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
@@ -1669,10 +974,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-    "Download http://localhost:4260/@denotest/cjs-default-export\n",
-    "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+    "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
+    "Download http://localhost:4260/@denotestcjs-default-export/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
     "[UNORDERED_END]\n",
@@ -1699,8 +1004,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1731,8 +1036,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1770,8 +1075,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "[UNORDERED_START]\n",
       "Initialize @denotest/cjs-default-export@1.0.0\n",
@@ -1807,9 +1112,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "Node esm importing node cjs\n[WILDCARD]",
@@ -1848,9 +1153,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest/cjs-default-export\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
-      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -2030,7 +1335,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
   output.assert_matches_text(concat!(
-    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",
   ));
@@ -2079,45 +1384,6 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   assert!(node_modules_dir.join("@denotest").exists());
 }
-
-itest!(reserved_word_exports {
-  args: "run npm/reserved_word_exports/main.ts",
-  output: "npm/reserved_word_exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(import_json {
-  args: "run -A --quiet npm/import_json/main.js",
-  output: "npm/import_json/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(dynamic_import_json {
-  args: "run -A --quiet npm/import_json/main.js",
-  output: "npm/import_json/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(check_package_file_dts_dmts_dcts {
-  args: "check npm/file_dts_dmts_dcts/main.ts",
-  output: "npm/file_dts_dmts_dcts/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(require_resolve_url_paths {
-  args: "run -A --quiet --node-modules-dir=auto url_paths.ts",
-  output: "npm/require_resolve_url/url_paths.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-  cwd: Some("npm/require_resolve_url/"),
-  copy_temp_dir: Some("npm/require_resolve_url/"),
-});
 
 #[test]
 fn byonm_cjs_esm_packages() {
@@ -2720,50 +1986,6 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("2\n");
 }
-
-itest!(imports_package_json {
-  args:
-    "run --no-lock --node-modules-dir=none npm/imports_package_json/main.js",
-  output: "npm/imports_package_json/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(imports_package_json_import_not_defined {
-  args:
-    "run --no-lock --node-modules-dir=none npm/imports_package_json/import_not_defined.js",
-  output: "npm/imports_package_json/import_not_defined.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(imports_package_json_sub_path_import_not_defined {
-  args:
-    "run --no-lock --node-modules-dir=none npm/imports_package_json/sub_path_import_not_defined.js",
-  output: "npm/imports_package_json/sub_path_import_not_defined.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --no-lock --node-modules-dir=none npm/different_nested_dep/main.js",
-  output: "npm/different_nested_dep/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-  http_server: true,
-});
-
-itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --no-lock --quiet --node-modules-dir=auto main.js",
-  output: "npm/different_nested_dep/main.out",
-  copy_temp_dir: Some("npm/different_nested_dep/"),
-  cwd: Some("npm/different_nested_dep/"),
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-  http_server: true,
-});
 
 #[test]
 fn different_nested_dep_byonm() {

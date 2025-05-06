@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/member-b",
+  "version": "0.1.0",
+  "dependencies": {
+    "@denotest/has-patch-versions": "0.1.0",
+    "aliased": "npm:@denotest/bin@0.6.0"
+  }
+}

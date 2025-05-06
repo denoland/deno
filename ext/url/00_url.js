@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -139,7 +139,7 @@ class URLSearchParams {
           throw new TypeError(
             `${prefix}: Item ${
               i + 0
-            } in the parameter list does have length 2 exactly.`,
+            } in the parameter list does have length 2 exactly`,
           );
         }
         return [pair[0], pair[1]];

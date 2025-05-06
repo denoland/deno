@@ -1,0 +1,4 @@
+error: [TASK] must be specified when using --eval
+
+Usage: deno task [OPTIONS] [TASK]
+

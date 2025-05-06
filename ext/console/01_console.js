@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -84,6 +84,7 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   NumberParseInt,
+  NumberParseFloat,
   NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
@@ -215,7 +216,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
-  temporal: "magenta",
+  temporal: "cyan",
 };
 
 const defaultFG = 39;
@@ -1301,7 +1302,9 @@ function getKeys(value, showHidden) {
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
-  keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+    keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  }
   return keys;
 }
 
@@ -2650,6 +2653,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = StringPrototypeToLowerCase(colorString);
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
@@ -3008,20 +3012,18 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
           } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
             // Format as an integer.
             const value = args[a++];
-            if (typeof value == "bigint") {
-              formattedArg = `${value}n`;
-            } else if (typeof value == "number") {
-              formattedArg = `${NumberParseInt(String(value))}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseInt(value)}`;
             }
           } else if (char == "f") {
             // Format as a floating point value.
             const value = args[a++];
-            if (typeof value == "number") {
-              formattedArg = `${value}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseFloat(value)}`;
             }
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
@@ -3255,7 +3257,7 @@ class Console {
 
     const stringifyValue = (value) =>
       inspectValueWithQuotes(value, {
-        ...getDefaultInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
       });
@@ -3544,6 +3546,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   getStdoutNoColor,

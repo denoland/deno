@@ -1,26 +1,26 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_ast::swc::ast;
-use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::collections::AHashSet;
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::utils as swc_utils;
-use deno_ast::swc::visit::as_folder;
-use deno_ast::swc::visit::FoldWith as _;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitMut;
-use deno_ast::swc::visit::VisitWith as _;
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
-use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
-use regex::Regex;
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use crate::file_fetcher::File;
+use deno_ast::swc::ast;
+use deno_ast::swc::atoms::Atom;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitMut;
+use deno_ast::swc::ecma_visit::VisitWith as _;
+use deno_ast::swc::utils as swc_utils;
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
+use deno_cache_dir::file_fetcher::File;
+use deno_core::error::AnyError;
+use deno_core::ModuleSpecifier;
+use regex::Regex;
+
+use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
 
 /// Extracts doc tests from a given file, transforms them into pseudo test
@@ -52,7 +52,7 @@ fn extract_inner(
   file: File,
   wrap_kind: WrapKind,
 ) -> Result<Vec<File>, AnyError> {
-  let file = file.into_text_decoded()?;
+  let file = TextDecodedFile::decode(file)?;
 
   let exports = match deno_ast::parse_program(deno_ast::ParseParams {
     specifier: file.specifier.clone(),
@@ -64,7 +64,7 @@ fn extract_inner(
   }) {
     Ok(parsed) => {
       let mut c = ExportCollector::default();
-      c.visit_program(parsed.program_ref());
+      c.visit_program(parsed.program().as_ref());
       c
     }
     Err(_) => ExportCollector::default(),
@@ -103,7 +103,7 @@ fn extract_files_from_fenced_blocks(
   // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
     lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
+  let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
   extract_files_from_regex_blocks(
     specifier,
@@ -130,7 +130,8 @@ fn extract_files_from_source_comments(
   })?;
   let comments = parsed_source.comments().get_vec();
   let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
+  let lines_regex =
+    lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -213,7 +214,7 @@ fn extract_files_from_regex_blocks(
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).unwrap();
+        let text = line.get(1).or_else(|| line.get(3)).unwrap();
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
@@ -230,7 +231,7 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        specifier: file_specifier,
+        url: file_specifier,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
       })
@@ -249,12 +250,16 @@ struct ExportCollector {
 impl ExportCollector {
   fn to_import_specifiers(
     &self,
-    symbols_to_exclude: &AHashSet<Atom>,
+    symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
   ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
 
     if let Some(default_export) = &self.default_export {
-      if !symbols_to_exclude.contains(default_export) {
+      // If the default export conflicts with a named export, a named one
+      // takes precedence.
+      if !symbols_to_exclude.contains(default_export)
+        && !self.named_exports.contains(default_export)
+      {
         import_specifiers.push(ast::ImportSpecifier::Default(
           ast::ImportDefaultSpecifier {
             span: DUMMY_SP,
@@ -554,7 +559,7 @@ fn generate_pseudo_file(
   exports: &ExportCollector,
   wrap_kind: WrapKind,
 ) -> Result<File, AnyError> {
-  let file = file.into_text_decoded()?;
+  let file = TextDecodedFile::decode(file)?;
 
   let parsed = deno_ast::parse_program(deno_ast::ParseParams {
     specifier: file.specifier.clone(),
@@ -566,15 +571,15 @@ fn generate_pseudo_file(
   })?;
 
   let top_level_atoms = swc_utils::collect_decls_with_ctxt::<Atom, _>(
-    parsed.program_ref(),
+    &parsed.program_ref(),
     parsed.top_level_context(),
   );
 
   let transformed =
     parsed
       .program_ref()
-      .clone()
-      .fold_with(&mut as_folder(Transform {
+      .to_owned()
+      .apply(&mut visit_mut_pass(Transform {
         specifier: &file.specifier,
         base_file_specifier,
         exports_from_base: exports,
@@ -582,12 +587,15 @@ fn generate_pseudo_file(
         wrap_kind,
       }));
 
-  let source = deno_ast::swc::codegen::to_code(&transformed);
+  let source = deno_ast::swc::codegen::to_code_with_comments(
+    Some(&parsed.comments().as_single_threaded()),
+    &transformed,
+  );
 
   log::debug!("{}:\n{}", file.specifier, source);
 
   Ok(File {
-    specifier: file.specifier,
+    url: file.specifier,
     maybe_headers: None,
     source: source.into_bytes().into(),
   })
@@ -597,11 +605,11 @@ struct Transform<'a> {
   specifier: &'a ModuleSpecifier,
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
-  atoms_to_be_excluded_from_import: AHashSet<Atom>,
+  atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
 }
 
-impl<'a> VisitMut for Transform<'a> {
+impl VisitMut for Transform<'_> {
   fn visit_mut_program(&mut self, node: &mut ast::Program) {
     let new_module_items = match node {
       ast::Program::Module(module) => {
@@ -800,10 +808,11 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::file_fetcher::TextDecodedFile;
   use deno_ast::swc::atoms::Atom;
   use pretty_assertions::assert_eq;
+
+  use super::*;
+  use crate::file_fetcher::TextDecodedFile;
 
   #[test]
   fn test_extract_doc_tests() {
@@ -1137,18 +1146,69 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
           media_type: MediaType::JavaScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26009
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * console.log(Foo)
+ * ```
+ */
+export class Foo {}
+export default Foo
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    console.log(Foo);
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    // @ts-expect-error: can only add numbers
+    add('1', '2');
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
       let file = File {
-        specifier: ModuleSpecifier::parse(test.input.specifier).unwrap(),
+        url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
         source: test.input.source.as_bytes().into(),
       };
       let got_decoded = extract_doc_tests(file)
         .unwrap()
         .into_iter()
-        .map(|f| f.into_text_decoded().unwrap())
+        .map(|f| TextDecodedFile::decode(f).unwrap())
         .collect::<Vec<_>>();
       let expected = test
         .expected
@@ -1326,18 +1386,65 @@ assertEquals(add(1, 2), 3);
           media_type: MediaType::JavaScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26009
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * console.log(Foo)
+ * ```
+ */
+export class Foo {}
+export default Foo
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo } from "file:///main.ts";
+console.log(Foo);
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/26728
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * // @ts-expect-error: can only add numbers
+ * add('1', '2');
+ * ```
+ */
+export function add(first: number, second: number) {
+  return first + second;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { add } from "file:///main.ts";
+// @ts-expect-error: can only add numbers
+add('1', '2');
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
       let file = File {
-        specifier: ModuleSpecifier::parse(test.input.specifier).unwrap(),
+        url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
         source: test.input.source.as_bytes().into(),
       };
       let got_decoded = extract_snippet_files(file)
         .unwrap()
         .into_iter()
-        .map(|f| f.into_text_decoded().unwrap())
+        .map(|f| TextDecodedFile::decode(f).unwrap())
         .collect::<Vec<_>>();
       let expected = test
         .expected
@@ -1366,7 +1473,7 @@ assertEquals(add(1, 2), 3);
       })
       .unwrap();
 
-      collector.visit_program(parsed.program_ref());
+      parsed.program_ref().visit_with(&mut collector);
       collector
     }
 
@@ -1580,6 +1687,16 @@ declare global {
 "#,
         named_expected: atom_set!(),
         default_expected: None,
+      },
+      // The identifier `Foo` conflicts, but `ExportCollector` doesn't do
+      // anything about it. It is handled by `to_import_specifiers` method.
+      Test {
+        input: r#"
+export class Foo {}
+export default Foo
+"#,
+        named_expected: atom_set!("Foo"),
+        default_expected: Some("Foo".into()),
       },
     ];
 

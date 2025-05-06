@@ -1,123 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::itest;
-use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
-
-itest!(check_all {
-  args: "check --quiet --all check/all/check_all.ts",
-  output: "check/all/check_all.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_all_local {
-  args: "check --quiet check/all/check_all.ts",
-  output_str: Some(""),
-  http_server: true,
-});
-
-itest!(module_detection_force {
-  args: "check --quiet check/module_detection_force/main.ts",
-  output_str: Some(""),
-});
-
-// Regression test for https://github.com/denoland/deno/issues/14937.
-itest!(declaration_header_file_with_no_exports {
-  args: "check --quiet check/declaration_header_file_with_no_exports.ts",
-  output_str: Some(""),
-});
-
-itest!(check_jsximportsource_importmap_config {
-  args: "check --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
-  output_str: Some(""),
-});
-
-itest!(jsx_not_checked {
-  args: "check check/jsx_not_checked/main.jsx",
-  output: "check/jsx_not_checked/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_npm_install_diagnostics {
-  args: "check --quiet check/npm_install_diagnostics/main.ts",
-  output: "check/npm_install_diagnostics/main.out",
-  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  exit_code: 1,
-});
-
-itest!(check_static_response_json {
-  args: "check --quiet check/response_json.ts",
-  exit_code: 0,
-});
-
-itest!(check_node_builtin_modules_ts {
-  args: "check --quiet check/node_builtin_modules/mod.ts",
-  output: "check/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(check_node_builtin_modules_js {
-  args: "check --quiet check/node_builtin_modules/mod.js",
-  output: "check/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(check_no_error_truncation {
-  args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
-  output: "check/no_error_truncation/main.out",
-  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  exit_code: 1,
-});
-
-itest!(check_broadcast_channel {
-  args: "check --quiet check/broadcast_channel.ts",
-  exit_code: 0,
-});
-
-itest!(check_deno_not_found {
-  args: "check --quiet check/deno_not_found/main.ts",
-  output: "check/deno_not_found/main.out",
-  exit_code: 1,
-});
-
-itest!(check_with_exclude_option_by_dir {
-  args:
-    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/ignored/index.ts",
-  output_str: Some(""),
-  exit_code: 0,
-});
-
-itest!(check_with_exclude_option_by_glob {
-  args:
-    "check --quiet --config check/exclude_option/deno.exclude_glob.json check/exclude_option/ignored/index.ts",
-  output_str: Some(""),
-  exit_code: 0,
-});
-
-itest!(check_without_exclude_option {
-  args:
-    "check --quiet --config check/exclude_option/deno.json check/exclude_option/ignored/index.ts",
-  output: "check/exclude_option/exclude_option.ts.error.out",
-  exit_code: 1,
-});
-
-itest!(check_imported_files_listed_in_exclude_option {
-  args:
-    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/index.ts",
-  output: "check/exclude_option/exclude_option.ts.error.out",
-  exit_code: 1,
-});
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -227,6 +115,7 @@ fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
   let check_command = test_context.new_command().args_vec([
     "run",
+    "--allow-import",
     "--check",
     "run/017_import_redirect.ts",
   ]);
@@ -239,12 +128,6 @@ fn ts_no_recheck_on_redirect() {
   let output = check_command.run();
   output.assert_matches_text("Hello\n");
 }
-
-itest!(check_dts {
-  args: "check --quiet check/dts/check_dts.d.ts",
-  output: "check/dts/check_dts.out",
-  exit_code: 1,
-});
 
 #[test]
 fn check_error_in_dep_then_fix() {
@@ -264,7 +147,7 @@ fn check_error_in_dep_then_fix() {
   let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
 
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 
   temp_dir.write("greet.ts", correct_code);
@@ -273,7 +156,7 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 }
 
@@ -286,7 +169,7 @@ fn json_module_check_then_error() {
 
   temp_dir.write(
     "main.ts",
-    "import test from './test.json' assert { type: 'json' }; console.log(test.foo);\n",
+    "import test from './test.json' with { type: 'json' }; console.log(test.foo);\n",
   );
   temp_dir.write("test.json", correct_code);
 
@@ -297,12 +180,27 @@ fn json_module_check_then_error() {
   temp_dir.write("test.json", incorrect_code);
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2551[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
 
-#[test]
-fn npm_module_check_then_error() {
+struct TestNpmPackageInfoProvider;
+
+#[async_trait::async_trait(?Send)]
+impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
+  async fn get_npm_package_info(
+    &self,
+    values: &[deno_semver::package::PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    Ok(values.iter().map(|_| Default::default()).collect())
+  }
+}
+
+#[tokio::test]
+async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()
     .add_npm_env_vars()
@@ -323,11 +221,15 @@ fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = deno_lockfile::Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
 
   // make the specifier resolve to version 1
@@ -336,7 +238,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "1.0.0".to_string(),
+    "1.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -354,12 +256,12 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "2.0.0".to_string(),
+    "2.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
 }

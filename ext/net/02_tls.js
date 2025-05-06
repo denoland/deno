@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
@@ -124,17 +124,19 @@ function loadTlsKeyPair(api, {
 
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
-    throw new TypeError('If `keyFormat` is specified, it must be "pem"');
+    throw new TypeError(
+      `If "keyFormat" is specified, it must be "pem": received "${keyFormat}"`,
+    );
   }
 
   if (cert !== undefined && key === undefined) {
     throw new TypeError(
-      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\`.`,
+      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\``,
     );
   }
   if (cert === undefined && key !== undefined) {
     throw new TypeError(
-      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\`.`,
+      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\``,
     );
   }
 
@@ -185,7 +187,7 @@ async function startTls(
     hostname,
     caCerts,
     alpnProtocols,
-  });
+  }, null);
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 

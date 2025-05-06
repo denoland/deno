@@ -1,25 +1,30 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
-use std::cell::RefCell;
-use std::rc::Rc;
+
+mod ring_sha2;
 
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {}
+impl GarbageCollected for Hasher {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Hasher"
+  }
+}
 
 impl Hasher {
   pub fn new(
     algorithm: &str,
     output_length: Option<usize>,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, HashError> {
     let hash = Hash::new(algorithm, output_length)?;
 
     Ok(Self {
@@ -44,7 +49,7 @@ impl Hasher {
   pub fn clone_inner(
     &self,
     output_length: Option<usize>,
-  ) -> Result<Option<Self>, AnyError> {
+  ) -> Result<Option<Self>, HashError> {
     let hash = self.hash.borrow();
     let Some(hash) = hash.as_ref() else {
       return Ok(None);
@@ -184,14 +189,45 @@ pub enum Hash {
 
 use Hash::*;
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+pub enum HashError {
+  #[error("Output length mismatch for non-extendable algorithm")]
+  OutputLengthMismatch,
+  #[error("Digest method not supported: {0}")]
+  DigestMethodUnsupported(String),
+}
+
 impl Hash {
   pub fn new(
     algorithm_name: &str,
     output_length: Option<usize>,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, HashError> {
     match algorithm_name {
-      "shake128" => return Ok(Shake128(Default::default(), output_length)),
-      "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "shake128" | "shake-128" => {
+        return Ok(Shake128(Default::default(), output_length))
+      }
+      "shake256" | "shake-256" => {
+        return Ok(Shake256(Default::default(), output_length))
+      }
+      "sha256" => {
+        let digest = ring_sha2::RingSha256::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
+      "sha512" => {
+        let digest = ring_sha2::RingSha512::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
       _ => {}
     }
 
@@ -201,17 +237,13 @@ impl Hash {
         let digest: D = Digest::new();
         if let Some(length) = output_length {
           if length != digest.output_size() {
-            return Err(generic_error(
-              "Output length mismatch for non-extendable algorithm",
-            ));
+            return Err(HashError::OutputLengthMismatch);
           }
         }
         FixedSize(Box::new(digest))
       },
       _ => {
-        return Err(generic_error(format!(
-          "Digest method not supported: {algorithm_name}"
-        )))
+        return Err(HashError::DigestMethodUnsupported(algorithm_name.to_string()))
       }
     );
 
@@ -243,14 +275,12 @@ impl Hash {
   pub fn clone_hash(
     &self,
     output_length: Option<usize>,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, HashError> {
     let hash = match self {
       FixedSize(context) => {
         if let Some(length) = output_length {
           if length != context.output_size() {
-            return Err(generic_error(
-              "Output length mismatch for non-extendable algorithm",
-            ));
+            return Err(HashError::OutputLengthMismatch);
           }
         }
         FixedSize(context.box_clone())

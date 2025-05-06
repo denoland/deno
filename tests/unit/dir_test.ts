@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function dirCwdNotNull() {
@@ -36,16 +36,6 @@ Deno.test({ permissions: { read: true, write: true } }, function dirCwdError() {
       Deno.chdir(initialdir);
     }
   }
-});
-
-Deno.test({ permissions: { read: false } }, function dirCwdPermError() {
-  assertThrows(
-    () => {
-      Deno.cwd();
-    },
-    Deno.errors.NotCapable,
-    "Requires read access to <CWD>, run again with the --allow-read flag",
-  );
 });
 
 Deno.test(

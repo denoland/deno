@@ -1,0 +1,1 @@
+require("./main.cts").sayHello();

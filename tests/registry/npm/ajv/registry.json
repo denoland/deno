@@ -147,6 +147,5 @@
   "bugs": {
     "url": "https://github.com/ajv-validator/ajv/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

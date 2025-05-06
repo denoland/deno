@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -13,8 +13,12 @@ import {
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
+  op_http_metric_handle_otel_error,
+  op_http_notify_serving,
   op_http_read_request_body,
+  op_http_request_on_cancel,
   op_http_serve,
+  op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
@@ -29,10 +33,15 @@ import {
   op_http_wait,
 } from "ext:core/ops";
 const {
+  ArrayPrototypeFind,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeArrayIterator,
+  SafePromisePrototypeFinally,
+  SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   Symbol,
@@ -40,6 +49,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  Number,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -76,9 +86,27 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
+import {
+  listen,
+  listenOptionApiName,
+  UpgradedConn,
+} from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import {
+  builtinTracer,
+  ContextManager,
+  currentSnapshot,
+  enterSpan,
+  METRICS_ENABLED,
+  PROPAGATORS,
+  restoreSnapshot,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import {
+  updateSpanFromRequest,
+  updateSpanFromResponse,
+} from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -155,12 +183,17 @@ class InnerRequest {
       if (success) {
         this.#completed.resolve(undefined);
       } else {
+        if (!this.#context.legacyAbort) {
+          abortRequest(this.request);
+        }
         this.#completed.reject(
           new Interrupted("HTTP response was not sent successfully"),
         );
       }
     }
-    abortRequest(this.request);
+    if (this.#context.legacyAbort) {
+      abortRequest(this.request);
+    }
     this.#external = null;
   }
 
@@ -189,7 +222,7 @@ class InnerRequest {
 
       const upgradeRid = op_http_upgrade_raw(external);
 
-      const conn = new TcpConn(
+      const conn = new UpgradedConn(
         upgradeRid,
         underlyingConn?.remoteAddr,
         underlyingConn?.localAddr,
@@ -264,32 +297,24 @@ class InnerRequest {
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
+    const method = this.#methodAndUri[0];
+    const scheme = this.#methodAndUri[5] !== undefined
+      ? `${this.#methodAndUri[5]}://`
+      : this.#context.scheme;
+    const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
     const path = this.#methodAndUri[2];
 
     // * is valid for OPTIONS
-    if (path === "*") {
-      return this.#urlValue = "*";
-    }
-
-    // If the path is empty, return the authority (valid for CONNECT)
-    if (path == "") {
-      return this.#urlValue = this.#methodAndUri[1];
+    if (method === "OPTIONS" && path === "*") {
+      return (this.#urlValue = scheme + authority + "/" + path);
     }
 
     // CONNECT requires an authority
-    if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#urlValue = this.#methodAndUri[1];
+    if (method === "CONNECT") {
+      return (this.#urlValue = scheme + this.#methodAndUri[1]);
     }
 
-    const hostname = this.#methodAndUri[1];
-    if (hostname) {
-      // Construct a URL from the scheme, the hostname, and the path
-      return this.#urlValue = this.#context.scheme + hostname + path;
-    }
-
-    // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path;
+    return this.#urlValue = scheme + authority + path;
   }
 
   get completed() {
@@ -318,6 +343,13 @@ class InnerRequest {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    }
+    if (transport === "vsock") {
+      return {
+        transport,
+        cid: Number(this.#methodAndUri[3]),
+        port: this.#methodAndUri[4],
+      };
     }
     return {
       transport: "tcp",
@@ -350,7 +382,25 @@ class InnerRequest {
       return null;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
-    this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
+    this.#body = new InnerBody(
+      readableStreamForRid(
+        this.#streamRid,
+        false,
+        undefined,
+        (controller, error) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+            // TODO(kt3k): We would like to pass `error` as `cause` when BadResource supports it.
+            controller.error(
+              new error.constructor(
+                `Cannot read request body as underlying resource unavailable`,
+              ),
+            );
+          } else {
+            controller.error(error);
+          }
+        },
+      ),
+    );
     return this.#body;
   }
 
@@ -369,6 +419,20 @@ class InnerRequest {
   get external() {
     return this.#external;
   }
+
+  onCancel(callback) {
+    if (this.#external === null) {
+      if (this.#context.legacyAbort) callback();
+      return;
+    }
+
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      (r) => {
+        return !this.#context.legacyAbort ? r && callback() : callback();
+      },
+    );
+  }
 }
 
 class CallbackContext {
@@ -380,8 +444,11 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
+  asyncContextSnapshot;
+  legacyAbort;
 
   constructor(signal, args, listener) {
+    this.asyncContextSnapshot = currentSnapshot();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -394,6 +461,7 @@ class CallbackContext {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
+    this.legacyAbort = args[3] == false;
     this.closed = false;
     this.listener = listener;
   }
@@ -469,12 +537,7 @@ function fastSyncResponseOrStream(
     autoClose = true;
   }
   PromisePrototypeThen(
-    op_http_set_response_body_resource(
-      req,
-      rid,
-      autoClose,
-      status,
-    ),
+    op_http_set_response_body_resource(req, rid, autoClose, status),
     (success) => {
       innerRequest?.close(success);
       op_http_close_after_finish(req);
@@ -490,7 +553,7 @@ function fastSyncResponseOrStream(
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  return async function (req) {
+  let mapped = async function (req, span) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
@@ -499,10 +562,12 @@ function mapToCallback(context, callback, onError) {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
       innerRequest.request = request;
-      response = await callback(
-        request,
-        new ServeHandlerInfo(innerRequest),
-      );
+
+      if (span) {
+        updateSpanFromRequest(span, request);
+      }
+
+      response = await callback(request, new ServeHandlerInfo(innerRequest));
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
@@ -531,17 +596,30 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
-        // deno-lint-ignore no-console
-        console.error("Exception in onError while handling exception", error);
+        if (METRICS_ENABLED) {
+          op_http_metric_handle_otel_error(req);
+        }
+        import.meta.log(
+          "error",
+          "Exception in onError while handling exception",
+          error,
+        );
         response = internalServerError();
       }
     }
+
+    if (span) {
+      updateSpanFromResponse(span, response);
+    }
+
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        // deno-lint-ignore no-console
-        console.error("Upgrade response was not returned from callback");
+        import.meta.log(
+          "error",
+          "Upgrade response was not returned from callback",
+        );
         context.close();
       }
       innerRequest?.[_upgraded]();
@@ -568,6 +646,65 @@ function mapToCallback(context, callback, onError) {
 
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
+
+  if (TRACING_ENABLED) {
+    const origMapped = mapped;
+    mapped = function (req, _span) {
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
+
+      const reqHeaders = op_http_get_request_headers(req);
+      const headers: [key: string, value: string][] = [];
+      for (let i = 0; i < reqHeaders.length; i += 2) {
+        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+      }
+      let activeContext = ContextManager.active();
+      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        activeContext = propagator.extract(activeContext, headers, {
+          get(carrier: [key: string, value: string][], key: string) {
+            return ArrayPrototypeFind(
+              carrier,
+              (carrierEntry) => carrierEntry[0] === key,
+            )?.[1];
+          },
+          keys(carrier: [key: string, value: string][]) {
+            return ArrayPrototypeMap(
+              carrier,
+              (carrierEntry) => carrierEntry[0],
+            );
+          },
+        });
+      }
+
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
+      enterSpan(span);
+      try {
+        return SafePromisePrototypeFinally(
+          origMapped(req, span),
+          () => span.end(),
+        );
+      } finally {
+        restoreSnapshot(snapshot);
+      }
+    };
+  } else {
+    const origMapped = mapped;
+    mapped = function (req, span) {
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
+      try {
+        return origMapped(req, span);
+      } finally {
+        restoreSnapshot(snapshot);
+      }
+    };
+  }
+
+  return mapped;
 }
 
 type RawHandler = (
@@ -594,7 +731,7 @@ function formatHostName(hostname: string): string {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
-    (Deno.build.os === "windows") &&
+    Deno.build.os === "windows" &&
     (hostname == "0.0.0.0" || hostname == "::")
   ) {
     return "localhost";
@@ -633,14 +770,97 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  const {
+    0: overrideKind,
+    1: overrideHost,
+    2: overridePort,
+    3: duplicateListener,
+  } = op_http_serve_address_override();
+  if (overrideKind) {
+    let envOptions = duplicateListener ? { __proto__: null } : options;
+
+    switch (overrideKind) {
+      case 1: {
+        // TCP
+        envOptions = {
+          ...envOptions,
+          hostname: overrideHost,
+          port: overridePort,
+        };
+        delete envOptions.path;
+        delete envOptions.cid;
+        break;
+      }
+      case 2: {
+        // Unix
+        envOptions = {
+          ...envOptions,
+          path: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        break;
+      }
+      case 3: {
+        // Vsock
+        envOptions = {
+          ...envOptions,
+          cid: Number(overrideHost),
+          port: overridePort,
+        };
+        delete envOptions.hostname;
+        delete envOptions.path;
+        break;
+      }
+    }
+
+    if (duplicateListener) {
+      envOptions.onListen = () => {
+        // override default console.log behavior
+      };
+      const envListener = serveInner(envOptions, handler);
+      const userListener = serveInner(options, handler);
+
+      return {
+        addr: userListener.addr,
+        finished: SafePromiseAll([envListener.finished, userListener.finished]),
+        shutdown() {
+          return SafePromiseAll([
+            envListener.shutdown(),
+            userListener.shutdown(),
+          ]);
+        },
+        ref() {
+          envListener.ref();
+          userListener.ref();
+        },
+        unref() {
+          envListener.unref();
+          userListener.unref();
+        },
+        [SymbolAsyncDispose]() {
+          return this.shutdown();
+        },
+      };
+    }
+
+    options = envOptions;
+  }
+
+  return serveInner(options, handler);
+}
+
+function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+  const wantsVsock = ObjectHasOwn(options, "cid");
   const signal = options.signal;
-  const onError = options.onError ?? function (error) {
-    // deno-lint-ignore no-console
-    console.error(error);
-    return internalServerError();
-  };
+  const onError = options.onError ??
+    function (error) {
+      import.meta.log("error", error);
+      return internalServerError();
+    };
 
   if (wantsUnix) {
     const listener = listen({
@@ -653,8 +873,24 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        // deno-lint-ignore no-console
-        console.error(`Listening on ${path}`);
+        import.meta.log("info", `Listening on ${path}`);
+      }
+    });
+  }
+
+  if (wantsVsock) {
+    const listener = listen({
+      transport: "vsock",
+      cid: options.cid,
+      port: options.port,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const { cid, port } = listener.addr;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
@@ -702,8 +938,12 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      const url = `${scheme}${host}:${addr.port}/`;
+      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+        ? ` (${scheme}localhost:${addr.port}/)`
+        : "";
+
+      import.meta.log("info", `Listening on ${url}${helper}`);
     }
   };
 
@@ -748,8 +988,8 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    // deno-lint-ignore no-console
-    console.error(
+    import.meta.log(
+      "error",
       "Terminating Deno.serve loop due to unexpected error",
       error,
     );
@@ -765,7 +1005,7 @@ function serveHttpOn(context, addr, callback) {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req), promiseErrorHandler);
+          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -785,7 +1025,7 @@ function serveHttpOn(context, addr, callback) {
       if (req === null) {
         break;
       }
-      PromisePrototypeCatch(callback(req), promiseErrorHandler);
+      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
     }
 
     try {
@@ -809,6 +1049,8 @@ function serveHttpOn(context, addr, callback) {
       context.closed = true;
     }
   })();
+
+  op_http_notify_serving();
 
   return {
     addr,
@@ -859,41 +1101,52 @@ internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
-  if (ObjectHasOwn(exports, "fetch")) {
-    if (typeof exports.fetch !== "function") {
-      throw new TypeError(
-        "Invalid type for fetch: must be a function with a single or no parameter",
-      );
-    }
-    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
-      Deno.serve({
-        port: servePort,
-        hostname: serveHost,
-        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-          (serveWorkerCount !== null),
-        onListen: ({ port, hostname }) => {
-          if (serveIsMain) {
-            const nThreads = serveWorkerCount > 1
-              ? ` with ${serveWorkerCount} threads`
-              : "";
-            const host = formatHostName(hostname);
+  if (!ObjectHasOwn(exports, "fetch")) return;
 
-            // deno-lint-ignore no-console
-            console.error(
-              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
-              "color: green",
-              "color: inherit",
-              "color: yellow",
-              "color: inherit",
-            );
-          }
-        },
-        handler: (req, connInfo) => {
-          return exports.fetch(req, connInfo);
-        },
-      });
-    };
+  if (typeof exports.fetch !== "function") {
+    throw new TypeError("Invalid type for fetch: must be a function");
   }
+
+  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+    Deno.serve({
+      port: servePort,
+      hostname: serveHost,
+      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+        serveWorkerCount !== null,
+      onListen: ({ transport, port, hostname, path, cid }) => {
+        if (serveIsMain) {
+          const nThreads = serveWorkerCount > 1
+            ? ` with ${serveWorkerCount} threads`
+            : "";
+
+          let target;
+          switch (transport) {
+            case "tcp":
+              target = `http://${formatHostName(hostname)}:${port}/`;
+              break;
+            case "unix":
+              target = path;
+              break;
+            case "vsock":
+              target = `vsock:${cid}:${port}`;
+              break;
+          }
+
+          import.meta.log(
+            "info",
+            `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
+            "color: green",
+            "color: inherit",
+            "color: yellow",
+            "color: inherit",
+          );
+        }
+      },
+      handler: (req, connInfo) => {
+        return exports.fetch(req, connInfo);
+      },
+    });
+  };
 }
 
 export {

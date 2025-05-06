@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "all": {
+      "args": "check --all main.ts",
+      "output": "main_all.out",
+      "exitCode": 1
+    },
+    "local": {
+      "args": "check main.ts",
+      "output": "main_local.out",
+      "exitCode": 1
+    }
+  }
+}

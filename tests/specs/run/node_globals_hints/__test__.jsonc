@@ -1,0 +1,34 @@
+{
+  "tests": {
+    "__dirname": {
+      "args": "run dirname.js",
+      "output": "dirname.out",
+      "exitCode": 1
+    },
+    "__filename": {
+      "args": "run filename.js",
+      "output": "filename.out",
+      "exitCode": 1
+    },
+    "clearImmediate": {
+      "args": "run clear_immediate.js",
+      "output": "clear_immediate.out",
+      "exitCode": 1
+    },
+    "buffer": {
+      "args": "run buffer.js",
+      "output": "buffer.out",
+      "exitCode": 1
+    },
+    "global": {
+      "args": "run global.js",
+      "output": "global.out",
+      "exitCode": 1
+    },
+    "setImmediate": {
+      "args": "run set_immediate.js",
+      "output": "set_immediate.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "info_cli_chalk": {
+      "args": "info --quiet npm:chalk@4",
+      "output": "chalk.out",
+      "exitCode": 0
+    },
+    "info_cli_chalk_json": {
+      "args": "info --quiet --json npm:chalk@4",
+      "output": "chalk_json.out",
+      "exitCode": 0
+    }
+  }
+}

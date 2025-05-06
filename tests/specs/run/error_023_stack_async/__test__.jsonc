@@ -1,0 +1,5 @@
+{
+  "args": "run error_023_stack_async.ts",
+  "output": "error_023_stack_async.ts.out",
+  "exitCode": 1
+}

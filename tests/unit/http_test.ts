@@ -1,9 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
+import { Buffer, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -11,6 +11,8 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  BufReader,
+  BufWriter,
   delay,
   fail,
 } from "./test_util.ts";
@@ -2305,7 +2307,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2338,7 +2340,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2362,7 +2364,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();

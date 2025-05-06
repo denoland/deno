@@ -1,4 +1,4 @@
 {
-  "args": "check --all main.tsx",
+  "args": "check --allow-import --all main.tsx",
   "output": "main.out"
 }

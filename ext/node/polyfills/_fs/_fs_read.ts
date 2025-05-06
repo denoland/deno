@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -173,7 +173,7 @@ export function readSync(
   validateBuffer(buffer);
 
   if (length == null) {
-    length = 0;
+    length = buffer.byteLength;
   }
 
   if (typeof offsetOrOpt === "number") {

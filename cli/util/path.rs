@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -27,7 +27,16 @@ pub fn is_importable_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "json"
+        | "wasm"
     )
   } else {
     false
@@ -36,51 +45,10 @@ pub fn is_importable_ext(path: &Path) -> bool {
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
-  return file_path
+  file_path
     .extension()
     .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-}
-
-pub fn specifier_has_extension(
-  specifier: &ModuleSpecifier,
-  searching_ext: &str,
-) -> bool {
-  let Some((_, ext)) = specifier.path().rsplit_once('.') else {
-    return false;
-  };
-  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
-  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
-  if ext.len() != searching_ext.len() {
-    return false;
-  }
-  ext.eq_ignore_ascii_case(searching_ext)
-}
-
-pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let new_file_name = format!(
-    ".{}_{}",
-    file_path
-      .file_name()
-      .map(|f| f.to_string_lossy())
-      .unwrap_or(Cow::Borrowed("")),
-    rand
-  );
-  file_path.with_file_name(new_file_name)
-}
-
-pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let extension = format!("{rand}.tmp");
-  file_path.with_extension(extension)
-}
-
-fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
-    output
-  })
+    .map(|e| e.to_lowercase())
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take
@@ -165,48 +133,6 @@ pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
 }
 
-/// Gets if the provided character is not supported on all
-/// kinds of file systems.
-pub fn is_banned_path_char(c: char) -> bool {
-  matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*')
-}
-
-/// Gets a safe local directory name for the provided url.
-///
-/// For example:
-/// https://deno.land:8080/path -> deno.land_8080/path
-pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
-  fn sanitize_segment(text: &str) -> String {
-    text
-      .chars()
-      .map(|c| if is_banned_segment_char(c) { '_' } else { c })
-      .collect()
-  }
-
-  fn is_banned_segment_char(c: char) -> bool {
-    matches!(c, '/' | '\\') || is_banned_path_char(c)
-  }
-
-  let mut result = String::new();
-  if let Some(domain) = root.domain() {
-    result.push_str(&sanitize_segment(domain));
-  }
-  if let Some(port) = root.port() {
-    if !result.is_empty() {
-      result.push('_');
-    }
-    result.push_str(&port.to_string());
-  }
-  let mut result = PathBuf::from(result);
-  if let Some(segments) = root.path_segments() {
-    for segment in segments.filter(|s| !s.is_empty()) {
-      result = result.join(sanitize_segment(segment));
-    }
-  }
-
-  result
-}
-
 /// Slightly different behaviour than the default matching
 /// where an exact path needs to be matched to be opted-in
 /// rather than just a partial directory match.
@@ -279,6 +205,7 @@ mod test {
     assert!(is_script_ext(Path::new("foo.cjs")));
     assert!(is_script_ext(Path::new("foo.cts")));
     assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
   }
 
@@ -300,6 +227,7 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cjs")));
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(is_importable_ext(Path::new("foo.wasm")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
@@ -390,18 +318,6 @@ mod test {
         "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
-  }
-
-  #[test]
-  fn test_specifier_has_extension() {
-    fn get(specifier: &str, ext: &str) -> bool {
-      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
-    }
-
-    assert!(get("file:///a/b/c.ts", "ts"));
-    assert!(get("file:///a/b/c.ts", ".ts"));
-    assert!(!get("file:///a/b/c.ts", ".cts"));
-    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

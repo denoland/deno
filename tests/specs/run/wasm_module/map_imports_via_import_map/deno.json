@@ -1,0 +1,8 @@
+{
+  "lock": false,
+  "scopes": {
+    "http://localhost:4545/wasm/": {
+      "http://localhost:4545/wasm/math.ts": "./local_math.ts"
+    }
+  }
+}

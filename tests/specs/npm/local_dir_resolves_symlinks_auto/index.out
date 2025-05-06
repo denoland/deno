@@ -1,0 +1,24 @@
+[UNORDERED_START]
+Download http://localhost:4260/define-properties
+Download http://localhost:4260/has-property-descriptors
+Download http://localhost:4260/object-keys
+Download http://localhost:4260/get-intrinsic
+Download http://localhost:4260/function-bind
+Download http://localhost:4260/has
+Download http://localhost:4260/has-symbols
+Download http://localhost:4260/define-properties/define-properties-1.2.0.tgz
+Download http://localhost:4260/has-property-descriptors/has-property-descriptors-1.0.0.tgz
+Download http://localhost:4260/object-keys/object-keys-1.1.1.tgz
+Download http://localhost:4260/get-intrinsic/get-intrinsic-1.2.0.tgz
+Download http://localhost:4260/has-symbols/has-symbols-1.0.3.tgz
+Download http://localhost:4260/has/has-1.0.3.tgz
+Download http://localhost:4260/function-bind/function-bind-1.1.1.tgz
+Initialize has@1.0.3
+Initialize define-properties@1.2.0
+Initialize has-property-descriptors@1.0.0
+Initialize object-keys@1.1.1
+Initialize get-intrinsic@1.2.0
+Initialize function-bind@1.1.1
+Initialize has-symbols@1.0.3
+[UNORDERED_END]
+true it works

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --no-prompt static_analysis_no_permissions.ts",
+  "output": "static_analysis_no_permissions.ts.out"
+}

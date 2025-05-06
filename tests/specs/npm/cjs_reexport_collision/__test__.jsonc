@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet cjs_reexport_collision/main.ts",
+  "output": "cjs_reexport_collision/main.out"
+}

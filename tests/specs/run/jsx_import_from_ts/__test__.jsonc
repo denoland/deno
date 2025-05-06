@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload jsx_import_from_ts.ts",
+  "output": "jsx_import_from_ts.ts.out"
+}

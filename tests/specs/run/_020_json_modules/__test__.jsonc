@@ -1,0 +1,5 @@
+{
+  "args": "run --reload 020_json_modules.ts",
+  "output": "020_json_modules.ts.out",
+  "exitCode": 1
+}

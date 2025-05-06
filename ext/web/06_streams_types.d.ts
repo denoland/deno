@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // ** Internal Interfaces **
 
@@ -60,8 +60,8 @@ interface VoidFunction {
   (): void;
 }
 
-interface ReadableStreamGenericReader<T> {
-  readonly closed: Promise<void>;
+interface ReadableStreamGenericReader {
+  readonly closed: Promise<undefined>;
   // deno-lint-ignore no-explicit-any
   cancel(reason?: any): Promise<void>;
 }
@@ -71,5 +71,10 @@ interface ReadableStreamGenericReader<T> {
 declare function queueMicrotask(callback: VoidFunction): void;
 
 declare namespace Deno {
-  function inspect(value: unknown, options?: Record<string, unknown>): string;
+  export function inspect(
+    value: unknown,
+    options?: Record<string, unknown>,
+  ): string;
+
+  export {}; // only export exports
 }

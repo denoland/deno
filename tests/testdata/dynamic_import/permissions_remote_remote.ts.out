@@ -1,4 +1,4 @@
-error: Uncaught (in promise) TypeError: Requires net access to "example.com:443", run again with the --allow-net flag
+error: Uncaught (in promise) TypeError: Requires import access to "example.com:443", run again with the --allow-import flag
     at http://localhost:4545/dynamic_import/static_remote.ts:2:8
 await import(
 ^

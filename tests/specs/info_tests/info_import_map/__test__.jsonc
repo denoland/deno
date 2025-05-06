@@ -1,5 +1,0 @@
-{
-  "args": "info preact/debug",
-  "output": "with_import_map.out",
-  "exitCode": 0
-}

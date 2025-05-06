@@ -15,5 +15,5 @@ running 1 test from ./main.ts$26-31.tsx
 running 1 test from ./main.ts$42-47.ts
 [WILDCARD]/main.ts$42-47.ts ... ok ([WILDCARD]s)
 
-ok | 5 passed | 0 failed ([WILDCARD]ms)
+ok | 5 passed | 0 failed ([WILDCARD]s)
 

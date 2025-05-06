@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -41,7 +41,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
-import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
+import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import {
   getDefaultEncoding,
   toBuf,

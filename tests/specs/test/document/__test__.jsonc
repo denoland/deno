@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "document": {
+      "args": "test document_test.js",
+      "exitCode": 1,
+      "output": "document_test.out"
+    }
+  }
+}

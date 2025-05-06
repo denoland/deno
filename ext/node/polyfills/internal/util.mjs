@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -33,17 +33,6 @@ export function once(callback) {
     called = true;
     Reflect.apply(callback, this, args);
   };
-}
-
-export function createDeferredPromise() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
 }
 
 // In addition to being accessible through util.promisify.custom,
@@ -175,7 +164,6 @@ promisify.custom = kCustomPromisifiedSymbol;
 
 export default {
   convertToValidSignal,
-  createDeferredPromise,
   customInspectSymbol,
   customPromisifyArgs,
   kEmptyObject,

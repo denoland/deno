@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -6,8 +6,9 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  BufReader,
+  BufWriter,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
 import { writeAll } from "@std/io/write-all";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
@@ -81,7 +82,7 @@ Deno.test(
     // `Deno.startTls` cannot consume the connection.
     await assertRejects(
       () => Deno.startTls(clientConn, { hostname }),
-      Deno.errors.BadResource,
+      Deno.errors.Busy,
     );
 
     serverConn.close();

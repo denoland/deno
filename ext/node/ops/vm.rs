@@ -1,14 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::create_host_defined_options;
+use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 use deno_core::JsBuffer;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+
+use crate::create_host_defined_options;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -21,6 +24,10 @@ pub struct ContextifyScript {
 impl v8::cppgc::GarbageCollected for ContextifyScript {
   fn trace(&self, visitor: &v8::cppgc::Visitor) {
     visitor.trace(&self.script);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyScript"
   }
 }
 
@@ -259,6 +266,10 @@ impl deno_core::GarbageCollected for ContextifyContext {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);
   }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyContext"
+  }
 }
 
 impl Drop for ContextifyContext {
@@ -332,7 +343,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(AllowCodeGenWasm(allow_code_gen_wasm));
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -410,8 +421,8 @@ impl ContextifyContext {
   fn sandbox<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-  ) -> v8::Local<'a, v8::Object> {
-    self.sandbox.get(scope).unwrap()
+  ) -> Option<v8::Local<'a, v8::Object>> {
+    self.sandbox.get(scope)
   }
 
   fn microtask_queue(&self) -> Option<&v8::MicrotaskQueue> {
@@ -519,23 +530,23 @@ pub fn init_global_template<'a>(
 //
 // See NOTE in ext/node/global.rs#L12
 thread_local! {
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = property_query.map_fn_to();
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = property_deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback<'static> = property_descriptor.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback = property_descriptor.map_fn_to();
 }
 
 thread_local! {
-  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_getter.map_fn_to();
-  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback<'static> = indexed_property_setter.map_fn_to();
-  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback<'static> = indexed_property_deleter.map_fn_to();
-  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback<'static> = indexed_property_definer.map_fn_to();
-  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback<'static> = indexed_property_descriptor.map_fn_to();
-  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback<'static> = indexed_property_enumerator.map_fn_to();
-  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback<'static> = indexed_property_query.map_fn_to();
+  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback = indexed_property_getter.map_fn_to();
+  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback = indexed_property_setter.map_fn_to();
+  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback = indexed_property_deleter.map_fn_to();
+  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback = indexed_property_definer.map_fn_to();
+  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback = indexed_property_descriptor.map_fn_to();
+  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback = indexed_property_enumerator.map_fn_to();
+  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
 pub fn init_global_template_inner<'a>(
@@ -600,7 +611,9 @@ fn property_query<'s>(
 
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   match sandbox.has_real_named_property(scope, property) {
     None => v8::Intercepted::No,
@@ -645,7 +658,9 @@ fn property_getter<'s>(
     return v8::Intercepted::No;
   };
 
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   let tc_scope = &mut v8::TryCatch::new(scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
@@ -689,14 +704,14 @@ fn property_setter<'s>(
     None => (v8::PropertyAttribute::NONE, false),
   };
   let mut read_only = attributes.is_read_only();
-
-  let (attributes, is_declared_on_sandbox) = match ctx
-    .sandbox(scope)
-    .get_real_named_property_attributes(scope, key)
-  {
-    Some(attr) => (attr, true),
-    None => (v8::PropertyAttribute::NONE, false),
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
   };
+  let (attributes, is_declared_on_sandbox) =
+    match sandbox.get_real_named_property_attributes(scope, key) {
+      Some(attr) => (attr, true),
+      None => (v8::PropertyAttribute::NONE, false),
+    };
   read_only |= attributes.is_read_only();
 
   if read_only {
@@ -731,14 +746,12 @@ fn property_setter<'s>(
     return v8::Intercepted::No;
   };
 
-  if ctx.sandbox(scope).set(scope, key.into(), value).is_none() {
+  if sandbox.set(scope, key.into(), value).is_none() {
     return v8::Intercepted::No;
   }
 
   if is_declared_on_sandbox {
-    if let Some(desc) =
-      ctx.sandbox(scope).get_own_property_descriptor(scope, key)
-    {
+    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
       if !desc.is_undefined() {
         let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
         // We have to specify the return value for any contextual or get/set
@@ -774,7 +787,9 @@ fn property_descriptor<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
   let scope = &mut v8::ContextScope::new(scope, context);
 
   if sandbox.has_own_property(scope, key).unwrap_or(false) {
@@ -818,7 +833,9 @@ fn property_definer<'s>(
     return v8::Intercepted::No;
   }
 
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   let define_prop_on_sandbox =
     |scope: &mut v8::HandleScope,
@@ -880,7 +897,10 @@ fn property_deleter<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if sandbox.delete(context_scope, key.into()).unwrap_or(false) {
     return v8::Intercepted::No;
@@ -900,7 +920,10 @@ fn property_enumerator<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   let Some(properties) = sandbox
     .get_property_names(context_scope, v8::GetPropertyNamesArgs::default())
@@ -921,12 +944,14 @@ fn indexed_property_enumerator<'s>(
   };
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return;
+  };
 
   // By default, GetPropertyNames returns string and number property names, and
   // doesn't convert the numbers to strings.
-  let Some(properties) = ctx
-    .sandbox(scope)
-    .get_property_names(scope, v8::GetPropertyNamesArgs::default())
+  let Some(properties) =
+    sandbox.get_property_names(scope, v8::GetPropertyNamesArgs::default())
   else {
     return;
   };
@@ -1019,7 +1044,10 @@ fn indexed_property_deleter<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete_index(context_scope, index).unwrap_or(false) {
     return v8::Intercepted::No;

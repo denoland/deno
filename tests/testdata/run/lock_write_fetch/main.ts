@@ -9,6 +9,7 @@ const fetchProc = await new Deno.Command(Deno.execPath(), {
   stderr: "null",
   args: [
     "cache",
+    "--allow-import",
     "--reload",
     "--lock=lock_write_fetch.json",
     "--cert=tls/RootCA.pem",
@@ -23,6 +24,7 @@ const fetchCheckProc = await new Deno.Command(Deno.execPath(), {
   stderr: "null",
   args: [
     "cache",
+    "--allow-import",
     "--lock=lock_write_fetch.json",
     "--cert=tls/RootCA.pem",
     "run/https_import.ts",
@@ -38,6 +40,7 @@ const runProc = await new Deno.Command(Deno.execPath(), {
   stderr: "null",
   args: [
     "run",
+    "--allow-import",
     "--lock=lock_write_fetch.json",
     "--allow-read",
     "--cert=tls/RootCA.pem",

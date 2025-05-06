@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import {
@@ -33,13 +33,68 @@ import {
   unzipSync,
 } from "ext:deno_node/_zlib.mjs";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   createBrotliCompress,
   createBrotliDecompress,
 } from "ext:deno_node/_brotli.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
+import { op_zlib_crc32 } from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+const {
+  Uint8Array,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+} = primordials;
+const { isTypedArray, isDataView } = core;
+
+const enc = new TextEncoder();
+const toU8 = (input) => {
+  if (typeof input === "string") {
+    return enc.encode(input);
+  }
+
+  if (isTypedArray(input)) {
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(input),
+      TypedArrayPrototypeGetByteOffset(input),
+      TypedArrayPrototypeGetByteLength(input),
+    );
+  } else if (isDataView(input)) {
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(input),
+      DataViewPrototypeGetByteOffset(input),
+      DataViewPrototypeGetByteLength(input),
+    );
+  }
+
+  return input;
+};
+
+export function crc32(data, value = 0) {
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE("data", [
+      "Buffer",
+      "TypedArray",
+      "DataView",
+      "string",
+    ], data);
+  }
+  validateUint32(value, "value");
+
+  return op_zlib_crc32(toU8(data), value);
+}
 
 export class Options {
   constructor() {
@@ -60,21 +115,7 @@ export class BrotliOptions {
     notImplemented("BrotliOptions.prototype.constructor");
   }
 }
-export class BrotliCompress {
-  constructor() {
-    notImplemented("BrotliCompress.prototype.constructor");
-  }
-}
-export class BrotliDecompress {
-  constructor() {
-    notImplemented("BrotliDecompress.prototype.constructor");
-  }
-}
-export class ZlibBase {
-  constructor() {
-    notImplemented("ZlibBase.prototype.constructor");
-  }
-}
+
 export { constants };
 
 export default {
@@ -87,6 +128,7 @@ export default {
   BrotliOptions,
   codes,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
@@ -162,12 +204,13 @@ export default {
   Z_SYNC_FLUSH: constants.Z_SYNC_FLUSH,
   Z_VERSION_ERROR: constants.Z_VERSION_ERROR,
   ZLIB_VERNUM: constants.ZLIB_VERNUM,
-  ZlibBase,
 };
 
 export {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   codes,
