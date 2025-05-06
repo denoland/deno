@@ -419,7 +419,6 @@ export class Context {
 }
 
 /**
- * TODO(@marvinhagemeister): Is it worth it to do this lazily?
  * @param {AstContext} ctx
  */
 function materializeComments(ctx) {
