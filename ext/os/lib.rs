@@ -388,11 +388,11 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   Ok(None)
 }
 
-#[op2]
-#[serde]
-fn op_runtime_cpu_usage() -> (usize, usize) {
+#[op2(fast)]
+fn op_runtime_cpu_usage(#[buffer] out: &mut [u32]) {
   let (sys, user) = get_cpu_usage();
-  (sys.as_micros() as usize, user.as_micros() as usize)
+  out[0] = sys.as_micros() as u32;
+  out[1] = user.as_micros() as u32;
 }
 
 #[cfg(unix)]
@@ -493,21 +493,24 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   Default::default()
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 fn op_runtime_memory_usage(
   scope: &mut v8::HandleScope,
-) -> (usize, usize, usize, usize) {
+  #[buffer] out: &mut [u32]
+) {
   let s = scope.get_heap_statistics();
 
   let (rss, heap_total, heap_used, external) = (
-    rss(),
-    s.total_heap_size(),
-    s.used_heap_size(),
-    s.external_memory(),
+    rss() as u32,
+    s.total_heap_size() as u32,
+    s.used_heap_size() as u32,
+    s.external_memory() as u32,
   );
 
-  (rss, heap_total, heap_used, external)
+  out[0] = rss;
+  out[1] = heap_total;
+  out[2] = heap_used;
+  out[3] = external;
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
