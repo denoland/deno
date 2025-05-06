@@ -522,7 +522,6 @@ class ClientRequest extends OutgoingMessage {
           throw (this.socket.errored || err);
         }
         if (this._encrypted) {
-          console.log("tls path");
           const hasCaCerts = this.agent?.options?.ca !== undefined;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
