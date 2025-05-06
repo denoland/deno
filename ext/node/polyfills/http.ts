@@ -9,6 +9,8 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_tls_key_null,
+  op_tls_key_static,
   op_tls_start,
 } from "ext:core/ops";
 
@@ -515,12 +517,21 @@ class ClientRequest extends OutgoingMessage {
 
         let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
+          const hasCaCerts = this.agent?.options?.ca !== undefined;
+          const caCerts = hasCaCerts
+            ? [this.agent.options.ca.toString("UTF-8")]
+            : [];
+          const hasTlsKey = this.agent?.options?.key !== undefined &&
+            this.agent?.options?.cert !== undefined;
+          const keyPair = hasTlsKey
+            ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
+            : op_tls_key_null();
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
             hostname: parsedUrl.hostname,
-            caCerts: [],
+            caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
-          });
+          }, keyPair);
         }
 
         this._req = await op_node_http_request_with_conn(
