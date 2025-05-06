@@ -140,7 +140,7 @@ Deno.test({
         "aae06992acbf52a3e8f4a96ec9300bd7cd33b28ac773f74ba00ed1f31257243598e7247c07f0fe411c267e4384b0f6002a34",
         "",
       ],
-     [
+      [
         ["aes256-ctr", 32, 16],
         "dc95c078a2408989ad48a21492842087530f8afbc74536b9a963b4f1c4cb738bcea7403d4d606b6e074ec5d3baf39d187260",
         "",
