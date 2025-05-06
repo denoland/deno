@@ -39,6 +39,9 @@ const { ObjectDefineProperties, Uint32Array } = primordials;
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
+// the out buffer for `cpuUsage` and `memoryUsage`
+const usageBuffer = new Uint32Array(4);
+
 const denoNs = {
   Process: process.Process,
   run: process.run,
@@ -63,23 +66,21 @@ const denoNs = {
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
   cpuUsage: () => {
-    const outBuffer = new Uint32Array(2);
-    op_runtime_cpu_usage(outBuffer);
-    const { 0: system, 1: user } = outBuffer;
+    op_runtime_cpu_usage(usageBuffer);
+    const { 0: system, 1: user } = usageBuffer;
     return {
       system,
       user,
     };
   },
   memoryUsage: () => {
-    const outBuffer = new Uint32Array(4);
-    op_runtime_memory_usage(outBuffer);
+    op_runtime_memory_usage(usageBuffer);
     const {
       0: rss,
       1: heapTotal,
       2: heapUsed,
       3: external,
-    } = outBuffer;
+    } = usageBuffer;
     return {
       rss,
       heapTotal,
