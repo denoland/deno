@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install --no-lock",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "install --no-lock --reload --log-level=debug",
+    "output": "install_reload.out"
+  }]
+}

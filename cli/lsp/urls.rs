@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -80,6 +81,17 @@ pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
   url_to_uri(&Url::parse(s)?)
 }
 
+pub fn normalize_uri(uri: &Uri) -> Cow<'_, Uri> {
+  if !uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    return Cow::Borrowed(uri);
+  }
+  let url = normalize_url(Url::parse(uri.as_str()).unwrap());
+  let Ok(normalized_uri) = url_to_uri(&url) else {
+    return Cow::Borrowed(uri);
+  };
+  Cow::Owned(normalized_uri)
+}
+
 pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
   let components = deno_core::url::quirks::internal_components(url);
   let mut input = String::with_capacity(url.as_str().len());
@@ -132,8 +144,7 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     }
     Url::parse(&format!(
       "file:///{}",
-      &uri.as_str()[uri.path_bounds.0 as usize..uri.path_bounds.1 as usize]
-        .trim_start_matches('/'),
+      &uri.as_str()[uri.path_bounds.0 as usize..].trim_start_matches('/'),
     ))
     .ok()
     .map(normalize_url)
@@ -161,9 +172,15 @@ fn normalize_url(url: Url) -> Url {
     return url;
   };
   let normalized_path = normalize_path(&path);
-  let Ok(normalized_url) = Url::from_file_path(&normalized_path) else {
+  let Ok(mut normalized_url) = Url::from_file_path(&normalized_path) else {
     return url;
   };
+  if let Some(query) = url.query() {
+    normalized_url.set_query(Some(query));
+  }
+  if let Some(fragment) = url.fragment() {
+    normalized_url.set_fragment(Some(fragment));
+  }
   normalized_url
 }
 

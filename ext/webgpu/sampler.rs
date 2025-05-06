@@ -23,7 +23,11 @@ impl WebIdlInterfaceConverter for GPUSampler {
   const NAME: &'static str = "GPUSampler";
 }
 
-impl GarbageCollected for GPUSampler {}
+impl GarbageCollected for GPUSampler {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSampler"
+  }
+}
 
 #[op2]
 impl GPUSampler {

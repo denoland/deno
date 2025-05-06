@@ -49,6 +49,7 @@ async fn main() -> Result<(), AnyError> {
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     > {
+      deno_rt_native_addon_loader: None,
       module_loader: Rc::new(FsModuleLoader),
       permissions: PermissionsContainer::allow_all(permission_desc_parser),
       blob_store: Default::default(),
@@ -64,7 +65,7 @@ async fn main() -> Result<(), AnyError> {
       fs,
     },
     WorkerOptions {
-      extensions: vec![hello_runtime::init_ops_and_esm()],
+      extensions: vec![hello_runtime::init()],
       ..Default::default()
     },
   );
