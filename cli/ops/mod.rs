@@ -4,3 +4,4 @@ pub mod bench;
 pub mod jupyter;
 pub mod lint;
 pub mod testing;
+pub mod bundle;

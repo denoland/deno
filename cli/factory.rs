@@ -1310,6 +1310,11 @@ impl CliFactory {
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
+      // self.deno_resolver().await?.clone(),
+      // self.module_load_preparer().await?.clone(),
+      // self.main_module_graph_container().await?.clone(),
+      // self.npm_req_resolver()?.clone(),
+      // self.node_resolver().await?.clone(),
     ))
   }
 
@@ -1323,7 +1328,7 @@ impl CliFactory {
       // This optimization is only available for "run" subcommand
       // because we need to register new ops for testing and jupyter
       // integration.
-      skip_op_registration: cli_options.sub_command().is_run(),
+      skip_op_registration: false,
       log_level: cli_options.log_level().unwrap_or(log::Level::Info).into(),
       enable_op_summary_metrics: cli_options.enable_op_summary_metrics(),
       enable_testing_features: cli_options.enable_testing_features(),

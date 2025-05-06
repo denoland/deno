@@ -184,6 +184,7 @@ walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
+esbuild_rs = { version = "0.1.0", path = "../../esbuild_rs" }
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

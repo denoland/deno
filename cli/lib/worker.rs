@@ -426,6 +426,10 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<LibMainWorker, CoreError> {
+    eprintln!(
+      "LibMainWorkerFactory::create_custom_worker, {}",
+      custom_extensions.len()
+    );
     let shared = &self.shared;
     let CreateModuleLoaderResult {
       module_loader,

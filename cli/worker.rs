@@ -21,9 +21,15 @@ use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;
+// use crate::graph_container::MainModuleGraphContainer;
+// use crate::graph_container::ModuleGraphContainer;
+// use crate::module_loader::ModuleLoadPreparer;
+// use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
+// use crate::resolver::CliDenoResolver;
+// use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -322,6 +328,11 @@ pub struct CliMainWorkerFactory {
   sys: CliSys,
   default_npm_caching_strategy: NpmCachingStrategy,
   needs_test_modules: bool,
+  // resolver: Arc<CliDenoResolver>,
+  // module_load_preparer: Arc<ModuleLoadPreparer>,
+  // module_graph_container: Arc<MainModuleGraphContainer>,
+  // npm_req_resolver: Arc<CliNpmReqResolver>,
+  // node_resolver: Arc<CliNodeResolver>,
 }
 
 impl CliMainWorkerFactory {
@@ -335,6 +346,11 @@ impl CliMainWorkerFactory {
     sys: CliSys,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
+    // resolver: Arc<CliDenoResolver>,
+    // module_load_preparer: Arc<ModuleLoadPreparer>,
+    // module_graph_container: Arc<MainModuleGraphContainer>,
+    // npm_req_resolver: Arc<CliNpmReqResolver>,
+    // node_resolver: Arc<CliNodeResolver>,
   ) -> Self {
     Self {
       lib_main_worker_factory,
@@ -350,6 +366,11 @@ impl CliMainWorkerFactory {
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
       needs_test_modules: options.needs_test_modules,
+      // resolver,
+      // module_load_preparer,
+      // module_graph_container,
+      // npm_req_resolver,
+      // node_resolver,
     }
   }
 
@@ -358,6 +379,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    eprintln!("create_main_worker");
     self
       .create_custom_worker(
         mode,
@@ -397,6 +419,7 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    eprintln!("create_custom_worker");
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
@@ -454,9 +477,7 @@ impl CliMainWorkerFactory {
       stdio,
       unconfigured_runtime,
     )?;
-
-    if self.needs_test_modules {
-      macro_rules! test_file {
+    macro_rules! test_file {
         ($($file:literal),*) => {
           $(worker.js_runtime().lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
@@ -464,6 +485,10 @@ impl CliMainWorkerFactory {
           )?;)*
         }
       }
+
+    test_file!("40_bundle.js");
+
+    if self.needs_test_modules {
       test_file!(
         "40_test_common.js",
         "40_test.js",
@@ -475,10 +500,12 @@ impl CliMainWorkerFactory {
       );
     }
 
-    Ok(CliMainWorker {
+    let main_worker = CliMainWorker {
       worker,
       shared: self.shared.clone(),
-    })
+    };
+
+    Ok(main_worker)
   }
 }
 

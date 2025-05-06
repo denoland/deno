@@ -460,11 +460,17 @@ pub struct CleanFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BundleFlags {
+  pub entrypoint: String,
+  pub output_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
-  Bundle,
+  Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
   Clean(CleanFlags),
@@ -1413,7 +1419,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "add" => add_parse(&mut flags, &mut m)?,
       "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m)?,
-      "bundle" => bundle_parse(&mut flags, &mut m),
+      "bundle" => bundle_parse(&mut flags, &mut m)?,
       "cache" => cache_parse(&mut flags, &mut m)?,
       "check" => check_parse(&mut flags, &mut m)?,
       "clean" => clean_parse(&mut flags, &mut m),
@@ -1865,10 +1871,32 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "`deno bundle` was removed in Deno 2.
-
-See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
-    .hide(true)
+  command(
+    "bundle",
+    "bundle a thing",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    compile_args(cmd)
+      .arg(check_arg(false))
+      .arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required_unless_present("help")
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .help("Output path")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(frozen_lockfile_arg())
+      .arg(allow_scripts_arg())
+      .arg(allow_import_arg())
+  })
 }
 
 fn cache_subcommand() -> Command {
@@ -4646,8 +4674,18 @@ fn bench_parse(
   Ok(())
 }
 
-fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Bundle;
+fn bundle_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let file = matches.remove_one::<String>("file").unwrap();
+  let output = matches.remove_one::<String>("output");
+  compile_args_without_check_parse(flags, matches)?;
+  flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
+    entrypoint: file,
+    output_path: output,
+  });
+  Ok(())
 }
 
 fn cache_parse(
