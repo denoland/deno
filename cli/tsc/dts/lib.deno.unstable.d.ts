@@ -6,8 +6,6 @@
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
-import { Block } from "./typescript.d.ts";
-
 declare namespace Deno {
   export {}; // stop default export type behavior
 
