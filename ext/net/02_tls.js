@@ -187,7 +187,7 @@ async function startTls(
     hostname,
     caCerts,
     alpnProtocols,
-  });
+  }, null);
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
