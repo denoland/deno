@@ -373,7 +373,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix deps
-nix = "=0.27.1"
+nix = "=0.29.0"
 tokio-vsock = "0.7"
 
 # windows deps

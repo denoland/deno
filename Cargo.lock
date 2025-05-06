@@ -814,12 +814,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "cfg_aliases"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
-
-[[package]]
 name = "chrono"
 version = "0.4.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -922,7 +916,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
- "nix 0.27.1",
+ "nix",
  "ntest_timeout",
  "once_cell",
  "os_pipe",
@@ -1529,7 +1523,7 @@ dependencies = [
  "malva",
  "markup_fmt",
  "memchr",
- "nix 0.27.1",
+ "nix",
  "node_resolver",
  "notify",
  "once_cell",
@@ -1551,6 +1545,7 @@ dependencies = [
  "runtimelib",
  "rustc-hash 2.1.1",
  "rustyline",
+ "rustyline-derive",
  "serde",
  "serde_json",
  "serde_repr",
@@ -2003,7 +1998,7 @@ dependencies = [
  "filetime",
  "junction",
  "libc",
- "nix 0.27.1",
+ "nix",
  "rand",
  "rayon",
  "serde",
@@ -2521,7 +2516,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.27.1",
+ "nix",
  "pin-project-lite",
  "rand",
  "serde",
@@ -2616,7 +2611,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "log",
- "nix 0.27.1",
+ "nix",
  "node_resolver",
  "notify",
  "ntapi",
@@ -2670,7 +2665,7 @@ dependencies = [
  "futures",
  "glob",
  "monch",
- "nix 0.29.0",
+ "nix",
  "os_pipe",
  "path-dedot",
  "sys_traits",
@@ -4978,15 +4973,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5623,18 +5609,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77a5d83df9f36fe23f0c3648c6bbb8b0298bb5f1939c8f2704431371f4b84d43"
 dependencies = [
  "smallvec",
-]
-
-[[package]]
-name = "nix"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
-dependencies = [
- "bitflags 2.8.0",
- "cfg-if",
- "cfg_aliases 0.2.1",
- "libc",
 ]
 
 [[package]]
@@ -7206,7 +7180,9 @@ checksum = "80af6f9131f277a45a3fba6ce8e2258037bb0477a67e610d3c1fe046ab31de47"
 
 [[package]]
 name = "rustyline"
-version = "14.0.0"
+version = "15.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee1e066dc922e513bda599c6ccb5f3bb2b0ea5870a579448f2622993f0a9a2f"
 dependencies = [
  "bitflags 2.8.0",
  "cfg-if",
@@ -7216,12 +7192,23 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.29.0",
+ "nix",
  "radix_trie",
  "unicode-segmentation",
- "unicode-width 0.1.13",
+ "unicode-width 0.2.0",
  "utf8parse",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "rustyline-derive"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "327e9d075f6df7e25fbf594f1be7ef55cf0d567a6cb5112eeccbbd51ceb48e0d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]
@@ -8508,7 +8495,7 @@ dependencies = [
  "libc",
  "lsp-types",
  "monch",
- "nix 0.27.1",
+ "nix",
  "once_cell",
  "os_pipe",
  "parking_lot",
@@ -9304,7 +9291,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e8b4d00e672f147fc86a09738fadb1445bd1c0a40542378dfb82909deeee688"
 dependencies = [
  "libc",
- "nix 0.29.0",
+ "nix",
 ]
 
 [[package]]

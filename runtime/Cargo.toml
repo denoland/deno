@@ -105,7 +105,7 @@ ntapi = "0.4.0"
 windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix.workspace = true
+nix = { workspace = true, features = ["term"] }
 
 [dev-dependencies]
 # Used in benchmark
