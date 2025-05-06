@@ -6,6 +6,8 @@
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
+import { Block } from "./typescript.d.ts";
+
 declare namespace Deno {
   export {}; // stop default export type behavior
 
@@ -1406,6 +1408,27 @@ declare namespace Deno {
        * current node.
        */
       getAncestors(node: Node): Node[];
+
+      /**
+       * Get all comments inside the source.
+       */
+      getAllComments(): Array<LineComment | BlockComment>;
+
+      /**
+       * Get leading comments before a node.
+       */
+      getCommentsBefore(node: Node): Array<LineComment | BlockComment>;
+
+      /**
+       * Get trailing comments after a node.
+       */
+      getCommentsAfter(node: Node): Array<LineComment | BlockComment>;
+
+      /**
+       * Get comments inside a node.
+       */
+      getCommentsInside(node: Node): Array<LineComment | BlockComment>;
+
       /**
        * Get the full source code.
        */
@@ -1532,6 +1555,7 @@ declare namespace Deno {
       range: Range;
       sourceType: "module" | "script";
       body: Statement[];
+      comments: Array<LineComment | BlockComment>;
     }
 
     /**
@@ -4335,6 +4359,18 @@ declare namespace Deno {
       | TSUnknownKeyword
       | TSVoidKeyword;
 
+    export interface LineComment {
+      type: "Line";
+      range: Range;
+      value: string;
+    }
+
+    export interface BlockComment {
+      type: "Block";
+      range: Range;
+      value: string;
+    }
+
     /**
      * Union type of all possible AST nodes
      * @category Linter
@@ -4394,7 +4430,9 @@ declare namespace Deno {
       | TSIndexSignature
       | TSTypeAnnotation
       | TSTypeParameterDeclaration
-      | TSTypeParameter;
+      | TSTypeParameter
+      | LineComment
+      | BlockComment;
 
     export {}; // only export exports
   }
