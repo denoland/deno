@@ -15,7 +15,6 @@ use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::FastString;
-use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -71,6 +70,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -660,6 +660,7 @@ pub async fn run(
     root_path,
     vfs,
   } = data;
+
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -949,6 +950,7 @@ pub async fn run(
     inspect_wait: false,
     strace_ops: None,
     is_inspecting: false,
+    is_standalone: true,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
@@ -970,6 +972,7 @@ pub async fn run(
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     code_cache.map(|c| c.for_deno_core()),
+    Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
     None,
@@ -981,12 +984,21 @@ pub async fn run(
     StorageKeyResolver::empty(),
     sys.clone(),
     lib_main_worker_options,
+    Default::default(),
   );
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  let is_single_threaded = metadata
+    .v8_flags
+    .contains(&String::from("--single-threaded"));
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(None, true);
+  deno_core::JsRuntime::init_platform(v8_platform, true);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

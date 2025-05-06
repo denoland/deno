@@ -31,6 +31,8 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+import { unstableIds } from "ext:deno_features/flags.js";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
 const { ObjectDefineProperties } = primordials;
 
@@ -149,24 +151,6 @@ const denoNs = {
   createHttpClient: httpClient.createHttpClient,
 };
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/lib.rs`
-const unstableIds = {
-  broadcastChannel: 1,
-  cron: 2,
-  ffi: 3,
-  fs: 4,
-  http: 5,
-  kv: 6,
-  net: 7,
-  nodeGlobals: 8,
-  otel: 9,
-  process: 10,
-  temporal: 11,
-  unsafeProto: 12,
-  webgpu: 13,
-  workerOptions: 14,
-};
-
 const denoNsUnstableById = { __proto__: null };
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
@@ -219,6 +203,12 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
+ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
+  webgpu: core.propWritableLazyLoaded(
+    (webgpu) => webgpu.denoNsWebGPU,
+    loadWebGPU,
+  ),
+});
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 

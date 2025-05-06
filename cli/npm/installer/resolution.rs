@@ -1,10 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
-use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
@@ -12,6 +10,7 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
+use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
@@ -21,6 +20,7 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
@@ -98,41 +98,6 @@ impl NpmResolutionInstaller {
         Err(err) => Err(JsErrorBox::from_err(err)),
       },
     }
-  }
-
-  pub async fn set_package_reqs(
-    &self,
-    package_reqs: &[PackageReq],
-  ) -> Result<(), AnyError> {
-    // only allow one thread in here at a time
-    let _snapshot_lock = self.update_queue.acquire().await;
-
-    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
-    let snapshot = add_package_reqs_to_snapshot(
-      &self.registry_info_provider,
-      package_reqs,
-      self.maybe_lockfile.clone(),
-      &self.patch_packages,
-      || {
-        let snapshot = self.resolution.snapshot();
-        let has_removed_package = !snapshot
-          .package_reqs()
-          .keys()
-          .all(|req| reqs_set.contains(req));
-        // if any packages were removed, we need to completely recreate the npm resolution snapshot
-        if has_removed_package {
-          snapshot.into_empty()
-        } else {
-          snapshot
-        }
-      },
-    )
-    .await
-    .into_result()?;
-
-    self.resolution.set_snapshot(snapshot);
-
-    Ok(())
   }
 }
 
@@ -257,16 +222,67 @@ fn populate_lockfile_from_snapshot(
     let dependencies = pkg
       .dependencies
       .iter()
-      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-        name: name.clone(),
-        id: id.as_serialized(),
+      .filter_map(|(name, id)| {
+        if pkg.optional_dependencies.contains(name) {
+          None
+        } else {
+          Some(NpmPackageDependencyLockfileInfo {
+            name: name.clone(),
+            id: id.as_serialized(),
+          })
+        }
       })
       .collect();
 
+    let optional_dependencies = pkg
+      .optional_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
+      })
+      .collect();
+
+    let optional_peers = pkg
+      .optional_peer_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
+      })
+      .collect();
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg.dist.as_ref().map(|d| d.integrity().for_lockfile()),
+      integrity: pkg.dist.as_ref().and_then(|dist| {
+        dist.integrity().for_lockfile().map(|s| s.into_owned())
+      }),
       dependencies,
+      optional_dependencies,
+      os: pkg.system.os.clone(),
+      cpu: pkg.system.cpu.clone(),
+      tarball: pkg.dist.as_ref().and_then(|dist| {
+        // Omit the tarball URL if it's the standard NPM registry URL
+        if dist.tarball
+          == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
+            &crate::npm::managed::DefaultTarballUrl,
+            &pkg.id.nv,
+          )
+        {
+          None
+        } else {
+          Some(StackString::from_str(&dist.tarball))
+        }
+      }),
+      deprecated: pkg.is_deprecated,
+      bin: pkg.has_bin,
+      scripts: pkg.has_scripts,
+      optional_peers,
     }
   }
 

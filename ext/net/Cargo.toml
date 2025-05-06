@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.188.0"
+version = "0.196.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 hickory-proto.workspace = true
@@ -30,3 +31,6 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+tokio-vsock.workspace = true

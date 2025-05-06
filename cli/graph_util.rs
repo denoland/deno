@@ -1,16 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -20,7 +19,6 @@ use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
@@ -36,6 +34,7 @@ use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
+use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
@@ -49,7 +48,6 @@ use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 pub use crate::args::NpmCachingStrategy;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -428,7 +426,7 @@ impl ModuleGraphCreator {
         specifier: &deno_ast::ModuleSpecifier,
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
-        if specifier.scheme() == "bun" {
+        if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
           return Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
@@ -751,7 +749,12 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let graph_resolver = self.create_graph_resolver()?;
+    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
+      &self.cli_options.start_dir,
+    )?;
+    let graph_resolver = self
+      .resolver
+      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -893,7 +896,12 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let graph_resolver = self.create_graph_resolver()?;
+    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
+      &self.cli_options.start_dir,
+    )?;
+    let graph_resolver = self
+      .resolver
+      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -902,7 +910,6 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(self.npm_graph_resolver.as_ref()),
         workspace_fast_check: options.workspace_fast_check,
       },
     );
@@ -968,29 +975,6 @@ impl ModuleGraphBuilder {
       },
     )
   }
-
-  fn create_graph_resolver(
-    &self,
-  ) -> Result<CliGraphResolver, ToMaybeJsxImportSourceConfigError> {
-    let jsx_import_source_config_unscoped = self
-      .cli_options
-      .start_dir
-      .to_maybe_jsx_import_source_config()?;
-    let mut jsx_import_source_config_by_scope = BTreeMap::default();
-    for (dir_url, _) in self.cli_options.workspace().config_folders() {
-      let dir = self.cli_options.workspace().resolve_member_dir(dir_url);
-      let jsx_import_source_config_unscoped =
-        dir.to_maybe_jsx_import_source_config()?;
-      jsx_import_source_config_by_scope
-        .insert(dir_url.clone(), jsx_import_source_config_unscoped);
-    }
-    Ok(CliGraphResolver {
-      cjs_tracker: &self.cjs_tracker,
-      resolver: &self.resolver,
-      jsx_import_source_config_unscoped,
-      jsx_import_source_config_by_scope,
-    })
-  }
 }
 
 /// Adds more explanatory information to a resolution error.
@@ -1000,11 +984,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let maybe_hint = if let Some(specifier) =
     get_resolution_error_bare_node_specifier(error)
   {
-    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
-    } else {
-      None
-    }
+    Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
@@ -1170,6 +1150,13 @@ fn get_resolution_error_bare_specifier(
 }
 
 fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  // not exact, but ok because this is just a hint
+  let media_type =
+    MediaType::from_specifier_and_headers(&error.range().specifier, None);
+  if media_type == MediaType::Wasm {
+    return None;
+  }
+
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },
@@ -1307,8 +1294,6 @@ impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
   }
 }
 
-// todo(dsherret): We should change ModuleError to use thiserror so that
-// we don't need to do this.
 fn format_deno_graph_error(err: &dyn Error) -> String {
   use std::fmt::Write;
 
@@ -1348,100 +1333,6 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
   }
 
   message
-}
-
-#[derive(Debug)]
-struct CliGraphResolver<'a> {
-  cjs_tracker: &'a CliCjsTracker,
-  resolver: &'a CliResolver,
-  jsx_import_source_config_unscoped: Option<JsxImportSourceConfig>,
-  jsx_import_source_config_by_scope:
-    BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
-}
-
-impl CliGraphResolver<'_> {
-  fn resolve_jsx_import_source_config(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Option<&JsxImportSourceConfig> {
-    self
-      .jsx_import_source_config_by_scope
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, c)| c.as_ref())
-      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
-  }
-}
-
-impl deno_graph::source::Resolver for CliGraphResolver<'_> {
-  fn default_jsx_import_source(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Option<String> {
-    self
-      .resolve_jsx_import_source_config(referrer)
-      .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
-  }
-
-  fn default_jsx_import_source_types(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Option<String> {
-    self
-      .resolve_jsx_import_source_config(referrer)
-      .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
-  }
-
-  fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {
-    self
-      .resolve_jsx_import_source_config(referrer)
-      .map(|c| c.module.as_str())
-      .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
-  }
-
-  fn resolve(
-    &self,
-    raw_specifier: &str,
-    referrer_range: &deno_graph::Range,
-    resolution_kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ResolveError> {
-    self.resolver.resolve(
-      raw_specifier,
-      &referrer_range.specifier,
-      referrer_range.range.start,
-      referrer_range
-        .resolution_mode
-        .map(to_node_resolution_mode)
-        .unwrap_or_else(|| {
-          self
-            .cjs_tracker
-            .get_referrer_kind(&referrer_range.specifier)
-        }),
-      to_node_resolution_kind(resolution_kind),
-    )
-  }
-}
-
-pub fn to_node_resolution_kind(
-  kind: ResolutionKind,
-) -> node_resolver::NodeResolutionKind {
-  match kind {
-    ResolutionKind::Execution => node_resolver::NodeResolutionKind::Execution,
-    ResolutionKind::Types => node_resolver::NodeResolutionKind::Types,
-  }
-}
-
-pub fn to_node_resolution_mode(
-  mode: deno_graph::source::ResolutionMode,
-) -> node_resolver::ResolutionMode {
-  match mode {
-    deno_graph::source::ResolutionMode::Import => {
-      node_resolver::ResolutionMode::Import
-    }
-    deno_graph::source::ResolutionMode::Require => {
-      node_resolver::ResolutionMode::Require
-    }
-  }
 }
 
 #[cfg(test)]

@@ -15,24 +15,33 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
+use serde::Deserialize;
+use serde::Serialize;
 use url::Url;
 
-use crate::remote::maybe_auth_header_for_npm_registry;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::spawn_blocking;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
+use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
+use crate::NpmCacheSys;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerializedCachedPackageInfo {
+  #[serde(flatten)]
+  pub info: NpmPackageInfo,
+  /// Custom property that includes the etag.
+  #[serde(
+    default,
+    skip_serializing_if = "Option::is_none",
+    rename = "_deno.etag"
+  )]
+  pub etag: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -48,7 +57,7 @@ enum MemoryCacheItem {
   /// The item has loaded in the past and was stored in the file system cache.
   /// There is no reason to request this package from the npm registry again
   /// for the duration of execution.
-  FsCached,
+  FsCached(Arc<NpmPackageInfo>),
   /// An item is memory cached when it fails saving to the file system cache
   /// or the package does not exist.
   MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsErrorBox>>),
@@ -63,6 +72,17 @@ struct MemoryCache {
 impl MemoryCache {
   #[inline(always)]
   pub fn clear(&mut self) {
+    self.clear_id += 1;
+
+    // if the item couldn't be saved to the fs cache, then we want to continue to hold it in memory
+    // to avoid re-downloading it from the registry
+    self
+      .items
+      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(Ok(_))));
+  }
+
+  #[inline(always)]
+  pub fn clear_all(&mut self) {
     self.clear_id += 1;
     self.items.clear();
   }
@@ -97,18 +117,6 @@ impl MemoryCache {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-pub enum LoadFileCachedPackageInfoError {
-  #[error("Previously saved '{name}' from the npm cache, but now it fails to load: {err}")]
-  LoadPackageInfo {
-    err: serde_json::Error,
-    name: String,
-  },
-  #[error("The package '{0}' previously saved its registry information to the file system cache, but that file no longer exists.")]
-  FileMissing(String),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Failed loading {url} for package \"{name}\"")]
 pub struct LoadPackageInfoError {
@@ -120,14 +128,9 @@ pub struct LoadPackageInfoError {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadPackageInfoInnerError {
-  #[class(inherit)]
-  #[error("{0}")]
-  LoadFileCachedPackageInfo(LoadFileCachedPackageInfoError),
-  #[class(inherit)]
-  #[error("{0}")]
-  Other(Arc<JsErrorBox>),
-}
+#[class(inherit)]
+#[error("{0}")]
+pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
 // todo(#27198): refactor to store this only in the http cache
 
@@ -137,18 +140,7 @@ pub enum LoadPackageInfoInnerError {
 #[derive(Debug)]
 pub struct RegistryInfoProvider<
   THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
+  TSys: NpmCacheSys,
 > {
   // todo(#27198): remove this
   cache: Arc<NpmCache<TSys>>,
@@ -159,21 +151,8 @@ pub struct RegistryInfoProvider<
   previously_loaded_packages: Mutex<HashSet<String>>,
 }
 
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > RegistryInfoProvider<THttpClient, TSys>
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  RegistryInfoProvider<THttpClient, TSys>
 {
   pub fn new(
     cache: Arc<NpmCache<TSys>>,
@@ -205,7 +184,7 @@ impl<
       return false;
     }
     if self.force_reload_flag.raise() {
-      self.clear_memory_cache();
+      self.memory_cache.lock().clear_all();
       true
     } else {
       false
@@ -268,16 +247,9 @@ impl<
     };
 
     match cache_item {
-      MemoryCacheItem::FsCached => {
-        // this struct previously loaded from the registry, so we can load it from the file system cache
-        self
-          .load_file_cached_package_info(name)
-          .await
-          .map(|info| Some(Arc::new(info)))
-          .map_err(LoadPackageInfoInnerError::LoadFileCachedPackageInfo)
-      }
+      MemoryCacheItem::FsCached(info) => Ok(Some(info)),
       MemoryCacheItem::MemoryCached(maybe_info) => {
-        maybe_info.clone().map_err(LoadPackageInfoInnerError::Other)
+        maybe_info.clone().map_err(LoadPackageInfoInnerError)
       }
       MemoryCacheItem::Pending(value_creator) => {
         match value_creator.get().await {
@@ -287,7 +259,7 @@ impl<
             self.memory_cache.lock().try_insert(
               clear_id,
               name,
-              MemoryCacheItem::FsCached,
+              MemoryCacheItem::FsCached(info.clone()),
             );
             Ok(Some(info))
           }
@@ -315,35 +287,10 @@ impl<
               name,
               MemoryCacheItem::MemoryCached(Err(err)),
             );
-            Err(LoadPackageInfoInnerError::Other(return_err))
+            Err(LoadPackageInfoInnerError(return_err))
           }
         }
       }
-    }
-  }
-
-  async fn load_file_cached_package_info(
-    &self,
-    name: &str,
-  ) -> Result<NpmPackageInfo, LoadFileCachedPackageInfoError> {
-    // this scenario failing should be exceptionally rare so let's
-    // deal with improving it only when anyone runs into an issue
-    let maybe_package_info = deno_unsync::spawn_blocking({
-      let cache = self.cache.clone();
-      let name = name.to_string();
-      move || cache.load_package_info(&name)
-    })
-    .await
-    .unwrap()
-    .map_err(|err| LoadFileCachedPackageInfoError::LoadPackageInfo {
-      err,
-      name: name.to_string(),
-    })?;
-    match maybe_package_info {
-      Some(package_info) => Ok(package_info),
-      None => Err(LoadFileCachedPackageInfoError::FileMissing(
-        name.to_string(),
-      )),
     }
   }
 
@@ -351,9 +298,9 @@ impl<
     let downloader = self.clone();
     let package_url = get_package_url(&self.npmrc, name);
     let registry_config = self.npmrc.get_registry_config(name);
-    let maybe_auth_header =
-      match maybe_auth_header_for_npm_registry(registry_config) {
-        Ok(maybe_auth_header) => maybe_auth_header,
+    let maybe_auth_header_value =
+      match maybe_auth_header_value_for_npm_registry(registry_config) {
+        Ok(maybe_auth_header_value) => maybe_auth_header_value,
         Err(err) => {
           return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
             .boxed_local()
@@ -361,17 +308,19 @@ impl<
       };
     let name = name.to_string();
     async move {
-      if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
-        // if this has been previously reloaded, then try loading from the
-        // file system cache
+      let maybe_file_cached = if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
+        // if this has been previously reloaded, then try loading from the file system cache
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(info) = downloader.cache.load_package_info(&name).map_err(JsErrorBox::from_err)? {
-          let result = Arc::new(info);
-          return Ok(FutureResult::SavedFsCache(result));
+        if let Some(cached_info) = downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? {
+          return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+        } else {
+          None
         }
-      }
+      } else {
+        downloader.cache.load_package_info(&name).await.ok().flatten()
+      };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
         return Err(JsErrorBox::new(
@@ -384,21 +333,33 @@ impl<
 
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
-      let maybe_bytes = downloader
+      let (maybe_etag, maybe_cached_info) = match maybe_file_cached {
+        Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
+        None => (None, None)
+      };
+
+      let response = downloader
         .http_client
         .download_with_retries_on_any_tokio_runtime(
           package_url,
-          maybe_auth_header,
+          maybe_auth_header_value,
+          maybe_etag,
         )
         .await.map_err(JsErrorBox::from_err)?;
-      match maybe_bytes {
-        Some(bytes) => {
-          let future_result = deno_unsync::spawn_blocking(
+      match response {
+        NpmCacheHttpClientResponse::NotModified => {
+          log::debug!("Respected etag for packument '{0}'", name); // used in the tests
+          Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())))
+        },
+        NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
+        NpmCacheHttpClientResponse::Bytes(response) => {
+          let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
-              let package_info = serde_json::from_slice(&bytes).map_err(JsErrorBox::from_err)?;
+              let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
+              package_info.etag = response.etag;
               match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
-                  Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
+                  Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
                 }
                 Err(err) => {
                   log::debug!(
@@ -406,7 +367,7 @@ impl<
                     name,
                     err
                   );
-                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
+                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
                 }
               }
             },
@@ -414,8 +375,7 @@ impl<
           .await
           .map_err(JsErrorBox::from_err)??;
           Ok(future_result)
-        }
-        None => Ok(FutureResult::PackageNotExists),
+        },
       }
     }
     .map(|r| r.map_err(Arc::new))
@@ -425,36 +385,12 @@ impl<
 
 pub struct NpmRegistryApiAdapter<
   THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
+  TSys: NpmCacheSys,
 >(Arc<RegistryInfoProvider<THttpClient, TSys>>);
 
 #[async_trait(?Send)]
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > NpmRegistryApi for NpmRegistryApiAdapter<THttpClient, TSys>
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
+  for NpmRegistryApiAdapter<THttpClient, TSys>
 {
   async fn package_info(
     &self,

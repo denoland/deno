@@ -1,0 +1,4 @@
+error: Uncaught (in promise) NotCapable: Requires env access, run again with the --allow-env flag
+console.log(Deno.env.toObject());
+                     ^
+[WILDCARD]main.ts:1:22
