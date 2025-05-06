@@ -34,13 +34,13 @@ import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
-const { ObjectDefineProperties, Uint32Array } = primordials;
+const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // the out buffer for `cpuUsage` and `memoryUsage`
-const usageBuffer = new Uint32Array(4);
+const usageBuffer = new Float64Array(4);
 
 const denoNs = {
   Process: process.Process,
