@@ -1,0 +1,2 @@
+error: Requires import access to "example.com:443", run again with the --allow-import flag
+    at file:///[WILDLINE]/main.ts:1:8

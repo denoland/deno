@@ -1,0 +1,1 @@
+error: Resolving npm specifier entrypoints this way is currently not supported with "nodeModules": "manual". In the meantime, try with --node-modules-dir=auto instead

@@ -1,0 +1,3 @@
+let i = 123;
+i = "hello"
+console.log("executing javascript with no extension");

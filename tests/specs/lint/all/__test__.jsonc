@@ -1,0 +1,5 @@
+{
+  "args": "lint file1.js file2.ts ignored_file.ts",
+  "output": "expected.out",
+  "exitCode": 1
+}

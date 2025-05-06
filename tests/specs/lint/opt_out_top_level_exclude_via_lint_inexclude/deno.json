@@ -1,0 +1,6 @@
+{
+  "lint": {
+    "exclude": ["!excluded.ts"]
+  },
+  "exclude": ["excluded.ts", "actually_excluded.ts"]
+}

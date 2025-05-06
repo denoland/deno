@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -8,15 +8,13 @@ use std::time::Instant;
 use deno_core::parking_lot::Mutex;
 use deno_runtime::ops::tty::ConsoleSize;
 
-use crate::colors;
-
 use self::renderer::ProgressBarRenderer;
 use self::renderer::ProgressData;
 use self::renderer::ProgressDataDisplayEntry;
-
 use super::draw_thread::DrawThread;
 use super::draw_thread::DrawThreadGuard;
 use super::draw_thread::DrawThreadRenderer;
+use crate::colors;
 
 mod renderer;
 
@@ -28,6 +26,7 @@ pub enum ProgressMessagePrompt {
   Download,
   Blocking,
   Initialize,
+  Cleaning,
 }
 
 impl ProgressMessagePrompt {
@@ -38,6 +37,7 @@ impl ProgressMessagePrompt {
       ProgressMessagePrompt::Initialize => {
         colors::green("Initialize").to_string()
       }
+      ProgressMessagePrompt::Cleaning => colors::green("Cleaning").to_string(),
     }
   }
 }
@@ -71,7 +71,13 @@ impl UpdateGuard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressBarStyle {
+  /// Shows a progress bar with human readable download size
   DownloadBars,
+
+  /// Shows a progress bar with numeric progres count
+  ProgressBars,
+
+  /// Shows a list of currently downloaded files.
   TextOnly,
 }
 
@@ -223,23 +229,23 @@ impl DrawThreadRenderer for ProgressBarInner {
       if state.entries.is_empty() {
         return String::new();
       }
-      let preferred_entry = state
+      let display_entries = state
         .entries
         .iter()
-        .find(|e| e.percent() > 0f64)
-        .or_else(|| state.entries.iter().last())
-        .unwrap();
+        .map(|e| ProgressDataDisplayEntry {
+          prompt: e.prompt,
+          message: e.message.to_string(),
+          position: e.position(),
+          total_size: e.total_size(),
+        })
+        .collect::<Vec<_>>();
+
       ProgressData {
         duration: state.start_time.elapsed(),
         terminal_width: size.cols,
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,
-        display_entry: ProgressDataDisplayEntry {
-          prompt: preferred_entry.prompt,
-          message: preferred_entry.message.clone(),
-          position: preferred_entry.position(),
-          total_size: preferred_entry.total_size(),
-        },
+        display_entries,
         percent_done: {
           let mut total_percent_sum = 0f64;
           for entry in &state.entries {
@@ -270,10 +276,17 @@ impl ProgressBar {
     Self {
       inner: ProgressBarInner::new(match style {
         ProgressBarStyle::DownloadBars => {
-          Arc::new(renderer::BarProgressBarRenderer)
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: true,
+          })
+        }
+        ProgressBarStyle::ProgressBars => {
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: false,
+          })
         }
         ProgressBarStyle::TextOnly => {
-          Arc::new(renderer::TextOnlyProgressBarRenderer)
+          Arc::new(renderer::TextOnlyProgressBarRenderer::default())
         }
       }),
     }

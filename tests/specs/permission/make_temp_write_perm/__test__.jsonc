@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "reduced_perms": {
+      // this should not expose the full directory
+      "args": "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+      "output": "056_make_temp_file_write_perm.out"
+    },
+    "all_perms": {
+      // this will work the same as above
+      "args": "run --quiet -A 056_make_temp_file_write_perm.ts",
+      "output": "056_make_temp_file_write_perm.out"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+error: Uncaught (in promise) TypeError: Deno.openKv is not a function
+const db = await Deno.openKv();
+                      ^
+    at [WILDCARD]kv.ts:1:23
+
+    info: Deno.openKv() is an unstable API.
+    hint: Run again with `--unstable-kv` flag to enable this API.

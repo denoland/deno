@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test",
+      "output": "test.out"
+    }
+  ]
+}

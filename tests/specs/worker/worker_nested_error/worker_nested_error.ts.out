@@ -1,0 +1,9 @@
+[WILDCARD]error: Uncaught (in worker "bar") (in promise) Error: foo[WILDCARD]
+  throw new Error("foo");
+        ^
+    at foo ([WILDCARD]/error.ts:[WILDCARD])
+    at [WILDCARD]/error.ts:[WILDCARD]
+error: Uncaught (in worker "baz") (in promise) Error: Unhandled error in child worker.
+    at Worker.#pollControl [WILDCARD]
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at Worker.#pollControl [WILDCARD]

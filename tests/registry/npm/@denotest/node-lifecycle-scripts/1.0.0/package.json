@@ -6,6 +6,7 @@
     "install": "echo install && cli-esm 'hello from install script'",
     "postinstall": "echo postinstall && npx cowsay postinstall"
   },
+  "exports": "./index.js",
   "dependencies": {
     "@denotest/bin": "1.0.0"
   }

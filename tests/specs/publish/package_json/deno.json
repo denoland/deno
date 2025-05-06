@@ -4,5 +4,5 @@
   "exports": {
     ".": "./mod.ts"
   },
-  "nodeModulesDir": false
+  "nodeModulesDir": "none"
 }

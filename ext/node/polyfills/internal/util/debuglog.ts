@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 
 // `debugImpls` and `testEnabled` are deliberately not initialized so any call
 // to `debuglog()` before `initializeDebugEnv()` is called will throw.
@@ -30,6 +28,7 @@ export function initializeDebugEnv(debugEnv: string) {
 // NODE_DEBUG=http or NODE_DEBUG=http2.
 function emitWarningIfNeeded(set: string) {
   if ("HTTP" === set || "HTTP2" === set) {
+    // deno-lint-ignore no-console
     console.warn(
       "Setting the NODE_DEBUG environment variable " +
         "to '" + set.toLowerCase() + "' can expose sensitive " +
@@ -48,9 +47,9 @@ function debuglogImpl(
   if (debugImpls[set] === undefined) {
     if (enabled) {
       emitWarningIfNeeded(set);
-      debugImpls[set] = function debug(...args: unknown[]) {
-        const msg = args.map((arg) => inspect(arg)).join(" ");
-        console.error("%s %s: %s", set, String(Deno.pid), msg);
+      debugImpls[set] = function debug(msg, ...args: unknown[]) {
+        // deno-lint-ignore no-console
+        console.error("%s %s: " + msg, set, String(Deno.pid), ...args);
       };
     } else {
       debugImpls[set] = noop;

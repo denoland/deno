@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "tests": {
+    "alias_with_pkg": {
+      "steps": [{
+        "args": "remove my-alias@npm:@denotest/add",
+        "output": "[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('package.json').trim())"
+        ],
+        "output": "package.json.out"
+      }]
+    },
+    "alias": {
+      "steps": [{
+        "args": "remove my-alias",
+        "output": "[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('package.json').trim())"
+        ],
+        "output": "package.json.out"
+      }]
+    }
+  }
+}

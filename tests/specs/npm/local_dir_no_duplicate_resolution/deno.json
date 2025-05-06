@@ -1,5 +1,5 @@
 {
-  "nodeModulesDir": true,
+  "nodeModulesDir": "auto",
   "imports": {
     "preact": "npm:preact",
     "preact-render-to-string": "npm:preact-render-to-string"

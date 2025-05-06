@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "file_exists": {
+      "steps": [{
+        "args": ["eval", "Deno.writeTextFileSync('cli.ts', '')"],
+        "output": "[WILDCARD]"
+      }, {
+        // success
+        "args": "install --root ./bins -g --name my-cli cli.ts",
+        "output": "[WILDCARD]"
+      }]
+    },
+    "file_not_exists": {
+      "args": "install --root ./bins -g --name my-cli cli.ts",
+      "output": "file_not_exists.out",
+      "exitCode": 1
+    }
+  }
+}

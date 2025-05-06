@@ -1,15 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
+use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::DenoChild;
-
 use util::assert_not_contains;
-
-const CLEAR_SCREEN: &str = r#"[2J"#;
+use util::DenoChild;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -56,7 +54,7 @@ where
   let mut str = String::new();
   while let Some(t) = next_line(stderr_lines).await {
     let t = util::strip_ansi_codes(&t);
-    if t.starts_with("Watcher File change detected") {
+    if t.starts_with("Watcher Restarting! File change detected") {
       continue;
     }
     if t.starts_with("Watcher") {
@@ -322,7 +320,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -469,7 +466,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -493,143 +489,6 @@ async fn fmt_check_all_files_on_each_change_test() {
 }
 
 #[flaky_test(tokio)]
-async fn bundle_js_watch() {
-  use std::path::PathBuf;
-  // Test strategy extends this of test bundle_js by adding watcher
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("console.log('Hello world');");
-  assert!(file_to_watch.is_file());
-  let t = TempDir::new();
-  let bundle = t.path().join("mod6.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&bundle)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(line, "Check");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bundle");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  file_to_watch.write("console.log('Hello world2');");
-
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(&line, "File change detected!");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "file_to_watch.ts"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  file_to_watch.write("syntax error ^^");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected!"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error: ");
-  wait_contains("Bundle failed", &mut stderr_lines).await;
-  check_alive_then_kill(deno);
-}
-
-/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test(tokio)]
-async fn bundle_watch_not_exit() {
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("syntax error ^^");
-  let target_file = t.path().join("target.js");
-
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&target_file)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
-  );
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle failed"
-  );
-  // the target file hasn't been created yet
-  assert!(!target_file.is_file());
-
-  // Make sure the watcher actually restarts and works fine with the proper syntax
-  file_to_watch.write("console.log(42);");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "target.js");
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // bundled file is created
-  assert!(target_file.is_file());
-  check_alive_then_kill(deno);
-}
-
-#[flaky_test(tokio)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -639,7 +498,6 @@ async fn run_watch_no_dynamic() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -707,6 +565,118 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+#[flaky_test(tokio)]
+async fn serve_watch_all() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+
+  let another_file = t.path().join("another_file.js");
+  another_file.write("");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg(format!("--watch={another_file}"))
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Change content of the file
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq123!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  another_file.write("export const foo = 0;");
+  // Confirm that the added file is watched as well
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  main_file_to_watch
+    .write("import { foo } from './another_file.js'; console.log(foo);");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("0", &mut stdout_lines).await;
+
+  another_file.write("export const foo = 42;");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("42", &mut stdout_lines).await;
+
+  // Confirm that watch continues even with wrong syntax error
+  another_file.write("syntax error ^^");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("error:", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  main_file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"aaaaaaqqq!\");
+      },
+    };",
+  );
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn run_watch_npm_specifier() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.txt");
+  file_to_watch.write("Hello world");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .envs(env_vars_for_npm_tests())
+    .arg("run")
+    .arg("--watch=file_to_watch.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg("npm:@denotest/bin/cli-cjs")
+    .arg("Hello world")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  // Change content of the file
+  file_to_watch.write("Hello world2");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 // TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
 // if that's because of a bug in code or the runner itself. We should reenable
 // it once we upgrade to XL runners for macOS.
@@ -730,7 +700,6 @@ async fn run_watch_external_watch_files() {
     .arg(watch_arg)
     .arg("-L")
     .arg("debug")
-    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -761,11 +730,11 @@ async fn run_watch_load_unload_events() {
   file_to_watch.write(
     r#"
       setInterval(() => {}, 0);
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -775,7 +744,6 @@ async fn run_watch_load_unload_events() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -792,11 +760,11 @@ async fn run_watch_load_unload_events() {
   // Change content of the file, this time without an interval to keep it alive.
   file_to_watch.write(
     r#"
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -827,7 +795,6 @@ async fn run_watch_not_exit() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -977,7 +944,6 @@ async fn test_watch_basic() {
     .current_dir(t.path())
     .arg("test")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--no-check")
     .arg(t.path())
     .env("NO_COLOR", "1")
@@ -1131,9 +1097,10 @@ async fn test_watch_doc() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
     .arg("--watch")
     .arg("--doc")
-    .arg("--unstable")
     .arg(t.path())
     .env("NO_COLOR", "1")
     .piped_output()
@@ -1149,26 +1116,110 @@ async fn test_watch_doc() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   let foo_file = t.path().join("foo.ts");
+  let foo_file_url = foo_file.url_file();
   foo_file.write(
     r#"
-    export default function foo() {}
+    export function add(a: number, b: number) {
+      return a + b;
+    }
   "#,
   );
 
+  wait_contains("ok | 0 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Trigger a type error
   foo_file.write(
     r#"
     /**
      * ```ts
-     * import foo from "./foo.ts";
+     * const sum: string = add(1, 2);
      * ```
      */
-    export default function foo() {}
+    export function add(a: number, b: number) {
+      return a + b;
+    }
   "#,
   );
 
-  // We only need to scan for a Check file://.../foo.ts$3-6 line that
-  // corresponds to the documentation block being type-checked.
-  assert_contains!(skip_restarting_line(&mut stderr_lines).await, "foo.ts$3-6");
+  assert_eq!(
+    skip_restarting_line(&mut stderr_lines).await,
+    format!("Check {foo_file_url}$3-6.ts")
+  );
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
+  );
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "    const sum: string = add(1, 2);"
+  );
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "          ~~~");
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    format!("    at {foo_file_url}$3-6.ts:3:11")
+  );
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Trigger a runtime error
+  foo_file.write(
+    r#"
+    /**
+     * ```ts
+     * import { assertEquals } from "@std/assert/equals";
+     *
+     * assertEquals(add(1, 2), 4);
+     * ```
+     */
+    export function add(a: number, b: number) {
+      return a + b;
+    }
+  "#,
+  );
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  assert_contains!(
+    next_line(&mut stdout_lines).await.unwrap(),
+    &format!("{foo_file_url}$3-8.ts ... FAILED")
+  );
+  wait_contains("ERRORS", &mut stdout_lines).await;
+  wait_contains(
+    "error: AssertionError: Values are not equal.",
+    &mut stdout_lines,
+  )
+  .await;
+  wait_contains("-   3", &mut stdout_lines).await;
+  wait_contains("+   4", &mut stdout_lines).await;
+  wait_contains("FAILURES", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix the runtime error
+  foo_file.write(
+    r#"
+    /**
+     * ```ts
+     * import { assertEquals } from "@std/assert/equals";
+     *
+     * assertEquals(add(1, 2), 3);
+     * ```
+     */
+    export function add(a: number, b: number) {
+      return a + b;
+    }
+  "#,
+  );
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  assert_contains!(
+    next_line(&mut stdout_lines).await.unwrap(),
+    &format!("{foo_file_url}$3-8.ts ... ok")
+  );
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+
+  wait_contains("Test finished", &mut stderr_lines).await;
+
   check_alive_then_kill(child);
 }
 
@@ -1423,6 +1474,7 @@ async fn run_watch_reload_once() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
+    .arg("--allow-import")
     .arg("--watch")
     .arg("--reload")
     .arg(&file_to_watch)
@@ -1469,16 +1521,16 @@ async fn test_watch_serve() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (mut _stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
   // Note that we start serving very quickly, so we specifically want to wait for this message
   wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
 
   wait_contains("serving", &mut stderr_lines).await;
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }
@@ -1511,7 +1563,6 @@ async fn run_watch_dynamic_imports() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("-L")
     .arg("debug")
@@ -1675,7 +1726,7 @@ console.log("Listening...")
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("--allow-net")
     .arg("-L")
     .arg("debug")
@@ -1748,7 +1799,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1806,7 +1857,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1871,7 +1922,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)

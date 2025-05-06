@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_bench_util::bench_js_sync_with;
 use deno_bench_util::bench_or_profile;
@@ -22,7 +22,7 @@ fn setup() -> Vec<Extension> {
     }]
   );
 
-  vec![bench_setup::init_ops_and_esm()]
+  vec![bench_setup::init()]
 }
 
 fn bench_utf8_encode_12_b(b: &mut Bencher) {

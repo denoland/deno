@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
@@ -26,7 +26,7 @@ const {
   TypeError,
 } = primordials;
 
-import { setExitHandler } from "ext:runtime/30_os.js";
+import { setExitHandler } from "ext:deno_os/30_os.js";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -75,17 +75,6 @@ const DenoNs = globalThis.Deno;
  *   completed: boolean,
  *   failed: boolean,
  * }} TestStepState
- *
- * @typedef {{
- *   id: number,
- *   name: string,
- *   fn: BenchFunction
- *   origin: string,
- *   ignore: boolean,
- *   only: boolean.
- *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
- * }} BenchDescription
  */
 
 /** @type {Map<number, TestState | TestStepState>} */
@@ -113,7 +102,7 @@ function assertExit(fn, isTest) {
         throw new Error(
           `${
             isTest ? "Test case" : "Bench"
-          } finished with exit code set to ${exitCode}.`,
+          } finished with exit code set to ${exitCode}`,
         );
       }
       if (innerResult) {
@@ -242,12 +231,12 @@ function testInner(
       }
       if (optionsOrFn.fn != undefined) {
         throw new TypeError(
-          "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+          "Unexpected 'fn' field in options, test function is already provided as the third argument",
         );
       }
       if (optionsOrFn.name != undefined) {
         throw new TypeError(
-          "Unexpected 'name' field in options, test name is already provided as the first argument.",
+          "Unexpected 'name' field in options, test name is already provided as the first argument",
         );
       }
       testDesc = {
@@ -279,7 +268,7 @@ function testInner(
       fn = optionsOrFn;
       if (nameOrFnOrOptions.fn != undefined) {
         throw new TypeError(
-          "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+          "Unexpected 'fn' field in options, test function is already provided as the second argument",
         );
       }
       name = nameOrFnOrOptions.name ?? fn.name;
@@ -288,7 +277,7 @@ function testInner(
         !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
       ) {
         throw new TypeError(
-          "Expected 'fn' field in the first argument to be a test function.",
+          "Expected 'fn' field in the first argument to be a test function",
         );
       }
       fn = nameOrFnOrOptions.fn;
@@ -426,7 +415,7 @@ function createTestContext(desc) {
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
         if (typeof maybeFn !== "function") {
-          throw new TypeError("Expected function for second argument.");
+          throw new TypeError("Expected function for second argument");
         }
         stepDesc = {
           name: nameOrFnOrOptions,
@@ -434,7 +423,7 @@ function createTestContext(desc) {
         };
       } else if (typeof nameOrFnOrOptions === "function") {
         if (!nameOrFnOrOptions.name) {
-          throw new TypeError("The step function must have a name.");
+          throw new TypeError("The step function must have a name");
         }
         if (maybeFn != undefined) {
           throw new TypeError(
@@ -449,7 +438,7 @@ function createTestContext(desc) {
         stepDesc = nameOrFnOrOptions;
       } else {
         throw new TypeError(
-          "Expected a test definition or name and function.",
+          "Expected a test definition or name and function",
         );
       }
       stepDesc.ignore ??= false;

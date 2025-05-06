@@ -1,0 +1,45 @@
+[WILDCARD]
+running 6 tests from [WILDCARD]
+read ... FAILED [WILDCARD]
+write ... FAILED [WILDCARD]
+net ... FAILED [WILDCARD]
+env ... FAILED [WILDCARD]
+run ... FAILED [WILDCARD]
+ffi ... FAILED [WILDCARD]
+
+ ERRORS 
+
+read => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+write => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+net => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+env => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+run => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+ffi => ./main.ts:[WILDCARD]
+error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+
+ FAILURES 
+
+read => ./main.ts:[WILDCARD]
+write => ./main.ts:[WILDCARD]
+net => ./main.ts:[WILDCARD]
+env => ./main.ts:[WILDCARD]
+run => ./main.ts:[WILDCARD]
+ffi => ./main.ts:[WILDCARD]
+
+FAILED | 0 passed | 6 failed [WILDCARD]

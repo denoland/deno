@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/esm-basic": "npm:@denotest/esm-basic@latest"
+  }
+}

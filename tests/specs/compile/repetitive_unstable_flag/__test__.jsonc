@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "steps": [
     {
       "args": "compile --unstable-kv -A --output out main.ts",

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
@@ -20,11 +20,16 @@ pub struct TapTestReporter {
   n: usize,
   step_n: usize,
   step_results: HashMap<usize, Vec<(TestStepDescription, TestStepResult)>>,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 #[allow(clippy::print_stdout)]
 impl TapTestReporter {
-  pub fn new(cwd: Url, is_concurrent: bool) -> TapTestReporter {
+  pub fn new(
+    cwd: Url,
+    is_concurrent: bool,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> TapTestReporter {
     TapTestReporter {
       cwd,
       is_concurrent,
@@ -33,6 +38,7 @@ impl TapTestReporter {
       n: 0,
       step_n: 0,
       step_results: HashMap::new(),
+      failure_format_options,
     }
   }
 
@@ -45,6 +51,7 @@ impl TapTestReporter {
   }
 
   fn print_diagnostic(
+    &self,
     indent: usize,
     failure: &TestFailure,
     location: DiagnosticLocation,
@@ -56,7 +63,7 @@ impl TapTestReporter {
     // YAML is a superset of JSON, so we can avoid a YAML dependency here.
     // This makes the output less readable though.
     let diagnostic = serde_json::to_string(&json!({
-      "message": failure.to_string(),
+      "message": failure.format(&self.failure_format_options),
       "severity": "fail".to_string(),
       "at": location,
     }))
@@ -102,7 +109,7 @@ impl TapTestReporter {
     Self::print_line(4, status, self.step_n, &desc.name, directive);
 
     if let TestStepResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         4,
         failure,
         DiagnosticLocation {
@@ -137,7 +144,7 @@ impl TestReporter for TapTestReporter {
 
   fn report_wait(&mut self, _description: &TestDescription) {
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
   }
 
   fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
@@ -171,7 +178,7 @@ impl TestReporter for TapTestReporter {
     Self::print_line(0, status, self.n, &description.name, directive);
 
     if let TestResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         0,
         failure,
         DiagnosticLocation {
@@ -188,7 +195,7 @@ impl TestReporter for TapTestReporter {
 
   fn report_step_wait(&mut self, _description: &TestStepDescription) {
     // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+    std::io::stdout().flush().ok();
   }
 
   fn report_step_result(

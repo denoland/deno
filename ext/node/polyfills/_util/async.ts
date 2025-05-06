@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // This module is vendored from std/async/delay.ts
 // (with some modifications)
 
@@ -13,7 +13,7 @@ import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 /** Resolve a Promise after a given amount of milliseconds. */
 export function delay(
   ms: number,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal } = { __proto__: null },
 ): Promise<void> {
   const { signal } = options;
   if (signal?.aborted) {

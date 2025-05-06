@@ -1,0 +1,4 @@
+{
+  "args": "run --no-check import.mts",
+  "output": "mts_dmts_mjs.out"
+}

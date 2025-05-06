@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertThrows, fail } from "./test_util.ts";
 
 Deno.test("Errors work", () => {
@@ -22,6 +22,7 @@ Deno.test("Errors work", () => {
   assert(new Deno.errors.Http("msg") instanceof Error);
   assert(new Deno.errors.Busy("msg") instanceof Error);
   assert(new Deno.errors.NotSupported("msg") instanceof Error);
+  assert(new Deno.errors.NotCapable("msg") instanceof Error);
 });
 
 Deno.test("Errors have some tamper resistance", () => {

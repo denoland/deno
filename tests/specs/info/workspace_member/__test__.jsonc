@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "member_folder": {
+      "args": "info --quiet foo",
+      "cwd": "member",
+      "output": "info_workspace_member.out",
+      "exitCode": 0
+    },
+    "member_folder_sub": {
+      "args": "info --quiet foo",
+      "cwd": "member/sub",
+      "output": "info_workspace_member_sub.out",
+      "exitCode": 0
+    },
+    "member_bare_specifier": {
+      "args": "info @denotest/workspace-member",
+      "output": "info_bare_specifier.out"
+    },
+    "member_package_json_specifier": {
+      "args": "info @denotest/workspace-member-package-json",
+      "output": "info_bare_specifier_package_json.out"
+    },
+    "member_package_json_specifier_subpath": {
+      "args": "info @denotest/workspace-member-package-json/foo",
+      "output": "info_bare_specifier_package_json_subpath.out"
+    }
+  }
+}

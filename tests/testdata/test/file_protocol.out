@@ -1,6 +1,0 @@
-Check file://[WILDCARD]/test/file_protocol.ts
-running 1 test from ./test/file_protocol.ts
-test 0 ... ok ([WILDCARD])
-
-ok | 1 passed | 0 failed ([WILDCARD])
-

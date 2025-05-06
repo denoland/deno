@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   access,
   accessPromise,
@@ -23,7 +23,7 @@ import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
-import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
+import { fstat, fstatPromise, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
@@ -119,7 +119,7 @@ import {
 // @deno-types="./_fs/_fs_write.d.ts"
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
 // @deno-types="./_fs/_fs_writev.d.ts"
-import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.mjs";
+import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import {
   writeFile,
@@ -174,6 +174,7 @@ const promises = {
   lstat: lstatPromise,
   stat: statPromise,
   statfs: statfsPromise,
+  fstat: fstatPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,

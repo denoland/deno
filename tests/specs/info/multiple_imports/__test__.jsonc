@@ -1,0 +1,4 @@
+{
+  "args": "info --allow-import http://127.0.0.1:4545/run/019_media_types.ts",
+  "output": "multiple_imports.out"
+}

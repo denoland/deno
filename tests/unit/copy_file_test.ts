@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 function readFileString(filename: string | URL): string {
@@ -84,7 +84,7 @@ Deno.test(
   function copyFileSyncPerm1() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -93,7 +93,7 @@ Deno.test(
   function copyFileSyncPerm2() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -197,7 +197,7 @@ Deno.test(
   async function copyFilePerm1() {
     await assertRejects(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -206,7 +206,7 @@ Deno.test(
   async function copyFilePerm2() {
     await assertRejects(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

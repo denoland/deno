@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -118,7 +118,7 @@ Deno.test(async function cachePutReaderLock() {
       await response.arrayBuffer();
     },
     TypeError,
-    "Body already consumed.",
+    "Body already consumed",
   );
 
   await promise;

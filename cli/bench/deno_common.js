@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // v8 builtin that's close to the upper bound non-NOPs
 Deno.bench("date_now", { n: 5e5 }, () => {
@@ -46,8 +46,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
   const buf = new Uint8Array(100);
   const file = Deno.openSync("/dev/zero");
   Deno.bench("read_zero", { n: 5e5 }, () => {
-    // deno-lint-ignore no-deprecated-deno-api
-    Deno.readSync(file.rid, buf);
+    file.readSync(buf);
   });
 }
 

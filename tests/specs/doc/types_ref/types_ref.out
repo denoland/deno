@@ -1,0 +1,5 @@
+Defined in [WILDCARD]/foo.d.ts:2:14
+
+const foo: string
+  An exported value.
+

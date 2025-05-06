@@ -1,0 +1,20 @@
+error[ban-untagged-ignore]: Ignore directive requires lint rule name(s)
+ --> [WILDCARD]file1.js:1:1
+  | 
+1 | // deno-lint-ignore
+  | ^^^^^^^^^^^^^^^^^^^
+  = hint: Add one or more lint rule names.  E.g. // deno-lint-ignore adjacent-overload-signatures
+
+  docs: https://docs.deno.com/lint/rules/ban-untagged-ignore
+
+
+error[no-empty]: Empty block statement
+ --> [WILDCARD]file1.js:2:15
+  | 
+2 | while (false) {}
+  |               ^^
+  = hint: Add code or comment to the empty block
+
+  docs: https://docs.deno.com/lint/rules/no-empty
+
+

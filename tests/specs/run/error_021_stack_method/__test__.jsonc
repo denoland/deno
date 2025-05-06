@@ -1,0 +1,5 @@
+{
+  "args": "run error_021_stack_method.ts",
+  "output": "error_021_stack_method.ts.out",
+  "exitCode": 1
+}

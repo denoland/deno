@@ -1,4 +1,4 @@
 {
-  "args": "cache --reload --check=all http://localhost:4548/subdir/redirects/a.ts",
+  "args": "cache --reload --allow-import --check=all http://localhost:4548/subdir/redirects/a.ts",
   "output": "redirect_cache.out"
 }

@@ -1,5 +1,5 @@
 {
-  "args": "run --node-modules-dir --allow-read main.mjs",
+  "args": "run --node-modules-dir=auto --allow-read main.mjs",
   "output": "main.out",
   "exitCode": 0,
   "tempDir": true

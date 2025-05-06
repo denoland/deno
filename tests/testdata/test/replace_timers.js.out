@@ -1,7 +1,0 @@
-running 1 test from ./test/replace_timers.js
-foo ...
-  bar ... ok ([WILDCARD])
-foo ... ok ([WILDCARD])
-
-ok | 1 passed (1 step) | 0 failed ([WILDCARD])
-

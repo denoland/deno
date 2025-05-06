@@ -1,2 +1,0 @@
-error: Invalid package specifier 'npm:react-dom/server@18.2.0'. Did you mean to write 'npm:react-dom@18.2.0/server'?
-    at [WILDCARD]/npm/error_version_after_subpath/main.js:1:8

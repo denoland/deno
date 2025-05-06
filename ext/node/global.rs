@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::rc::Rc;
 
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
@@ -11,13 +13,13 @@ use deno_core::v8::MapFnTo;
 // these mapped functions per-thread. We should revisit it in the future and
 // ideally remove altogether.
 thread_local! {
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = setter.map_fn_to();
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = query.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback<'static> = descriptor.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = setter.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = query.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback = descriptor.map_fn_to();
 }
 
 /// Convert an ASCII string to a UTF-16 byte encoding of the string.
@@ -52,10 +54,10 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
-// - console (both, but different implementation)
 // - global (node only)
 // - performance (both, but different implementation)
-// - process (node only)
+// - process (always available in Node, while the availability in Deno depends
+//   on project creation time in Deno Deploy)
 // - setImmediate (node only)
 // - setInterval (both, but different implementation)
 // - setTimeout (both, but different implementation)
@@ -65,10 +67,10 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 #[rustfmt::skip]
 const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<6>("Buffer"),
+  &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
-  &str_to_utf16::<7>("console"),
   &str_to_utf16::<6>("global"),
   &str_to_utf16::<11>("performance"),
   &str_to_utf16::<7>("process"),
@@ -79,8 +81,25 @@ const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<6>("window"),
 ];
 
-const SHORTEST_MANAGED_GLOBAL: usize = 4;
-const LONGEST_MANAGED_GLOBAL: usize = 14;
+// Calculates the shortest & longest length of global var names
+const MANAGED_GLOBALS_INFO: (usize, usize) = {
+  let l = MANAGED_GLOBALS[0].len();
+  let (mut longest, mut shortest, mut i) = (l, l, 1);
+  while i < MANAGED_GLOBALS.len() {
+    let l = MANAGED_GLOBALS[i].len();
+    if l > longest {
+      longest = l
+    }
+    if l < shortest {
+      shortest = l
+    }
+    i += 1;
+  }
+  (shortest, longest)
+};
+
+const SHORTEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.0;
+const LONGEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.1;
 
 #[derive(Debug, Clone, Copy)]
 enum Mode {
@@ -88,7 +107,7 @@ enum Mode {
   Node,
 }
 
-struct GlobalsStorage {
+pub struct GlobalsStorage {
   deno_globals: v8::Global<v8::Object>,
   node_globals: v8::Global<v8::Object>,
 }
@@ -207,7 +226,7 @@ pub fn global_object_middleware<'s>(
     deno_globals,
     node_globals,
   };
-  scope.get_current_context().set_slot(storage);
+  scope.get_current_context().set_slot(Rc::new(storage));
 }
 
 fn is_managed_key(
@@ -224,13 +243,7 @@ fn is_managed_key(
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
-  let written = str.write(
-    scope,
-    buf.as_mut_slice(),
-    0,
-    v8::WriteOptions::NO_NULL_TERMINATION,
-  );
-  assert_eq!(written, len);
+  str.write_v2(scope, 0, buf.as_mut_slice(), v8::WriteFlags::empty());
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 

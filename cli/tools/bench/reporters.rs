@@ -1,8 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_lib::version::DENO_VERSION_INFO;
 use serde::Serialize;
 
 use super::*;
+use crate::tools::test::TestFailureFormatOptions;
 
 pub trait BenchReporter {
   fn report_group_summary(&mut self);
@@ -15,8 +17,11 @@ pub trait BenchReporter {
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 #[derive(Debug, Serialize)]
 struct JsonReporterOutput {
+  version: u8,
   runtime: String,
   cpu: String,
   benches: Vec<JsonReporterBench>,
@@ -25,7 +30,8 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      version: JSON_SCHEMA_VERSION,
+      runtime: format!("{} {}", DENO_VERSION_INFO.user_agent, env!("TARGET")),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -145,12 +151,15 @@ impl BenchReporter for ConsoleReporter {
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
       .is_ok()
     {
-      println!("{}", colors::gray(format!("cpu: {}", mitata::cpu::name())));
+      println!(
+        "{}",
+        colors::gray(format!("    CPU | {}", mitata::cpu::name()))
+      );
       println!(
         "{}\n",
         colors::gray(format!(
-          "runtime: deno {} ({})",
-          crate::version::deno(),
+          "Runtime | Deno {} ({})",
+          DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );
@@ -159,7 +168,7 @@ impl BenchReporter for ConsoleReporter {
     }
 
     println!(
-      "{}\n{}\n{}",
+      "{}\n\n{}\n{}",
       colors::gray(&plan.origin),
       mitata::reporter::header(options),
       mitata::reporter::br(options)
@@ -237,7 +246,10 @@ impl BenchReporter for ConsoleReporter {
             &desc.name,
             &mitata::reporter::Error {
               stack: None,
-              message: format_test_error(js_error),
+              message: format_test_error(
+                js_error,
+                &TestFailureFormatOptions::default()
+              ),
             },
             options
           )
@@ -292,7 +304,7 @@ impl BenchReporter for ConsoleReporter {
     println!(
       "{}: {}",
       colors::red_bold("error"),
-      format_test_error(&error)
+      format_test_error(&error, &TestFailureFormatOptions::default())
     );
     println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
     println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");

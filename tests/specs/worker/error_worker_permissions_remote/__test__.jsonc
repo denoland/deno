@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --allow-import=other.host error_worker_permissions_remote.ts",
+  "output": "error_worker_permissions_remote.ts.out",
+  "exitCode": 1
+}

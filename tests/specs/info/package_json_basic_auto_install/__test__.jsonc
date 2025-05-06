@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "resolves_npm_deps": {
+      "steps": [
+        {
+          "args": "info --quiet main.ts",
+          "output": "info.out"
+        }
+      ]
+    },
+    "bare_specifier": {
+      "steps": [
+        {
+          "args": "info --quiet @denotest/esm-basic",
+          "output": "info_bare.out"
+        }
+      ]
+    }
+  }
+}

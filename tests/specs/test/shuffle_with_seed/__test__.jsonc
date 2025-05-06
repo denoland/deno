@@ -1,0 +1,5 @@
+{
+  "args": "test --shuffle=42 shuffle",
+  "output": "main.out",
+  "exitCode": 0
+}

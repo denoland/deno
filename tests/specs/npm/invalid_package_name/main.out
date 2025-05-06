@@ -1,0 +1,3 @@
+error: Invalid package specifier 'npm:@foo'
+    0: Did not contain a valid package name
+    at [WILDCARD]/invalid_package_name/main.js:1:22

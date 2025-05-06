@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet complex_error.ts",
+  "output": "complex_error.ts.out",
+  "exitCode": 1
+}

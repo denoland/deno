@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
@@ -12,7 +12,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
-import { setTimeout } from "node:timers";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -528,7 +528,6 @@ Deno.test({
     const childProcess = spawn(Deno.execPath(), [
       "run",
       "-A",
-      "--unstable",
       script,
     ]);
     const deferred = Promise.withResolvers<void>();
@@ -654,6 +653,73 @@ Deno.test({
     await pStderr.promise;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] child inherits Deno.env when options.env is not provided",
+  async fn() {
+    const deferred = withTimeout<string>();
+    Deno.env.set("BAR", "BAR");
+    const env = spawn(
+      `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAR"`,
+      {
+        shell: true,
+      },
+    );
+    try {
+      let envOutput = "";
+
+      assert(env.stdout);
+      env.on("error", (err: Error) => deferred.reject(err));
+      env.stdout.on("data", (data) => {
+        envOutput += data;
+      });
+      env.on("close", () => {
+        deferred.resolve(envOutput.trim());
+      });
+      await deferred.promise;
+    } finally {
+      env.kill();
+      Deno.env.delete("BAR");
+    }
+    const value = await deferred.promise;
+    assertEquals(value, "BAR");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] child doesn't inherit Deno.env when options.env is provided",
+  async fn() {
+    const deferred = withTimeout<string>();
+    Deno.env.set("BAZ", "BAZ");
+    const env = spawn(
+      `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+      {
+        env: {},
+        shell: true,
+      },
+    );
+    try {
+      let envOutput = "";
+
+      assert(env.stdout);
+      env.on("error", (err: Error) => deferred.reject(err));
+      env.stdout.on("data", (data) => {
+        envOutput += data;
+      });
+      env.on("close", () => {
+        deferred.resolve(envOutput.trim());
+      });
+      await deferred.promise;
+    } finally {
+      env.kill();
+      Deno.env.delete("BAZ");
+    }
+    const value = await deferred.promise;
+    assertEquals(value, "undefined");
   },
 });
 
@@ -1045,4 +1111,63 @@ Deno.test(async function sendAfterClosedThrows() {
   });
 
   await timeout.promise;
+});
+
+Deno.test(async function noWarningsFlag() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    execArgv: ["--no-warnings"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+
+  await timeout.promise;
+});
+
+Deno.test({
+  name: "[node/child_process] spawnSync supports input option",
+  fn() {
+    const text = "  console.log('hello')";
+    const expected = `console.log("hello");\n`;
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: text,
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: Buffer.from(text),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: new TextEncoder().encode(text),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: new DataView(Buffer.from(text).buffer),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+
+    assertThrows(
+      () => {
+        spawnSync(Deno.execPath(), ["fmt", "-"], {
+          // deno-lint-ignore no-explicit-any
+          input: {} as any,
+        });
+      },
+      Error,
+      'The "input" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Object',
+    );
+  },
 });

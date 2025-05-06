@@ -1,12 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::error::AnyError;
-use deno_core::OpState;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
-use std::path::Path;
+use std::path::PathBuf;
 
 mod call;
 mod callback;
@@ -20,12 +17,21 @@ mod turbocall;
 use call::op_ffi_call_nonblocking;
 use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
+pub use call::CallError;
 use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
+pub use callback::CallbackError;
+use deno_permissions::PermissionCheckError;
+pub use denort_helper::DenoRtNativeAddonLoader;
+pub use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlfcn::op_ffi_load;
+pub use dlfcn::DlfcnError;
 use dlfcn::ForeignFunction;
+pub use ir::IRError;
 use r#static::op_ffi_get_static;
+pub use r#static::StaticError;
+pub use repr::ReprError;
 use repr::*;
 use symbol::NativeType;
 use symbol::Symbol;
@@ -41,22 +47,29 @@ const _: () = {
 
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
-fn check_unstable(state: &OpState, api_name: &str) {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state
-    .feature_checker
-    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name)
-}
-
 pub trait FfiPermissions {
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
+  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_ffi_partial(self, path)
+  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_no_path(self)
+  }
+
+  #[inline(always)]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
+      self, path,
+    )
   }
 }
 
@@ -95,4 +108,12 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
+  options = {
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
+  },
+  state = |state, options| {
+    if let Some(loader) = options.deno_rt_native_addon_loader {
+      state.put(loader);
+    }
+  },
 );

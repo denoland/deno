@@ -1,5 +1,10 @@
 {
   "tests": {
+    "deno_run_empty": {
+      "args": "run",
+      "output": "empty.out",
+      "exitCode": 1
+    },
     "deno_run_task": {
       "args": "run main",
       "output": "main.out"
@@ -8,6 +13,10 @@
       "args": "run not_found",
       "output": "not_found.out",
       "exitCode": 1
+    },
+    "deno_run_task_colon": {
+      "args": "run main:foo",
+      "output": "main_foo.out"
     }
   }
 }

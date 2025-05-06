@@ -1,0 +1,7 @@
+error: Uncaught (in promise) TypeError: Deno.cron is not a function
+Deno.cron();
+     ^
+    at [WILDCARD]cron.ts:1:6
+
+    info: Deno.cron() is an unstable API.
+    hint: Run again with `--unstable-cron` flag to enable this API.

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   op_node_idna_punycode_decode,
@@ -10,6 +10,8 @@ import {
 import { deprecate } from "node:util";
 
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
+
+const version = "2.1.0";
 
 // deno-lint-ignore no-explicit-any
 function punyDeprecated(fn: any) {
@@ -37,7 +39,7 @@ function encode(domain) {
   return punyDeprecated(op_node_idna_punycode_encode)(domain);
 }
 
-export { decode, encode, toASCII, toUnicode, ucs2 };
+export { decode, encode, toASCII, toUnicode, ucs2, version };
 
 export default {
   decode,
@@ -45,4 +47,5 @@ export default {
   toASCII,
   toUnicode,
   ucs2,
+  version,
 };

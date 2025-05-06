@@ -36,6 +36,12 @@
         "flaky": {
           "type": "boolean"
         },
+        "canonicalizedTempDir": {
+          "type": "boolean"
+        },
+        "symlinkedTempDir": {
+          "type": "boolean"
+        },
         "if": {
           "type": "string",
           "examples": [
@@ -50,6 +56,9 @@
         },
         "exitCode": {
           "type": "integer"
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     },
@@ -58,6 +67,12 @@
         "required": ["steps"],
         "properties": {
           "tempDir": {
+            "type": "boolean"
+          },
+          "canonicalizedTempDir": {
+            "type": "boolean"
+          },
+          "symlinkedTempDir": {
             "type": "boolean"
           },
           "base": {
@@ -77,12 +92,21 @@
             "items": {
               "$ref": "#/definitions/single_test"
             }
+          },
+          "ignore": {
+            "type": "boolean"
           }
         }
       }, {
         "allOf": [{
           "properties": {
             "tempDir": {
+              "type": "boolean"
+            },
+            "canonicalizedTempDir": {
+              "type": "boolean"
+            },
+            "symlinkedTempDir": {
               "type": "boolean"
             },
             "base": {
@@ -126,6 +150,9 @@
           "additionalProperties": {
             "$ref": "#/definitions/single_or_multi_step_test"
           }
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     }

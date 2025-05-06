@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet npm_install_diagnostics/main.ts",
+  "output": "npm_install_diagnostics/main.out",
+  "exitCode": 1
+}

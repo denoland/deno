@@ -1,7 +1,4 @@
 {
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [{
     // should auto-install because no package.json
     "args": "run --quiet main.ts",

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -21,7 +21,7 @@ import {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
-  unrefPollForMessages,
+  unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -42,14 +42,25 @@ const {
   SafeWeakMap,
   SafeMap,
   TypeError,
+  encodeURIComponent,
 } = primordials;
 
 const debugWorkerThreads = false;
 function debugWT(...args) {
   if (debugWorkerThreads) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore prefer-primordials no-console
     console.log(...args);
   }
+}
+
+interface WorkerOnlineMsg {
+  type: "WORKER_ONLINE";
+}
+
+function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
 
 export interface WorkerOptions {
@@ -81,6 +92,7 @@ class NodeWorker extends EventEmitter {
   #refCount = 1;
   #messagePromise = undefined;
   #controlPromise = undefined;
+  #workerOnline = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -112,7 +124,11 @@ class NodeWorker extends EventEmitter {
       );
     }
     if (options?.eval) {
-      specifier = `data:text/javascript,${specifier}`;
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
@@ -141,6 +157,7 @@ class NodeWorker extends EventEmitter {
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      isWorkerThread: true,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -159,8 +176,6 @@ class NodeWorker extends EventEmitter {
     this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
-    // https://nodejs.org/api/worker_threads.html#event-online
-    this.emit("online");
   }
 
   [privateWorkerRef](ref) {
@@ -243,11 +258,21 @@ class NodeWorker extends EventEmitter {
         this.emit("messageerror", err);
         return;
       }
-      this.emit("message", message);
+      if (
+        // only emit "online" event once, and since the message
+        // has to come before user messages, we are safe to assume
+        // it came from us
+        !this.#workerOnline && isWorkerOnlineMsg(message)
+      ) {
+        this.#workerOnline = true;
+        this.emit("online");
+      } else {
+        this.emit("message", message);
+      }
     }
   };
 
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
@@ -282,8 +307,8 @@ class NodeWorker extends EventEmitter {
     if (this.#status !== "TERMINATED") {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
+      this.emit("exit", 0);
     }
-    this.emit("exit", 0);
     return PromiseResolve(0);
   }
 
@@ -358,10 +383,12 @@ internals.__initWorkerThreads = (
 
     parentPort = globalThis as ParentPort;
     threadId = workerId;
+    let isWorkerThread = false;
     if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
+      isWorkerThread = metadata.isWorkerThread;
       const env = metadata.env;
       if (env) {
         process.env = env;
@@ -400,7 +427,11 @@ internals.__initWorkerThreads = (
 
     parentPort.once = function (this: ParentPort, name, listener) {
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        const message = ev.data;
+        patchMessagePortIfFound(message);
+        return listener(message);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;
@@ -420,11 +451,20 @@ internals.__initWorkerThreads = (
       parentPort.emit("close");
     });
     parentPort.unref = () => {
-      parentPort[unrefPollForMessages] = true;
+      parentPort[unrefParentPort] = true;
     };
     parentPort.ref = () => {
-      parentPort[unrefPollForMessages] = false;
+      parentPort[unrefParentPort] = false;
     };
+
+    if (isWorkerThread) {
+      // Notify the host that the worker is online
+      parentPort.postMessage(
+        {
+          type: "WORKER_ONLINE",
+        } satisfies WorkerOnlineMsg,
+      );
+    }
   }
 };
 
@@ -463,7 +503,9 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
   port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
-  return { message: deserializeJsMessageData(data)[0] };
+  const message = deserializeJsMessageData(data)[0];
+  patchMessagePortIfFound(message);
+  return { message };
 }
 
 class NodeMessageChannel {

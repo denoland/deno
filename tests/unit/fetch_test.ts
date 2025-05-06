@@ -1,8 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   fail,
@@ -119,7 +123,7 @@ Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
@@ -436,6 +440,58 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { authorization: "Bearer foo" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("authorization"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithCookieHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { Cookie: "sessionToken=verySecret" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("cookie"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithProxyAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: {
+        "proxy-authorization": "Basic ZXNwZW46a29rb3M=",
+        "accept": "application/json",
+      },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("proxy-authorization"), null);
+    assertEquals(response.headers.get("accept"), "application/json");
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -497,7 +553,7 @@ Deno.test(
     const data = "Hello World";
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
-      body: new TextEncoder().encode(data).buffer,
+      body: new TextEncoder().encode(data).buffer as ArrayBuffer,
     });
     const text = await response.text();
     assertEquals(text, data);
@@ -1126,7 +1182,7 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       assert(e instanceof RangeError);
       assert(
         e.message.endsWith(
-          "is not equal to 101 and outside the range [200, 599].",
+          "is not equal to 101 and outside the range [200, 599]",
         ),
       );
     }
@@ -1152,6 +1208,7 @@ Deno.test(
   > {
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
+    assert(client instanceof Deno.HttpClient);
     const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
     });
@@ -1167,6 +1224,21 @@ Deno.test(
     const client = Deno.createHttpClient({
       poolIdleTimeout: 1000,
     });
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
+  async function createHttpClientLocalAddress() {
+    const client = Deno.createHttpClient({
+      localAddress: "127.0.0.2",
+    });
+    const response = await fetch("http://localhost:4545/local_addr", {
+      client,
+    });
+    const addr = await response.text();
+    assertEquals(addr, "127.0.0.2");
     client.close();
   },
 );
@@ -1632,15 +1704,24 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function fetchSpecialFilePerm() {
+    await assertRejects(async () => {
+      await fetch("file:///proc/self/environ");
+    }, Deno.errors.NotCapable);
+  },
+);
 
 Deno.test(
   { permissions: { read: false } },
   async function fetchFilePermDoesNotExist() {
     await assertRejects(async () => {
       await fetch(import.meta.resolve("./bad.json"));
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -1657,7 +1738,7 @@ Deno.test(
         );
       },
       TypeError,
-      "Fetching files only supports the GET method. Received POST.",
+      "Fetching files only supports the GET method: received POST",
     );
   },
 );
@@ -1977,14 +2058,24 @@ Deno.test(
     });
 
     const url = `http://localhost:${listenPort}/`;
-    const err = await assertRejects(
-      () =>
-        fetch(url, {
-          body: stream,
-          method: "POST",
-        }),
-      TypeError,
-      `error sending request for url (${url}): client error (SendRequest): error from user's Body stream`,
+    const err = await assertRejects(() =>
+      fetch(url, {
+        body: stream,
+        method: "POST",
+      })
+    );
+
+    assert(err instanceof TypeError, `err was ${err}`);
+
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `err.message was ${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
+      `err.message was ${err.message}`,
     );
 
     assert(err.cause, `err.cause was null ${err}`);
@@ -2066,7 +2157,7 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
 
 Deno.test(
   { permissions: { net: true } },
-  async function errorMessageIncludesUrlAndDetails() {
+  async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
     await assertRejects(
       () => fetch("http://example.invalid"),
       TypeError,
@@ -2074,3 +2165,60 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
+    const listener = Deno.listen({ port: listenPort });
+    const server = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      // Immediately close the connection to simulate a connection error
+      conn.close();
+    })();
+
+    const url = `http://localhost:${listenPort}`;
+    const err = await assertRejects(() => fetch(url));
+
+    assert(err instanceof TypeError, `${err}`);
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
+      `${err.message}`,
+    );
+
+    await server;
+  },
+);
+
+Deno.test("fetch async iterable", async () => {
+  const iterable = (async function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch iterable", async () => {
+  const iterable = (function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch string object", async () => {
+  const res = new Response(Object("hello"));
+  assertEquals(await res.text(), "hello");
+});

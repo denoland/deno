@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run --node-modules-dir=auto main.ts",
+      "output": "warn.out"
+    }
+  ]
+}

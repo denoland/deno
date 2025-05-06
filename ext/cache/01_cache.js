@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { primordials } from "ext:core/mod.js";
 import {
   op_cache_delete,
@@ -105,7 +105,7 @@ class Cache {
     const reqUrl = new URL(innerRequest.url());
     if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
       throw new TypeError(
-        "Request url protocol must be 'http:' or 'https:'",
+        `Request url protocol must be 'http:' or 'https:': received '${reqUrl.protocol}'`,
       );
     }
     if (innerRequest.method !== "GET") {

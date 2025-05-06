@@ -1,15 +1,15 @@
-Download http://localhost:4260/@denotest/subtract
-error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno cache --frozen=false` or rerun with `--frozen=false` to update it.
+Download http://localhost:4260/@denotest%2fsubtract
+error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
- 5 | -      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 5 | +      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0",
- 6 | +      "npm:@denotest/subtract@1": "npm:@denotest/subtract@1.0.0"
-11 | -      }
-12 | +      },
-13 | +      "@denotest/subtract@1.0.0": {
-14 | +        "integrity": "[WILDCARD]",
-15 | +        "dependencies": {}
-16 | +      }
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "npm:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/subtract@1": "1.0.0"
+10 | -    }
+11 | +    },
+12 | +    "@denotest/subtract@1.0.0": {
+13 | +      "integrity": "[WILDCARD]",
+14 | +      "tarball": "http://localhost:4260/@denotest/subtract/1.0.0.tgz"
+15 | +    }
 const { subtract } = await import(scheme + "@denotest/subtract@1");
                      ^
     at [WILDCARD]

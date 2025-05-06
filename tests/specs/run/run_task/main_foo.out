@@ -1,0 +1,2 @@
+Task main:foo deno run main.ts
+main

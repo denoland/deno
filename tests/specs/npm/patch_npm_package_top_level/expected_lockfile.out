@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:cowsay@1.2": "1.2.0"
+  },
+  "npm": {
+    "cowsay@1.2.0": {}
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:cowsay@1.2"
+      ]
+    },
+    "patches": {
+      "npm:cowsay@1.2.0": {}
+    }
+  }
+}

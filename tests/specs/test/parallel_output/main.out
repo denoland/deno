@@ -1,0 +1,56 @@
+Check [WILDCARD]/main.ts
+./main.ts => step output ... step 1 ... ok ([WILDCARD]s)
+./main.ts => step output ... step 2 ... ok ([WILDCARD]s)
+------- output -------
+Hello, world! (from step 3)
+----- output end -----
+./main.ts => step output ... step 3 ... ok ([WILDCARD]s)
+------- output -------
+Hello, world! (from step 4)
+----- output end -----
+./main.ts => step output ... step 4 ... ok ([WILDCARD]s)
+./main.ts => step output ... ok ([WILDCARD]s)
+./main.ts => step failures ... step 1 ... ok ([WILDCARD]s)
+./main.ts => step failures ... step 2 ... FAILED ([WILDCARD]s)
+./main.ts => step failures ... step 3 ... FAILED ([WILDCARD]s)
+./main.ts => step failures ... FAILED (due to 2 failed steps) ([WILDCARD]s)
+./main.ts => step nested failure ... step 1 ... inner 1 ... ok ([WILDCARD]s)
+./main.ts => step nested failure ... step 1 ... inner 2 ... FAILED ([WILDCARD]s)
+./main.ts => step nested failure ... step 1 ... FAILED (due to 1 failed step) ([WILDCARD]s)
+./main.ts => step nested failure ... FAILED (due to 1 failed step) ([WILDCARD]s)
+
+ ERRORS 
+
+step failures ... step 2 => ./main.ts:14:11
+error: Error: Fail.
+    throw new Error("Fail.");
+          ^
+    at file:///[WILDCARD]/main.ts:15:11
+    at [WILDCARD]
+    at file:///[WILDCARD]/main.ts:14:11
+
+step failures ... step 3 => ./main.ts:17:11
+error: Error: Fail.
+  await t.step("step 3", () => Promise.reject(new Error("Fail.")));
+                                              ^
+    at file:///[WILDCARD]/main.ts:17:47
+    at [WILDCARD]
+    at file:///[WILDCARD]/main.ts:17:11
+
+step nested failure ... step 1 ... inner 2 => ./main.ts:23:13
+error: Error: Failed.
+      throw new Error("Failed.");
+            ^
+    at file:///[WILDCARD]/main.ts:24:13
+    at [WILDCARD]
+    at file:///[WILDCARD]/main.ts:23:13
+
+ FAILURES 
+
+step failures ... step 2 => ./main.ts:14:11
+step failures ... step 3 => ./main.ts:17:11
+step nested failure ... step 1 ... inner 2 => ./main.ts:23:13
+
+FAILED | 1 passed (6 steps) | 2 failed (4 steps) ([WILDCARD]s)
+
+error: Test failed

@@ -1,0 +1,1 @@
+import "./bad-module.js";

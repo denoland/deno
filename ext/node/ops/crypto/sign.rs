@@ -1,21 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use digest::Digest;
-use digest::FixedOutput;
-use digest::FixedOutputReset;
-use digest::OutputSizeUser;
-use digest::Reset;
-use digest::Update;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use core::ops::Add;
+
+use ecdsa::der::MaxOverhead;
+use ecdsa::der::MaxSize;
+use elliptic_curve::generic_array::ArrayLength;
+use elliptic_curve::FieldBytesSize;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
 use rsa::traits::SignatureScheme as _;
 use spki::der::Decode;
-
-use crate::ops::crypto::digest::match_fixed_digest;
-use crate::ops::crypto::digest::match_fixed_digest_with_oid;
 
 use super::keys::AsymmetricPrivateKey;
 use super::keys::AsymmetricPublicKey;
@@ -23,16 +17,84 @@ use super::keys::EcPrivateKey;
 use super::keys::EcPublicKey;
 use super::keys::KeyObjectHandle;
 use super::keys::RsaPssHashAlgorithm;
+use crate::ops::crypto::digest::match_fixed_digest;
+use crate::ops::crypto::digest::match_fixed_digest_with_oid;
+
+fn dsa_signature<C: elliptic_curve::PrimeCurve>(
+  encoding: u32,
+  signature: ecdsa::Signature<C>,
+) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError>
+where
+  MaxSize<C>: ArrayLength<u8>,
+  <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
+{
+  match encoding {
+    // DER
+    0 => Ok(signature.to_der().to_bytes().to_vec().into_boxed_slice()),
+    // IEEE P1363
+    1 => Ok(signature.to_bytes().to_vec().into_boxed_slice()),
+    _ => Err(
+      KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignatureEncoding,
+    ),
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum KeyObjectHandlePrehashedSignAndVerifyError {
+  #[error("invalid DSA signature encoding")]
+  InvalidDsaSignatureEncoding,
+  #[error("key is not a private key")]
+  KeyIsNotPrivate,
+  #[error("digest not allowed for RSA signature: {0}")]
+  DigestNotAllowedForRsaSignature(String),
+  #[class(generic)]
+  #[error("failed to sign digest with RSA")]
+  FailedToSignDigestWithRsa,
+  #[error("digest not allowed for RSA-PSS signature: {0}")]
+  DigestNotAllowedForRsaPssSignature(String),
+  #[class(generic)]
+  #[error("failed to sign digest with RSA-PSS")]
+  FailedToSignDigestWithRsaPss,
+  #[error("failed to sign digest with DSA")]
+  FailedToSignDigestWithDsa,
+  #[error("rsa-pss with different mf1 hash algorithm and hash algorithm is not supported")]
+  RsaPssHashAlgorithmUnsupported,
+  #[error(
+    "private key does not allow {actual} to be used, expected {expected}"
+  )]
+  PrivateKeyDisallowsUsage { actual: String, expected: String },
+  #[error("failed to sign digest")]
+  FailedToSignDigest,
+  #[error("x25519 key cannot be used for signing")]
+  X25519KeyCannotBeUsedForSigning,
+  #[error("Ed25519 key cannot be used for prehashed signing")]
+  Ed25519KeyCannotBeUsedForPrehashedSigning,
+  #[error("DH key cannot be used for signing")]
+  DhKeyCannotBeUsedForSigning,
+  #[error("key is not a public or private key")]
+  KeyIsNotPublicOrPrivate,
+  #[error("Invalid DSA signature")]
+  InvalidDsaSignature,
+  #[error("x25519 key cannot be used for verification")]
+  X25519KeyCannotBeUsedForVerification,
+  #[error("Ed25519 key cannot be used for prehashed verification")]
+  Ed25519KeyCannotBeUsedForPrehashedVerification,
+  #[error("DH key cannot be used for verification")]
+  DhKeyCannotBeUsedForVerification,
+}
 
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
     digest_type: &str,
     digest: &[u8],
-  ) -> Result<Box<[u8]>, AnyError> {
+    pss_salt_length: Option<u32>,
+    dsa_signature_encoding: u32,
+  ) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError> {
     let private_key = self
       .as_private_key()
-      .ok_or_else(|| type_error("key is not a private key"))?;
+      .ok_or(KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPrivate)?;
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
@@ -45,43 +107,38 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
-                "digest not allowed for RSA signature: {}",
-                digest_type
-              )))
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
             }
           )
         };
 
         let signature = signer
           .sign(Some(&mut OsRng), key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsa)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::RsaPss(key) => {
         let mut hash_algorithm = None;
         let mut salt_length = None;
-        match &key.details {
-          Some(details) => {
-            if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
-            }
-            hash_algorithm = Some(details.hash_algorithm);
-            salt_length = Some(details.salt_length as usize);
+        if let Some(details) = &key.details {
+          if details.hash_algorithm != details.mf1_hash_algorithm {
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
           }
-          None => {}
-        };
+          hash_algorithm = Some(details.hash_algorithm);
+          salt_length = Some(details.salt_length as usize);
+        }
+        if let Some(s) = pss_salt_length {
+          salt_length = Some(s as usize);
+        }
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
-                  "private key does not allow {} to be used, expected {}",
-                  digest_type, hash_algorithm.as_str()
-                )));
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
+                  actual: digest_type.to_string(),
+                  expected: hash_algorithm.as_str().to_string(),
+                });
               }
             }
             if let Some(salt_length) = salt_length {
@@ -91,15 +148,12 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA-PSS signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
           }
         );
         let signature = pss
           .sign(Some(&mut OsRng), &key.key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA-PSS"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Dsa(key) => {
@@ -109,15 +163,12 @@ impl KeyObjectHandle {
             key.sign_prehashed_rfc6979::<D>(digest)
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
           }
         );
 
         let signature =
-          res.map_err(|_| generic_error("failed to sign digest with DSA"))?;
+          res.map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa)?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Ec(key) => match key {
@@ -125,52 +176,33 @@ impl KeyObjectHandle {
           let signing_key = p224::ecdsa::SigningKey::from(key);
           let signature: p224::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
         EcPrivateKey::P256(key) => {
           let signing_key = p256::ecdsa::SigningKey::from(key);
           let signature: p256::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
         EcPrivateKey::P384(key) => {
           let signing_key = p384::ecdsa::SigningKey::from(key);
           let signature: p384::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
       },
       AsymmetricPrivateKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for signing"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
       }
-      AsymmetricPrivateKey::Ed25519(key) => {
-        if !matches!(
-          digest_type,
-          "rsa-sha512" | "sha512" | "sha512withrsaencryption"
-        ) {
-          return Err(type_error(format!(
-            "digest not allowed for Ed25519 signature: {}",
-            digest_type
-          )));
-        }
-
-        let mut precomputed_digest = PrecomputedDigest([0; 64]);
-        if digest.len() != precomputed_digest.0.len() {
-          return Err(type_error("Invalid sha512 digest"));
-        }
-        precomputed_digest.0.copy_from_slice(digest);
-
-        let signature = key
-          .sign_prehashed(precomputed_digest, None)
-          .map_err(|_| generic_error("failed to sign digest with Ed25519"))?;
-
-        Ok(signature.to_bytes().into())
-      }
+      AsymmetricPrivateKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
       AsymmetricPrivateKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for signing"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning)
       }
     }
   }
@@ -180,10 +212,12 @@ impl KeyObjectHandle {
     digest_type: &str,
     digest: &[u8],
     signature: &[u8],
-  ) -> Result<bool, AnyError> {
-    let public_key = self
-      .as_public_key()
-      .ok_or_else(|| type_error("key is not a public or private key"))?;
+    pss_salt_length: Option<u32>,
+    dsa_signature_encoding: u32,
+  ) -> Result<bool, KeyObjectHandlePrehashedSignAndVerifyError> {
+    let public_key = self.as_public_key().ok_or(
+      KeyObjectHandlePrehashedSignAndVerifyError::KeyIsNotPublicOrPrivate,
+    )?;
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
@@ -196,10 +230,7 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
-                "digest not allowed for RSA signature: {}",
-                digest_type
-              )))
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaSignature(digest_type.to_string()))
             }
           )
         };
@@ -209,27 +240,25 @@ impl KeyObjectHandle {
       AsymmetricPublicKey::RsaPss(key) => {
         let mut hash_algorithm = None;
         let mut salt_length = None;
-        match &key.details {
-          Some(details) => {
-            if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
-            }
-            hash_algorithm = Some(details.hash_algorithm);
-            salt_length = Some(details.salt_length as usize);
+        if let Some(details) = &key.details {
+          if details.hash_algorithm != details.mf1_hash_algorithm {
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
           }
-          None => {}
-        };
+          hash_algorithm = Some(details.hash_algorithm);
+          salt_length = Some(details.salt_length as usize);
+        }
+        if let Some(s) = pss_salt_length {
+          salt_length = Some(s as usize);
+        }
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
-                  "private key does not allow {} to be used, expected {}",
-                  digest_type, hash_algorithm.as_str()
-                )));
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
+                  actual: digest_type.to_string(),
+                  expected: hash_algorithm.as_str().to_string(),
+                });
               }
             }
             if let Some(salt_length) = salt_length {
@@ -239,158 +268,61 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
-              "digest not allowed for RSA-PSS signature: {}",
-              digest_type
-            )))
+            return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
           }
         );
         Ok(pss.verify(&key.key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::Dsa(key) => {
         let signature = dsa::Signature::from_der(signature)
-          .map_err(|_| type_error("Invalid DSA signature"))?;
+          .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::InvalidDsaSignature)?;
         Ok(key.verify_prehash(digest, &signature).is_ok())
       }
       AsymmetricPublicKey::Ec(key) => match key {
         EcPublicKey::P224(key) => {
           let verifying_key = p224::ecdsa::VerifyingKey::from(key);
-          let signature = p224::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p224::ecdsa::Signature::from_der(signature)
+          } else {
+            p224::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
         EcPublicKey::P256(key) => {
           let verifying_key = p256::ecdsa::VerifyingKey::from(key);
-          let signature = p256::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p256::ecdsa::Signature::from_der(signature)
+          } else {
+            p256::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
         EcPublicKey::P384(key) => {
           let verifying_key = p384::ecdsa::VerifyingKey::from(key);
-          let signature = p384::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p384::ecdsa::Signature::from_der(signature)
+          } else {
+            p384::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
       },
       AsymmetricPublicKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for verification"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification)
       }
-      AsymmetricPublicKey::Ed25519(key) => {
-        if !matches!(
-          digest_type,
-          "rsa-sha512" | "sha512" | "sha512withrsaencryption"
-        ) {
-          return Err(type_error(format!(
-            "digest not allowed for Ed25519 signature: {}",
-            digest_type
-          )));
-        }
-
-        let mut signature_fixed = [0u8; 64];
-        if signature.len() != signature_fixed.len() {
-          return Err(type_error("Invalid Ed25519 signature"));
-        }
-        signature_fixed.copy_from_slice(signature);
-
-        let signature = ed25519_dalek::Signature::from_bytes(&signature_fixed);
-
-        let mut precomputed_digest = PrecomputedDigest([0; 64]);
-        precomputed_digest.0.copy_from_slice(digest);
-
-        Ok(
-          key
-            .verify_prehashed_strict(precomputed_digest, None, &signature)
-            .is_ok(),
-        )
-      }
+      AsymmetricPublicKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
       AsymmetricPublicKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for verification"))
+        Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification)
       }
     }
-  }
-}
-
-struct PrecomputedDigest([u8; 64]);
-
-impl OutputSizeUser for PrecomputedDigest {
-  type OutputSize = <sha2::Sha512 as OutputSizeUser>::OutputSize;
-}
-
-impl Digest for PrecomputedDigest {
-  fn new() -> Self {
-    unreachable!()
-  }
-
-  fn new_with_prefix(_data: impl AsRef<[u8]>) -> Self {
-    unreachable!()
-  }
-
-  fn update(&mut self, _data: impl AsRef<[u8]>) {
-    unreachable!()
-  }
-
-  fn chain_update(self, _data: impl AsRef<[u8]>) -> Self {
-    unreachable!()
-  }
-
-  fn finalize(self) -> digest::Output<Self> {
-    self.0.into()
-  }
-
-  fn finalize_into(self, _out: &mut digest::Output<Self>) {
-    unreachable!()
-  }
-
-  fn finalize_reset(&mut self) -> digest::Output<Self>
-  where
-    Self: digest::FixedOutputReset,
-  {
-    unreachable!()
-  }
-
-  fn finalize_into_reset(&mut self, _out: &mut digest::Output<Self>)
-  where
-    Self: digest::FixedOutputReset,
-  {
-    unreachable!()
-  }
-
-  fn reset(&mut self)
-  where
-    Self: digest::Reset,
-  {
-    unreachable!()
-  }
-
-  fn output_size() -> usize {
-    unreachable!()
-  }
-
-  fn digest(_data: impl AsRef<[u8]>) -> digest::Output<Self> {
-    unreachable!()
-  }
-}
-
-impl Reset for PrecomputedDigest {
-  fn reset(&mut self) {
-    unreachable!()
-  }
-}
-
-impl FixedOutputReset for PrecomputedDigest {
-  fn finalize_into_reset(&mut self, _out: &mut digest::Output<Self>) {
-    unreachable!()
-  }
-}
-
-impl FixedOutput for PrecomputedDigest {
-  fn finalize_into(self, _out: &mut digest::Output<Self>) {
-    unreachable!()
-  }
-}
-
-impl Update for PrecomputedDigest {
-  fn update(&mut self, _data: &[u8]) {
-    unreachable!()
   }
 }

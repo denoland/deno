@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -18,6 +19,7 @@ use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
+pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -51,6 +53,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
       ),
       "npm-private2",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
+      ),
+      "npm-private3",
     )
   });
 
@@ -161,8 +175,84 @@ impl TestNpmRegistry {
       return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
     }
 
+    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
+    }
+
+    let prefix1 = format!("/{}/", "@types");
+    let prefix2 = format!("/{}%2f", "@types");
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      if package_name_with_path.starts_with("denotest") {
+        return Some(("@types", package_name_with_path));
+      }
+    }
+
     None
   }
+}
+
+// NOTE: extracted out partially from the `tar` crate, all credits to the original authors
+fn append_dir_all<W: std::io::Write>(
+  builder: &mut tar::Builder<W>,
+  path: &Path,
+  src_path: &Path,
+) -> Result<()> {
+  builder.follow_symlinks(true);
+  let mode = tar::HeaderMode::Deterministic;
+  builder.mode(mode);
+  let mut stack = vec![(src_path.to_path_buf(), true, false)];
+  let mut entries = Vec::new();
+  while let Some((src, is_dir, is_symlink)) = stack.pop() {
+    let dest = path.join(src.strip_prefix(src_path).unwrap());
+    // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
+    if is_dir || (is_symlink && src.is_dir()) {
+      for entry in fs::read_dir(&src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        stack.push((entry.path(), file_type.is_dir(), file_type.is_symlink()));
+      }
+      if dest != Path::new("") {
+        entries.push((src, dest));
+      }
+    } else {
+      entries.push((src, dest));
+    }
+  }
+  entries.sort_by(|(_, a), (_, b)| a.cmp(b));
+  for (src, dest) in entries {
+    let mut header = tar::Header::new_gnu();
+    let metadata = src.metadata().with_context(|| {
+      format!("trying to get metadata for {}", src.display())
+    })?;
+    header.set_metadata_in_mode(&metadata, mode);
+    // this is what `tar` sets the mtime to on unix in deterministic mode, on windows it uses a different
+    // value, which causes the tarball to have a different hash on windows. force it to be the same
+    // to ensure the same output on all platforms
+    header.set_mtime(1153704088);
+
+    let data = if src.is_file() {
+      Box::new(
+        fs::File::open(&src)
+          .with_context(|| format!("trying to open file {}", src.display()))?,
+      ) as Box<dyn std::io::Read>
+    } else {
+      Box::new(std::io::empty()) as Box<dyn std::io::Read>
+    };
+    builder
+      .append_data(&mut header, dest, data)
+      .with_context(|| "appending data")?;
+  }
+  Ok(())
 }
 
 fn get_npm_package(
@@ -188,6 +278,7 @@ fn get_npm_package(
   let mut tarballs = HashMap::new();
   let mut versions = serde_json::Map::new();
   let mut latest_version = semver::Version::parse("0.0.0").unwrap();
+  let mut dist_tags = serde_json::Map::new();
   for entry in fs::read_dir(&package_folder)? {
     let entry = entry?;
     let file_type = entry.file_type()?;
@@ -204,26 +295,29 @@ fn get_npm_package(
         GzEncoder::new(&mut tarball_bytes, Compression::default());
       {
         let mut builder = Builder::new(&mut encoder);
-        builder
-          .append_dir_all("package", &version_folder)
-          .with_context(|| {
-            format!("Error adding tarball for directory: {}", version_folder)
-          })?;
+        append_dir_all(
+          &mut builder,
+          Path::new("package"),
+          version_folder.as_path(),
+        )
+        .with_context(|| {
+          format!("Error adding tarball for directory {}", version_folder,)
+        })?;
         builder.finish()?;
       }
       encoder.finish()?;
     }
 
-    // get tarball hash
-    let tarball_checksum = get_tarball_checksum(&tarball_bytes);
-
     // create the registry file JSON for this version
     let mut dist = serde_json::Map::new();
-    dist.insert(
-      "integrity".to_string(),
-      format!("sha512-{tarball_checksum}").into(),
-    );
-    dist.insert("shasum".to_string(), "dummy-value".into());
+    if package_name != "@denotest/no-shasums" {
+      let tarball_checksum = get_tarball_checksum(&tarball_bytes);
+      dist.insert(
+        "integrity".to_string(),
+        format!("sha512-{tarball_checksum}").into(),
+      );
+      dist.insert("shasum".to_string(), "dummy-value".into());
+    }
     dist.insert(
       "tarball".to_string(),
       format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
@@ -263,6 +357,14 @@ fn get_npm_package(
       }
     }
 
+    if let Some(publish_config) = version_info.get("publishConfig") {
+      if let Some(tag) = publish_config.get("tag") {
+        if let Some(tag) = tag.as_str() {
+          dist_tags.insert(tag.to_string(), version.clone().into());
+        }
+      }
+    }
+
     versions.insert(version.clone(), version_info.into());
     let version = semver::Version::parse(&version)?;
     if version.cmp(&latest_version).is_gt() {
@@ -270,8 +372,9 @@ fn get_npm_package(
     }
   }
 
-  let mut dist_tags = serde_json::Map::new();
-  dist_tags.insert("latest".to_string(), latest_version.to_string().into());
+  if !dist_tags.contains_key("latest") {
+    dist_tags.insert("latest".to_string(), latest_version.to_string().into());
+  }
 
   // create the registry file for this package
   let mut registry_file = serde_json::Map::new();

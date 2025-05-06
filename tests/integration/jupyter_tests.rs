@@ -1,23 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::process::Output;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use bytes::Bytes;
+use chrono::DateTime;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::json;
+use serde_json::Value;
 use test_util::assertions::assert_json_subset;
 use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
-
-use chrono::DateTime;
-use chrono::Utc;
-use deno_core::anyhow::Result;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -625,6 +623,40 @@ async fn jupyter_store_history_false() -> Result<()> {
       "execution_count": 0,
     }),
   );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn jupyter_http_server() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": false,
+        "code": r#"Deno.serve({ port: 10234 }, (req) => Response.json({ hello: "world" }))"#,
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+      "execution_count": 0,
+    }),
+  );
+
+  for _ in 0..3 {
+    let resp = reqwest::get("http://localhost:10234").await.unwrap();
+    let text: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(text, json!({ "hello": "world" }));
+  }
 
   Ok(())
 }

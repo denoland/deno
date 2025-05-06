@@ -1,34 +1,34 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::CacheSetting;
-use crate::errors::get_error_class_name;
-use crate::file_fetcher::FetchNoFollowOptions;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FileFetcher;
-use crate::file_fetcher::FileOrRedirect;
-use crate::npm::CliNpmResolver;
-use crate::util::fs::atomic_write_file_with_retries;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_core::futures;
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
+use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::SystemTime;
+use node_resolver::InNpmPackageChecker;
+
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFetchNoFollowErrorKind;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::FetchNoFollowOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::sys::CliSys;
 
 mod cache_db;
 mod caches;
 mod check;
 mod code_cache;
-mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
@@ -42,8 +42,8 @@ pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
-pub use common::FastInsecureHasher;
-pub use deno_dir::dirs::home_dir;
+/// Permissions used to save a file in the disk caches.
+pub use deno_cache_dir::CACHE_PERM;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
@@ -55,85 +55,50 @@ pub use node::NodeAnalysisCache;
 pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
-/// Permissions used to save a file in the disk caches.
-pub const CACHE_PERM: u32 = 0o644;
-
-#[derive(Debug, Clone)]
-pub struct RealDenoCacheEnv;
-
-impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    match std::fs::metadata(path) {
-      Ok(metadata) => Ok(Some(
-        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
-      )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    path.is_file()
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
-
-pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
-pub type LocalLspHttpCache =
-  deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
+pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
+pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
+use deno_error::JsErrorBox;
+
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub permissions: PermissionsContainer,
+  /// If we're publishing for `deno publish`.
+  pub is_deno_publish: bool,
+}
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  emit_cache: EmitCache,
-  file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
+  sys: CliSys,
+  is_deno_publish: bool,
   cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
-    emit_cache: EmitCache,
-    file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+    file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainer,
+    sys: CliSys,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
-      emit_cache,
       file_fetcher,
-      file_header_overrides,
       global_http_cache,
-      npm_resolver,
+      in_npm_pkg_checker,
       module_info_cache,
-      permissions,
+      sys,
+      file_header_overrides: options.file_header_overrides,
+      permissions: options.permissions,
+      is_deno_publish: options.is_deno_publish,
       cache_info_enabled: false,
     }
   }
@@ -144,15 +109,7 @@ impl FetchCacher {
     self.cache_info_enabled = true;
   }
 
-  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
-  // detail of the cache.
-  //
-  // todo(dsheret): remove once implementing
-  //  * https://github.com/denoland/deno/issues/17707
-  //  * https://github.com/denoland/deno/issues/17703
-  #[deprecated(
-    note = "There should not be a way to do this because the file may not be cached at a local path in the future."
-  )]
+  /// Only use this for `deno info`.
   fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
@@ -161,11 +118,7 @@ impl FetchCacher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      #[allow(deprecated)]
-      self
-        .global_http_cache
-        .get_global_cache_filepath(specifier)
-        .ok()
+      self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
 }
@@ -179,15 +132,7 @@ impl Loader for FetchCacher {
     #[allow(deprecated)]
     let local = self.get_local_path(specifier)?;
     if local.is_file() {
-      let emit = self
-        .emit_cache
-        .get_emit_filepath(specifier)
-        .filter(|p| p.is_file());
-      Some(CacheInfo {
-        local: Some(local),
-        emit,
-        map: None,
-      })
+      Some(CacheInfo { local: Some(local) })
     } else {
       None
     }
@@ -208,41 +153,59 @@ impl Loader for FetchCacher {
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path
       // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
-      let specifier =
-        crate::node::resolve_specifier_into_node_modules(specifier);
-      if self.npm_resolver.in_npm_package(&specifier) {
-        return Box::pin(futures::future::ready(Ok(Some(
+      let specifier = node_resolver::resolve_specifier_into_node_modules(
+        &self.sys, specifier,
+      );
+      if self.in_npm_pkg_checker.in_npm_package(&specifier) {
+        return Box::pin(std::future::ready(Ok(Some(
           LoadResponse::External { specifier },
         ))));
       }
+    }
+
+    if self.is_deno_publish
+      && matches!(specifier.scheme(), "http" | "https")
+      && !specifier.as_str().starts_with(jsr_url().as_str())
+    {
+      // mark non-JSR remote modules as external so we don't need --allow-import
+      // permissions as these will error out later when publishing
+      return Box::pin(std::future::ready(Ok(Some(LoadResponse::External {
+        specifier: specifier.clone(),
+      }))));
     }
 
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(deno_core::anyhow::anyhow!(
+            return Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            ));
+            ))));
           }
           Some(CacheSetting::ReloadAll)
         }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher
-        .fetch_no_follow_with_options(FetchNoFollowOptions {
-          fetch_options: FetchOptions {
-            specifier: &specifier,
-            permissions: &permissions,
-            maybe_accept: None,
-            maybe_cache_setting: maybe_cache_setting.as_ref(),
-          },
+        .fetch_no_follow(
+          &specifier,
+          FetchPermissionsOptionRef::Restricted(&permissions,
+          if is_statically_analyzable {
+            deno_runtime::deno_permissions::CheckSpecifierKind::Static
+          } else {
+            deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
+          }),
+          FetchNoFollowOptions {
+          maybe_auth: None,
+          maybe_accept: None,
+          maybe_cache_setting: maybe_cache_setting.as_ref(),
           maybe_checksum: options.maybe_checksum.as_ref(),
         })
         .await
@@ -259,7 +222,7 @@ impl Loader for FetchCacher {
                 (None, None) => None,
               };
             Ok(Some(LoadResponse::Module {
-              specifier: file.specifier,
+              specifier: file.url,
               maybe_headers,
               content: file.source,
             }))
@@ -272,18 +235,45 @@ impl Loader for FetchCacher {
           }
         })
         .unwrap_or_else(|err| {
-          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
-            if io_err.kind() == std::io::ErrorKind::NotFound {
-              return Ok(None);
-            } else {
-              return Err(err);
-            }
-          }
-          let error_class_name = get_error_class_name(&err);
-          match error_class_name {
-            "NotFound" => Ok(None),
-            "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
-            _ => Err(err),
+          let err = err.into_kind();
+          match err {
+            CliFetchNoFollowErrorKind::FetchNoFollow(err) => {
+              let err = err.into_kind();
+              match err {
+                FetchNoFollowErrorKind::NotFound(_) => Ok(None),
+                FetchNoFollowErrorKind::UrlToFilePath { .. } |
+                FetchNoFollowErrorKind::ReadingBlobUrl { .. } |
+                FetchNoFollowErrorKind::ReadingFile { .. } |
+                FetchNoFollowErrorKind::FetchingRemote { .. } |
+                FetchNoFollowErrorKind::ClientError { .. } |
+                FetchNoFollowErrorKind::NoRemote { .. } |
+                FetchNoFollowErrorKind::DataUrlDecode { .. } |
+                FetchNoFollowErrorKind::RedirectResolution { .. } |
+                FetchNoFollowErrorKind::CacheRead { .. } |
+                FetchNoFollowErrorKind::CacheSave  { .. } |
+                FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
+                FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err)))),
+                FetchNoFollowErrorKind::NotCached { .. } => {
+                  if options.cache_setting == LoaderCacheSetting::Only {
+                    Ok(None)
+                  } else {
+                    Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err))))
+                  }
+                },
+                FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
+                  // convert to the equivalent deno_graph error so that it
+                  // enhances it if this is passed to deno_graph
+                  Err(
+                    deno_graph::source::LoadError::ChecksumIntegrity(deno_graph::source::ChecksumIntegrityError {
+                      actual: err.actual,
+                      expected: err.expected,
+                    }),
+                  )
+                }
+              }
+            },
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(permission_check_error)))),
           }
         })
     }
@@ -293,14 +283,15 @@ impl Loader for FetchCacher {
   fn cache_module_info(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
     log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
-      MediaType::from_specifier(specifier),
+      media_type,
       source_hash,
       module_info,
     );

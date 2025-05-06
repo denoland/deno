@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
@@ -396,7 +396,9 @@ class MultipartParser {
    */
   constructor(body, boundary) {
     if (!boundary) {
-      throw new TypeError("multipart/form-data must provide a boundary");
+      throw new TypeError(
+        "Cannot construct MultipartParser: multipart/form-data must provide a boundary",
+      );
     }
 
     this.boundary = `--${boundary}`;
@@ -445,7 +447,7 @@ class MultipartParser {
       ) {
         return new FormData();
       }
-      throw new TypeError("Unable to parse body as form data.");
+      throw new TypeError("Unable to parse body as form data");
     }
 
     const formData = new FormData();

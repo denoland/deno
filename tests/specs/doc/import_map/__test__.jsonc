@@ -1,0 +1,4 @@
+{
+  "args": "doc --import-map=import_map.json use_import_map.js",
+  "output": "use_import_map.out"
+}

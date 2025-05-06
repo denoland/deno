@@ -1,40 +1,122 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::normalize_path;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::JsRuntimeInspector;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_fs::FileSystemRc;
-use node_resolver::NodeModuleKind;
-use node_resolver::NodeResolutionMode;
-use node_resolver::REQUIRE_CONDITIONS;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::NodePermissions;
-use crate::NodeRequireResolverRc;
-use crate::NodeResolverRc;
-use crate::NpmResolverRc;
-use crate::PackageJson;
+use boxed_error::Boxed;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
+use deno_core::FastString;
+use deno_core::JsRuntimeInspector;
+use deno_core::OpState;
+use deno_error::JsErrorBox;
+use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeResolutionKind;
+use node_resolver::NpmPackageFolderResolver;
+use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
+use node_resolver::REQUIRE_CONDITIONS;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 
-fn ensure_read_permission<P>(
+use crate::ExtNodeSys;
+use crate::NodePermissions;
+use crate::NodeRequireLoaderRc;
+use crate::NodeResolverRc;
+use crate::PackageJsonResolverRc;
+
+#[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+fn ensure_read_permission<'a, P>(
   state: &mut OpState,
-  file_path: &Path,
-) -> Result<(), AnyError>
+  file_path: &'a Path,
+) -> Result<Cow<'a, Path>, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
+  let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  resolver.ensure_read_permission(permissions, file_path)
+  loader.ensure_read_permission(permissions, file_path)
 }
+
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct RequireError(pub Box<RequireErrorKind>);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum RequireErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlParse(
+    #[from]
+    #[inherit]
+    url::ParseError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[inherit] JsErrorBox),
+  #[class(generic)]
+  #[error(transparent)]
+  PackageExportsResolve(
+    #[from] node_resolver::errors::PackageExportsResolveError,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
+  #[class(generic)]
+  #[error(transparent)]
+  ClosestPkgJson(#[from] ClosestPkgJsonError),
+  #[class(generic)]
+  #[error(transparent)]
+  PackageImportsResolve(
+    #[from] node_resolver::errors::PackageImportsResolveError,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
+  #[class(generic)]
+  #[error(transparent)]
+  UrlConversion(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  ReadModule(
+    #[from]
+    #[inherit]
+    JsErrorBox,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  UnableToGetCwd(UnableToGetCwdError),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("Unable to get CWD")]
+#[class(inherit)]
+pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
 #[serde]
@@ -70,7 +152,7 @@ pub fn op_require_init_paths() -> Vec<String> {
 
   // let mut paths = paths
   //   .into_iter()
-  //   .map(|p| p.to_string_lossy().to_string())
+  //   .map(|p| p.to_string_lossy().into_owned())
   //   .collect();
 
   // if !node_path.is_empty() {
@@ -87,28 +169,25 @@ pub fn op_require_init_paths() -> Vec<String> {
   vec![]
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
-pub fn op_require_node_module_paths<P>(
+pub fn op_require_node_module_paths<
+  P: NodePermissions + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] from: String,
-) -> Result<Vec<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let fs = state.borrow::<FileSystemRc>();
+) -> Result<Vec<String>, RequireError> {
+  let sys = state.borrow::<TSys>();
   // Guarantee that "from" is absolute.
-  let from_url = if from.starts_with("file:///") {
-    Url::parse(&from)?
+  let from = if from.starts_with("file:///") {
+    url_to_file_path(&Url::parse(&from)?)?
   } else {
-    deno_core::resolve_path(
-      &from,
-      &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
-    )?
+    let current_dir = &sys
+      .env_current_dir()
+      .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
+    normalize_path(current_dir.join(from))
   };
-  let from = url_to_file_path(&from_url)?;
-
-  ensure_read_permission::<P>(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -117,7 +196,7 @@ where
       let bytes = from_str.as_bytes();
       if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
       {
-        let p = from_str.to_owned() + "node_modules";
+        let p = format!("{}node_modules", from_str);
         return Ok(vec![p]);
       }
     }
@@ -129,12 +208,12 @@ where
     }
   }
 
-  let mut paths = vec![];
+  let mut paths = Vec::with_capacity(from.components().count());
   let mut current_path = from.as_path();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
     if !parent.ends_with("node_modules") {
-      paths.push(parent.join("node_modules").to_string_lossy().to_string());
+      paths.push(parent.join("node_modules").to_string_lossy().into_owned());
     }
     current_path = parent;
     maybe_parent = current_path.parent();
@@ -158,7 +237,7 @@ pub fn op_require_proxy_path(#[string] filename: String) -> String {
 
   if trailing_slash {
     let p = PathBuf::from(filename);
-    p.join("noop.js").to_string_lossy().to_string()
+    p.join("noop.js").to_string_lossy().into_owned()
   } else {
     filename
   }
@@ -186,30 +265,51 @@ pub fn op_require_is_request_relative(#[string] request: String) -> bool {
 
 #[op2]
 #[string]
-pub fn op_require_resolve_deno_dir(
+pub fn op_require_resolve_deno_dir<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] request: String,
   #[string] parent_filename: String,
-) -> Option<String> {
-  let resolver = state.borrow::<NpmResolverRc>();
-  resolver
-    .resolve_package_folder_from_package(
-      &request,
-      &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
-        panic!("Url::from_file_path: [{:?}]", parent_filename)
-      }),
-    )
-    .ok()
-    .map(|p| p.to_string_lossy().to_string())
+) -> Result<Option<String>, deno_path_util::PathToUrlError> {
+  let resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
+
+  let path = PathBuf::from(parent_filename);
+  Ok(
+    resolver
+      .resolve_package_folder_from_package(
+        &request,
+        &UrlOrPathRef::from_path(&path),
+      )
+      .ok()
+      .map(|p| p.to_string_lossy().into_owned()),
+  )
 }
 
 #[op2(fast)]
-pub fn op_require_is_deno_dir_package(
+pub fn op_require_is_deno_dir_package<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] path: String,
 ) -> bool {
-  let resolver = state.borrow::<NpmResolverRc>();
-  resolver.in_npm_package_at_file_path(&PathBuf::from(path))
+  let resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
+  match deno_path_util::url_from_file_path(&PathBuf::from(path)) {
+    Ok(specifier) => resolver.in_npm_package(&specifier),
+    Err(_) => false,
+  }
 }
 
 #[op2]
@@ -251,7 +351,7 @@ pub fn op_require_resolve_lookup_paths(
   // }
 
   let p = PathBuf::from(parent_filename);
-  Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
+  Some(vec![p.parent().unwrap().to_string_lossy().into_owned()])
 }
 
 #[op2(fast)]
@@ -259,19 +359,19 @@ pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op2(fast)]
-pub fn op_require_stat<P>(
+#[op2(fast, stack_trace)]
+pub fn op_require_stat<
+  P: NodePermissions + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<i32, AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<i32, JsErrorBox> {
   let path = PathBuf::from(path);
-  ensure_read_permission::<P>(state, &path)?;
-  let fs = state.borrow::<FileSystemRc>();
-  if let Ok(metadata) = fs.stat_sync(&path) {
-    if metadata.is_file {
+  let path = ensure_read_permission::<P>(state, &path)?;
+  let sys = state.borrow::<TSys>();
+  if let Ok(metadata) = sys.fs_metadata(&path) {
+    if metadata.file_type().is_file() {
       return Ok(0);
     } else {
       return Ok(1);
@@ -281,50 +381,51 @@ where
   Ok(-1)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_require_real_path<P>(
+pub fn op_require_real_path<
+  P: NodePermissions + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] request: String,
-) -> Result<String, AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<String, RequireError> {
   let path = PathBuf::from(request);
-  ensure_read_permission::<P>(state, &path)?;
-  let fs = state.borrow::<FileSystemRc>();
-  let canonicalized_path =
-    deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
-  Ok(canonicalized_path.to_string_lossy().to_string())
+  let path = ensure_read_permission::<P>(state, &path)
+    .map_err(RequireErrorKind::Permission)?;
+  let sys = state.borrow::<TSys>();
+  let canonicalized_path = deno_path_util::strip_unc_prefix(
+    sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?,
+  );
+  Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 
-fn path_resolve(parts: Vec<String>) -> String {
-  assert!(!parts.is_empty());
-  let mut p = PathBuf::from(&parts[0]);
-  if parts.len() > 1 {
-    for part in &parts[1..] {
-      p = p.join(part);
-    }
+fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
+  let mut p = PathBuf::from(parts.next().unwrap());
+  for part in parts {
+    p = p.join(part);
   }
-  normalize_path(p).to_string_lossy().to_string()
+  normalize_path(p)
 }
 
 #[op2]
 #[string]
 pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
-  path_resolve(parts)
+  path_resolve(parts.iter().map(|s| s.as_str()))
+    .to_string_lossy()
+    .into_owned()
 }
 
 #[op2]
 #[string]
 pub fn op_require_path_dirname(
   #[string] request: String,
-) -> Result<String, AnyError> {
+) -> Result<String, JsErrorBox> {
   let p = PathBuf::from(request);
   if let Some(parent) = p.parent() {
-    Ok(parent.to_string_lossy().to_string())
+    Ok(parent.to_string_lossy().into_owned())
   } else {
-    Err(generic_error("Path doesn't have a parent"))
+    Err(JsErrorBox::generic("Path doesn't have a parent"))
   }
 }
 
@@ -332,26 +433,26 @@ pub fn op_require_path_dirname(
 #[string]
 pub fn op_require_path_basename(
   #[string] request: String,
-) -> Result<String, AnyError> {
+) -> Result<String, JsErrorBox> {
   let p = PathBuf::from(request);
   if let Some(path) = p.file_name() {
-    Ok(path.to_string_lossy().to_string())
+    Ok(path.to_string_lossy().into_owned())
   } else {
-    Err(generic_error("Path doesn't have a file name"))
+    Err(JsErrorBox::generic("Path doesn't have a file name"))
   }
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_require_try_self_parent_path<P>(
+pub fn op_require_try_self_parent_path<
+  P: NodePermissions + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   has_parent: bool,
   #[string] maybe_parent_filename: Option<String>,
   #[string] maybe_parent_id: Option<String>,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Option<String>, JsErrorBox> {
   if !has_parent {
     return Ok(None);
   }
@@ -362,35 +463,35 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      let fs = state.borrow::<FileSystemRc>();
-      if let Ok(cwd) = fs.cwd() {
-        ensure_read_permission::<P>(state, &cwd)?;
-        return Ok(Some(cwd.to_string_lossy().to_string()));
+      let sys = state.borrow::<TSys>();
+      if let Ok(cwd) = sys.env_current_dir() {
+        let cwd = ensure_read_permission::<P>(state, &cwd)?;
+        return Ok(Some(cwd.to_string_lossy().into_owned()));
       }
     }
   }
   Ok(None)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_require_try_self<P>(
+pub fn op_require_try_self<
+  P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] parent_path: Option<String>,
   #[string] request: String,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Option<String>, RequireError> {
   if parent_path.is_none() {
     return Ok(None);
   }
 
-  let node_resolver = state.borrow::<NodeResolverRc>();
-  let pkg = node_resolver
-    .get_closest_package_json(
-      &Url::from_file_path(parent_path.unwrap()).unwrap(),
-    )
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let pkg = pkg_json_resolver
+    .get_closest_package_json(&PathBuf::from(parent_path.unwrap()))
     .ok()
     .flatten();
   if pkg.is_none() {
@@ -416,40 +517,51 @@ where
     return Ok(None);
   }
 
-  let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
+    let node_resolver = state.borrow::<NodeResolverRc<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>();
+    let referrer = UrlOrPathRef::from_path(&pkg.path);
+    // invalidate the resolution cache in case things have changed
+    NodeResolutionThreadLocalCache::clear();
     let r = node_resolver.package_exports_resolve(
       &pkg.path,
       &expansion,
       exports,
       Some(&referrer),
-      NodeModuleKind::Cjs,
+      ResolutionMode::Require,
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
-    Ok(Some(if r.scheme() == "file" {
-      url_to_file_path_string(&r)?
-    } else {
-      r.to_string()
-    }))
+    Ok(Some(url_or_path_to_string(r)?))
   } else {
     Ok(None)
   }
 }
 
-#[op2]
-#[string]
+#[op2(stack_trace)]
+#[to_v8]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: String,
-) -> Result<String, AnyError>
+) -> Result<FastString, RequireError>
 where
   P: NodePermissions + 'static,
 {
   let file_path = PathBuf::from(file_path);
-  ensure_read_permission::<P>(state, &file_path)?;
-  let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.read_text_file_lossy_sync(&file_path, None)?)
+  // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
+  let file_path = ensure_read_permission::<P>(state, &file_path)
+    .map_err(RequireErrorKind::Permission)?;
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  loader
+    .load_text_file_lossy(&file_path)
+    .map(|s| match s {
+      Cow::Borrowed(s) => FastString::from_static(s),
+      Cow::Owned(s) => s.into(),
+    })
+    .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 
 #[op2]
@@ -457,47 +569,54 @@ where
 pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   if let Ok(url) = Url::parse(&file_or_url) {
     if let Ok(p) = url.to_file_path() {
-      return p.to_string_lossy().to_string();
+      return p.to_string_lossy().into_owned();
     }
   }
 
   file_or_url
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_require_resolve_exports<P>(
+pub fn op_require_resolve_exports<
+  P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   uses_local_node_modules_dir: bool,
-  #[string] modules_path: String,
+  #[string] modules_path_str: String,
   #[string] _request: String,
   #[string] name: String,
   #[string] expansion: String,
   #[string] parent_path: String,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let fs = state.borrow::<FileSystemRc>();
-  let npm_resolver = state.borrow::<NpmResolverRc>();
-  let node_resolver = state.borrow::<NodeResolverRc>();
+) -> Result<Option<String>, RequireError> {
+  let sys = state.borrow::<TSys>();
+  let node_resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
 
-  let pkg_path = if npm_resolver
-    .in_npm_package_at_file_path(&PathBuf::from(&modules_path))
+  let modules_path = PathBuf::from(&modules_path_str);
+  let modules_specifier = deno_path_util::url_from_file_path(&modules_path)?;
+  let pkg_path = if node_resolver.in_npm_package(&modules_specifier)
     && !uses_local_node_modules_dir
   {
     modules_path
   } else {
-    let original = modules_path.clone();
-    let mod_dir = path_resolve(vec![modules_path, name]);
-    if fs.is_dir_sync(Path::new(&mod_dir)) {
+    let mod_dir =
+      path_resolve([modules_path_str.as_str(), name.as_str()].into_iter());
+    if sys.fs_is_dir_no_err(&mod_dir) {
       mod_dir
     } else {
-      original
+      modules_path
     }
   };
-  let Some(pkg) = node_resolver
-    .load_package_json(&PathBuf::from(&pkg_path).join("package.json"))?
+  let Some(pkg) =
+    pkg_json_resolver.load_package_json(&pkg_path.join("package.json"))?
   else {
     return Ok(None);
   };
@@ -505,119 +624,151 @@ where
     return Ok(None);
   };
 
-  let referrer = Url::from_file_path(parent_path).unwrap();
+  let referrer = if parent_path.is_empty() {
+    None
+  } else {
+    Some(PathBuf::from(parent_path))
+  };
+  NodeResolutionThreadLocalCache::clear();
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
     exports,
-    Some(&referrer),
-    NodeModuleKind::Cjs,
+    referrer
+      .as_ref()
+      .map(|r| UrlOrPathRef::from_path(r))
+      .as_ref(),
+    ResolutionMode::Require,
     REQUIRE_CONDITIONS,
-    NodeResolutionMode::Execution,
+    NodeResolutionKind::Execution,
   )?;
-  Ok(Some(if r.scheme() == "file" {
-    url_to_file_path_string(&r)?
-  } else {
-    r.to_string()
-  }))
+  Ok(Some(url_or_path_to_string(r)?))
 }
 
-#[op2]
-#[serde]
-pub fn op_require_read_closest_package_json<P>(
+deno_error::js_error_wrapper!(
+  ClosestPkgJsonError,
+  JsClosestPkgJsonError,
+  "Error"
+);
+
+#[op2(fast)]
+pub fn op_require_is_maybe_cjs(
   state: &mut OpState,
   #[string] filename: String,
-) -> Result<Option<PackageJson>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  ensure_read_permission::<P>(
-    state,
-    PathBuf::from(&filename).parent().unwrap(),
-  )?;
-  let node_resolver = state.borrow::<NodeResolverRc>().clone();
-  node_resolver
-    .get_closest_package_json(&Url::from_file_path(filename).unwrap())
-    .map(|maybe_pkg| maybe_pkg.map(|pkg| (*pkg).clone()))
-    .map_err(AnyError::from)
+) -> Result<bool, JsClosestPkgJsonError> {
+  let filename = PathBuf::from(filename);
+  let Ok(url) = url_from_file_path(&filename) else {
+    return Ok(false);
+  };
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  loader.is_maybe_cjs(&url).map_err(Into::into)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
-pub fn op_require_read_package_scope<P>(
+pub fn op_require_read_package_scope<
+  P: NodePermissions + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] package_json_path: String,
-) -> Option<PackageJson>
-where
-  P: NodePermissions + 'static,
-{
-  let node_resolver = state.borrow::<NodeResolverRc>().clone();
+) -> Option<PackageJsonRc> {
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let package_json_path = PathBuf::from(package_json_path);
   if package_json_path.file_name() != Some("package.json".as_ref()) {
     // permissions: do not allow reading a non-package.json file
     return None;
   }
-  node_resolver
+  pkg_json_resolver
     .load_package_json(&package_json_path)
     .ok()
     .flatten()
-    .map(|pkg| (*pkg).clone())
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
-pub fn op_require_package_imports_resolve<P>(
+pub fn op_require_package_imports_resolve<
+  P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] referrer_filename: String,
   #[string] request: String,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Option<String>, RequireError> {
   let referrer_path = PathBuf::from(&referrer_filename);
-  ensure_read_permission::<P>(state, &referrer_path)?;
-  let node_resolver = state.borrow::<NodeResolverRc>();
-  let Some(pkg) =
-    node_resolver.get_closest_package_json_from_path(&referrer_path)?
+  let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
+    .map_err(RequireErrorKind::Permission)?;
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let Some(pkg) = pkg_json_resolver.get_closest_package_json(&referrer_path)?
   else {
     return Ok(None);
   };
 
   if pkg.imports.is_some() {
-    let referrer_url =
-      deno_core::url::Url::from_file_path(&referrer_filename).unwrap();
+    let node_resolver = state.borrow::<NodeResolverRc<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>();
+    NodeResolutionThreadLocalCache::clear();
     let url = node_resolver.package_imports_resolve(
       &request,
-      Some(&referrer_url),
-      NodeModuleKind::Cjs,
+      Some(&UrlOrPathRef::from_path(&referrer_path)),
+      ResolutionMode::Require,
       Some(&pkg),
       REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
+      NodeResolutionKind::Execution,
     )?;
-    Ok(Some(url_to_file_path_string(&url)?))
+    Ok(Some(url_or_path_to_string(url)?))
   } else {
     Ok(None)
   }
 }
 
+#[op2(fast, reentrant)]
+pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
+  let inspector_rc = {
+    let state = state.borrow();
+    state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
+  };
+  let mut inspector = inspector_rc.borrow_mut();
+  inspector.wait_for_session_and_break_on_next_statement()
+}
+
 #[op2(fast)]
-pub fn op_require_break_on_next_statement(state: &mut OpState) {
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
-  inspector
-    .borrow_mut()
-    .wait_for_session_and_break_on_next_statement()
+pub fn op_require_can_parse_as_esm(
+  scope: &mut v8::HandleScope,
+  #[string] source: &str,
+) -> bool {
+  let scope = &mut v8::TryCatch::new(scope);
+  let Some(source) = v8::String::new(scope, source) else {
+    return false;
+  };
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    source.into(),
+    0,
+    0,
+    false,
+    0,
+    None,
+    true,
+    false,
+    true,
+    None,
+  );
+  let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+  v8::script_compiler::compile_module(scope, &mut source).is_some()
 }
 
-fn url_to_file_path_string(url: &Url) -> Result<String, AnyError> {
-  let file_path = url_to_file_path(url)?;
-  Ok(file_path.to_string_lossy().to_string())
-}
-
-fn url_to_file_path(url: &Url) -> Result<PathBuf, AnyError> {
-  match url.to_file_path() {
-    Ok(file_path) => Ok(file_path),
-    Err(()) => {
-      deno_core::anyhow::bail!("failed to convert '{}' to file path", url)
-    }
+fn url_or_path_to_string(
+  url: UrlOrPath,
+) -> Result<String, deno_path_util::UrlToFilePathError> {
+  if url.is_file() {
+    Ok(url.into_path()?.to_string_lossy().to_string())
+  } else {
+    Ok(url.to_string_lossy().to_string())
   }
 }

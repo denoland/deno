@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet stdout_write_all.ts",
+  "output": "stdout_write_all.out"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { Buffer } from "node:buffer";
@@ -27,14 +27,14 @@ import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 import { primordials } from "ext:core/mod.js";
 
-const { Symbol, ArrayPrototypeForEach } = primordials;
+const { Symbol, ArrayPrototypeForEach, ObjectFreeze } = primordials;
 
 const kParsingContext = Symbol("script parsing context");
 
 export class Script {
   #inner;
 
-  constructor(code, options = {}) {
+  constructor(code, options = { __proto__: null }) {
     code = `${code}`;
     if (typeof options === "string") {
       options = { filename: options };
@@ -80,7 +80,7 @@ export class Script {
       : undefined;
   }
 
-  #runInContext(contextifiedObject, options = {}) {
+  #runInContext(contextifiedObject, options = { __proto__: null }) {
     validateObject(options, "options");
 
     let timeout = options.timeout;
@@ -181,7 +181,11 @@ function getContextOptions(options) {
 }
 
 let defaultContextNameIndex = 1;
-export function createContext(contextObject = {}, options = {}) {
+export function createContext(
+  // deno-lint-ignore prefer-primordials
+  contextObject = {},
+  options = { __proto__: null },
+) {
   if (isContext(contextObject)) {
     return contextObject;
   }
@@ -276,7 +280,7 @@ export function isContext(object) {
   return op_vm_is_context(object);
 }
 
-export function compileFunction(code, params, options = {}) {
+export function compileFunction(code, params, options = { __proto__: null }) {
   validateString(code, "code");
   if (params !== undefined) {
     validateStringArray(params, "params");
@@ -346,8 +350,22 @@ export function measureMemory(_options) {
   notImplemented("measureMemory");
 }
 
+const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
+  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+);
+const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
+
+export const constants = {
+  __proto__: null,
+  USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  DONT_CONTEXTIFY,
+};
+
+ObjectFreeze(constants);
+
 export default {
   Script,
+  constants,
   createContext,
   createScript,
   runInContext,

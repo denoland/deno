@@ -1,0 +1,9 @@
+Check [WILDCARD]/excluded.test.ts
+Check [WILDCARD]/main.test.ts
+running 1 test from ./excluded.test.ts
+test2 ... ok ([WILDCARD])
+running 1 test from ./main.test.ts
+test1 ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+

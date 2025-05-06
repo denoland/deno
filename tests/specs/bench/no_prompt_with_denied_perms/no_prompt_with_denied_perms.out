@@ -1,9 +1,10 @@
-[WILDCARD]cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+[WILDCARD]    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/no_prompt_with_denied_perms.ts
-benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
---------------------------------------------------------------- -----------------------------
-no prompt  error: PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+no prompt   error: NotCapable: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 error: Bench failed

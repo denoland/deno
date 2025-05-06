@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -355,12 +355,15 @@ const EventSourcePrototype = EventSource.prototype;
 
 ObjectDefineProperties(EventSource, {
   CONNECTING: {
+    __proto__: null,
     value: 0,
   },
   OPEN: {
+    __proto__: null,
     value: 1,
   },
   CLOSED: {
+    __proto__: null,
     value: 2,
   },
 });

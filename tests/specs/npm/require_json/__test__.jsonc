@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet require_json/main.js",
+  "output": "require_json/main.out"
+}

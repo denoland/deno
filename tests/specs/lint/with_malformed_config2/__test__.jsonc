@@ -1,0 +1,5 @@
+{
+  "args": "lint --config Deno.malformed2.jsonc",
+  "output": "with_malformed_config2.out",
+  "exitCode": 1
+}

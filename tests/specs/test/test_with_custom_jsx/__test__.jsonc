@@ -1,0 +1,5 @@
+{
+  "args": "test --quiet --allow-read main.ts --config=deno_custom_jsx.json",
+  "output": "main.out",
+  "exitCode": 0
+}

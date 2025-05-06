@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet npm:cowsay@1.5.0/cowthink Hello",
+  "output": "deno_run_cowthink.out"
+}

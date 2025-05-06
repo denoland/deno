@@ -1,11 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::util;
-use super::CoverageReport;
-use crate::args::CoverageType;
-use crate::colors;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -14,6 +8,15 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+use deno_lib::version::DENO_VERSION_INFO;
+
+use super::util;
+use super::CoverageReport;
+use crate::args::CoverageType;
+use crate::colors;
 
 #[derive(Default)]
 pub struct CoverageStats<'a> {
@@ -38,19 +41,17 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
 }
 
 pub trait CoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError>;
-
-  fn done(&mut self, _coverage_root: &Path) {}
+  fn done(
+    &self,
+    coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  );
 
   /// Collects the coverage summary of each file or directory.
   fn collect_summary<'a>(
     &'a self,
-    file_reports: &'a Vec<(CoverageReport, String)>,
-  ) -> CoverageSummary {
+    file_reports: &'a [(CoverageReport, String)],
+  ) -> CoverageSummary<'a> {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
     let root = match util::find_root(urls)
       .and_then(|root_path| root_path.to_file_path().ok())
@@ -104,16 +105,12 @@ pub trait CoverageReporter {
   }
 }
 
-struct SummaryCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+pub struct SummaryCoverageReporter {}
 
 #[allow(clippy::print_stdout)]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
-    SummaryCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    SummaryCoverageReporter {}
   }
 
   fn print_coverage_line(
@@ -174,19 +171,12 @@ impl SummaryCoverageReporter {
 
 #[allow(clippy::print_stdout)]
 impl CoverageReporter for SummaryCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError> {
-    self
-      .file_reports
-      .push((coverage_report.clone(), file_text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, _coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    let summary = self.collect_summary(file_reports);
     let root_stats = summary.get("").unwrap();
 
     let mut entries = summary
@@ -194,7 +184,12 @@ impl CoverageReporter for SummaryCoverageReporter {
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
-    let node_max = entries.iter().map(|(node, _)| node.len()).max().unwrap();
+    let node_max = entries
+      .iter()
+      .map(|(node, _)| node.len())
+      .max()
+      .unwrap()
+      .max("All files".len());
 
     let header =
       format!("{node:node_max$}  | Branch % | Line % |", node = "File");
@@ -211,17 +206,40 @@ impl CoverageReporter for SummaryCoverageReporter {
   }
 }
 
-struct LcovCoverageReporter {}
+pub struct LcovCoverageReporter {}
+
+impl CoverageReporter for LcovCoverageReporter {
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
+    if let Some((report, _)) = file_reports.first() {
+      if let Some(ref output) = report.output {
+        if let Ok(path) = output.canonicalize() {
+          let url = Url::from_file_path(path).unwrap();
+          log::info!("Lcov coverage report has been generated at {}", url);
+        } else {
+          log::error!(
+            "Failed to resolve the output path of Lcov report: {}",
+            output.display()
+          );
+        }
+      }
+    }
+  }
+}
 
 impl LcovCoverageReporter {
   pub fn new() -> LcovCoverageReporter {
     LcovCoverageReporter {}
   }
-}
 
-impl CoverageReporter for LcovCoverageReporter {
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     _file_text: &str,
   ) -> Result<(), AnyError> {
@@ -313,16 +331,26 @@ impl CoverageReporter for LcovCoverageReporter {
 
 struct DetailedCoverageReporter {}
 
-impl DetailedCoverageReporter {
-  pub fn new() -> DetailedCoverageReporter {
-    DetailedCoverageReporter {}
+impl CoverageReporter for DetailedCoverageReporter {
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
   }
 }
 
 #[allow(clippy::print_stdout)]
-impl CoverageReporter for DetailedCoverageReporter {
+impl DetailedCoverageReporter {
+  pub fn new() -> DetailedCoverageReporter {
+    DetailedCoverageReporter {}
+  }
+
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     file_text: &str,
   ) -> Result<(), AnyError> {
@@ -383,22 +411,15 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-struct HtmlCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+pub struct HtmlCoverageReporter {}
 
 impl CoverageReporter for HtmlCoverageReporter {
-  fn report(
-    &mut self,
-    report: &CoverageReport,
-    text: &str,
-  ) -> Result<(), AnyError> {
-    self.file_reports.push((report.clone(), text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+  fn done(
+    &self,
+    coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    let summary = self.collect_summary(file_reports);
     let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
@@ -430,9 +451,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
 impl HtmlCoverageReporter {
   pub fn new() -> HtmlCoverageReporter {
-    HtmlCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    HtmlCoverageReporter {}
   }
 
   /// Gets the report path for a single file
@@ -475,8 +494,14 @@ impl HtmlCoverageReporter {
       format!("Coverage report for {node}")
     };
     let title = title.replace(std::path::MAIN_SEPARATOR, "/");
+    let breadcrumbs_parts = node
+      .split(std::path::MAIN_SEPARATOR)
+      .filter(|s| !s.is_empty())
+      .collect::<Vec<_>>();
     let head = self.create_html_head(&title);
-    let header = self.create_html_header(&title, stats);
+    let breadcrumb_navigation =
+      self.create_breadcrumbs_navigation(&breadcrumbs_parts, is_dir);
+    let header = self.create_html_header(&breadcrumb_navigation, stats);
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
@@ -485,7 +510,7 @@ impl HtmlCoverageReporter {
         <body>
           <div class='wrapper'>
             {header}
-            <div class='pad1'>
+            <div class='pad1 overflow-auto'>
               {main_content}
             </div>
             <div class='push'></div>
@@ -513,7 +538,7 @@ impl HtmlCoverageReporter {
   /// Creates header part of the contents for html report.
   pub fn create_html_header(
     &self,
-    title: &str,
+    breadcrumb_navigation: &str,
     stats: &CoverageStats,
   ) -> String {
     let CoverageStats {
@@ -531,7 +556,7 @@ impl HtmlCoverageReporter {
     format!(
       "
       <div class='pad1'>
-        <h1>{title}</h1>
+        <h1>{breadcrumb_navigation}</h1>
         <div class='clearfix'>
           <div class='fl pad1y space-right2'>
             <span class='strong'>{branch_percent:.2}%</span>
@@ -551,7 +576,7 @@ impl HtmlCoverageReporter {
 
   /// Creates footer part of the contents for html report.
   pub fn create_html_footer(&self, now: &str) -> String {
-    let version = env!("CARGO_PKG_VERSION");
+    let version = DENO_VERSION_INFO.deno;
     format!(
       "
       <div class='footer quiet pad2 space-top1 center small'>
@@ -680,5 +705,48 @@ impl HtmlCoverageReporter {
         </tr>
       </table>"
     )
+  }
+
+  pub fn create_breadcrumbs_navigation(
+    &self,
+    breadcrumbs_parts: &[&str],
+    is_dir: bool,
+  ) -> String {
+    let mut breadcrumbs_html = Vec::new();
+    let root_repeats = if is_dir {
+      breadcrumbs_parts.len()
+    } else {
+      breadcrumbs_parts.len() - 1
+    };
+
+    let mut root_url = "../".repeat(root_repeats);
+    root_url += "index.html";
+    breadcrumbs_html.push(format!("<a href='{root_url}'>All files</a>"));
+
+    for (index, breadcrumb) in breadcrumbs_parts.iter().enumerate() {
+      let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
+
+      if index == breadcrumbs_parts.len() - 1 {
+        breadcrumbs_html.push(breadcrumb.to_string());
+        continue;
+      }
+
+      if is_dir {
+        full_url += "index.html";
+      } else {
+        full_url += breadcrumb;
+        if index != breadcrumbs_parts.len() - 1 {
+          full_url += "/index.html";
+        }
+      }
+
+      breadcrumbs_html.push(format!("<a href='{full_url}'>{breadcrumb}</a>"))
+    }
+
+    if breadcrumbs_parts.is_empty() {
+      return String::from("All files");
+    }
+
+    breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
   }
 }

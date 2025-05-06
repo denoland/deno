@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --quiet dynamic_import_deno_ts_from_npm/main.ts",
+  "output": "dynamic_import_deno_ts_from_npm/main.out"
+}

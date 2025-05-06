@@ -1,0 +1,5 @@
+{
+  "args": "check --doc mod.ts",
+  "exitCode": 1,
+  "output": "mod.out"
+}

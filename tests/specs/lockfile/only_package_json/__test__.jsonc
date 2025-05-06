@@ -2,8 +2,8 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "cache index.js",
-      "output": "cache.out"
+      "args": "install",
+      "output": "install.out"
     },
     {
       "args": [

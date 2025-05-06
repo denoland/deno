@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -27,6 +27,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { op_net_connect_tcp } from "ext:core/ops";
+import { TcpConn } from "ext:deno_net/01_net.js";
+import { core } from "ext:core/mod.js";
+const { internalFdSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -45,6 +49,7 @@ import {
   INITIAL_ACCEPT_BACKOFF_DELAY,
   MAX_ACCEPT_BACKOFF_DELAY,
 } from "ext:deno_node/internal_binding/_listen.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 /** The type of TCP socket. */
 enum socketType {
@@ -100,6 +105,8 @@ export class TCP extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
 
+  #netPermToken?: object | undefined;
+
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
@@ -138,6 +145,10 @@ export class TCP extends ConnectionWrap {
       this.#remotePort = remoteAddr.port;
       this.#remoteFamily = isIP(remoteAddr.hostname);
     }
+  }
+
+  get fd() {
+    return this[kStreamBaseField]?.[internalFdSymbol];
   }
 
   /**
@@ -211,24 +222,24 @@ export class TCP extends ConnectionWrap {
     try {
       listener = Deno.listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
-        return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
-        return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
-
-      // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.NetAddr;
     this.#address = address.hostname;
     this.#port = address.port;
-
     this.#listener = listener;
-    this.#accept();
+
+    // TODO(kt3k): Delays the accept() call 2 ticks. Deno.Listener can't be closed
+    // synchronously when accept() is called. By delaying the accept() call,
+    // the user can close the server synchronously in the callback of listen().
+    // This workaround enables `npm:detect-port` to work correctly.
+    // Remove these nextTick calls when the below issue resolved:
+    // https://github.com/denoland/deno/issues/25480
+    nextTick(nextTick, () => this.#accept());
 
     return 0;
   }
@@ -297,8 +308,10 @@ export class TCP extends ConnectionWrap {
    * @param noDelay
    * @return An error status code.
    */
-  setNoDelay(_noDelay: boolean): number {
-    // TODO(bnoordhuis) https://github.com/denoland/deno/pull/13103
+  setNoDelay(noDelay: boolean): number {
+    if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
+      this[kStreamBaseField].setNoDelay(noDelay);
+    }
     return 0;
   }
 
@@ -364,20 +377,16 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = isIP(address);
 
-    const connectOptions: Deno.ConnectOptions = {
-      hostname: address,
-      port,
-      transport: "tcp",
-    };
-
-    Deno.connect(connectOptions).then(
-      (conn: Deno.Conn) => {
+    op_net_connect_tcp(
+      { hostname: address ?? "127.0.0.1", port },
+      this.#netPermToken,
+    ).then(
+      ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
         // Incorrect / backwards, but correcting the local address and port with
         // what was actually used given we can't actually specify these in Deno.
-        const localAddr = conn.localAddr as Deno.NetAddr;
         this.#address = req.localAddress = localAddr.hostname;
         this.#port = req.localPort = localAddr.port;
-        this[kStreamBaseField] = conn;
+        this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
 
         try {
           this.afterConnect(req, 0);
@@ -454,7 +463,6 @@ export class TCP extends ConnectionWrap {
 
     // Reset the backoff delay upon successful accept.
     this.#acceptBackoffDelay = undefined;
-
     const connectionHandle = new TCP(socketType.SOCKET, connection);
     this.#connections++;
 
@@ -492,5 +500,9 @@ export class TCP extends ConnectionWrap {
     }
 
     return LibuvStreamWrap.prototype._onClose.call(this);
+  }
+
+  setNetPermToken(netPermToken: object | undefined) {
+    this.#netPermToken = netPermToken;
   }
 }

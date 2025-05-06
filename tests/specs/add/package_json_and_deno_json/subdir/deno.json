@@ -1,0 +1,4 @@
+{
+  "name": "@test/subdir",
+  "exports": "./mod.ts"
+}

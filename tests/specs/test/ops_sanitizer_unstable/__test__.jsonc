@@ -1,0 +1,5 @@
+{
+  "args": "test --trace-leaks ops_sanitizer_unstable.ts",
+  "exitCode": 1,
+  "output": "ops_sanitizer_unstable.out"
+}

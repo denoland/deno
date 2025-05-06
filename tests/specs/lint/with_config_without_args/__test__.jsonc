@@ -1,0 +1,5 @@
+{
+  "args": "lint --config Deno.no_tags.jsonc with_config/",
+  "output": "with_config_without_tags.out",
+  "exitCode": 1
+}

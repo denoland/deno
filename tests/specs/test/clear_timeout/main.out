@@ -1,0 +1,8 @@
+Check [WILDCARD]/main.ts
+running 3 tests from ./main.ts
+test 1 ... ok ([WILDCARD])
+test 2 ... ok ([WILDCARD])
+test 3 ... ok ([WILDCARD])
+
+ok | 3 passed | 0 failed ([WILDCARD])
+

@@ -1,8 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json;
 use test_util as util;
-use util::assert_contains;
 use util::assert_not_contains;
 use util::testdata_path;
 use util::TestContext;
@@ -91,78 +89,6 @@ fn standalone_args() {
 }
 
 #[test]
-fn standalone_error() {
-  let context = TestContextBuilder::new().build();
-  let dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    dir.path().join("error.exe")
-  } else {
-    dir.path().join("error")
-  };
-  context
-    .new_command()
-    .args_vec([
-      "compile",
-      "--output",
-      &exe.to_string_lossy(),
-      "./compile/standalone_error.ts",
-    ])
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
-
-  let output = context.new_command().name(&exe).split_output().run();
-  output.assert_exit_code(1);
-  output.assert_stdout_matches_text("");
-  let stderr = output.stderr();
-  // On Windows, we cannot assert the file path (because '\').
-  // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "\n    at boom (file://");
-  assert_contains!(stderr, "standalone_error.ts:2:9");
-  assert_contains!(stderr, "at foo (file://");
-  assert_contains!(stderr, "standalone_error.ts:5:3");
-  assert_contains!(stderr, "standalone_error.ts:7:1");
-}
-
-#[test]
-fn standalone_error_module_with_imports() {
-  let context = TestContextBuilder::new().build();
-  let dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    dir.path().join("error.exe")
-  } else {
-    dir.path().join("error")
-  };
-  context
-    .new_command()
-    .args_vec([
-      "compile",
-      "--output",
-      &exe.to_string_lossy(),
-      "./compile/standalone_error_module_with_imports_1.ts",
-    ])
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
-
-  let output = context
-    .new_command()
-    .name(&exe)
-    .env("NO_COLOR", "1")
-    .split_output()
-    .run();
-  output.assert_stdout_matches_text("hello\n");
-  let stderr = output.stderr();
-  // On Windows, we cannot assert the file path (because '\').
-  // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "\n    at file://");
-  assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
-  output.assert_exit_code(1);
-}
-
-#[test]
 fn standalone_load_datauri() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
@@ -241,7 +167,7 @@ fn compile_with_file_exists_error() {
       "./compile/args.ts",
     ])
     .run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because its parent directory ",
         "is an existing file. You can use the `--output <file-path>` flag to ",
@@ -269,7 +195,7 @@ fn compile_with_directory_exists_error() {
       &exe.to_string_lossy(),
       "./compile/args.ts"
     ]).run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because a directory exists with ",
         "the same name. You can use the `--output <file-path>` flag to ",
@@ -297,7 +223,7 @@ fn compile_with_conflict_file_exists_error() {
       &exe.to_string_lossy(),
       "./compile/args.ts"
     ]).run()
-    .assert_matches_text(&format!(
+    .assert_matches_text(format!(
       concat!(
         "[WILDCARD]error: Could not compile to file '{}' because the file already exists ",
         "and cannot be overwritten. Please delete the existing file or ",
@@ -365,9 +291,9 @@ fn standalone_runtime_flags() {
     .name(&exe)
     .split_output()
     .run()
-    .assert_stdout_matches_text("0.147205063401058\n")
+    .assert_stdout_matches_text("0.1472050634010581\n")
     .assert_stderr_matches_text(
-      "[WILDCARD]PermissionDenied: Requires write access to[WILDCARD]",
+      "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     )
     .assert_exit_code(1);
 }
@@ -539,6 +465,7 @@ fn check_local_by_default() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default.ts",
@@ -561,13 +488,14 @@ fn check_local_by_default2() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default2.ts"
     ])
     .run()
     .assert_matches_text(
-      r#"[WILDCARD]error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
+      r#"[WILDCARD]TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
     )
     .assert_exit_code(1);
 }
@@ -726,7 +654,9 @@ fn dynamic_import_unanalyzable() {
     .assert_exit_code(0);
 }
 
+// TODO(2.0): this test should first run `deno install`?
 #[test]
+#[ignore]
 fn compile_npm_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
@@ -843,21 +773,6 @@ testing[WILDCARD]this
 }
 
 #[test]
-fn compile_npm_file_system() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/npm_fs/main.ts",
-    copy_temp_dir: Some("compile/npm_fs"),
-    compile_args: vec!["-A"],
-    run_args: vec![],
-    output_file: "compile/npm_fs/main.out",
-    node_modules_dir: true,
-    input_name: Some("binary"),
-    expected_name: "binary",
-    exit_code: 0,
-  });
-}
-
-#[test]
 fn compile_npm_bin_esm() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-esm",
@@ -865,7 +780,7 @@ fn compile_npm_bin_esm() {
     compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_esm.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cli-esm",
     exit_code: 0,
@@ -880,7 +795,7 @@ fn compile_npm_bin_cjs() {
     compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_cjs.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cli-cjs",
     exit_code: 0,
@@ -892,27 +807,12 @@ fn compile_npm_cowsay_main() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
-    exit_code: 0,
-  });
-}
-
-#[test]
-fn compile_npm_vfs_implicit_read_permissions() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/vfs_implicit_read_permission/main.ts",
-    copy_temp_dir: Some("compile/vfs_implicit_read_permission"),
-    compile_args: vec![],
-    run_args: vec![],
-    output_file: "compile/vfs_implicit_read_permission/main.out",
-    node_modules_dir: false,
-    input_name: Some("binary"),
-    expected_name: "binary",
     exit_code: 0,
   });
 }
@@ -920,14 +820,14 @@ fn compile_npm_vfs_implicit_read_permissions() {
 #[test]
 fn compile_npm_no_permissions() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0",
+    input_specifier: "npm:@denotest/cli-with-permissions@1.0.0",
     copy_temp_dir: None,
-    compile_args: vec![],
+    compile_args: vec!["-o", "denotest"],
     run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowsay_no_permissions.out",
-    node_modules_dir: false,
+    output_file: "npm/compile_npm_no_permissions.out",
+    node_modules_local: false,
     input_name: None,
-    expected_name: "cowsay",
+    expected_name: "denotest",
     exit_code: 1,
   });
 }
@@ -937,10 +837,10 @@ fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
     exit_code: 0,
@@ -952,10 +852,10 @@ fn compile_npm_cowthink() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowthink.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowthink",
     exit_code: 0,
@@ -965,7 +865,7 @@ fn compile_npm_cowthink() {
 struct RunNpmBinCompileOptions<'a> {
   input_specifier: &'a str,
   copy_temp_dir: Option<&'a str>,
-  node_modules_dir: bool,
+  node_modules_local: bool,
   output_file: &'a str,
   input_name: Option<&'a str>,
   expected_name: &'a str,
@@ -986,8 +886,8 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
 
   args.extend(opts.compile_args.iter().map(|s| s.to_string()));
 
-  if opts.node_modules_dir {
-    args.push("--node-modules-dir".to_string());
+  if opts.node_modules_local {
+    args.push("--node-modules-dir=auto".to_string());
   }
 
   if let Some(bin_name) = opts.input_name {
@@ -1041,6 +941,7 @@ fn compile_node_modules_symlink_outside() {
   let symlink_target_dir = temp_dir.path().join("some_folder");
   project_dir.join("node_modules").create_dir_all();
   symlink_target_dir.create_dir_all();
+  symlink_target_dir.join("file.txt").write("5");
   let symlink_target_file = temp_dir.path().join("target.txt");
   symlink_target_file.write("5");
   let symlink_dir = project_dir.join("node_modules").join("symlink_dir");
@@ -1050,7 +951,7 @@ fn compile_node_modules_symlink_outside() {
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1073,7 +974,7 @@ fn compile_node_modules_symlink_outside() {
   // compile
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1103,11 +1004,11 @@ console.log(getValue());"#,
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
-    r#"Download http://localhost:4260/@denotest/esm-basic
+    r#"Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file:///[WILDCARD]/main.ts
@@ -1115,6 +1016,11 @@ Compile file:///[WILDCARD]/main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])
+
+Embedded Files
+
+[WILDCARD]
+
 "#,
   );
 

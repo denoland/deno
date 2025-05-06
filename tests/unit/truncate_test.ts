@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 Deno.test(
@@ -76,13 +76,13 @@ Deno.test(
 Deno.test({ permissions: { write: false } }, function truncateSyncPerm() {
   assertThrows(() => {
     Deno.truncateSync("/test_truncateSyncPermission.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { write: false } }, async function truncatePerm() {
   await assertRejects(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

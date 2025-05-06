@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "compiled": {
+      "steps": [{
+        "args": "compile --output main main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./main",
+        "args": [],
+        "output": "true\n"
+      }]
+    },
+    "run": {
+      "args": "run --quiet --check main.ts",
+      "output": "false\n"
+    }
+  }
+}

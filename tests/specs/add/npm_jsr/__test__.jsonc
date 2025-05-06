@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm": {
+      "args": "add --npm @denotest/esm-basic jsr:@denotest/add npm:chalk",
+      "output": "npm.out"
+    },
+    "jsr": {
+      "args": "add --jsr npm:@denotest/esm-basic @denotest/add npm:chalk",
+      "output": "jsr.out"
+    },
+    "npm_install": {
+      "args": "install --npm @denotest/esm-basic jsr:@denotest/add npm:chalk",
+      "output": "npm.out"
+    },
+    "jsr_install": {
+      "args": "install --jsr npm:@denotest/esm-basic @denotest/add npm:chalk",
+      "output": "jsr.out"
+    },
+    "same_prefix": {
+      "steps": [
+        {
+          "args": "add --jsr jsr:@denotest/add",
+          "output": "Add jsr:@denotest/add@1.0.0\nDownload [WILDCARD]\n"
+        },
+        {
+          "args": "add --npm npm:chalk",
+          "output": "Add npm:chalk@5.0.1\nDownload [WILDCARD]\n"
+        }
+      ]
+    }
+  }
+}

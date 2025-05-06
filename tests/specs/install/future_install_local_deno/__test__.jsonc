@@ -1,16 +1,13 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [
     {
-      "args": "install",
+      "args": "install --allow-import",
       "output": "install.out"
     },
     {
       // ensure deps are actually cached
-      "args": "run --cached-only main.js",
+      "args": "run --cached-only --allow-import main.js",
       "output": ""
     },
     {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -25,6 +25,14 @@ Deno.test({ permissions: { read: true } }, function readDirSyncSuccess() {
   assertSameContent(files);
 });
 
+Deno.test(
+  { permissions: { read: true } },
+  function readDirSyncResultHasIteratorHelperMethods() {
+    const iterator = Deno.readDirSync("tests/testdata");
+    assertEquals(typeof iterator.map, "function");
+  },
+);
+
 Deno.test({ permissions: { read: true } }, function readDirSyncWithUrl() {
   const files = [
     ...Deno.readDirSync(pathToAbsoluteFileUrl("tests/testdata")),
@@ -35,7 +43,7 @@ Deno.test({ permissions: { read: true } }, function readDirSyncWithUrl() {
 Deno.test({ permissions: { read: false } }, function readDirSyncPerm() {
   assertThrows(() => {
     Deno.readDirSync("tests/");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readDirSyncNotDir() {
@@ -79,7 +87,7 @@ Deno.test({ permissions: { read: true } }, async function readDirWithUrl() {
 Deno.test({ permissions: { read: false } }, async function readDirPerm() {
   await assertRejects(async () => {
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

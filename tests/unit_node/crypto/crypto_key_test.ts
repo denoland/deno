@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   createECDH,
   createHmac,
@@ -12,6 +12,7 @@ import {
   generateKeyPairSync,
   KeyObject,
   randomBytes,
+  X509Certificate,
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
@@ -438,4 +439,332 @@ Deno.test("create private key with invalid utf-8 string", function () {
     Error,
     "not valid utf8",
   );
+});
+
+Deno.test("RSA JWK import public key", function () {
+  const key = {
+    "kty": "RSA",
+    "alg": "RS256",
+    "n":
+      "5Ddosh0Bze5zy-nQ6gAJFpBfL13muCXrTyKYTps61bmnUxpp3bJnt_2N2MXGfuxBENO0Rbc8DhVPd-lNa4H3XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7_LO_QUzIXmXLFvEXtAqzD_hCr0pJxRIr0BrBjYwL23PkxOYzBR-URcd4Ilji6410Eh9NXycyFzKOcqZ7rjG_PnRyUX1EBZH_PN4RExjJuXYgiqhtU-tDjQFzXLhvwAd5s3ThP9lax27A6MUpjLSKkNy-dG5tlaA0QvECfDzA-5eQjcL_OfvbHlKHQH9zPh-U9Q8gsf3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4fxCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS-3vbOfkgko5X420AttP8Z1ZBbFSD20Ath_TA9PSHiRCak4AXvOoCZg0t-WuMwzkd_B2V_JZZSTb1yBWrKTL1QzUamqlufjdWuz7M-O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT_D4cSrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5_GfGAeMHmlJa4atO2hense0Qk4vDc2fc-sbnQ1jPiE",
+    "e": "AQAB",
+    "key_ops": [
+      "verify",
+    ],
+    "ext": true,
+  };
+
+  const keyObject = createPublicKey({ key, format: "jwk" });
+  const expectedPem = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA5Ddosh0Bze5zy+nQ6gAJ
+FpBfL13muCXrTyKYTps61bmnUxpp3bJnt/2N2MXGfuxBENO0Rbc8DhVPd+lNa4H3
+XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7/LO/QU
+zIXmXLFvEXtAqzD/hCr0pJxRIr0BrBjYwL23PkxOYzBR+URcd4Ilji6410Eh9NXy
+cyFzKOcqZ7rjG/PnRyUX1EBZH/PN4RExjJuXYgiqhtU+tDjQFzXLhvwAd5s3ThP9
+lax27A6MUpjLSKkNy+dG5tlaA0QvECfDzA+5eQjcL/OfvbHlKHQH9zPh+U9Q8gsf
+3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4f
+xCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS+3vbOfkgko5X420
+AttP8Z1ZBbFSD20Ath/TA9PSHiRCak4AXvOoCZg0t+WuMwzkd/B2V/JZZSTb1yBW
+rKTL1QzUamqlufjdWuz7M+O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT/D4c
+SrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5/GfGAeMHmlJa4atO2he
+nse0Qk4vDc2fc+sbnQ1jPiECAwEAAQ==
+-----END PUBLIC KEY-----
+`;
+
+  const pem = keyObject.export({ format: "pem", type: "spki" });
+  assertEquals(pem, expectedPem);
+});
+
+Deno.test("Ed25519 import jwk public key #1", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+  const keyObject = createPublicKey({ key, format: "jwk" });
+
+  assertEquals(keyObject.type, "public");
+  const spkiActual = keyObject.export({ type: "spki", format: "pem" });
+
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
+-----END PUBLIC KEY-----
+`;
+
+  assertEquals(spkiActual, spkiExpected);
+});
+
+Deno.test("Ed25519 import jwk public key #2", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+
+  const keyObject = createPublicKey({ key, format: "jwk" });
+  assertEquals(keyObject.type, "public");
+
+  const spki = keyObject.export({ type: "spki", format: "pem" });
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
+-----END PUBLIC KEY-----
+`;
+  assertEquals(spki, spkiExpected);
+});
+
+Deno.test("Ed25519 import jwk private key", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+
+  const keyObject = createPrivateKey({ key, format: "jwk" });
+  assertEquals(keyObject.type, "private");
+
+  const pkcs8Actual = keyObject.export({ type: "pkcs8", format: "pem" });
+  const pkcs8Expected = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
+-----END PRIVATE KEY-----
+`;
+
+  assertEquals(pkcs8Actual, pkcs8Expected);
+});
+
+Deno.test("RSA export public JWK", function () {
+  const importKey = "-----BEGIN PUBLIC KEY-----\n" +
+    "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqF66soiDvuqUB7ufWtuV\n" +
+    "5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTI\n" +
+    "YysJ/rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V/UR+zEygL3UzzZmbdjuyZz+Sjt\n" +
+    "FY+SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR/yy5NWPaJ/yv4oI/exvuZnUwwBHvH\n" +
+    "gwVchfr7Jh5LRmYTPeyuI1lUOovVzE+0Ty/2tFfrm2hpedqYXvEuVu+yJzfuNoLf\n" +
+    "TGfz15J76eoRdFTCTdaG/MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9D\n" +
+    "dnsHkF/Mr9Yys5jw/49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ+3SK8b0mA4SscH\n" +
+    "dIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV+419cPJvYybHys5m7thS3QI7E\n" +
+    "LTpMV+WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0v\n" +
+    "EU8bVDeGXm1ha5gcC5KxqqnadO/WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3Nn\n" +
+    "xSSScGCxMrGJuTDtnz+Eh6l6ysT+Nei9ZRMxNu8sZKAR43XkVXxF/OdSCbftFOAs\n" +
+    "wyPJtyhQALGPcK5cWPQS2sUCAwEAAQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(importKey);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "RSA",
+    n: "qF66soiDvuqUB7ufWtuV5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTIYysJ_rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V_UR-zEygL3UzzZmbdjuyZz-SjtFY-SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR_yy5NWPaJ_yv4oI_exvuZnUwwBHvHgwVchfr7Jh5LRmYTPeyuI1lUOovVzE-0Ty_2tFfrm2hpedqYXvEuVu-yJzfuNoLfTGfz15J76eoRdFTCTdaG_MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9DdnsHkF_Mr9Yys5jw_49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ-3SK8b0mA4SscHdIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV-419cPJvYybHys5m7thS3QI7ELTpMV-WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0vEU8bVDeGXm1ha5gcC5KxqqnadO_WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3NnxSSScGCxMrGJuTDtnz-Eh6l6ysT-Nei9ZRMxNu8sZKAR43XkVXxF_OdSCbftFOAswyPJtyhQALGPcK5cWPQS2sU",
+    e: "AQAB",
+  });
+});
+
+Deno.test("EC export public jwk", function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVEEIrFEZ+40Pk90LtKBQ3r7FGAPl\n" +
+    "v4bvX9grC8bNiNiVAcyEKs+QZKQj/0/CUPJV10AmavrUoPk/7Wy0sejopQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "EC",
+    x: "VEEIrFEZ-40Pk90LtKBQ3r7FGAPlv4bvX9grC8bNiNg",
+    y: "lQHMhCrPkGSkI_9PwlDyVddAJmr61KD5P-1stLHo6KU",
+    crv: "P-256",
+  });
+});
+
+Deno.test("Ed25519 export public jwk", function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MCowBQYDK2VwAyEAKCVFOD6Le61XM7HbN/MB/N06mX5bti2p50qjLvT1mzE=\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    crv: "Ed25519",
+    x: "KCVFOD6Le61XM7HbN_MB_N06mX5bti2p50qjLvT1mzE",
+    kty: "OKP",
+  });
+});
+
+Deno.test("EC import jwk public key", function () {
+  const publicKey = createPublicKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+    },
+    format: "jwk",
+  });
+
+  const publicSpki = publicKey.export({ type: "spki", format: "pem" });
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/GGuz19zab5J70zyiUK6sAM5mHqU
+bsY8H6U2TnVlt+lNxkbl59dkMiE0YOnpe66Ogmo4QlTYPZySMb2c6dI8hA==
+-----END PUBLIC KEY-----
+`;
+
+  assertEquals(publicSpki, spkiExpected);
+});
+
+Deno.test("EC import jwk private key", function () {
+  const privateKey = createPrivateKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+      d: "Wobjne0GqlB_1NynKu19rsw7zBHa94tKcWIxwIb88m8",
+    },
+    format: "jwk",
+  });
+
+  const privatePkcs8 = privateKey.export({ type: "pkcs8", format: "pem" });
+
+  const pkcs8Expected = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWobjne0GqlB/1Nyn
+Ku19rsw7zBHa94tKcWIxwIb88m+hRANCAAT8Ya7PX3NpvknvTPKJQrqwAzmYepRu
+xjwfpTZOdWW36U3GRuXn12QyITRg6el7ro6CajhCVNg9nJIxvZzp0jyE
+-----END PRIVATE KEY-----
+`;
+
+  assertEquals(privatePkcs8, pkcs8Expected);
+});
+
+Deno.test("createPublicKey x509", function () {
+  const certificate = `-----BEGIN CERTIFICATE-----
+MIIC8zCCAdugAwIBAgIBATANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDExB0ZXN0
+LWNlcnRpZmljYXRlMB4XDTI0MDkxNzA5MTczNVoXDTI3MDkxNzA5MTczNVowGzEZ
+MBcGA1UEAxMQdGVzdC1jZXJ0aWZpY2F0ZTCCASIwDQYJKoZIhvcNAQEBBQADggEP
+ADCCAQoCggEBAMOzTIrwvbUbPIrxCr5DO1XMd3tH37pID0no4cOUq1hxNEnB4l1j
+2201atvmXwzWI3xtPzfwOYUtE/DGagFh805/nod5yXwR6liGd9RjkABxPi0UF7jl
+lWHfBLyILUHVR9hEOl65vUpKx5ORNgbO9L7WsL/FKH9pvCbWjdI29+pQnZ4gOoWZ
+YC6auoKfG7TcbaFb9AubolcIlofC2MHP+cWjPA+iX6ezUqqN1Ug5xGiF/sC79M0o
+5d6E83zdXxyyFwydUWUv3EKgmVTLln/2hYQFKCRhy72n6L7y9JNcieOauQK0efJB
++2HwaWeAr2xkhSnWVCRl4nEgiu/E0nL/zNUCAwEAAaNCMEAwDgYDVR0PAQH/BAQD
+AgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFIAeXho137l8V6daKI33IvRb
+N6CyMA0GCSqGSIb3DQEBCwUAA4IBAQAQU1Sast6VsD4uTJiSz/lSEkLZ6wC/6v+R
+az0YSnbNmQ5YczBLdTLs07hBC1tDvv0vfopRXvNxP7AxkopX5O7Lc15zf5JdTZnY
+/tJwO62jZiaLsfAo2JzrZ31h2cFFFRTYPTx+8E4djgdmwKtaECeQFXqdpOHOJCGv
+NfwVlZ7Z/cd8fI8oiNtvJDAhPa/UZXAhFV74hT0DiuMwPiJvsG83rutvAYpZ8lPu
+yG6QSsxPnxzEHIKR+vgxUHKwTdv0sWt3XBmpIY5CGXFR2eIQP1jv0ohtcnLMJe8N
+z6TExWlQMjt66nV7R8cRAkzmABrG+NW3e8Zpac7Lkuv+zu0S+K7c
+-----END CERTIFICATE-----`;
+
+  const publicKey = createPublicKey(certificate);
+  assertEquals(publicKey.type, "public");
+  assertEquals(publicKey.asymmetricKeyType, "rsa");
+});
+
+// https://github.com/denoland/deno/issues/26188
+Deno.test("generateKeyPair large pem", function () {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  generateKeyPairSync("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+});
+
+Deno.test("generateKeyPair promisify", async () => {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  const { privateKey, publicKey } = await promisify(generateKeyPair)("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+
+  assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+});
+
+Deno.test("RSA export private JWK", function () {
+  // @ts-ignore @types/node broken
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicKeyEncoding: {
+      format: "jwk",
+    },
+    privateKeyEncoding: {
+      format: "jwk",
+    },
+  });
+
+  assertEquals((privateKey as any).kty, "RSA");
+  assertEquals((privateKey as any).n, (publicKey as any).n);
+});
+
+Deno.test("X509Certificate checkHost", function () {
+  const der = Buffer.from(
+    "308203e8308202d0a0030201020214147d36c1c2f74206de9fab5f2226d78adb00a42630" +
+      "0d06092a864886f70d01010b0500307a310b3009060355040613025553310b3009060355" +
+      "04080c024341310b300906035504070c025346310f300d060355040a0c064a6f79656e74" +
+      "3110300e060355040b0c074e6f64652e6a73310c300a06035504030c036361313120301e" +
+      "06092a864886f70d010901161172794074696e79636c6f7564732e6f72673020170d3232" +
+      "303930333231343033375a180f32323936303631373231343033375a307d310b30090603" +
+      "55040613025553310b300906035504080c024341310b300906035504070c025346310f30" +
+      "0d060355040a0c064a6f79656e743110300e060355040b0c074e6f64652e6a73310f300d" +
+      "06035504030c066167656e74313120301e06092a864886f70d010901161172794074696e" +
+      "79636c6f7564732e6f726730820122300d06092a864886f70d01010105000382010f0030" +
+      "82010a0282010100d456320afb20d3827093dc2c4284ed04dfbabd56e1ddae529e28b790" +
+      "cd4256db273349f3735ffd337c7a6363ecca5a27b7f73dc7089a96c6d886db0c62388f1c" +
+      "dd6a963afcd599d5800e587a11f908960f84ed50ba25a28303ecda6e684fbe7baedc9ce8" +
+      "801327b1697af25097cee3f175e400984c0db6a8eb87be03b4cf94774ba56fffc8c63c68" +
+      "d6adeb60abbe69a7b14ab6a6b9e7baa89b5adab8eb07897c07f6d4fa3d660dff574107d2" +
+      "8e8f63467a788624c574197693e959cea1362ffae1bba10c8c0d88840abfef103631b2e8" +
+      "f5c39b5548a7ea57e8a39f89291813f45a76c448033a2b7ed8403f4baa147cf35e2d2554" +
+      "aa65ce49695797095bf4dc6b0203010001a361305f305d06082b06010505070101045130" +
+      "4f302306082b060105050730018617687474703a2f2f6f6373702e6e6f64656a732e6f72" +
+      "672f302806082b06010505073002861c687474703a2f2f63612e6e6f64656a732e6f7267" +
+      "2f63612e63657274300d06092a864886f70d01010b05000382010100c3349810632ccb7d" +
+      "a585de3ed51e34ed154f0f7215608cf2701c00eda444dc2427072c8aca4da6472c1d9e68" +
+      "f177f99a90a8b5dbf3884586d61cb1c14ea7016c8d38b70d1b46b42947db30edc1e9961e" +
+      "d46c0f0e35da427bfbe52900771817e733b371adf19e12137235141a34347db0dfc05579" +
+      "8b1f269f3bdf5e30ce35d1339d56bb3c570de9096215433047f87ca42447b44e7e6b5d0e" +
+      "48f7894ab186f85b6b1a74561b520952fea888617f32f582afce1111581cd63efcc68986" +
+      "00d248bb684dedb9c3d6710c38de9e9bc21f9c3394b729d5f707d64ea890603e5989f8fa" +
+      "59c19ad1a00732e7adc851b89487cc00799dde068aa64b3b8fd976e8bc113ef2",
+    "hex",
+  );
+
+  const cert = new X509Certificate(der);
+  assertEquals(cert.checkHost("www.google.com"), undefined);
+  assertEquals(cert.checkHost("agent1"), "agent1");
+});
+
+// https://github.com/denoland/deno/issues/27972
+Deno.test("curve25519 generate valid private jwk", function () {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
+    publicKeyEncoding: { format: "jwk" },
+    privateKeyEncoding: { format: "jwk" },
+  });
+
+  // @ts-ignore @types/node broken
+  assert(!publicKey.d);
+  // @ts-ignore @types/node broken
+  assert(privateKey.d);
 });

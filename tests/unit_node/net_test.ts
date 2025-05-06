@@ -1,9 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
 import * as http from "node:http";
+import * as dns from "node:dns";
+import util from "node:util";
+import console from "node:console";
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -77,6 +80,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
     port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
+      hostname = Deno.build.os === "windows" ? "localhost" : hostname;
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
         args: [
           "eval",
@@ -110,7 +114,7 @@ Deno.test({
       const s = new net.Server();
       s.listen(3000);
     } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
+      assert(e instanceof Deno.errors.NotCapable);
     }
   },
 });
@@ -224,4 +228,58 @@ Deno.test("[node/net] BlockList doesn't leak resources", () => {
   const blockList = new net.BlockList();
   blockList.addAddress("1.1.1.1");
   assert(blockList.check("1.1.1.1"));
+});
+
+Deno.test("[node/net] net.Server can listen on the same port immediately after it's closed", async () => {
+  const serverClosed = Promise.withResolvers<void>();
+  const server = net.createServer();
+  server.on("error", (e) => {
+    console.error(e);
+  });
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+    server.close();
+    server.listen(port, () => {
+      server.close(() => {
+        serverClosed.resolve();
+      });
+    });
+  });
+  await serverClosed.promise;
+});
+
+Deno.test("dns.resolve with ttl", async () => {
+  const d1 = Promise.withResolvers();
+  dns.resolve4("www.example.com", { ttl: true }, (err, addresses) => {
+    if (err) {
+      d1.reject(err);
+    } else {
+      d1.resolve(addresses);
+    }
+  });
+  // deno-lint-ignore no-explicit-any
+  const ret1 = await d1.promise as any[];
+  assert(ret1.length > 0);
+  assert(typeof ret1[0].ttl === "number");
+
+  const d2 = Promise.withResolvers();
+  dns.resolve4("www.example.com", (err, addresses) => {
+    if (err) {
+      d2.reject(err);
+    } else {
+      d2.resolve(addresses);
+    }
+  });
+  const ret2 = await d2.promise as string[];
+  assert(ret2.length > 0);
+  assert(typeof ret2[0] === "string");
+});
+
+Deno.test("[node/dns] dns.lookup (all=true) util promisify", async () => {
+  const lookup = util.promisify(dns.lookup);
+  const result = await lookup("localhost", { all: true });
+  assert(Array.isArray(result));
+  assert(typeof result[0].address === "string");
+  assert(typeof result[0].family === "number");
 });

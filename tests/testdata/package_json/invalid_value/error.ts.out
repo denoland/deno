@@ -1,4 +1,0 @@
-error: Invalid npm version requirement. Unexpected character.
-  invalid stuff that won't parse
-  ~
-    at file:///[WILDCARD]/error.ts:2:23

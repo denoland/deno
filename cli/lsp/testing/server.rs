@@ -1,37 +1,42 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::definitions::TestModule;
-use super::execution::TestRun;
-use super::lsp_custom;
-
-use crate::lsp::client::Client;
-use crate::lsp::client::TestingNotification;
-use crate::lsp::config;
-use crate::lsp::documents::DocumentsFilter;
-use crate::lsp::language_server::StateSnapshot;
-use crate::lsp::performance::Performance;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::thread;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::tokio_util::create_basic_runtime;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
-use std::thread;
 use tokio::sync::mpsc;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
-  TestingNotification::DeleteModule(
+use super::definitions::TestModule;
+use super::execution::TestRun;
+use super::lsp_custom;
+use crate::lsp::client::Client;
+use crate::lsp::client::TestingNotification;
+use crate::lsp::config;
+use crate::lsp::language_server::StateSnapshot;
+use crate::lsp::performance::Performance;
+use crate::lsp::urls::url_to_uri;
+
+fn as_delete_notification(
+  url: &ModuleSpecifier,
+) -> Result<TestingNotification, AnyError> {
+  Ok(TestingNotification::DeleteModule(
     lsp_custom::TestModuleDeleteNotificationParams {
-      text_document: lsp::TextDocumentIdentifier { uri },
+      text_document: lsp::TextDocumentIdentifier {
+        uri: url_to_uri(url)?,
+      },
     },
-  )
+  ))
 }
 
 pub type TestServerTests =
@@ -58,7 +63,7 @@ impl TestServer {
   pub fn new(
     client: Client,
     performance: Arc<Performance>,
-    maybe_root_uri: Option<ModuleSpecifier>,
+    maybe_root_url: Option<Arc<Url>>,
   ) -> Self {
     let tests = Default::default();
 
@@ -78,7 +83,7 @@ impl TestServer {
     let tests = server.tests.clone();
     let client = server.client.clone();
     let performance = server.performance.clone();
-    let mru = maybe_root_uri.clone();
+    let mru = maybe_root_url.clone();
     let _update_join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
 
@@ -94,49 +99,68 @@ impl TestServer {
               let mut keys: HashSet<ModuleSpecifier> =
                 tests.keys().cloned().collect();
               for document in snapshot
+                .document_modules
                 .documents
-                .documents(DocumentsFilter::AllDiagnosable)
+                .filtered_docs(|d| d.is_file_like() && d.is_diagnosable())
               {
-                let specifier = document.specifier();
-                if specifier.scheme() != "file" {
+                let Some(module) =
+                  snapshot.document_modules.primary_module(&document)
+                else {
+                  continue;
+                };
+                if module.specifier.scheme() != "file" {
                   continue;
                 }
-                if !snapshot.config.specifier_enabled_for_test(specifier) {
+                if !snapshot
+                  .config
+                  .specifier_enabled_for_test(&module.specifier)
+                {
                   continue;
                 }
-                keys.remove(specifier);
+                keys.remove(&module.specifier);
                 let script_version = document.script_version();
-                let valid =
-                  if let Some((_, old_script_version)) = tests.get(specifier) {
-                    old_script_version == &script_version
-                  } else {
-                    false
-                  };
+                let valid = if let Some((_, old_script_version)) =
+                  tests.get(&module.specifier)
+                {
+                  old_script_version == &script_version
+                } else {
+                  false
+                };
                 if !valid {
                   let was_empty = tests
-                    .remove(specifier)
+                    .remove(&module.specifier)
                     .map(|(tm, _)| tm.is_empty())
                     .unwrap_or(true);
-                  let test_module = document
-                    .maybe_test_module()
+                  let test_module = module
+                    .test_module()
                     .await
                     .map(|tm| tm.as_ref().clone())
-                    .unwrap_or_else(|| TestModule::new(specifier.clone()));
+                    .unwrap_or_else(|| {
+                      TestModule::new(module.specifier.as_ref().clone())
+                    });
                   if !test_module.is_empty() {
-                    client.send_test_notification(
-                      test_module.as_replace_notification(mru.as_ref()),
-                    );
+                    if let Ok(params) =
+                      test_module.as_replace_notification(mru.as_deref())
+                    {
+                      client.send_test_notification(params);
+                    }
                   } else if !was_empty {
-                    client.send_test_notification(as_delete_notification(
-                      specifier.clone(),
-                    ));
+                    if let Ok(params) =
+                      as_delete_notification(&module.specifier)
+                    {
+                      client.send_test_notification(params);
+                    }
                   }
-                  tests
-                    .insert(specifier.clone(), (test_module, script_version));
+                  tests.insert(
+                    module.specifier.as_ref().clone(),
+                    (test_module, script_version),
+                  );
                 }
               }
-              for key in keys {
-                client.send_test_notification(as_delete_notification(key));
+              for key in &keys {
+                if let Ok(params) = as_delete_notification(key) {
+                  client.send_test_notification(params);
+                }
               }
               performance.measure(mark);
             }
@@ -160,7 +184,7 @@ impl TestServer {
                 runs.get(&id).cloned()
               };
               if let Some(run) = maybe_run {
-                match run.exec(&client, maybe_root_uri.as_ref()).await {
+                match run.exec(&client, maybe_root_url.as_deref()).await {
                   Ok(_) => (),
                   Err(err) => {
                     client.show_message(lsp::MessageType::ERROR, err);

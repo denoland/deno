@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -22,7 +22,7 @@ function initialize(args) {
   } = args;
   if (!warmup) {
     if (initialized) {
-      throw Error("Node runtime already initialized");
+      throw new Error("Node runtime already initialized");
     }
     initialized = true;
     if (usesLocalNodeModulesDir) {
@@ -76,10 +76,14 @@ nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
 nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
 nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
 nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
-nodeGlobals.console = nativeModuleExports["console"];
 nodeGlobals.global = globalThis;
 nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
 nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
 nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
 nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
+
+nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+  nativeModuleExports["console"],
+  nativeModuleExports["process"],
+);

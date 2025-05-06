@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
 use util::deno_config_path;
@@ -14,7 +14,6 @@ fn node_compat_tests() {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable")
     .arg("-A")
     .arg(util::tests_path().join("node_compat/test.ts"))
     .spawn()

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -42,6 +42,7 @@ import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
   op_node_unstable_net_listen_udp,
@@ -324,12 +325,12 @@ export class UDP extends HandleWrap {
     this.#unrefed = true;
   }
 
-  #doBind(ip: string, port: number, _flags: number, family: number): number {
-    // TODO(cmorten): use flags to inform socket reuse etc.
+  #doBind(ip: string, port: number, flags: number, family: number): number {
     const listenOptions = {
       port,
       hostname: ip,
       transport: "udp" as const,
+      reuseAddress: (flags & os.UV_UDP_REUSEADDR) !== 0,
     };
 
     let listener;
@@ -337,16 +338,10 @@ export class UDP extends HandleWrap {
     try {
       listener = DenoListenDatagram(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
-        return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
-        return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
-
-      // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.NetAddr;

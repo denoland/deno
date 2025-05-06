@@ -1,0 +1,12 @@
+Defined in file:///[WILDCARD]/referenced_private_types.ts:5:1
+
+class MyClass
+
+  prop: MyInterface
+
+Defined in file:///[WILDCARD]/referenced_private_types.ts:1:1
+
+private interface MyInterface
+
+  prop?: string
+

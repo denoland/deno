@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 const {
   inspectArgs,
@@ -406,11 +406,11 @@ Deno.test(function invalidHeadersFlaky() {
   assertThrows(
     () => new Headers([["x", "\u0000x"]]),
     TypeError,
-    "Header value is not valid.",
+    'Invalid header value: "\u0000x"',
   );
   assertThrows(
     () => new Headers([["x", "\u0000x"]]),
     TypeError,
-    "Header value is not valid.",
+    'Invalid header value: "\u0000x"',
   );
 });

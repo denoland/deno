@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import crypto from "node:crypto";

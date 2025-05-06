@@ -1,0 +1,37 @@
+{
+  "tempDir": true,
+  "tests": {
+    "cjs_with_deps": {
+      "args": "run --allow-read --allow-env main.js",
+      "output": "main.out"
+    },
+    "cjs_with_deps_node_modules": {
+      "args": "run --allow-read --allow-env --node-modules-dir=auto main.js",
+      "output": "main_node_modules.out"
+    },
+    "cjs_with_deps_info": {
+      "steps": [
+        {
+          "args": "cache main.js",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "info main.js",
+          "output": "main_info.out"
+        }
+      ]
+    },
+    "cjs_with_deps_info_json": {
+      "steps": [
+        {
+          "args": "cache main.js",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "info --json main.js",
+          "output": "main_info_json.out"
+        }
+      ]
+    }
+  }
+}

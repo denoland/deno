@@ -1,16 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8Array,
+  Number,
   PromisePrototypeThen,
   PromisePrototypeCatch,
-  ObjectValues,
+  ObjectEntries,
+  ArrayPrototypeMap,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
-  TypedArrayPrototypeGetByteLength,
-  DataViewPrototypeGetBuffer,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
 } = primordials;
 const { isTypedArray, isDataView, close } = core;
 import {
@@ -38,9 +43,17 @@ const toU8 = (input) => {
   }
 
   if (isTypedArray(input)) {
-    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(input),
+      TypedArrayPrototypeGetByteOffset(input),
+      TypedArrayPrototypeGetByteLength(input),
+    );
   } else if (isDataView(input)) {
-    return new Uint8Array(DataViewPrototypeGetBuffer(input));
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(input),
+      DataViewPrototypeGetByteOffset(input),
+      DataViewPrototypeGetByteLength(input),
+    );
   }
 
   return input;
@@ -58,7 +71,7 @@ export class BrotliDecompress extends Transform {
   #context;
 
   // TODO(littledivy): use `options` argument
-  constructor(_options = {}) {
+  constructor(_options = { __proto__: null }) {
     super({
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
@@ -89,7 +102,7 @@ export class BrotliDecompress extends Transform {
 export class BrotliCompress extends Transform {
   #context;
 
-  constructor(options = {}) {
+  constructor(options = { __proto__: null }) {
     super({
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
@@ -114,7 +127,11 @@ export class BrotliCompress extends Transform {
       },
     });
 
-    const params = ObjectValues(options?.params ?? {});
+    const params = ArrayPrototypeMap(
+      ObjectEntries(options?.params ?? {}),
+      // Undo the stringification of the keys
+      (o) => [Number(o[0]), o[1]],
+    );
     this.#context = op_create_brotli_compress(params);
     const context = this.#context;
   }
@@ -164,7 +181,6 @@ export function brotliCompress(
     callback = options;
     options = {};
   }
-
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   PromisePrototypeCatch(
     PromisePrototypeThen(
@@ -187,8 +203,13 @@ export function brotliCompressSync(
   return Buffer.from(TypedArrayPrototypeSubarray(output, 0, len));
 }
 
-export function brotliDecompress(input) {
+export function brotliDecompress(input, options, callback) {
   const buf = toU8(input);
+
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
   return PromisePrototypeCatch(
     PromisePrototypeThen(
       op_brotli_decompress_async(buf),

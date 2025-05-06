@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "no_check": {
+      "args": "run --allow-read main.js",
+      "output": "main.out"
+    },
+    "check": {
+      "args": "check main.js",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "args": "task -q --config deno.json echo $(echo 5)",
+  "output": "task_additional_args_no_shell_expansion.out"
+}
