@@ -353,7 +353,11 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {}
+impl deno_core::GarbageCollected for TextDecoderResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TextDecoderResource"
+  }
+}
 
 #[op2(fast(op_encoding_encode_into_fast))]
 #[allow(deprecated)]

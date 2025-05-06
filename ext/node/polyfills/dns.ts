@@ -133,7 +133,11 @@ function onlookupall(
     };
   }
 
-  this.callback(null, parsedAddresses, undefined, netPermToken);
+  if (this.callback.length > 1) {
+    this.callback(null, parsedAddresses, undefined, netPermToken);
+  } else {
+    this.callback(null, parsedAddresses);
+  }
 }
 
 type LookupCallback = (

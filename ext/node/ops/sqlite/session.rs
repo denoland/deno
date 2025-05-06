@@ -27,7 +27,11 @@ pub struct Session {
   pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {}
+impl GarbageCollected for Session {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Session"
+  }
+}
 
 impl Drop for Session {
   fn drop(&mut self) {
