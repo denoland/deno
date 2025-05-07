@@ -299,9 +299,12 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
+    const onAbort = () => {
+      try {
+        this.kill("SIGTERM");
+      } catch {}
+    };
     signal?.[abortSignal.add](onAbort);
-
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
