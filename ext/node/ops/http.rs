@@ -140,6 +140,7 @@ pub enum ConnError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
