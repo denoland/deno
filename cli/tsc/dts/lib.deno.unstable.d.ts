@@ -4357,12 +4357,22 @@ declare namespace Deno {
       | TSUnknownKeyword
       | TSVoidKeyword;
 
+    /**
+     * A single line comment
+     * @category Linter
+     * @experimental
+     */
     export interface LineComment {
       type: "Line";
       range: Range;
       value: string;
     }
 
+    /**
+     * A potentially multi-line block comment
+     * @category Linter
+     * @experimental
+     */
     export interface BlockComment {
       type: "Block";
       range: Range;
