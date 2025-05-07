@@ -172,7 +172,7 @@ where
 {
   let (_handle, mut sender) = {
     let mut state = state.borrow_mut();
-    let (handle, sender) = if encrypted {
+    if encrypted {
       let resource_rc = state
         .resource_table
         .take::<TlsStreamResource>(conn_rid)
@@ -209,7 +209,7 @@ where
         }),
         sender,
       )
-    } else {
+    } else if cfg!(unix) {
       let resource_rc = state
         .resource_table
         .take::<UnixStreamResource>(conn_rid)
@@ -230,9 +230,9 @@ where
         }),
         sender,
       )
-    };
-
-    (handle, sender)
+    } else {
+      return Err(ConnError::Resource(ResourceError::BadResourceId));
+    }
   };
 
   // Create the request.
