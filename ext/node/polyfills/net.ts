@@ -1440,7 +1440,6 @@ export class Socket extends Duplex {
    */
   override resume(): this {
     if (
-      this[kBuffer] &&
       !this.connecting &&
       this._handle &&
       !this._handle.reading
