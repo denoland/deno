@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
@@ -23,19 +22,13 @@ pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
 pub type CliIsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
-pub type CliDenoResolver = deno_resolver::DenoResolver<
-  DenoInNpmPackageChecker,
-  DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
->;
 pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSys,
 >;
-pub type CliResolver = deno_resolver::graph::DenoGraphResolver<
+pub type CliResolver = deno_resolver::graph::DenoResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
@@ -43,16 +36,14 @@ pub type CliResolver = deno_resolver::graph::DenoGraphResolver<
 >;
 
 pub fn on_resolve_diagnostic(
-  diagnostic: &deno_resolver::workspace::MappedResolutionDiagnostic,
-  referrer: &ModuleSpecifier,
-  position: deno_graph::Position,
+  diagnostic: deno_resolver::graph::MappedResolutionDiagnosticWithPosition,
 ) {
   log::warn!(
     "{} {}\n    at {}:{}",
     deno_runtime::colors::yellow("Warning"),
-    diagnostic,
-    referrer,
-    position,
+    diagnostic.diagnostic,
+    diagnostic.referrer,
+    diagnostic.start
   );
 }
 
