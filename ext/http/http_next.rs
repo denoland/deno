@@ -344,16 +344,37 @@ where
   .unwrap()
   .into();
 
-  let authority: v8::Local<v8::Value> = match request_properties.authority {
-    Some(authority) => v8::String::new_from_utf8(
+  let scheme: v8::Local<v8::Value> = match request_parts.uri.scheme_str() {
+    Some(scheme) => v8::String::new_from_utf8(
       scope,
-      authority.as_bytes(),
+      scheme.as_bytes(),
       v8::NewStringType::Normal,
     )
     .unwrap()
     .into(),
     None => v8::undefined(scope).into(),
   };
+
+  let authority: v8::Local<v8::Value> =
+    if let Some(authority) = request_parts.uri.authority() {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_str().as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else if let Some(authority) = request_properties.authority {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else {
+      v8::undefined(scope).into()
+    };
 
   // Only extract the path part - we handle authority elsewhere
   let path = match request_parts.uri.path_and_query() {
@@ -385,11 +406,11 @@ where
   .into();
 
   let port: v8::Local<v8::Value> = match request_info.peer_port {
-    Some(port) => v8::Integer::new(scope, port.into()).into(),
+    Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port];
+  let vec = [method, authority, path, peer_address, port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
@@ -741,7 +762,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
 }
 
 #[op2(async)]
-pub async fn op_http_request_on_cancel(external: *const c_void) {
+pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_request_on_cancel") };
@@ -750,7 +771,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) {
   http.on_cancel(tx);
   drop(http);
 
-  rx.await.ok();
+  rx.await.is_ok()
 }
 
 /// Returned promise resolves when body streaming finishes.
@@ -928,8 +949,15 @@ fn serve_https(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     async move {
@@ -976,8 +1004,15 @@ fn serve_http(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     serve_http2_autodetect(io, svc, listen_cancel_handle, options)
@@ -1009,6 +1044,10 @@ where
     }
     #[cfg(unix)]
     NetworkStream::Unix(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    #[cfg(unix)]
+    NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
   }
@@ -1082,7 +1121,7 @@ impl Drop for HttpJoinHandle {
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1129,6 +1168,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 
@@ -1137,7 +1177,7 @@ where
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1171,6 +1211,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 

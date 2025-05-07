@@ -20,5 +20,5 @@ Object.defineProperty(globalThis, webidl.brand, {
 });
 ```
 
-Then from rust, provide `init_webidl::init_webidl::init_ops_and_esm()` in the
-`extensions` field of your `RuntimeOptions`
+Then from rust, provide `init_webidl::init_webidl::init()` in the `extensions`
+field of your `RuntimeOptions`

@@ -40,6 +40,8 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
+pub use fs::url_to_notebook_cell_uri;
+pub use fs::url_to_uri;
 pub use fs::PathRef;
 pub use fs::TempDir;
 
@@ -323,7 +325,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 33;
+pub const TEST_SERVERS_COUNT: usize = 34;
 
 #[derive(Default)]
 struct HttpServerCount {

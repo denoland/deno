@@ -233,7 +233,7 @@ fn resolve_paths_with_options_batches(
       });
     }
   }
-  if paths_with_options_batches.is_empty() {
+  if paths_with_options_batches.is_empty() && !lint_flags.permit_no_files {
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
@@ -587,8 +587,7 @@ fn lint_stdin(
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
   let deno_lint_config =
     tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
-  let lint_options =
-    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags)?;
+  let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
     start_dir.maybe_deno_json().map(|c| c.as_ref()),

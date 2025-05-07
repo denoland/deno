@@ -1,0 +1,25 @@
+./denodir
+[WILDCARD]- gen
+-- file
+[WILDCARD]--- jsr_http1.ts.js
+[WILDCARD]--- jsr_http2.ts.js
+-- http
+--- 127.0.0.1_PORT4250
+---- http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/http/1.0.0/mod.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts ([WILDLINE])
+[WILDCARD]- remote
+-- http
+--- 127.0.0.1_PORT4250
+---- http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/http/meta.json ([WILDLINE])
+---- http://127.0.0.1:4250/@std/http/1.0.0/mod.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts ([WILDLINE])
+---- http://127.0.0.1:4250/@std/http/1.0.0_meta.json ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/meta.json ([WILDLINE])
+---- http://127.0.0.1:4250/@std/assert/1.0.0_meta.json ([WILDLINE])
+- v8_code_cache_v2[WILDCARD]

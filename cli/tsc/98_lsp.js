@@ -13,6 +13,7 @@ import {
   IS_NODE_SOURCE_FILE_CACHE,
   LANGUAGE_SERVICE_ENTRIES,
   LAST_REQUEST_METHOD,
+  LAST_REQUEST_NOTEBOOK_URI,
   LAST_REQUEST_SCOPE,
   OperationCanceledError,
   PROJECT_VERSION_CACHE,
@@ -106,6 +107,9 @@ const documentRegistry = {
         true,
         scriptKind,
       );
+      if (scriptSnapshot.isClassicScript) {
+        sourceFile.externalModuleIndicator = undefined;
+      }
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     const sourceRefCount = SOURCE_REF_COUNTS.get(fileName) ?? 0;
@@ -168,6 +172,9 @@ const documentRegistry = {
           /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
         ),
       );
+      if (scriptSnapshot.isClassicScript) {
+        sourceFile.externalModuleIndicator = undefined;
+      }
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;
@@ -198,7 +205,7 @@ const documentRegistry = {
       SOURCE_REF_COUNTS.delete(path);
       // We call `cleanupSemanticCache` for other purposes, don't bust the
       // source cache in this case.
-      if (LAST_REQUEST_METHOD.get() != "cleanupSemanticCache") {
+      if (LAST_REQUEST_METHOD.get() != "$cleanupSemanticCache") {
         const mapKey = path + key;
         documentRegistrySourceFileCache.delete(mapKey);
         SCRIPT_SNAPSHOT_CACHE.delete(path);
@@ -272,7 +279,7 @@ function respond(_id, data = null, error = null) {
   }
 }
 
-/** @typedef {[[string, number][], number, [string, any][]] } PendingChange */
+/** @typedef {[[string, number][], number, [string, any][], [string, string][]] } PendingChange */
 /**
  * @template T
  * @typedef {T | null} Option<T> */
@@ -357,6 +364,7 @@ export async function serverMainLoop(enableDebugLogging) {
         request[2],
         request[3],
         request[4],
+        request[5],
       );
     } catch (err) {
       error(`Internal error occurred processing request: ${err}`);
@@ -407,14 +415,16 @@ function arraysEqual(a, b) {
  * @param {string} method
  * @param {any[]} args
  * @param {string | null} scope
+ * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequestInner(id, method, args, scope, maybeChange) {
-  debug(`serverRequest()`, id, method, args, scope, maybeChange);
+function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
+  debug(`serverRequest()`, id, method, args, scope, notebookUri, maybeChange);
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
     const newProjectVersion = maybeChange[1];
     const newConfigsByScope = maybeChange[2];
+    const newNotebookScopes = maybeChange[3];
     if (newConfigsByScope) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
       ASSET_SCOPES.clear();
@@ -422,6 +432,7 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       const newByScope = new Map();
       for (const [scope, config] of newConfigsByScope) {
         LAST_REQUEST_SCOPE.set(scope);
+        LAST_REQUEST_NOTEBOOK_URI.set(null);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
         const ls = oldEntry ? oldEntry.ls : createLs();
         const compilerOptions = lspTsConfigToCompilerOptions(config);
@@ -432,6 +443,27 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
         oldEntry.ls.dispose();
       }
       LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
+    }
+    if (newNotebookScopes) {
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byNotebookUri } */
+      const newByNotebookUri = new Map();
+      for (const [notebookUri, scope] of newNotebookScopes) {
+        LAST_REQUEST_SCOPE.set(scope);
+        LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(
+          notebookUri,
+        );
+        const ls = oldEntry ? oldEntry.ls : createLs();
+        const compilerOptions =
+          LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.compilerOptions ??
+            LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+        newByNotebookUri.set(notebookUri, { ls, compilerOptions });
+        LANGUAGE_SERVICE_ENTRIES.byNotebookUri.delete(notebookUri);
+      }
+      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()) {
+        oldEntry.ls.dispose();
+      }
+      LANGUAGE_SERVICE_ENTRIES.byNotebookUri = newByNotebookUri;
     }
 
     PROJECT_VERSION_CACHE.set(newProjectVersion);
@@ -448,7 +480,7 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       SCRIPT_SNAPSHOT_CACHE.delete(script);
     }
 
-    if (newConfigsByScope || opened || closed) {
+    if (newConfigsByScope || newNotebookScopes || opened || closed) {
       clearScriptNamesCache();
     }
   }
@@ -461,9 +493,28 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
   }
   LAST_REQUEST_METHOD.set(method);
   LAST_REQUEST_SCOPE.set(scope);
-  const ls = (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
-    LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+  LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
+  const ls =
+    (notebookUri
+      ? LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(notebookUri)?.ls
+      : null) ??
+      (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
+      LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
   switch (method) {
+    case "$cleanupSemanticCache": {
+      for (
+        const ls of [
+          LANGUAGE_SERVICE_ENTRIES.unscoped.ls,
+          ...[...LANGUAGE_SERVICE_ENTRIES.byScope.values()].map((e) => e.ls),
+          ...[...LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()].map((e) =>
+            e.ls
+          ),
+        ]
+      ) {
+        ls.cleanupSemanticCache();
+      }
+      return respond(id, null);
+    }
     case "$getSupportedCodeFixes": {
       return respond(
         id,
@@ -478,17 +529,17 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
       try {
-        /** @type {Record<string, any[]>} */
-        const diagnosticMap = {};
+        /** @type {any[][]} */
+        const diagnosticsList = [];
         for (const specifier of args[0]) {
-          diagnosticMap[specifier] = fromTypeScriptDiagnostics([
+          diagnosticsList.push(fromTypeScriptDiagnostics([
             ...ls.getSemanticDiagnostics(specifier),
             ...ls.getSuggestionDiagnostics(specifier),
             ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic));
+          ].filter(filterMapDiagnostic)));
         }
         let ambient =
           ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
@@ -502,18 +553,25 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
         } else {
           ambientModulesCacheByScope.set(scope, ambient);
         }
-        return respond(id, [diagnosticMap, ambient]);
+        return respond(id, [diagnosticsList, ambient]);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            [{}, null],
-            formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+            [[], null],
+            formatErrorWithArgs(e, [
+              id,
+              method,
+              args,
+              scope,
+              notebookUri,
+              maybeChange,
+            ]),
           );
         }
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
     }
     default:
@@ -530,7 +588,14 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
             return respond(
               id,
               null,
-              formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+              formatErrorWithArgs(e, [
+                id,
+                method,
+                args,
+                scope,
+                notebookUri,
+                maybeChange,
+              ]),
             );
           }
           return respond(id);
@@ -548,12 +613,13 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
  * @param {string} method
  * @param {any[]} args
  * @param {string | null} scope
+ * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, maybeChange) {
+function serverRequest(id, method, args, scope, notebookUri, maybeChange) {
   const span = ops.op_make_span(`serverRequest(${method})`, true);
   try {
-    serverRequestInner(id, method, args, scope, maybeChange);
+    serverRequestInner(id, method, args, scope, notebookUri, maybeChange);
   } finally {
     ops.op_exit_span(span, true);
   }

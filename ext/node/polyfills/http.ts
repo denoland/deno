@@ -9,6 +9,8 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_tls_key_null,
+  op_tls_key_static,
   op_tls_start,
 } from "ext:core/ops";
 
@@ -67,6 +69,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
+import { Response } from "ext:deno_fetch/23_response.js";
 import {
   builtinTracer,
   ContextManager,
@@ -130,14 +133,18 @@ function validateHost(host, name) {
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
+const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 
 class FakeSocket extends EventEmitter {
+  /** Stores the underlying request for lazily binding to abort signal */
+  #request: Request | undefined;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
+      request?: Request;
     } = {},
   ) {
     super();
@@ -147,6 +154,15 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
+    this.#request = opts.request;
+  }
+
+  [kBindToAbortSignal]() {
+    const signal = this.#request?.signal;
+    signal?.addEventListener("abort", () => {
+      this.emit("error", signal.reason);
+      this.emit("close");
+    }, { once: true });
   }
 
   setKeepAlive() {}
@@ -501,12 +517,21 @@ class ClientRequest extends OutgoingMessage {
 
         let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
+          const hasCaCerts = this.agent?.options?.ca !== undefined;
+          const caCerts = hasCaCerts
+            ? [this.agent.options.ca.toString("UTF-8")]
+            : [];
+          const hasTlsKey = this.agent?.options?.key !== undefined &&
+            this.agent?.options?.cert !== undefined;
+          const keyPair = hasTlsKey
+            ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
+            : op_tls_key_null();
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
             hostname: parsedUrl.hostname,
-            caCerts: [],
+            caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
-          });
+          }, keyPair);
         }
 
         this._req = await op_node_http_request_with_conn(
@@ -1001,6 +1026,10 @@ export class IncomingMessageForClient extends NodeReadable {
     // Flag for when we decide that this message cannot possibly be
     // read by the user, so there's no point continuing to handle it.
     this._dumped = false;
+
+    this.on("close", () => {
+      this.socket.emit("close");
+    });
   }
 
   get connection() {
@@ -1490,7 +1519,16 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-
+  this.on("newListener", (event) => {
+    if (event === "close") {
+      this.socket?.[kBindToAbortSignal]();
+      this.socket?.on("close", () => {
+        if (!this.finished) {
+          this.emit("close");
+        }
+      });
+    }
+  });
   this._header = "";
 } as unknown as ServerResponseStatic;
 
@@ -1754,6 +1792,8 @@ Object.defineProperty(ServerResponse.prototype, "connection", {
   ),
 });
 
+const kRawHeaders = Symbol("rawHeaders");
+
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
@@ -1793,7 +1833,12 @@ export class IncomingMessageForServer extends NodeReadable {
     this.method = "";
     this.socket = socket;
     this.upgrade = null;
-    this.rawHeaders = [];
+    this[kRawHeaders] = [];
+    socket?.on("error", (e) => {
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", e);
+      }
+    });
   }
 
   get aborted() {
@@ -1811,7 +1856,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.rawHeaders);
+      const entries = headersEntries(this[kRawHeaders]);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1822,6 +1867,16 @@ export class IncomingMessageForServer extends NodeReadable {
 
   set headers(val) {
     this.#headers = val;
+  }
+
+  get rawHeaders() {
+    const entries = headersEntries(this[kRawHeaders]);
+    const out = new Array(entries.length * 2);
+    for (let i = 0; i < entries.length; i++) {
+      out[i * 2] = entries[i][0];
+      out[i * 2 + 1] = entries[i][1];
+    }
+    return out;
   }
 
   // connection is deprecated, but still tested in unit test.
@@ -1918,6 +1973,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
+        request,
       });
 
       const req = new IncomingMessageForServer(socket);
@@ -1927,7 +1983,7 @@ export class ServerImpl extends EventEmitter {
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
-      req.rawHeaders = request.headers;
+      req[kRawHeaders] = request.headers;
 
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);

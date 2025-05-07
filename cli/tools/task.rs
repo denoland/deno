@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -31,6 +31,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use regex::Regex;
 
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
@@ -163,7 +164,8 @@ pub async fn execute_script(
     )
   };
 
-  let npm_installer = factory.npm_installer_if_managed()?;
+  let maybe_lockfile = factory.maybe_lockfile().await?.cloned();
+  let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
@@ -182,6 +184,7 @@ pub async fn execute_script(
     node_resolver: node_resolver.as_ref(),
     env_vars,
     cli_options,
+    maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
   };
 
@@ -220,7 +223,7 @@ pub async fn execute_script(
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   script: &'a str,
-  cwd: &'a Path,
+  cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
@@ -231,8 +234,9 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a NpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
-  env_vars: HashMap<String, String>,
+  env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
 }
 
@@ -439,7 +443,7 @@ impl<'a> TaskRunner<'a> {
       .run_single(RunSingleOptions {
         task_name,
         script: command,
-        cwd: &cwd,
+        cwd,
         custom_commands,
         kill_signal,
         argv,
@@ -482,7 +486,7 @@ impl<'a> TaskRunner<'a> {
           .run_single(RunSingleOptions {
             task_name,
             script,
-            cwd: &cwd,
+            cwd: cwd.clone(),
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
@@ -539,7 +543,7 @@ impl<'a> TaskRunner<'a> {
         .ensure_top_level_package_json_install()
         .await?;
       npm_installer.cache_packages(PackageCaching::All).await?;
-      if let Some(lockfile) = self.cli_options.maybe_lockfile() {
+      if let Some(lockfile) = &self.maybe_lockfile {
         lockfile.write_if_changed()?;
       }
     }

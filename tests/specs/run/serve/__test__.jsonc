@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "on_listen_default": {
+      "args": "run -A on_listen_default.ts",
+      "output": "on_listen_default.out",
+      "if": "unix"
+    },
+    "ipv6_hostname": {
+      "args": "run -A ipv6_hostname.ts",
+      "output": "ipv6_hostname.out",
+      "if": "unix"
+    }
+  }
+}

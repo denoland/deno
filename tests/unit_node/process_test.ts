@@ -6,6 +6,7 @@ import process, {
   arch as importedArch,
   argv,
   argv0 as importedArgv0,
+  cpuUsage as importedCpuUsage,
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
@@ -438,9 +439,10 @@ Deno.test({
   fn() {
     Deno.env.set("FOO", "1");
     assert("FOO" in process.env);
-    assertFalse("BAR" in process.env);
+    assertThrows(() => {
+      process.env.BAR;
+    }, Deno.errors.NotCapable);
     assert(Object.hasOwn(process.env, "FOO"));
-    assertFalse(Object.hasOwn(process.env, "BAR"));
   },
 });
 
@@ -531,7 +533,13 @@ Deno.test({
 Deno.test({
   name: "process.stdin readable with piping a stream",
   async fn() {
-    const expected = ["16384", "foo", "bar", "null", "end"];
+    const expected = [
+      Deno.build.os == "windows" ? "16384" : "65536",
+      "foo",
+      "bar",
+      "null",
+      "end",
+    ];
     const scriptPath = "./testdata/process_stdin.ts";
 
     const command = new Deno.Command(Deno.execPath(), {
@@ -559,7 +567,7 @@ Deno.test({
   name: "process.stdin readable with piping a socket",
   ignore: Deno.build.os === "windows",
   async fn() {
-    const expected = ["16384", "foo", "bar", "null", "end"];
+    const expected = ["65536", "foo", "bar", "null", "end"];
     const scriptPath = "./testdata/process_stdin.ts";
 
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 9000 });
@@ -616,7 +624,7 @@ Deno.test({
   // // TODO(PolarETech): Prepare a similar test that can be run on Windows
   // ignore: Deno.build.os === "windows",
   async fn() {
-    const expected = ["16384", "null", "end"];
+    const expected = ["65536", "null", "end"];
     const scriptPath = "./testdata/process_stdin.ts";
     const directoryPath = "./testdata/";
 
@@ -649,6 +657,7 @@ Deno.test({
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
     assertEquals(process.stdout.columns, consoleSize?.columns);
     assertEquals(process.stdout.rows, consoleSize?.rows);
+    assert([1, 4, 8, 24].includes(process.stdout.getColorDepth()));
     assertEquals(
       `${process.stdout.getWindowSize()}`,
       `${consoleSize && [consoleSize.columns, consoleSize.rows]}`,
@@ -1145,9 +1154,56 @@ Deno.test(function importedExecPathTest() {
 });
 
 Deno.test("process.cpuUsage()", () => {
+  assert(process.cpuUsage.length === 1);
   const cpuUsage = process.cpuUsage();
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
+  const a = process.cpuUsage();
+  const b = process.cpuUsage(a);
+  assert(a.user > b.user);
+  assert(a.system > b.system);
+
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({});
+    },
+    TypeError,
+  );
+
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({ user: "1", system: 2 });
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({ user: 1, system: "2" });
+    },
+    TypeError,
+  );
+
+  for (const invalidNumber of [-1, -Infinity, Infinity, NaN]) {
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: invalidNumber, system: 2 });
+      },
+      RangeError,
+    );
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: 2, system: invalidNumber });
+      },
+      RangeError,
+    );
+  }
+});
+
+Deno.test("importedCpuUsage", () => {
+  assert(importedCpuUsage === process.cpuUsage);
 });
 
 Deno.test("process.stdout.columns writable", () => {

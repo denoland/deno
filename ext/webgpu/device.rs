@@ -64,7 +64,11 @@ impl WebIdlInterfaceConverter for GPUDevice {
   const NAME: &'static str = "GPUDevice";
 }
 
-impl GarbageCollected for GPUDevice {}
+impl GarbageCollected for GPUDevice {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUDevice"
+  }
+}
 
 // EventTarget is extended in JS
 #[op2]
@@ -872,7 +876,11 @@ impl GPUDevice {
 
 pub struct GPUDeviceLostInfo;
 
-impl GarbageCollected for GPUDeviceLostInfo {}
+impl GarbageCollected for GPUDeviceLostInfo {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUDeviceLostInfo"
+  }
+}
 
 #[op2]
 impl GPUDeviceLostInfo {
@@ -887,4 +895,14 @@ impl GPUDeviceLostInfo {
   fn message(&self) -> &'static str {
     "device was lost"
   }
+}
+
+#[op2(fast)]
+pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_start_capture(device.id);
+}
+
+#[op2(fast)]
+pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
+  device.instance.device_stop_capture(device.id);
 }

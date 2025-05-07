@@ -19,6 +19,7 @@ use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_lib::util::checksum;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
@@ -49,7 +50,7 @@ pub async fn info(
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = cli_options.maybe_lockfile();
+    let maybe_lockfile = factory.maybe_lockfile().await?;
     let resolver = factory.workspace_resolver().await?.clone();
     let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
@@ -198,6 +199,7 @@ fn print_cache_info(
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
+  let deno_version = DENO_VERSION_INFO.deno;
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.dir_path();
@@ -218,6 +220,7 @@ fn print_cache_info(
   if json {
     let mut json_output = serde_json::json!({
       "version": JSON_SCHEMA_VERSION,
+      "denoVersion": deno_version,
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
@@ -233,6 +236,7 @@ fn print_cache_info(
 
     display::write_json_to_stdout(&json_output)
   } else {
+    println!("{} {}", colors::bold("Deno version:"), deno_version);
     println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
       "{} {}",
@@ -704,7 +708,6 @@ impl<'a> GraphDisplayContext<'a> {
             }
           }
           Jsr(_) => "(loading error)",
-          NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",
           TooManyRedirects => "(too many redirects error)",
         };

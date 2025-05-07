@@ -1,8 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { Buffer } from "node:buffer";
 import {
@@ -15,6 +12,11 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  StringPrototypeToString,
+} = primordials;
 
 /** These options aren't functionally used right now, as `Dir` doesn't yet support them.
  * However, these values are still validated.
@@ -29,6 +31,17 @@ function _validateFunction(callback: unknown): asserts callback is Callback {
   validateFunction(callback, "callback");
 }
 
+function getPathString(
+  path: string | Buffer | URL,
+): string {
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+
+  return StringPrototypeToString(path);
+}
+
 /** @link https://nodejs.org/api/fs.html#fsopendirsyncpath-options */
 export function opendir(
   path: string | Buffer | URL,
@@ -38,7 +51,7 @@ export function opendir(
   callback = typeof options === "function" ? options : callback;
   _validateFunction(callback);
 
-  path = getValidatedPath(path).toString();
+  path = getPathString(getValidatedPath(path));
 
   let err, dir;
   try {
@@ -72,7 +85,7 @@ export function opendirSync(
   path: string | Buffer | URL,
   options?: Options,
 ): Dir {
-  path = getValidatedPath(path).toString();
+  path = getPathString(getValidatedPath(path));
 
   const { bufferSize } = getOptions(options, {
     encoding: "utf8",

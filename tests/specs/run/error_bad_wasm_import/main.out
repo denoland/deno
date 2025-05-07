@@ -1,0 +1,2 @@
+error: Relative import path "env" not prefixed with / or ./ or ../
+    at file:///[WILDLINE]/toolkit.wasm:1:65
