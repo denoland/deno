@@ -1,5 +1,5 @@
 {
   "imports": {
-    "@types/node": "npm:@types/node@*"
+    "@types/node": "npm:@types/node@22.15.15"
   }
 }
