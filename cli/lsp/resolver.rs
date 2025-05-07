@@ -77,7 +77,6 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmResolutionInitializer;
 use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::on_resolve_diagnostic;
-use crate::resolver::CliDenoResolver;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -913,45 +912,49 @@ impl<'a> ResolverFactory<'a> {
   pub fn cli_resolver(&self) -> &Arc<CliResolver> {
     self.services.cli_resolver.get_or_init(|| {
       let npm_req_resolver = self.npm_pkg_req_resolver().cloned();
-      let deno_resolver = Arc::new(CliDenoResolver::new(DenoResolverOptions {
-        in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
-        node_and_req_resolver: match (self.node_resolver(), npm_req_resolver) {
-          (Some(node_resolver), Some(npm_req_resolver)) => {
-            Some(NodeAndNpmReqResolver {
-              node_resolver: node_resolver.clone(),
-              npm_req_resolver,
-            })
-          }
-          _ => None,
-        },
-        workspace_resolver: self
-          .config_data
-          .map(|d| d.resolver.clone())
-          .unwrap_or_else(|| {
-            Arc::new(WorkspaceResolver::new_raw(
-              // this is fine because this is only used before initialization
-              Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
-              None,
-              Vec::new(),
-              Vec::new(),
-              PackageJsonDepResolution::Disabled,
-              Default::default(),
-              Default::default(),
-              Default::default(),
-              Default::default(),
-              self.sys.clone(),
-            ))
-          }),
-        bare_node_builtins: self
-          .config_data
-          .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
-        is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
-        maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
-      }));
+      let deno_resolver =
+        Arc::new(deno_resolver::RawDenoResolver::new(DenoResolverOptions {
+          in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
+          node_and_req_resolver: match (self.node_resolver(), npm_req_resolver)
+          {
+            (Some(node_resolver), Some(npm_req_resolver)) => {
+              Some(NodeAndNpmReqResolver {
+                node_resolver: node_resolver.clone(),
+                npm_req_resolver,
+              })
+            }
+            _ => None,
+          },
+          workspace_resolver: self
+            .config_data
+            .map(|d| d.resolver.clone())
+            .unwrap_or_else(|| {
+              Arc::new(WorkspaceResolver::new_raw(
+                // this is fine because this is only used before initialization
+                Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
+                None,
+                Vec::new(),
+                Vec::new(),
+                PackageJsonDepResolution::Disabled,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                self.sys.clone(),
+              ))
+            }),
+          bare_node_builtins: self
+            .config_data
+            .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
+          is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
+          maybe_vendor_dir: self
+            .config_data
+            .and_then(|d| d.vendor_dir.as_ref()),
+        }));
       Arc::new(CliResolver::new(
         deno_resolver,
         self.services.found_pkg_json_dep_flag.clone(),
-        Box::new(on_resolve_diagnostic),
+        Some(Arc::new(on_resolve_diagnostic)),
       ))
     })
   }
