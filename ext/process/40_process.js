@@ -302,7 +302,9 @@ class ChildProcess {
     const onAbort = () => {
       try {
         this.kill("SIGTERM");
-      } catch {}
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
     };
     signal?.[abortSignal.add](onAbort);
     const waitPromise = op_spawn_wait(this.#rid);
