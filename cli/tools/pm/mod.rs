@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -413,7 +414,7 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = CliFileFetcher::new(
-    deps_http_cache.clone(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.sys(),
     Default::default(),
@@ -878,12 +879,12 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
-  let npm_installer = cli_factory.npm_installer()?;
+  let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
-  if let Some(lockfile) = cli_factory.cli_options()?.maybe_lockfile() {
+  if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
 

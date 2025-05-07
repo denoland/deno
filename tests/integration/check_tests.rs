@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
 use util::TestContext;
@@ -168,7 +169,7 @@ fn json_module_check_then_error() {
 
   temp_dir.write(
     "main.ts",
-    "import test from './test.json' assert { type: 'json' }; console.log(test.foo);\n",
+    "import test from './test.json' with { type: 'json' }; console.log(test.foo);\n",
   );
   temp_dir.write("test.json", correct_code);
 
@@ -183,8 +184,23 @@ fn json_module_check_then_error() {
     .assert_exit_code(1);
 }
 
-#[test]
-fn npm_module_check_then_error() {
+struct TestNpmPackageInfoProvider;
+
+#[async_trait::async_trait(?Send)]
+impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
+  async fn get_npm_package_info(
+    &self,
+    values: &[deno_semver::package::PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    Ok(values.iter().map(|_| Default::default()).collect())
+  }
+}
+
+#[tokio::test]
+async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()
     .add_npm_env_vars()
@@ -205,11 +221,15 @@ fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = deno_lockfile::Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
 
   // make the specifier resolve to version 1

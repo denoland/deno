@@ -93,7 +93,6 @@ import {
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -134,7 +133,11 @@ function onlookupall(
     };
   }
 
-  this.callback(null, parsedAddresses, undefined, netPermToken);
+  if (this.callback.length > 1) {
+    this.callback(null, parsedAddresses, undefined, netPermToken);
+  } else {
+    this.callback(null, parsedAddresses);
+  }
 }
 
 type LookupCallback = (
@@ -345,11 +348,6 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
     req.callback = callback as ResolveCallback;
     req.hostname = name;
     req.oncomplete = onresolve;
-
-    if (options && (options as ResolveOptions).ttl) {
-      notImplemented("dns.resolve* with ttl option");
-    }
-
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
     const err = this._handle[bindingName](req, domainToASCII(name));

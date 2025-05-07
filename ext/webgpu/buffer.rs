@@ -72,7 +72,11 @@ impl WebIdlInterfaceConverter for GPUBuffer {
   const NAME: &'static str = "GPUBuffer";
 }
 
-impl GarbageCollected for GPUBuffer {}
+impl GarbageCollected for GPUBuffer {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUBuffer"
+  }
+}
 
 #[op2]
 impl GPUBuffer {

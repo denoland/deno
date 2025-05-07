@@ -23,6 +23,7 @@ import {
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { op_bootstrap_color_depth } from "ext:core/ops";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
@@ -103,6 +104,13 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       value: () =>
         writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
     },
+    getColorDepth: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: () => op_bootstrap_color_depth(),
+    },
   });
 
   // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
@@ -175,9 +183,11 @@ export const initStdin = (warmup = false) => {
       break;
     }
     case "TTY": {
-      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
-      // just return null to re-use it.
-      if (!warmup) {
+      // FIXME: We should be able to create stdin handle during warmup and re-use it but
+      // cppgc object wraps crash in snapshot mode.
+      //
+      // To reproduce crash, change the condition to `if (!warmup)` below:
+      if (warmup) {
         return null;
       }
       stdin = new readStream(fd);

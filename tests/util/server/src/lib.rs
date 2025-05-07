@@ -40,6 +40,8 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
+pub use fs::url_to_notebook_cell_uri;
+pub use fs::url_to_uri;
 pub use fs::PathRef;
 pub use fs::TempDir;
 

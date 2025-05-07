@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 48;
+const cacheVersion = 55;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -318,6 +318,7 @@ const ci = {
   name: "ci",
   permissions: {
     contents: "write",
+    "id-token": "write", // Required for GitHub OIDC with Azure for code signing
   },
   on: {
     push: {
@@ -368,6 +369,12 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
+      // This is required to successfully authenticate with Azure using OIDC for
+      // code signing.
+      environment: {
+        name:
+          "${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'build' || '' }}",
+      },
       "timeout-minutes": 240,
       defaults: {
         run: {
@@ -701,13 +708,13 @@ const ci = {
           name: "Check tracing build",
           if:
             "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing ",
+          run: "cargo check -p deno --features=lsp-tracing",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -730,7 +737,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --all-targets --features=panic-trace",
             "df -h",
           ].join("\n"),
         },
@@ -818,7 +825,7 @@ const ci = {
           },
           run: [
             "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
-            "strip target/release/deno",
+            "strip -x -S target/release/deno",
             'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
             "rcodesign sign target/release/deno " +
             "--code-signature-flags=runtime " +
@@ -828,11 +835,74 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "strip ./denort",
+            "strip -x -S ./denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
             .join("\n"),
+        },
+        {
+          // Note: Azure OIDC credentials are only valid for 5 minutes, so
+          // authentication must be done right before signing.
+          name: "Authenticate with Azure (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/login@v1",
+          with: {
+            "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+            "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+            "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "enable-AzPSSession": true,
+          },
+        },
+        {
+          name: "Code sign deno.exe (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/trusted-signing-action@v0",
+          with: {
+            "endpoint": "https://eus.codesigning.azure.net/",
+            "trusted-signing-account-name": "deno-cli-code-signing",
+            "certificate-profile-name": "deno-cli-code-signing-cert",
+            "files-folder": "target/release",
+            "files-folder-filter": "deno.exe",
+            "file-digest": "SHA256",
+            "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+            "timestamp-digest": "SHA256",
+            "exclude-environment-credential": true,
+            "exclude-workload-identity-credential": true,
+            "exclude-managed-identity-credential": true,
+            "exclude-shared-token-cache-credential": true,
+            "exclude-visual-studio-credential": true,
+            "exclude-visual-studio-code-credential": true,
+            "exclude-azure-cli-credential": false,
+          },
+        },
+        {
+          name: "Verify signature (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          shell: "pwsh",
+          run: [
+            '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+            "$SignToolPath = $SignTool.FullName",
+            "& $SignToolPath verify /pa /v target\\release\\deno.exe",
+          ].join("\n"),
         },
         {
           name: "Pre-release (windows)",
@@ -887,7 +957,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -900,8 +970,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -914,7 +984,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked",
+          run: "cargo test --release --locked --features=panic-trace",
         },
         {
           name: "Configure hosts file for WPT",
@@ -1047,7 +1117,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
@@ -1065,7 +1135,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
@@ -1148,10 +1218,15 @@ const ci = {
           name: "Install wasm target",
           run: "rustup target add wasm32-unknown-unknown",
         },
+        // we want these crates to be Wasm compatible
         {
-          name: "Cargo build",
-          // we want this crate to be wasm compatible
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
+        },
+        {
+          name: "Cargo check (deno_npm_cache)",
+          run: "cargo check --target wasm32-unknown-unknown -p deno_npm_cache",
         },
       ]),
     },

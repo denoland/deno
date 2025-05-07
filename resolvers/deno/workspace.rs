@@ -10,8 +10,11 @@ use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
+use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJsonDepValue;
@@ -161,8 +164,8 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
 pub enum MappedResolution<'a> {
   Normal {
     specifier: Url,
-    used_import_map: bool,
     sloppy_reason: Option<SloppyImportsResolutionReason>,
+    used_import_map: bool,
     used_compiler_options_root_dirs: bool,
     maybe_diagnostic: Option<Box<MappedResolutionDiagnostic>>,
   },
@@ -1293,9 +1296,9 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         return self.maybe_resolve_specifier_to_workspace_jsr_pkg(
           MappedResolution::Normal {
             specifier,
+            sloppy_reason,
             used_import_map,
             used_compiler_options_root_dirs,
-            sloppy_reason,
             maybe_diagnostic: None,
           },
         );
@@ -1332,8 +1335,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }
     }
 
+    // 3. Attempt to resolve from the package.json dependencies.
     if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      // 2. Attempt to resolve from the package.json dependencies.
       let mut previously_found_dir = false;
       for (dir_url, pkg_json_folder) in self.pkg_jsons.iter().rev() {
         if !referrer.as_str().starts_with(dir_url.as_str()) {
@@ -1369,7 +1372,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         }
       }
 
-      // 3. Finally try to resolve to a workspace npm package if inside the workspace.
+      // 4. Try to resolve to a workspace npm package if inside the workspace.
       if referrer.as_str().starts_with(self.workspace_root.as_str()) {
         for pkg_json_folder in self.pkg_jsons.values() {
           let Some(name) = &pkg_json_folder.pkg_json.name else {
@@ -1437,15 +1440,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     Ok(match resolution {
       MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         ..
       } => MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         maybe_diagnostic,
       },
       _ => return Ok(resolution),
@@ -1631,6 +1634,41 @@ impl BaseUrl<'_> {
       }
       None => Cow::Borrowed(target.as_str()),
     }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScopedJsxImportSourceConfig {
+  unscoped: Option<JsxImportSourceConfig>,
+  by_scope: BTreeMap<UrlRc, Option<JsxImportSourceConfig>>,
+}
+
+impl ScopedJsxImportSourceConfig {
+  pub fn from_workspace_dir(
+    start_dir: &WorkspaceDirectory,
+  ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
+    let unscoped = start_dir.to_maybe_jsx_import_source_config()?;
+    let mut by_scope = BTreeMap::default();
+    for (dir_url, _) in start_dir.workspace.config_folders() {
+      let dir = start_dir.workspace.resolve_member_dir(dir_url);
+      let jsx_import_source_config_unscoped =
+        dir.to_maybe_jsx_import_source_config()?;
+      by_scope.insert(dir_url.clone(), jsx_import_source_config_unscoped);
+    }
+    Ok(Self { unscoped, by_scope })
+  }
+
+  /// Resolves the `JsxImportSourceConfig` to use for the provided referrer.
+  pub fn resolve_by_referrer(
+    &self,
+    referrer: &Url,
+  ) -> Option<&JsxImportSourceConfig> {
+    self
+      .by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.unscoped.as_ref())
   }
 }
 

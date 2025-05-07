@@ -12,6 +12,7 @@ use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -109,6 +110,8 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::cover_files;
+use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
@@ -628,15 +631,16 @@ async fn configure_main_worker(
       specifier.clone(),
       permissions_container,
       vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint_ext_for_test::init_ops(),
-        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
+        ops::testing::deno_test::init(worker_sender.sender),
+        ops::lint::deno_lint_ext_for_test::init(),
+        ops::jupyter::deno_jupyter_for_test::init(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
@@ -647,7 +651,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {
@@ -1562,7 +1566,7 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
@@ -1649,6 +1653,34 @@ pub async fn run_tests(
     },
   )
   .await?;
+
+  if test_flags.coverage_raw_data_only {
+    return Ok(());
+  }
+
+  if let Some(ref coverage) = test_flags.coverage_dir {
+    let reporters: [&dyn reporter::CoverageReporter; 3] = [
+      &reporter::SummaryCoverageReporter::new(),
+      &reporter::LcovCoverageReporter::new(),
+      &reporter::HtmlCoverageReporter::new(),
+    ];
+    if let Err(err) = cover_files(
+      flags,
+      vec![coverage.clone()],
+      vec![],
+      vec![],
+      vec![],
+      Some(
+        PathBuf::from(coverage)
+          .join("lcov.info")
+          .to_string_lossy()
+          .to_string(),
+      ),
+      &reporters,
+    ) {
+      log::info!("Error generating coverage report: {}", err);
+    }
+  }
 
   Ok(())
 }

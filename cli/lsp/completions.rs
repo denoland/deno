@@ -35,7 +35,6 @@ use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
-use crate::graph_util::to_node_resolution_mode;
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
@@ -167,11 +166,12 @@ pub async fn get_import_completions(
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
-    .map(to_node_resolution_mode)
+    .map(node_resolver::ResolutionMode::from_deno_graph)
     .unwrap_or_else(|| module.resolution_mode);
   let range = to_narrow_lsp_range(module.text_info(), graph_range.range);
-  let resolved = resolver
-    .as_cli_resolver(module.scope.as_deref())
+  let scoped_resolver = resolver.get_scoped_resolver(module.scope.as_deref());
+  let resolved = scoped_resolver
+    .as_cli_resolver()
     .resolve(
       text,
       &module.specifier,
@@ -377,8 +377,9 @@ fn get_local_completions(
     return None;
   }
   let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
-  let resolved_parent = resolver
-    .as_cli_resolver(Some(referrer))
+  let scoped_resolver = resolver.get_scoped_resolver(Some(referrer));
+  let resolved_parent = scoped_resolver
+    .as_cli_resolver()
     .resolve(
       parent,
       referrer,
@@ -849,6 +850,7 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     for (specifier, source) in fs_sources {

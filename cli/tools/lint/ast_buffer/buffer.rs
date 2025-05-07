@@ -534,6 +534,31 @@ impl SerializeCtx {
     }
   }
 
+  pub fn write_maybe_ref_vec_skip<P>(
+    &mut self,
+    prop: P,
+    parent_ref: &PendingRef,
+    value: Option<Vec<NodeRef>>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    if let Some(value) = value {
+      self.write_ref_vec(prop, parent_ref, value);
+    }
+  }
+
+  pub fn write_ref_vec_or_empty<P>(
+    &mut self,
+    prop: P,
+    parent_ref: &PendingRef,
+    value: Option<Vec<NodeRef>>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    let actual = value.unwrap_or_default();
+    self.write_ref_vec(prop, parent_ref, actual)
+  }
+
   /// Serialize all information we have into a buffer that can be sent to JS.
   /// It has the following structure:
   ///
