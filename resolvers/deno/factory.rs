@@ -47,6 +47,9 @@ use sys_traits::ThreadSleep;
 use thiserror::Error;
 use url::Url;
 
+use crate::cjs::CjsTracker;
+use crate::cjs::CjsTrackerRc;
+use crate::cjs::IsCjsResolutionMode;
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
@@ -68,11 +71,11 @@ use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
 use crate::workspace::WorkspaceResolver;
-use crate::DefaultDenoResolverRc;
-use crate::DenoResolver;
+use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
 use crate::NodeAndNpmReqResolver;
 use crate::NpmCacheDirRc;
+use crate::RawDenoResolver;
 use crate::WorkspaceResolverRc;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
@@ -588,8 +591,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ResolverFactoryOptions {
+  pub is_cjs_resolution_mode: IsCjsResolutionMode,
   pub npm_system_info: NpmSystemInfo,
   pub node_resolver_options: NodeResolverOptions,
   pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
@@ -599,12 +603,20 @@ pub struct ResolverFactoryOptions {
   /// Whether to resolve bare node builtins (ex. "path" as "node:path").
   pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
+  #[cfg(feature = "graph")]
+  pub on_mapped_resolution_diagnostic:
+    Option<crate::graph::OnMappedResolutionDiagnosticFn>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
   sys: NodeResolutionSys<TSys>,
-  deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
+  cjs_tracker: Deferred<CjsTrackerRc<DenoInNpmPackageChecker, TSys>>,
+  #[cfg(feature = "graph")]
+  deno_resolver:
+    async_once_cell::OnceCell<crate::graph::DefaultDenoResolverRc<TSys>>,
+  #[cfg(feature = "graph")]
+  found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -625,6 +637,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
+  raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
   workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
 }
@@ -639,7 +652,12 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         workspace_factory.sys.clone(),
         options.node_resolution_cache.clone(),
       ),
+      cjs_tracker: Default::default(),
+      raw_deno_resolver: Default::default(),
+      #[cfg(feature = "graph")]
       deno_resolver: Default::default(),
+      #[cfg(feature = "graph")]
+      found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
       npm_req_resolver: Default::default(),
@@ -652,14 +670,14 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     }
   }
 
-  pub async fn deno_resolver(
+  pub async fn raw_deno_resolver(
     &self,
-  ) -> Result<&DefaultDenoResolverRc<TSys>, anyhow::Error> {
+  ) -> Result<&DefaultRawDenoResolverRc<TSys>, anyhow::Error> {
     self
-      .deno_resolver
+      .raw_deno_resolver
       .get_or_try_init(
         async {
-          Ok(new_rc(DenoResolver::new(DenoResolverOptions {
+          Ok(new_rc(RawDenoResolver::new(DenoResolverOptions {
             in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
             node_and_req_resolver: if self.workspace_factory.no_npm() {
               None
@@ -682,6 +700,41 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         // boxed to prevent the futures getting big and exploding the stack
         .boxed_local(),
       )
+      .await
+  }
+
+  pub fn cjs_tracker(
+    &self,
+  ) -> Result<&CjsTrackerRc<DenoInNpmPackageChecker, TSys>, anyhow::Error> {
+    self.cjs_tracker.get_or_try_init(|| {
+      Ok(new_rc(CjsTracker::new(
+        self.in_npm_package_checker()?.clone(),
+        self.pkg_json_resolver().clone(),
+        self.options.is_cjs_resolution_mode,
+      )))
+    })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn found_package_json_dep_flag(
+    &self,
+  ) -> &crate::graph::FoundPackageJsonDepFlagRc {
+    &self.found_package_json_dep_flag
+  }
+
+  #[cfg(feature = "graph")]
+  pub async fn deno_resolver(
+    &self,
+  ) -> Result<&crate::graph::DefaultDenoResolverRc<TSys>, anyhow::Error> {
+    self
+      .deno_resolver
+      .get_or_try_init(async {
+        Ok(new_rc(crate::graph::DenoResolver::new(
+          self.raw_deno_resolver().await?.clone(),
+          self.found_package_json_dep_flag.clone(),
+          self.options.on_mapped_resolution_diagnostic.clone(),
+        )))
+      })
       .await
   }
 

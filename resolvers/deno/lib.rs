@@ -14,10 +14,12 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
+pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
+pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
@@ -167,13 +169,13 @@ pub struct DenoResolverOptions<
 }
 
 #[allow(clippy::disallowed_types)]
-pub type DenoResolverRc<
+pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
 > = crate::sync::MaybeArc<
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -181,11 +183,11 @@ pub type DenoResolverRc<
   >,
 >;
 
-/// Helper type for a DenoResolverRc that has the implementations
+/// Helper type for a RawDenoResolverRc that has the implementations
 /// used by the Deno CLI.
-pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+pub type DefaultRawDenoResolverRc<TSys> = RawDenoResolverRc<
   npm::DenoInNpmPackageChecker,
-  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
   TSys,
 >;
@@ -193,7 +195,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct DenoResolver<
+pub struct RawDenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
@@ -220,7 +222,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   >
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,

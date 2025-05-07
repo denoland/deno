@@ -38,7 +38,6 @@ use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
-use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -103,7 +102,6 @@ use crate::npm::NpmResolutionInitializer;
 use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -306,7 +304,6 @@ struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
   cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
-  cjs_tracker: Deferred<Arc<CliCjsTracker>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
   deno_dir_path_provider: Deferred<Arc<CliDenoDirPathProvider>>,
@@ -316,7 +313,6 @@ struct CliFactoryServices {
   eszip_module_loader_provider: Deferred<Arc<EszipModuleLoaderProvider>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
-  found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
@@ -338,7 +334,6 @@ struct CliFactoryServices {
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
     Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
-  resolver: Deferred<Arc<CliResolver>>,
   resolver_factory: Deferred<Arc<CliResolverFactory>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
@@ -616,7 +611,10 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(CliNpmGraphResolver::new(
             self.npm_installer_if_managed().await?.cloned(),
-            self.services.found_pkg_json_dep_flag.clone(),
+            self
+              .resolver_factory()?
+              .found_package_json_dep_flag()
+              .clone(),
             cli_options.default_npm_caching_strategy(),
           )))
         }
@@ -812,26 +810,9 @@ impl CliFactory {
     self.resolver_factory()?.workspace_resolver().await
   }
 
-  pub async fn deno_resolver(&self) -> Result<&Arc<CliDenoResolver>, AnyError> {
+  pub async fn resolver(&self) -> Result<&Arc<CliResolver>, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.deno_resolver().await
-  }
-
-  pub async fn resolver(&self) -> Result<&Arc<CliResolver>, AnyError> {
-    self
-      .services
-      .resolver
-      .get_or_try_init_async(
-        async {
-          Ok(Arc::new(CliResolver::new(
-            self.deno_resolver().await?.clone(),
-            self.services.found_pkg_json_dep_flag.clone(),
-            Box::new(on_resolve_diagnostic),
-          )))
-        }
-        .boxed_local(),
-      )
-      .await
   }
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
@@ -1117,20 +1098,7 @@ impl CliFactory {
   }
 
   pub fn cjs_tracker(&self) -> Result<&Arc<CliCjsTracker>, AnyError> {
-    self.services.cjs_tracker.get_or_try_init(|| {
-      let options = self.cli_options()?;
-      Ok(Arc::new(CliCjsTracker::new(
-        self.in_npm_pkg_checker()?.clone(),
-        self.pkg_json_resolver()?.clone(),
-        if options.is_node_main() || options.unstable_detect_cjs() {
-          IsCjsResolutionMode::ImplicitTypeCommonJs
-        } else if options.detect_cjs() {
-          IsCjsResolutionMode::ExplicitTypeCommonJs
-        } else {
-          IsCjsResolutionMode::Disabled
-        },
-      )))
-    })
+    self.resolver_factory()?.cjs_tracker()
   }
 
   pub fn permission_desc_parser(
@@ -1396,9 +1364,19 @@ impl CliFactory {
 
   pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
     self.services.resolver_factory.get_or_try_init(|| {
+      let options = self.cli_options()?;
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
+          is_cjs_resolution_mode: if options.is_node_main()
+            || options.unstable_detect_cjs()
+          {
+            IsCjsResolutionMode::ImplicitTypeCommonJs
+          } else if options.detect_cjs() {
+            IsCjsResolutionMode::ExplicitTypeCommonJs
+          } else {
+            IsCjsResolutionMode::Disabled
+          },
           node_resolver_options: NodeResolverOptions {
             conditions_from_resolution_mode: Default::default(),
             typescript_version: Some(
@@ -1411,7 +1389,7 @@ impl CliFactory {
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
-            cli_options: self.cli_options()?.clone(),
+            cli_options: options.clone(),
             eszip_module_loader_provider: self
               .eszip_module_loader_provider()?
               .clone(),
@@ -1422,6 +1400,9 @@ impl CliFactory {
           })),
           bare_node_builtins: self.flags.unstable_config.bare_node_builtins,
           unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          on_mapped_resolution_diagnostic: Some(Arc::new(
+            on_resolve_diagnostic,
+          )),
           package_json_cache: Some(Arc::new(
             node_resolver::PackageJsonThreadLocalCache,
           )),
