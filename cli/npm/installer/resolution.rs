@@ -111,7 +111,7 @@ async fn add_package_reqs_to_snapshot(
   fn get_types_node_version() -> VersionReq {
     // WARNING: When bumping this version, check if anything needs to be
     // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-    VersionReq::parse_from_npm("22.9.0 - 22.13.14").unwrap()
+    VersionReq::parse_from_npm("22.9.0 - 22.15.15").unwrap()
   }
 
   let snapshot = get_new_snapshot();
