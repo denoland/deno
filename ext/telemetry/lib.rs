@@ -162,7 +162,7 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
   Ignore = 0,
@@ -636,6 +636,13 @@ pub fn init(
   rt_config: OtelRuntimeConfig,
   config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
+  if !config.metrics_enabled
+    && !config.tracing_enabled
+    && config.console == OtelConsoleConfig::Ignore
+  {
+    return Ok(());
+  }
+
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
@@ -1139,7 +1146,11 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {}
+impl deno_core::GarbageCollected for OtelTracer {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelTracer"
+  }
+}
 
 #[op2]
 impl OtelTracer {
@@ -1348,7 +1359,11 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {}
+impl deno_core::GarbageCollected for OtelSpan {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelSpan"
+  }
+}
 
 #[op2]
 impl OtelSpan {
@@ -1394,12 +1409,7 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn add_event(
-    &self,
-    #[string] name: String,
-    start_time: f64,
-    #[smi] dropped_attributes_count: u32,
-  ) {
+  fn add_event(&self, #[string] name: String, start_time: f64) {
     let start_time = if start_time.is_nan() {
       SystemTime::now()
     } else {
@@ -1411,12 +1421,10 @@ impl OtelSpan {
     let OtelSpanState::Recording(span) = &mut **state else {
       return;
     };
-    span.events.events.push(Event::new(
-      name,
-      start_time,
-      vec![],
-      dropped_attributes_count,
-    ));
+    span
+      .events
+      .events
+      .push(Event::new(name, start_time, vec![], 0));
   }
 
   #[fast]
@@ -1458,10 +1466,34 @@ impl OtelSpan {
   }
 }
 
+fn span_attributes(
+  span: &mut SpanData,
+  location: u32,
+) -> Option<(&mut Vec<KeyValue>, &mut u32)> {
+  match location {
+    // SELF
+    0 => Some((&mut span.attributes, &mut span.dropped_attributes_count)),
+    // LAST_EVENT
+    1 => span
+      .events
+      .events
+      .last_mut()
+      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    // LAST_LINK
+    2 => span
+      .links
+      .links
+      .last_mut()
+      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    _ => None,
+  }
+}
+
 #[op2(fast)]
 fn op_otel_span_attribute1<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
 ) {
@@ -1472,7 +1504,12 @@ fn op_otel_span_attribute1<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key, value);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key, value);
   }
 }
 
@@ -1480,6 +1517,7 @@ fn op_otel_span_attribute1<'s>(
 fn op_otel_span_attribute2<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1492,8 +1530,13 @@ fn op_otel_span_attribute2<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
   }
 }
 
@@ -1502,6 +1545,7 @@ fn op_otel_span_attribute2<'s>(
 fn op_otel_span_attribute3<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1516,9 +1560,14 @@ fn op_otel_span_attribute3<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key3, value3);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
   }
 }
 
@@ -1587,7 +1636,11 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {}
+impl deno_core::GarbageCollected for OtelMeter {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelMeter"
+  }
+}
 
 #[op2]
 impl OtelMeter {
@@ -1784,7 +1837,11 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {}
+impl GarbageCollected for Instrument {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Instrument"
+  }
+}
 
 fn create_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> InstrumentBuilder<'b, T>,

@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -14,6 +13,7 @@ use deno_semver::package::PackageNv;
 
 use super::PackageCaching;
 use crate::npm::CliNpmCache;
+use crate::npm::WorkspaceNpmPatchPackages;
 
 pub mod bin_entries;
 pub mod lifecycle_scripts;
@@ -56,6 +56,7 @@ pub struct ExtraInfoProvider {
   npm_cache: Arc<CliNpmCache>,
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   cache: RwLock<rustc_hash::FxHashMap<PackageNv, NpmPackageExtraInfo>>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
 impl std::fmt::Debug for ExtraInfoProvider {
@@ -71,11 +72,13 @@ impl ExtraInfoProvider {
   pub fn new(
     npm_cache: Arc<CliNpmCache>,
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
       npm_cache,
       npm_registry_info_provider,
       cache: RwLock::new(rustc_hash::FxHashMap::default()),
+      workspace_patch_packages,
     }
   }
 }
@@ -107,9 +110,8 @@ impl ExtraInfoProvider {
       .package_info(&package_nv.name)
       .await
       .map_err(JsErrorBox::from_err)?;
-    let patched_packages = HashMap::new();
     let version_info = package_info
-      .version_info(package_nv, &patched_packages)
+      .version_info(package_nv, &self.workspace_patch_packages.0)
       .map_err(JsErrorBox::from_err)?;
     Ok(NpmPackageExtraInfo {
       deprecated: version_info.deprecated.clone(),
@@ -124,7 +126,7 @@ impl ExtraInfoProvider {
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     let package_json_path = package_path.join("package.json");
     let extra_info: NpmPackageExtraInfo =
-      tokio::task::spawn_blocking(move || {
+      deno_core::unsync::spawn_blocking(move || {
         let package_json = std::fs::read_to_string(&package_json_path)
           .map_err(JsErrorBox::from_err)?;
         let extra_info: NpmPackageExtraInfo =

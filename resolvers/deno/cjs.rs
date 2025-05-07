@@ -10,6 +10,10 @@ use url::Url;
 
 use crate::sync::MaybeDashMap;
 
+#[allow(clippy::disallowed_types)]
+pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
+  crate::sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
+
 /// Keeps track of what module specifiers were resolved as CJS.
 ///
 /// Modules that are `.js`, `.ts`, `.jsx`, and `tsx` are only known to
@@ -135,13 +139,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum IsCjsResolutionMode {
   /// Requires an explicit `"type": "commonjs"` in the package.json.
   ExplicitTypeCommonJs,
   /// Implicitly uses `"type": "commonjs"` if no `"type"` is specified.
   ImplicitTypeCommonJs,
   /// Does not respect `"type": "commonjs"` and always treats ambiguous files as ESM.
+  #[default]
   Disabled,
 }
 

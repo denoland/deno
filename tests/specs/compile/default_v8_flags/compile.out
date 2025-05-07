@@ -1,0 +1,9 @@
+Check file:///[WILDLINE]/main.ts
+Compile file:///[WILDLINE]/main.ts to [WILDLINE]
+
+Embedded Files
+
+[WILDLINE]
+└── main.ts ([WILDLINE])
+
+[WILDCARD]

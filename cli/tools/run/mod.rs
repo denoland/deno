@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
@@ -52,6 +53,8 @@ pub async fn run_script(
   mode: WorkerExecutionMode,
   flags: Arc<Flags>,
   watch: Option<WatchFlagsWithPaths>,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
@@ -82,16 +85,26 @@ pub async fn run_script(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone())
+    .create_main_worker_with_unconfigured_runtime(
+      mode,
+      main_module.clone(),
+      unconfigured_runtime,
+    )
     .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
 }
 
-pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
+pub async fn run_from_stdin(
+  flags: Arc<Flags>,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
+) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
@@ -99,7 +112,9 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   maybe_npm_install(&factory).await?;
 
   let file_fetcher = factory.file_fetcher()?;
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
@@ -111,7 +126,11 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Run, main_module.clone())
+    .create_main_worker_with_unconfigured_runtime(
+      WorkerExecutionMode::Run,
+      main_module.clone(),
+      unconfigured_runtime,
+    )
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -232,6 +251,8 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
 pub async fn run_eszip(
   flags: Arc<Flags>,
   run_flags: RunFlags,
+  unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
@@ -246,9 +267,15 @@ pub async fn run_eszip(
 
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory = factory
+    .create_cli_main_worker_factory_with_roots(roots)
+    .await?;
   let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone())
+    .create_main_worker_with_unconfigured_runtime(
+      mode,
+      main_module.clone(),
+      unconfigured_runtime,
+    )
     .await?;
 
   let exit_code = worker.run().await?;

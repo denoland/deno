@@ -11,9 +11,12 @@ use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::net::SocketAddr;
 use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::ready;
 use std::task::Context;
@@ -79,6 +82,7 @@ use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
@@ -200,6 +204,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    op_http_notify_serving,
     http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
@@ -1692,36 +1697,88 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 
 #[op2]
 #[serde]
-pub fn op_http_serve_address_override(
-) -> (Option<String>, Option<String>, Option<u16>) {
+pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   match std::env::var("DENO_SERVE_ADDRESS") {
     Ok(val) => parse_serve_address(&val),
-    Err(_) => (None, None, None),
+    Err(_) => (0, String::new(), 0, false),
   }
 }
 
-fn parse_serve_address(
-  input: &str,
-) -> (Option<String>, Option<String>, Option<u16>) {
-  use std::net::SocketAddr;
-  if input.contains('/') {
-    // Likely a Unix socket path
-    (Some(input.to_string()), None, None)
-  } else {
-    // Try parsing as a TCP address
-    match input.parse::<SocketAddr>() {
-      Ok(addr) => {
-        let hostname = match addr {
-          SocketAddr::V4(v4) => v4.ip().to_string(),
-          SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
-        };
-        (None, Some(hostname), Some(addr.port()))
-      }
-      Err(_) => {
-        log::error!("DENO_SERVE_ADDRESS: Invalid TCP address: {}", input);
-        (None, None, None)
+fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
+  let (input, duplicate) = match input.strip_prefix("duplicate,") {
+    Some(input) => (input, true),
+    None => (input, false),
+  };
+  match input.split_once(':') {
+    Some(("tcp", addr)) => {
+      // TCP address
+      match addr.parse::<SocketAddr>() {
+        Ok(addr) => {
+          let hostname = match addr {
+            SocketAddr::V4(v4) => v4.ip().to_string(),
+            SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+          };
+          (1, hostname, addr.port() as u32, duplicate)
+        }
+        Err(_) => {
+          log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {}", addr);
+          (0, String::new(), 0, false)
+        }
       }
     }
+    Some(("unix", addr)) => {
+      // Unix socket path
+      if addr.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty unix socket path");
+        return (0, String::new(), 0, duplicate);
+      }
+      (2, addr.to_string(), 0, duplicate)
+    }
+    Some(("vsock", addr)) => {
+      // Vsock address
+      match addr.split_once(':') {
+        Some((cid, port)) => {
+          let cid = if cid == "-1" {
+            "-1".to_string()
+          } else {
+            match cid.parse::<u32>() {
+              Ok(cid) => cid.to_string(),
+              Err(_) => {
+                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
+                return (0, String::new(), 0, false);
+              }
+            }
+          };
+          let port = match port.parse::<u32>() {
+            Ok(port) => port,
+            Err(_) => {
+              log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {}", port);
+              return (0, String::new(), 0, false);
+            }
+          };
+          (3, cid, port, duplicate)
+        }
+        None => (0, String::new(), 0, false),
+      }
+    }
+    Some((_, _)) | None => {
+      log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
+      (0, String::new(), 0, false)
+    }
+  }
+}
+
+pub static SERVE_NOTIFIER: Notify = Notify::const_new();
+
+#[op2(fast)]
+fn op_http_notify_serving() {
+  static ONCE: AtomicBool = AtomicBool::new(false);
+
+  if ONCE
+    .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+    .is_ok()
+  {
+    SERVE_NOTIFIER.notify_one();
   }
 }
 
@@ -1731,21 +1788,45 @@ mod tests {
 
   #[test]
   fn test_parse_serve_address() {
-    let input = "/var/run/socket.sock";
     assert_eq!(
-      parse_serve_address(input),
-      (Some(input.to_string()), None, None)
+      parse_serve_address("tcp:127.0.0.1:8080"),
+      (1, "127.0.0.1".to_string(), 8080, false)
+    );
+    assert_eq!(
+      parse_serve_address("tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000, true)
     );
 
     assert_eq!(
-      parse_serve_address("127.0.0.1:8080"),
-      (None, Some("127.0.0.1".to_string()), Some(8080))
+      parse_serve_address("unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0, false)
     );
     assert_eq!(
-      parse_serve_address("[::1]:9000"),
-      (None, Some("[::1]".to_string()), Some(9000))
+      parse_serve_address("duplicate,unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0, true)
     );
 
-    assert_eq!(parse_serve_address("no_an_address"), (None, None, None));
+    assert_eq!(
+      parse_serve_address("vsock:1234:5678"),
+      (3, "1234".to_string(), 5678, false)
+    );
+    assert_eq!(
+      parse_serve_address("vsock:-1:5678"),
+      (3, "-1".to_string(), 5678, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,vsock:-1:5678"),
+      (3, "-1".to_string(), 5678, true)
+    );
+
+    assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("unix:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("vsock:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("foo:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("bar"), (0, String::new(), 0, false));
   }
 }

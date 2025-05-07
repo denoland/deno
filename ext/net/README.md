@@ -13,7 +13,7 @@ import * as tls from "ext:deno_net/02_tls.js";
 ```
 
 Then from rust, provide:
-`deno_net::deno_net::init_ops_and_esm::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)`
+`deno_net::deno_net::init::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)`
 
 Where:
 
