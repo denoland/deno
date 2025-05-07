@@ -12,9 +12,10 @@ const assert = require('assert');
 const { internalBinding } = require('internal/test/binding');
 const { arrayBufferViewHasBuffer } = internalBinding('util');
 
+// All ABs in Deno are not on heap.
 const tests = [
-  { length: 0, expectOnHeap: true },
-  { length: 48, expectOnHeap: true },
+  { length: 0, expectOnHeap: false },
+  { length: 48, expectOnHeap: false },
   { length: 96, expectOnHeap: false },
   { length: 1024, expectOnHeap: false },
 ];
