@@ -1,14 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::poll_fn;
 use std::rc::Rc;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
@@ -110,13 +110,41 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum Http2Error {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(
+    #[from]
+    #[inherit]
+    ResourceError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlParse(
+    #[from]
+    #[inherit]
+    url::ParseError,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  H2(#[from] h2::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(
+    #[from]
+    #[inherit]
+    deno_net::raw::TakeNetworkStreamError,
+  ),
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] url: String,
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> Result<(ResourceId, ResourceId), Http2Error> {
   // No permission check necessary because we're using an existing connection
   let network_stream = {
     let mut state = state.borrow_mut();
@@ -144,7 +172,7 @@ pub async fn op_http2_connect(
 pub async fn op_http2_listen(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, Http2Error> {
   let stream =
     take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)?;
 
@@ -166,7 +194,7 @@ pub async fn op_http2_accept(
   #[smi] rid: ResourceId,
 ) -> Result<
   Option<(Vec<(ByteString, ByteString)>, ResourceId, ResourceId)>,
-  AnyError,
+  Http2Error,
 > {
   let resource = state
     .borrow()
@@ -233,7 +261,7 @@ pub async fn op_http2_send_response(
   #[smi] rid: ResourceId,
   #[smi] status: u16,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), AnyError> {
+) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -262,7 +290,7 @@ pub async fn op_http2_send_response(
 pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<(), Http2Error> {
   let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid)?;
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
@@ -289,7 +317,7 @@ pub async fn op_http2_client_request(
   // 4 strings of keys?
   #[serde] mut pseudo_headers: HashMap<String, String>,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), AnyError> {
+) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -345,7 +373,7 @@ pub async fn op_http2_client_send_data(
   #[smi] stream_rid: ResourceId,
   #[buffer] data: JsBuffer,
   end_of_stream: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -361,7 +389,7 @@ pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[smi] code: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), ResourceError> {
   let resource = state
     .borrow()
     .resource_table
@@ -376,7 +404,7 @@ pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[serde] trailers: Vec<(ByteString, ByteString)>,
-) -> Result<(), AnyError> {
+) -> Result<(), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -408,7 +436,7 @@ pub struct Http2ClientResponse {
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-) -> Result<(Http2ClientResponse, bool), AnyError> {
+) -> Result<(Http2ClientResponse, bool), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -478,7 +506,7 @@ fn poll_data_or_trailers(
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<(Option<Vec<u8>>, bool, bool), AnyError> {
+) -> Result<(Option<Vec<u8>>, bool, bool), Http2Error> {
   let resource = state
     .borrow()
     .resource_table
@@ -488,13 +516,11 @@ pub async fn op_http2_client_get_response_body_chunk(
   loop {
     let result = poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await;
     if let Err(err) = result {
-      let reason = err.reason();
-      if let Some(reason) = reason {
-        if reason == Reason::CANCEL {
-          return Ok((None, false, true));
-        }
+      match err.reason() {
+        Some(Reason::NO_ERROR) => return Ok((None, true, false)),
+        Some(Reason::CANCEL) => return Ok((None, false, true)),
+        _ => return Err(err.into()),
       }
-      return Err(err.into());
     }
     match result.unwrap() {
       DataOrTrailers::Data(data) => {
@@ -527,7 +553,7 @@ pub async fn op_http2_client_get_response_body_chunk(
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<Option<Vec<(ByteString, ByteString)>>, AnyError> {
+) -> Result<Option<Vec<(ByteString, ByteString)>>, ResourceError> {
   let resource = state
     .borrow()
     .resource_table

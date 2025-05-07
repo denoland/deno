@@ -79,6 +79,5 @@
   "homepage": "https://github.com/npm/fs#readme",
   "bugs": {
     "url": "https://github.com/npm/fs/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

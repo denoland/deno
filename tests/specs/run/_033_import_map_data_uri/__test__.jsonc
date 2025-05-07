@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-import --import-map=data:application/json;charset=utf-8;base64,ewogICJpbXBvcnRzIjogewogICAgInRlc3Rfc2VydmVyLyI6ICJodHRwOi8vbG9jYWxob3N0OjQ1NDUvIgogIH0KfQ== test_data.ts",
+  "output": "test_data.ts.out"
+}

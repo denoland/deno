@@ -1,0 +1,10 @@
+global: true
+Buffer: function from(
+  value,
+  encodingOrOffset,
+  length,
+) {
+  return _from(value, encodingOrOffset, length);
+}
+setImmediate: true
+clearImmediate: true

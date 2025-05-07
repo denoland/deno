@@ -1,0 +1,4 @@
+{
+  "args": "run index.js",
+  "output": "Hi\nWasm\nJSON\n"
+}

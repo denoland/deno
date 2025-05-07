@@ -473,6 +473,7 @@ const pwdCommand = isWindows ?
 
 module.exports = {
   allowGlobals,
+  defaultAutoSelectFamilyAttemptTimeout: 2500,
   expectsError,
   expectWarning,
   getArrayBufferViews,

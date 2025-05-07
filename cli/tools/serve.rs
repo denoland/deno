@@ -1,10 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
+use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_runtime::UnconfiguredRuntime;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -18,6 +22,8 @@ use crate::worker::CliMainWorkerFactory;
 pub async fn serve(
   flags: Arc<Flags>,
   serve_flags: ServeFlags,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
@@ -43,34 +49,50 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory_with_roots(roots)
+      .await?,
+  );
 
+  if serve_flags.open_site {
+    let url = resolve_serve_url(serve_flags.host, serve_flags.port);
+    let _ = open::that_detached(url);
+  }
+
+  let hmr = serve_flags
+    .watch
+    .map(|watch_flags| watch_flags.hmr)
+    .unwrap_or(false);
   do_serve(
     worker_factory,
     main_module.clone(),
     serve_flags.worker_count,
-    false,
+    hmr,
+    unconfigured_runtime,
   )
   .await
 }
 
 async fn do_serve(
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   worker_count: Option<usize>,
   hmr: bool,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
 ) -> Result<i32, AnyError> {
   let mut worker = worker_factory
-    .create_main_worker(
+    .create_main_worker_with_unconfigured_runtime(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: true,
         worker_count,
       },
       main_module.clone(),
+      unconfigured_runtime,
     )
     .await?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await,
+    None | Some(1) => return worker.run().await.map_err(Into::into),
     Some(c) => c,
   };
 
@@ -109,17 +131,15 @@ async fn do_serve(
     }
   }
   Ok(exit_code)
-
-  // main.await?
 }
 
 async fn run_worker(
   worker_count: usize,
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
+  let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,
@@ -132,7 +152,7 @@ async fn run_worker(
     worker.run_for_watcher().await?;
     Ok(0)
   } else {
-    worker.run().await
+    worker.run().await.map_err(Into::into)
   }
 }
 
@@ -150,7 +170,8 @@ async fn serve_with_watch(
       !watch_flags.no_clear_screen,
     ),
     WatcherRestartMode::Automatic,
-    move |flags, watcher_communicator, _changed_paths| {
+    move |flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
@@ -162,15 +183,54 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let worker_factory = factory.create_cli_main_worker_factory().await?;
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(worker_factory, main_module.clone(), worker_count, hmr)
+        do_serve(worker_factory, main_module.clone(), worker_count, hmr, None)
           .await?;
 
         Ok(())
       })
     },
   )
+  .boxed_local()
   .await?;
   Ok(0)
+}
+
+fn resolve_serve_url(host: String, port: u16) -> String {
+  let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
+    "127.0.0.1".to_string()
+  } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
+    format!("[{}]", host)
+  } else {
+    host
+  };
+  if port == 80 {
+    format!("http://{host}/")
+  } else {
+    format!("http://{host}:{port}/")
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_resolve_serve_url() {
+    assert_eq!(
+      resolve_serve_url("localhost".to_string(), 80),
+      "http://localhost/"
+    );
+    assert_eq!(
+      resolve_serve_url("0.0.0.0".to_string(), 80),
+      "http://127.0.0.1/"
+    );
+    assert_eq!(resolve_serve_url("::".to_string(), 80), "http://127.0.0.1/");
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 90),
+      "http://127.0.0.1:90/"
+    );
+  }
 }

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet stdout_write_sync_async.ts",
+  "output": "stdout_write_sync_async.out"
+}

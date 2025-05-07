@@ -1,13 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -65,13 +64,12 @@ fn fast_check_cache() {
 
   // ensure cache works
   let output = check_debug_cmd.run();
-  assert_contains!(output.combined_output(), "Already type checked.");
-  let building_fast_check_msg = "Building fast check graph";
-  assert_not_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(output.combined_output(), "Already type checked");
 
   // now validated
   type_check_cache_path.remove_file();
   let output = check_debug_cmd.run();
+  let building_fast_check_msg = "Building fast check graph";
   assert_contains!(output.combined_output(), building_fast_check_msg);
   assert_contains!(
     output.combined_output(),
@@ -99,10 +97,12 @@ fn fast_check_cache() {
     .run()
     .assert_matches_text(
       "Check file:///[WILDCARD]main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~
     at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+
+error: Type checking failed.
 ",
     )
     .assert_exit_code(1);
@@ -126,8 +126,23 @@ export function asdf(a: number) { let err: number = ''; return Math.random(); }
   );
 }
 
-#[test]
-fn specifiers_in_lockfile() {
+struct TestNpmPackageInfoProvider;
+
+#[async_trait::async_trait(?Send)]
+impl deno_lockfile::NpmPackageInfoProvider for TestNpmPackageInfoProvider {
+  async fn get_npm_package_info(
+    &self,
+    values: &[deno_semver::package::PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    Ok(values.iter().map(|_| Default::default()).collect())
+  }
+}
+
+#[tokio::test]
+async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -146,11 +161,15 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
   *lockfile
     .content
@@ -159,7 +178,7 @@ console.log(version);"#,
     .get_mut(
       &JsrDepPackageReq::from_str("jsr:@denotest/no-module-graph@0.1").unwrap(),
     )
-    .unwrap() = "0.1.0".to_string();
+    .unwrap() = "0.1.0".into();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -191,8 +210,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
     let cache = deno_cache_dir::GlobalHttpCache::new(
+      sys_traits::impls::RealSys,
       deno_dir.path().join("remote").to_path_buf(),
-      deno_cache_dir::TestRealDenoCacheEnv,
     );
     let entry = cache
       .get(&cache.cache_item_key(&specifier).unwrap(), None)
@@ -254,8 +273,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .assert_exit_code(0);
 }
 
-#[test]
-fn lockfile_bad_package_integrity() {
+#[tokio::test]
+async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -274,11 +293,15 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
   let pkg_nv = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_nv);

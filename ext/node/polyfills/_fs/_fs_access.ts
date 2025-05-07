@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -30,50 +30,58 @@ export function access(
   mode = getValidMode(mode, "access");
   const cb = makeCallback(callback);
 
-  Deno.lstat(path).then((info) => {
-    if (info.mode === null) {
-      // If the file mode is unavailable, we pretend it has
-      // the permission
-      cb(null);
-      return;
-    }
-    const m = +mode || 0;
-    let fileMode = +info.mode || 0;
-    if (Deno.build.os !== "windows" && info.uid === Deno.uid()) {
-      // If the user is the owner of the file, then use the owner bits of
-      // the file permission
-      fileMode >>= 6;
-    }
-    // TODO(kt3k): Also check the case when the user belong to the group
-    // of the file
-    if ((m & fileMode) === m) {
-      // all required flags exist
-      cb(null);
-    } else {
-      // some required flags don't
-      // deno-lint-ignore no-explicit-any
-      const e: any = new Error(`EACCES: permission denied, access '${path}'`);
-      e.path = path;
-      e.syscall = "access";
-      e.errno = codeMap.get("EACCES");
-      e.code = "EACCES";
-      cb(e);
-    }
-  }, (err) => {
-    if (err instanceof Deno.errors.NotFound) {
-      // deno-lint-ignore no-explicit-any
-      const e: any = new Error(
-        `ENOENT: no such file or directory, access '${path}'`,
-      );
-      e.path = path;
-      e.syscall = "access";
-      e.errno = codeMap.get("ENOENT");
-      e.code = "ENOENT";
-      cb(e);
-    } else {
-      cb(err);
-    }
-  });
+  Deno.lstat(path).then(
+    (info) => {
+      if (info.mode === null) {
+        // If the file mode is unavailable, we pretend it has
+        // the permission
+        cb(null);
+        return;
+      }
+      let m = +mode || 0;
+      let fileMode = +info.mode || 0;
+
+      if (Deno.build.os === "windows") {
+        m &= ~fs.X_OK; // Ignore the X_OK bit on Windows
+      } else if (info.uid === Deno.uid()) {
+        // If the user is the owner of the file, then use the owner bits of
+        // the file permission
+        fileMode >>= 6;
+      }
+
+      // TODO(kt3k): Also check the case when the user belong to the group
+      // of the file
+
+      if ((m & fileMode) === m) {
+        // all required flags exist
+        cb(null);
+      } else {
+        // some required flags don't
+        // deno-lint-ignore no-explicit-any
+        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("EACCES");
+        e.code = "EACCES";
+        cb(e);
+      }
+    },
+    (err) => {
+      if (err instanceof Deno.errors.NotFound) {
+        // deno-lint-ignore no-explicit-any
+        const e: any = new Error(
+          `ENOENT: no such file or directory, access '${path}'`,
+        );
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("ENOENT");
+        e.code = "ENOENT";
+        cb(e);
+      } else {
+        cb(err);
+      }
+    },
+  );
 }
 
 export const accessPromise = promisify(access) as (
@@ -91,9 +99,11 @@ export function accessSync(path: string | Buffer | URL, mode?: number) {
       // the permission
       return;
     }
-    const m = +mode! || 0;
+    let m = +mode! || 0;
     let fileMode = +info.mode! || 0;
-    if (Deno.build.os !== "windows" && info.uid === Deno.uid()) {
+    if (Deno.build.os === "windows") {
+      m &= ~fs.X_OK; // Ignore the X_OK bit on Windows
+    } else if (info.uid === Deno.uid()) {
       // If the user is the owner of the file, then use the owner bits of
       // the file permission
       fileMode >>= 6;

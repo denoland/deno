@@ -1,17 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use async_trait::async_trait;
-use deno_core::error::AnyError;
+
+use crate::CronError;
 
 pub trait CronHandler {
   type EH: CronHandle + 'static;
 
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, AnyError>;
+  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError>;
 }
 
 #[async_trait(?Send)]
 pub trait CronHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, AnyError>;
+  async fn next(&self, prev_success: bool) -> Result<bool, CronError>;
   fn close(&self);
 }
 

@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --lock=lock_check_ok2.json 019_media_types.ts",
+  "output": "019_media_types.ts.out"
+}

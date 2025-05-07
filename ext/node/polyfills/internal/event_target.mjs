@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -43,6 +43,7 @@ const kStop = Symbol("kStop");
 const kTarget = Symbol("kTarget");
 const kHandlers = Symbol("khandlers");
 const kWeakHandler = Symbol("kWeak");
+const kResistStopPropagation = Symbol("kResistStopPropagation");
 
 const kHybridDispatch = Symbol.for("nodejs.internal.kHybridDispatch");
 const kCreateEvent = Symbol("kCreateEvent");
@@ -1096,6 +1097,7 @@ export {
   kEvents,
   kNewListener,
   kRemoveListener,
+  kResistStopPropagation,
   kTrustEvent,
   kWeakHandler,
   NodeEventTarget,
@@ -1116,5 +1118,6 @@ export default {
   kRemoveListener,
   kEvents,
   kWeakHandler,
+  kResistStopPropagation,
   isEventTarget,
 };

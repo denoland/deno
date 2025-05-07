@@ -1,0 +1,5 @@
+{
+  "args": "run --no-check deno_exit_tampering.ts",
+  "output": "",
+  "exitCode": 42
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -7,10 +7,11 @@ import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   getEncoding,
+  getSignal,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
-import { readAll } from "ext:deno_io/12_io.js";
+import { readAll, readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
@@ -19,6 +20,7 @@ import {
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
@@ -38,7 +40,7 @@ type TextCallback = (err: Error | null, data?: string) => void;
 type BinaryCallback = (err: Error | null, data?: Buffer) => void;
 type GenericCallback = (err: Error | null, data?: string | Buffer) => void;
 type Callback = TextCallback | BinaryCallback | GenericCallback;
-type Path = string | URL | FileHandle;
+type Path = string | URL | FileHandle | number;
 
 export function readFile(
   path: Path,
@@ -70,13 +72,17 @@ export function readFile(
   }
 
   const encoding = getEncoding(optOrCallback);
+  const signal = getSignal(optOrCallback);
 
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
     const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
+  } else if (typeof path === "number") {
+    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
+    p = readAll(fsFile);
   } else {
-    p = Deno.readFile(path);
+    p = Deno.readFile(path, { signal: signal });
   }
 
   if (cb) {
@@ -87,7 +93,7 @@ export function readFile(
       }
       const buffer = maybeDecode(data, encoding);
       (cb as BinaryCallback)(null, buffer);
-    }, (err) => cb && cb(err));
+    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
   }
 }
 
@@ -105,19 +111,29 @@ export function readFilePromise(
 }
 
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt: TextOptionsArgument,
 ): string;
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt?: BinaryOptionsArgument,
 ): Buffer;
 export function readFileSync(
-  path: string | URL,
+  path: string | URL | number,
   opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? pathFromURL(path) : path;
-  const data = Deno.readFileSync(path);
+  let data;
+  if (typeof path === "number") {
+    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
+    data = readAllSync(fsFile);
+  } else {
+    try {
+      data = Deno.readFileSync(path);
+    } catch (err) {
+      throw denoErrorToNodeError(err, { path, syscall: "open" });
+    }
+  }
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {
     const text = maybeDecode(data, encoding);

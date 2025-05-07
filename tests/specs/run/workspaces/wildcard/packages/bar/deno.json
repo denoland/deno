@@ -1,0 +1,8 @@
+{
+  "name": "asdfasdfasdf",
+  "version": "0.0.0",
+  "imports": {
+    "@/": "./",
+    "secret_mod/": "./some_mod/"
+  }
+}

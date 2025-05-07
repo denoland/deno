@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
+  "output": "import_blob_url_imports.ts.out"
+}

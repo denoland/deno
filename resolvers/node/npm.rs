@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,20 +9,19 @@ use url::Url;
 
 use crate::errors;
 use crate::path::PathClean;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
+use crate::path::UrlOrPathRef;
 
-#[allow(clippy::disallowed_types)]
-pub type NpmResolverRc = crate::sync::MaybeArc<dyn NpmResolver>;
-
-pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  /// Resolves an npm package folder path from an npm package referrer.
+pub trait NpmPackageFolderResolver {
+  /// Resolves an npm package folder path from the specified referrer.
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, errors::PackageFolderResolveError>;
+}
 
+/// Checks if a provided specifier is in an npm package.
+pub trait InNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool;
 
   fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {

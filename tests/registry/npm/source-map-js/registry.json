@@ -66,6 +66,5 @@
   "bugs": {
     "url": "https://github.com/7rulnik/source-map-js/issues"
   },
-  "license": "BSD-3-Clause",
-  "readmeFilename": "README.md"
+  "license": "BSD-3-Clause"
 }

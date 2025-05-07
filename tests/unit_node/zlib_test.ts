@@ -1,15 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
+  brotliDecompress,
   brotliDecompressSync,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  gzip,
   gzipSync,
   unzipSync,
 } from "node:zlib";
@@ -33,7 +38,11 @@ Deno.test("brotli compression async", async () => {
     })
   );
   assertEquals(compressed instanceof Buffer, true);
-  const decompressed = brotliDecompressSync(compressed);
+  const decompressed: Buffer = await new Promise((resolve) =>
+    brotliDecompress(compressed, (_, res) => {
+      return resolve(res);
+    })
+  );
   assertEquals(decompressed.toString(), "hello world");
 });
 
@@ -69,7 +78,7 @@ Deno.test("brotli compression", {
 
   await Promise.all([
     promise.promise,
-    new Promise((r) => stream.on("close", r)),
+    new Promise<void>((r) => stream.on("close", r)),
   ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
@@ -209,4 +218,49 @@ Deno.test("createBrotliCompress params", async () => {
       .pipe(createBrotliDecompress()),
   );
   assertEquals(output.length, input.length);
+});
+
+Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
+  const deffered = Promise.withResolvers<void>();
+  const buf = new ArrayBuffer(0);
+  let output: Buffer;
+  gzip(buf, (_err, data) => {
+    output = data;
+    deffered.resolve();
+  });
+  await deffered.promise;
+  assert(output! instanceof Buffer);
+  const outputSync = gzipSync(buf);
+  assert(outputSync instanceof Buffer);
+});
+
+Deno.test("crc32()", () => {
+  assertEquals(crc32("hello world"), 222957957);
+  // @ts-expect-error: passing an object
+  assertThrows(() => crc32({}), TypeError);
+});
+
+Deno.test("BrotliCompress", async () => {
+  const deffered = Promise.withResolvers<void>();
+  // @ts-ignore: BrotliCompress is not typed
+  const brotliCompress = new BrotliCompress();
+  // @ts-ignore: BrotliDecompress is not typed
+  const brotliDecompress = new BrotliDecompress();
+
+  brotliCompress.pipe(brotliDecompress);
+
+  let data = "";
+  brotliDecompress.on("data", (v: Buffer) => {
+    data += v.toString();
+  });
+
+  brotliDecompress.on("end", () => {
+    deffered.resolve();
+  });
+
+  brotliCompress.write("hello");
+  brotliCompress.end();
+
+  await deffered.promise;
+  assertEquals(data, "hello");
 });

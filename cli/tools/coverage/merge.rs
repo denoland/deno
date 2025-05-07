@@ -1,15 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
 
-use super::range_tree::RangeTree;
-use super::range_tree::RangeTreeArena;
-use crate::cdp;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::iter::Peekable;
+
+use super::range_tree::RangeTree;
+use super::range_tree::RangeTreeArena;
+use crate::cdp;
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct ProcessCoverage {
@@ -156,7 +157,9 @@ struct StartEvent<'a> {
   trees: Vec<(usize, &'a mut RangeTree<'a>)>,
 }
 
-fn into_start_events<'a>(trees: Vec<&'a mut RangeTree<'a>>) -> Vec<StartEvent> {
+fn into_start_events<'a>(
+  trees: Vec<&'a mut RangeTree<'a>>,
+) -> Vec<StartEvent<'a>> {
   let mut result: BTreeMap<usize, Vec<(usize, &'a mut RangeTree<'a>)>> =
     BTreeMap::new();
   for (parent_index, tree) in trees.into_iter().enumerate() {

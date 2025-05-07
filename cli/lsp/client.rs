@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -12,12 +12,11 @@ use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
-use crate::lsp::repl::get_repl_workspace_settings;
-
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use crate::lsp::repl::get_repl_workspace_settings;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -89,6 +88,19 @@ impl Client {
     let client = self.0.clone();
     spawn(async move {
       client.send_test_notification(params).await;
+    });
+  }
+
+  pub fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client
+        .send_did_refresh_deno_configuration_tree_notification(params)
+        .await;
     });
   }
 
@@ -169,6 +181,10 @@ trait ClientTrait: Send + Sync {
     params: lsp_custom::DiagnosticBatchNotificationParams,
   );
   async fn send_test_notification(&self, params: TestingNotification);
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  );
   async fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -247,6 +263,18 @@ impl ClientTrait for TowerClient {
           .await
       }
     }
+  }
+
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DidRefreshDenoConfigurationTreeNotification>(
+        params,
+      )
+      .await
   }
 
   async fn send_did_change_deno_configuration_notification(
@@ -365,6 +393,12 @@ impl ClientTrait for ReplClient {
   }
 
   async fn send_test_notification(&self, _params: TestingNotification) {}
+
+  async fn send_did_refresh_deno_configuration_tree_notification(
+    &self,
+    _params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
+  ) {
+  }
 
   async fn send_did_change_deno_configuration_notification(
     &self,

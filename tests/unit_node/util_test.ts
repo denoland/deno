@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -224,7 +224,7 @@ Deno.test({
   fn() {
     assert(util.types.isNativeError(new Error()));
     assert(util.types.isNativeError(new TypeError()));
-    assert(!util.types.isNativeError(new DOMException()));
+    assert(util.types.isNativeError(new DOMException()));
   },
 });
 
@@ -347,4 +347,14 @@ Deno.test("[util] aborted()", async () => {
   abortController.abort();
   await promise;
   assertEquals(done, true);
+});
+
+Deno.test("[util] styleText()", () => {
+  const redText = util.styleText("red", "error");
+  assertEquals(redText, "\x1B[31merror\x1B[39m");
+});
+
+Deno.test("[util] styleText() with array of formats", () => {
+  const colored = util.styleText(["red", "green"], "error");
+  assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
 });

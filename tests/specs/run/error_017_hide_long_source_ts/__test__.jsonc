@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check error_017_hide_long_source_ts.ts",
+  "output": "error_017_hide_long_source_ts.ts.out",
+  "exitCode": 1
+}

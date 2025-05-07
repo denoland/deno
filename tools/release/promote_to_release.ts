@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -19,6 +19,11 @@ const DENO_BINARIES = [
   "deno",
   "denort",
 ];
+
+// Target platform filtering
+const NON_WINDOWS_TARGETS = SUPPORTED_TARGETS.filter(
+  (target) => !target.includes("windows"),
+);
 
 const CHANNEL = Deno.args[0];
 if (CHANNEL !== "rc" && CHANNEL !== "lts") {
@@ -79,7 +84,7 @@ async function fetchLatestCanaryBinary(
 
 async function fetchLatestCanaryBinaries(canaryVersion: string) {
   for (const binary of DENO_BINARIES) {
-    for (const target of SUPPORTED_TARGETS) {
+    for (const target of NON_WINDOWS_TARGETS) {
       $.logStep("Download", binary, gray("target:"), target);
       await fetchLatestCanaryBinary(canaryVersion, binary, target);
     }
@@ -200,10 +205,10 @@ async function promoteBinaryToRc(
 }
 
 async function promoteBinariesToRc(commitHash: string) {
-  const totalCanaries = SUPPORTED_TARGETS.length * DENO_BINARIES.length;
+  const totalCanaries = NON_WINDOWS_TARGETS.length * DENO_BINARIES.length;
 
-  for (let targetIdx = 0; targetIdx < SUPPORTED_TARGETS.length; targetIdx++) {
-    const target = SUPPORTED_TARGETS[targetIdx];
+  for (let targetIdx = 0; targetIdx < NON_WINDOWS_TARGETS.length; targetIdx++) {
+    const target = NON_WINDOWS_TARGETS[targetIdx];
     for (let binaryIdx = 0; binaryIdx < DENO_BINARIES.length; binaryIdx++) {
       const binaryName = DENO_BINARIES[binaryIdx];
       const currentIdx = (targetIdx * 2) + binaryIdx + 1;

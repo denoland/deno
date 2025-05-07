@@ -1,0 +1,4 @@
+Task dev echo '@deno/bar'
+@deno/bar
+Task dev echo '@deno/foo'
+@deno/foo

@@ -1,4 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_error::JsErrorBox;
+use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use uuid::Uuid;
 
 use crate::tools::test::TestContainer;
 use crate::tools::test::TestDescription;
@@ -8,19 +20,6 @@ use crate::tools::test::TestFailure;
 use crate::tools::test::TestLocation;
 use crate::tools::test::TestStepDescription;
 use crate::tools::test::TestStepResult;
-
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_runtime::deno_permissions::ChildPermissionsArg;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use uuid::Uuid;
 
 deno_core::extension!(deno_test,
   ops = [
@@ -46,12 +45,12 @@ deno_core::extension!(deno_test,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   #[serde] args: ChildPermissionsArg,
-) -> Result<Uuid, AnyError> {
+) -> Result<Uuid, deno_runtime::deno_permissions::ChildPermissionError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = parent_permissions.create_child_permissions(args)?;
@@ -72,7 +71,7 @@ pub fn op_pledge_test_permissions(
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
       panic!("restore test permissions token does not match the stored token");
@@ -82,7 +81,7 @@ pub fn op_restore_test_permissions(
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
-    Err(generic_error("no permissions to restore"))
+    Err(JsErrorBox::generic("no permissions to restore"))
   }
 }
 
@@ -102,9 +101,9 @@ fn op_register_test(
   #[smi] line_number: u32,
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
-    return Err(type_error(format!(
+    return Err(JsErrorBox::type_error(format!(
       "Invalid ret_buf length: {}",
       ret_buf.len()
     )));
@@ -150,7 +149,7 @@ fn op_register_test_step(
   #[smi] parent_id: usize,
   #[smi] root_id: usize,
   #[string] root_name: String,
-) -> Result<usize, AnyError> {
+) -> usize {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestStepDescription {
@@ -169,7 +168,7 @@ fn op_register_test_step(
   };
   let sender = state.borrow_mut::<TestEventSender>();
   sender.send(TestEvent::StepRegister(description)).ok();
-  Ok(id)
+  id
 }
 
 #[op2(fast)]

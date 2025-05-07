@@ -1,6 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
@@ -23,6 +22,21 @@ fn complex() {
 #[test]
 fn final_blankline() {
   run_coverage_text("final_blankline", "js");
+}
+
+#[test]
+fn ignore_file_directive() {
+  run_coverage_text("ignore_file_directive", "ts");
+}
+
+#[test]
+fn ignore_next_directive() {
+  run_coverage_text("ignore_next_directive", "ts");
+}
+
+#[test]
+fn ignore_range_directive() {
+  run_coverage_text("ignore_range_directive", "ts");
 }
 
 #[test]
@@ -119,13 +133,14 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
+      "--quiet".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
     .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr().is_empty());
+  assert_eq!(output.stderr(), "");
 
   output.assert_stdout_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
@@ -650,7 +665,7 @@ fn test_collect_summary_with_no_matches() {
   let temp_dir: &TempDir = context.temp_dir();
   let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
 
-  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  let empty_test_dir: PathRef = temp_dir.path().join("empty_dir");
   empty_test_dir.create_dir_all();
 
   let output: util::TestCommandOutput = context

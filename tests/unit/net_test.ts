@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -1276,6 +1276,26 @@ Deno.test({
     await Promise.race([p1, p2]);
   }
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpWithAbortSignal() {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const error = await assertRejects(
+      async () => {
+        await Deno.connect({
+          hostname: "deno.com",
+          port: 50000,
+          transport: "tcp",
+          signal: controller.signal,
+        });
+      },
+    );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
+  },
+);
 
 Deno.test({
   ignore: Deno.build.os === "linux",
