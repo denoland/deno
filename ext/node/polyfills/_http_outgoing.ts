@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
+import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.js";
 import assert from "ext:deno_node/internal/assert.mjs";
 import EE from "node:events";
 import { Stream } from "node:stream";

@@ -196,6 +196,5 @@
     "type": "git",
     "url": "git+https://github.com/raineorshine/npm-check-updates.git"
   },
-  "description": "Find newer versions of dependencies than what your package.json allows",
-  "readmeFilename": "README.md"
+  "description": "Find newer versions of dependencies than what your package.json allows"
 }

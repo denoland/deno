@@ -17,6 +17,7 @@ use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
 use deno_cache_dir::file_fetcher::TooManyRedirectsError;
 use deno_cache_dir::file_fetcher::UnsupportedSchemeError;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -33,7 +34,6 @@ use http::HeaderMap;
 use http::StatusCode;
 use thiserror::Error;
 
-use crate::cache::HttpCache;
 use crate::colors;
 use crate::http_util::get_response_body_with_progress;
 use crate::http_util::HttpClientProvider;
@@ -60,11 +60,10 @@ impl TextDecodedFile {
         file.maybe_headers.as_ref(),
       );
     let specifier = file.url;
-    match deno_graph::source::decode_source(
-      &specifier,
-      file.source,
-      maybe_charset,
-    ) {
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(&specifier, &file.source)
+    });
+    match deno_media_type::encoding::decode_arc_source(charset, file.source) {
       Ok(source) => Ok(TextDecodedFile {
         media_type,
         specifier,
@@ -281,7 +280,7 @@ pub struct CliFileFetcher {
 impl CliFileFetcher {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    http_cache: Arc<dyn HttpCache>,
+    http_cache: GlobalOrLocalHttpCache<CliSys>,
     http_client_provider: Arc<HttpClientProvider>,
     sys: CliSys,
     blob_store: Arc<BlobStore>,
@@ -295,7 +294,7 @@ impl CliFileFetcher {
     let file_fetcher = DenoCacheDirFileFetcher::new(
       BlobStoreAdapter(blob_store),
       sys,
-      http_cache,
+      Arc::new(http_cache),
       HttpClientAdapter {
         http_client_provider: http_client_provider.clone(),
         download_log_level,
@@ -500,6 +499,7 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
 mod tests {
   use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
   use deno_cache_dir::file_fetcher::HttpClient;
+  use deno_cache_dir::HttpCache;
   use deno_core::resolve_url;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
@@ -541,7 +541,7 @@ mod tests {
     let blob_store: Arc<BlobStore> = Default::default();
     let cache = Arc::new(GlobalHttpCache::new(CliSys::default(), location));
     let file_fetcher = CliFileFetcher::new(
-      cache.clone(),
+      GlobalOrLocalHttpCache::Global(cache.clone()),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
       blob_store.clone(),
@@ -586,7 +586,7 @@ mod tests {
   // in deno_graph
   async fn test_fetch_remote_encoded(
     fixture: &str,
-    charset: &str,
+    expected_charset: &str,
     expected: &str,
   ) {
     let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
@@ -598,15 +598,20 @@ mod tests {
         Some(&headers),
       );
     assert_eq!(
-      deno_graph::source::decode_source(&specifier, file.source, maybe_charset)
-        .unwrap()
-        .as_ref(),
+      deno_media_type::encoding::decode_arc_source(
+        maybe_charset.unwrap_or_else(|| {
+          deno_media_type::encoding::detect_charset(&specifier, &file.source)
+        }),
+        file.source
+      )
+      .unwrap()
+      .as_ref(),
       expected
     );
     assert_eq!(media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
-      &format!("application/typescript;charset={charset}")
+      &format!("application/typescript;charset={expected_charset}")
     );
   }
 
@@ -615,9 +620,12 @@ mod tests {
     let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(
-      deno_graph::source::decode_source(&specifier, file.source, None)
-        .unwrap()
-        .as_ref(),
+      deno_media_type::encoding::decode_arc_source(
+        deno_media_type::encoding::detect_charset(&specifier, &file.source),
+        file.source
+      )
+      .unwrap()
+      .as_ref(),
       expected
     );
   }
@@ -753,7 +761,7 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(CliSys::default(), location)),
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
       Default::default(),
@@ -784,7 +792,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_modified_01 = {
       let file_fetcher = CliFileFetcher::new(
-        http_cache.clone(),
+        http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
         Default::default(),
@@ -806,7 +814,7 @@ mod tests {
 
     let file_modified_02 = {
       let file_fetcher = CliFileFetcher::new(
-        Arc::new(GlobalHttpCache::new(CliSys::default(), location)),
+        Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
         Default::default(),
@@ -939,7 +947,7 @@ mod tests {
 
     let metadata_file_modified_01 = {
       let file_fetcher = CliFileFetcher::new(
-        http_cache.clone(),
+        http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
         Default::default(),
@@ -962,7 +970,7 @@ mod tests {
 
     let metadata_file_modified_02 = {
       let file_fetcher = CliFileFetcher::new(
-        http_cache.clone(),
+        http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
         Default::default(),
@@ -1069,7 +1077,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(CliSys::default(), location)),
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
       Default::default(),
@@ -1105,7 +1113,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone())),
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
+        .into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
       Default::default(),
@@ -1115,7 +1124,7 @@ mod tests {
       log::Level::Info,
     );
     let file_fetcher_02 = CliFileFetcher::new(
-      Arc::new(GlobalHttpCache::new(CliSys::default(), location)),
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
       Default::default(),

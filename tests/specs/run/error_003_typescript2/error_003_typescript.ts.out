@@ -1,7 +1,12 @@
 [WILDCARD]
-error: TS2322 [ERROR]: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
+TS2322 [ERROR]: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
   The types of 'a.b.c().d' are incompatible between these types.
     Type 'number' is not assignable to type 'string'.
 x = y;
 ^
     at [WILDCARD]/error_003_typescript.ts:20:1
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

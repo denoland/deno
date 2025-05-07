@@ -169,6 +169,16 @@ function getRandomValues(typedArray) {
   return webcrypto.getRandomValues(typedArray);
 }
 
+function hash(
+  algorithm: string,
+  data: BinaryLike,
+  outputEncoding: BinaryToTextEncoding = "hex",
+) {
+  const hash = createHash(algorithm);
+  hash.update(data);
+  return hash.digest(outputEncoding);
+}
+
 function createCipheriv(
   algorithm: CipherCCMTypes,
   key: CipherKey,
@@ -350,6 +360,7 @@ export default {
   getDiffieHellman,
   getFips,
   getHashes,
+  hash,
   Hash,
   hkdf,
   hkdfSync,
@@ -489,6 +500,7 @@ export {
   getHashes,
   getRandomValues,
   Hash,
+  hash,
   hkdf,
   hkdfSync,
   Hmac,

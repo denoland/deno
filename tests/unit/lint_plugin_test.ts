@@ -4,44 +4,13 @@ import { assertEquals } from "./test_util.ts";
 import { assertSnapshot } from "@std/testing/snapshot";
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintReportData {
-  // deno-lint-ignore no-explicit-any
-  node: any;
-  message: string;
-}
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintContext {
-  id: string;
-}
-// TODO(@marvinhagemeister) Remove once we land "official" types
 // deno-lint-ignore no-explicit-any
 type LintVisitor = Record<string, (node: any) => void>;
 
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintRule {
-  create(ctx: LintContext): LintVisitor;
-  destroy?(): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintPlugin {
-  name: string;
-  rules: Record<string, LintRule>;
-}
-
-function runLintPlugin(plugin: LintPlugin, fileName: string, source: string) {
-  // deno-lint-ignore no-explicit-any
-  return (Deno as any)[(Deno as any).internal].runLintPlugin(
-    plugin,
-    fileName,
-    source,
-  );
-}
-
 function testPlugin(
   source: string,
-  rule: LintRule,
-) {
+  rule: Deno.lint.Rule,
+): Deno.lint.Diagnostic[] {
   const plugin = {
     name: "test-plugin",
     rules: {
@@ -49,7 +18,11 @@ function testPlugin(
     },
   };
 
-  return runLintPlugin(plugin, "source.tsx", source);
+  return Deno.lint.runPlugin(
+    plugin,
+    "source.tsx",
+    source,
+  );
 }
 
 interface VisitResult {
@@ -128,6 +101,31 @@ Deno.test("Plugin - visitor enter/exit", () => {
   assertEquals(both.map((t) => t.selector), ["Identifier", "Identifier:exit"]);
 });
 
+// https://github.com/denoland/deno/issues/28227
+Deno.test("Plugin - visitor enter/exit #2", () => {
+  const log: string[] = [];
+
+  testPlugin("{}\nfoo;", {
+    create() {
+      return {
+        "*": (node: Deno.lint.Node) => log.push(`-> ${node.type}`),
+        "*:exit": (node: Deno.lint.Node) => log.push(`<- ${node.type}`),
+      };
+    },
+  });
+
+  assertEquals(log, [
+    "-> Program",
+    "-> BlockStatement",
+    "<- BlockStatement",
+    "-> ExpressionStatement",
+    "-> Identifier",
+    "<- Identifier",
+    "<- ExpressionStatement",
+    "<- Program",
+  ]);
+});
+
 Deno.test("Plugin - visitor descendant", () => {
   let result = testVisit(
     "if (false) foo; if (false) bar()",
@@ -157,6 +155,12 @@ Deno.test("Plugin - visitor child combinator", () => {
   assertEquals(result[0].node.name, "foo");
 
   result = testVisit(
+    "class Foo { foo = 2 }",
+    "ClassBody > PropertyDefinition",
+  );
+  assertEquals(result[0].node.type, "PropertyDefinition");
+
+  result = testVisit(
     "if (false) foo; foo()",
     "IfStatement IfStatement",
   );
@@ -177,6 +181,29 @@ Deno.test("Plugin - visitor subsequent sibling", () => {
     "IfStatement ~ IfStatement Identifier",
   );
   assertEquals(result.map((r) => r.node.name), ["bar", "baz"]);
+});
+
+Deno.test("Plugin - visitor field", () => {
+  let result = testVisit(
+    "if (foo()) {}",
+    "IfStatement.test.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo()) {}",
+    "IfStatement .test .callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo(bar())) {}",
+    "IfStatement.test CallExpression.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
 });
 
 Deno.test("Plugin - visitor attr", () => {
@@ -273,6 +300,22 @@ Deno.test("Plugin - visitor attr length special case", () => {
   assertEquals(result[1].node.arguments.length, 2);
 });
 
+Deno.test("Plugin - visitor attr regex", () => {
+  let result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "get");
+
+  result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind!=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "method");
+});
+
 Deno.test("Plugin - visitor :first-child", () => {
   const result = testVisit(
     "{ foo; bar }",
@@ -318,8 +361,128 @@ Deno.test("Plugin - visitor :nth-child", () => {
   assertEquals(result[1].node.name, "foobar");
 });
 
+Deno.test("Plugin - visitor :has()", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // Multiple sub queries
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(CallExpression, Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // This should not match
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(CallExpression, Identifier[name='baz'])",
+  );
+  assertEquals(result, []);
+
+  // Attr match
+  result = testVisit(
+    "{ foo, bar }",
+    "Identifier:has([name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :is()/:where()/:matches()", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :is(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :where(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :matches(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :not", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(Identifier[name='baz'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // Multiple sub queries
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(Identifier[name='baz'], CallExpression)",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // This should not match
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(CallExpression, Identifier)",
+  );
+  assertEquals(result, []);
+
+  // Attr match
+  result = testVisit(
+    "{ foo, bar }",
+    "Identifier:not([name='foo'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - parent", () => {
+  let parent: Deno.lint.Node | undefined;
+
+  testPlugin("const foo = 1;", {
+    create() {
+      return {
+        VariableDeclaration(node) {
+          parent = node.parent;
+        },
+      };
+    },
+  });
+
+  assertEquals(parent?.type, "Program");
+});
+
 Deno.test("Plugin - Program", async (t) => {
   await testSnapshot(t, "", "Program");
+});
+
+Deno.test("Plugin - FunctionDeclaration", async (t) => {
+  await testSnapshot(t, "function foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "function foo(a, ...b) {}", "FunctionDeclaration");
+  await testSnapshot(
+    t,
+    "function foo(a = 1, { a = 2, b, ...c }, [d,...e], ...f) {}",
+    "FunctionDeclaration",
+  );
+
+  await testSnapshot(t, "async function foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "async function* foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "function* foo() {}", "FunctionDeclaration");
+
+  // TypeScript
+  await testSnapshot(
+    t,
+    "function foo<T>(a?: 2, ...b: any[]): any {}",
+    "FunctionDeclaration",
+  );
 });
 
 Deno.test("Plugin - ImportDeclaration", async (t) => {
@@ -579,6 +742,11 @@ Deno.test("Plugin - ClassExpression", async (t) => {
   await testSnapshot(t, "a = class { static foo = bar }", "ClassExpression");
   await testSnapshot(
     t,
+    "a = class { static [key: string]: any }",
+    "ClassExpression",
+  );
+  await testSnapshot(
+    t,
     "a = class { static foo; static { foo = bar } }",
     "ClassExpression",
   );
@@ -624,6 +792,7 @@ Deno.test("Plugin - MemberExpression", async (t) => {
 
 Deno.test("Plugin - MetaProperty", async (t) => {
   await testSnapshot(t, "import.meta", "MetaProperty");
+  await testSnapshot(t, "new.target", "MetaProperty");
 });
 
 Deno.test("Plugin - NewExpression", async (t) => {
@@ -696,6 +865,21 @@ Deno.test("Plugin - YieldExpression", async (t) => {
   await testSnapshot(t, "function* foo() { yield bar; }", "YieldExpression");
 });
 
+Deno.test("Plugin - ObjectPattern", async (t) => {
+  await testSnapshot(t, "const { prop } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop: A } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { 'a.b': A } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop = 2 } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop = 2, ...c } = {}", "ObjectPattern");
+  await testSnapshot(t, "({ a = b } = {})", "ObjectPattern");
+});
+
+Deno.test("Plugin - ArrayPattern", async (t) => {
+  await testSnapshot(t, "const [a, b] = []", "ArrayPattern");
+  await testSnapshot(t, "const [a = 2] = []", "ArrayPattern");
+  await testSnapshot(t, "const [a, ...b] = []", "ArrayPattern");
+});
+
 Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "1", "Literal");
   await testSnapshot(t, "'foo'", "Literal");
@@ -705,6 +889,74 @@ Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "null", "Literal");
   await testSnapshot(t, "1n", "Literal");
   await testSnapshot(t, "/foo/g", "Literal");
+});
+
+// Stage 1 Proposal: https://github.com/tc39/proposal-grouped-and-auto-accessors
+Deno.test.ignore(
+  "Plugin - AccessorProperty + TSAbstractAccessorProperty",
+  async (t) => {
+    await testSnapshot(
+      t,
+      `class Foo { accessor foo = 1; }`,
+      "AccessorProperty",
+    );
+    await testSnapshot(
+      t,
+      `abstract class Foo { abstract accessor foo: number = 1; }`,
+      "TSAbstractAccessorProperty",
+    );
+  },
+);
+
+Deno.test("Plugin - Abstract class", async (t) => {
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract prop: string; }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract method(): string; }`,
+    "ClassDeclaration",
+  );
+});
+
+Deno.test("Plugin - Decorators", async (t) => {
+  // Class declaration
+  await testSnapshot(
+    t,
+    `@deco class Foo {}`,
+    "ClassDeclaration",
+  );
+
+  // Class expression
+  await testSnapshot(
+    t,
+    `let foo = class Foo { @deco foo() {} }`,
+    "ClassExpression",
+  );
+
+  // Other
+  await testSnapshot(
+    t,
+    `class Foo { @deco foobar() {} }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco get foo() { return 2 } }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco("arg") foo: string; constructor() { this.foo = "foo" } }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { foo(@deco foo: string) {} }`,
+    "ClassDeclaration",
+  );
 });
 
 Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
@@ -742,28 +994,60 @@ Deno.test("Plugin - TSEnumDeclaration", async (t) => {
   );
 });
 
-Deno.test("Plugin - TSInterface", async (t) => {
-  await testSnapshot(t, "interface A {}", "TSInterface");
-  await testSnapshot(t, "interface A<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A extends Foo<T>, Bar<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A { foo: any, bar?: any }", "TSInterface");
+Deno.test("Plugin - TSInterfaceDeclaration", async (t) => {
+  await testSnapshot(t, "interface A {}", "TSInterfaceDeclaration");
+  await testSnapshot(t, "interface A<T> {}", "TSInterfaceDeclaration");
+  await testSnapshot(
+    t,
+    "interface A extends Foo<T>, Bar<T> {}",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { foo: any, bar?: any }",
+    "TSInterfaceDeclaration",
+  );
   await testSnapshot(
     t,
     "interface A { readonly [key: string]: any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 
-  await testSnapshot(t, "interface A { readonly a: any }", "TSInterface");
-  await testSnapshot(t, "interface A { <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { new <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { a: new <T>(a: T) => T }", "TSInterface");
-  await testSnapshot(t, "interface A { get a(): string }", "TSInterface");
-  await testSnapshot(t, "interface A { set a(v: string) }", "TSInterface");
+  await testSnapshot(
+    t,
+    "interface A { readonly a: any }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { new <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { a: new <T>(a: T) => T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { get a(): string }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { set a(v: string) }",
+    "TSInterfaceDeclaration",
+  );
 
   await testSnapshot(
     t,
     "interface A { a<T>(arg?: any, ...args: any[]): any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 });
 
@@ -789,12 +1073,31 @@ Deno.test("Plugin - TSIntersectionType", async (t) => {
   await testSnapshot(t, "type A = B & C", "TSIntersectionType");
 });
 
+Deno.test("Plugin - TSInstantiationExpression", async (t) => {
+  await testSnapshot(t, "a<b>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>?.();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a?.b<c>)<d>();", "TSInstantiationExpression");
+  await testSnapshot(t, "new (a<b>)<c>();", "TSInstantiationExpression");
+});
+
 Deno.test("Plugin - TSModuleDeclaration", async (t) => {
   await testSnapshot(t, "module A {}", "TSModuleDeclaration");
   await testSnapshot(
     t,
     "declare module A { export function A(): void }",
     "TSModuleDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSDeclareFunction", async (t) => {
+  await testSnapshot(
+    t,
+    `async function foo(): any;
+async function foo(): any {}`,
+    "TSDeclareFunction",
   );
 });
 
@@ -898,6 +1201,7 @@ Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
   await testSnapshot(t, "type A = [number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
+  await testSnapshot(t, "type A = [x?: number]", "TSTupleType");
   await testSnapshot(t, "type A = [...x: number[]]", "TSTupleType");
 });
 

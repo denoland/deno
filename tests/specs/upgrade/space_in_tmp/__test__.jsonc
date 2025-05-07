@@ -7,10 +7,9 @@
       "output": ""
     },
     {
-      "commandName": "mkdir",
-      "args": ["space in cwd"],
+      "args": ["eval", "Deno.mkdirSync('space in cwd')"],
       "exitCode": 0,
-      "output": ""
+      "output": "[WILDCARD]"
     },
     {
       "commandName": "./deno_copy",

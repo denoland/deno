@@ -119,19 +119,19 @@ fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl AccessCheckFn + 'a {
-  move |resolved, path, options| {
-    permissions.check(resolved, options, path, api_name)
+  move |path, options, resolve| {
+    permissions.check(options, path, api_name, resolve)
   }
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   api_name: &'static str,
-) -> impl AccessCheckFn {
-  move |resolved, path, options| {
+) -> impl AccessCheckFn + 'static {
+  move |path, options, resolve| {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check(resolved, options, path, api_name)
+    permissions.check(options, path, api_name, resolve)
   }
 }
 
@@ -171,9 +171,6 @@ where
 {
   let fs = state.borrow::<FileSystemRc>();
   let path = fs.cwd()?;
-  state
-    .borrow_mut::<P>()
-    .check_read_blind(&path, "CWD", "Deno.cwd()")?;
   let path_str = path_into_string(path.into_os_string())?;
   Ok(path_str)
 }

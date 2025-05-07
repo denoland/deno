@@ -62,7 +62,11 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
-impl GarbageCollected for KeyObjectHandle {}
+impl GarbageCollected for KeyObjectHandle {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandle"
+  }
+}
 
 #[derive(Clone)]
 pub enum AsymmetricPrivateKey {
@@ -340,7 +344,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>> for RsaPssParameters<'a> {
 
   fn try_from(
     any: rsa::pkcs8::der::asn1::AnyRef<'a>,
-  ) -> rsa::pkcs8::der::Result<RsaPssParameters> {
+  ) -> rsa::pkcs8::der::Result<RsaPssParameters<'a>> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder
         .context_specific::<rsa::pkcs8::AlgorithmIdentifierRef>(
@@ -1463,19 +1467,28 @@ impl AsymmetricPrivateKey {
       AsymmetricPrivateKey::X25519(static_secret) => {
         let bytes = static_secret.to_bytes();
 
+        let AsymmetricPublicKey::X25519(x) = self.to_public_key() else {
+          unreachable!();
+        };
+
         Ok(deno_core::serde_json::json!({
-            "kty": "OKP",
             "crv": "X25519",
+            "x": bytes_to_b64(x.as_bytes()),
             "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
         }))
       }
       AsymmetricPrivateKey::Ed25519(key) => {
         let bytes = key.to_bytes();
+        let AsymmetricPublicKey::Ed25519(x) = self.to_public_key() else {
+          unreachable!();
+        };
 
         Ok(deno_core::serde_json::json!({
-            "kty": "OKP",
             "crv": "Ed25519",
+            "x": bytes_to_b64(x.as_bytes()),
             "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
         }))
       }
       _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),
@@ -1907,7 +1920,11 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
-impl GarbageCollected for KeyObjectHandlePair {}
+impl GarbageCollected for KeyObjectHandlePair {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandlePair"
+  }
+}
 
 impl KeyObjectHandlePair {
   pub fn new(

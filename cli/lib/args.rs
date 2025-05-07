@@ -7,6 +7,8 @@ use std::io::Seek;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use deno_npm::resolution::PackageIdNotFoundError;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -32,8 +34,10 @@ pub fn has_trace_permissions_enabled() -> bool {
 }
 
 pub fn has_flag_env_var(name: &str) -> bool {
-  let value = std::env::var(name);
-  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
+  match std::env::var_os(name) {
+    Some(value) => value == "1",
+    None => false,
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,6 +60,8 @@ pub enum RootCertStoreLoadError {
   FailedAddPemFile(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
+  #[error("Failed to load platform certificates: {0}")]
+  FailedNativeCerts(String),
 }
 
 /// Create and populate a root cert store based on the passed options and
@@ -85,7 +91,9 @@ pub fn get_root_cert_store(
         root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
       }
       "system" => {
-        let roots = load_native_certs().expect("could not load platform certs");
+        let roots = load_native_certs().map_err(|err| {
+          RootCertStoreLoadError::FailedNativeCerts(err.to_string())
+        })?;
         for root in roots {
           if let Err(err) = root_cert_store
             .add(rustls::pki_types::CertificateDer::from(root.0.clone()))
@@ -187,12 +195,26 @@ pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
     Some(state)
   });
 
+pub fn resolve_npm_resolution_snapshot(
+) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, PackageIdNotFoundError>
+{
+  if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+    NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+  {
+    // TODO(bartlomieju): remove this clone
+    Ok(Some(snapshot.clone().into_valid()?))
+  } else {
+    Ok(None)
+  }
+}
+
 #[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
+  pub lazy_dynamic_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron

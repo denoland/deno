@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
@@ -9,6 +10,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use lsp_types::Uri;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -59,14 +61,18 @@ pub struct ReplLanguageServer {
 }
 
 impl ReplLanguageServer {
-  pub async fn new_initialized() -> Result<ReplLanguageServer, AnyError> {
+  pub async fn new_initialized(
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
+  ) -> Result<ReplLanguageServer, AnyError> {
     // downgrade info and warn lsp logging to debug
     super::logging::set_lsp_log_level(log::Level::Debug);
     super::logging::set_lsp_warn_level(log::Level::Debug);
 
     let language_server = super::language_server::LanguageServer::new(
       Client::new_for_repl(),
-      Default::default(),
+      registry_provider,
     );
 
     let cwd_uri = get_cwd_uri()?;
@@ -124,6 +130,7 @@ impl ReplLanguageServer {
     &mut self,
     line_text: &str,
     position: usize,
+    token: CancellationToken,
   ) -> Vec<ReplCompletionItem> {
     self.did_change(line_text).await;
     let text_info = deno_ast::SourceTextInfo::from_string(format!(
@@ -135,27 +142,30 @@ impl ReplLanguageServer {
     let line_and_column = text_info.line_and_column_index(position);
     let response = self
       .language_server
-      .completion(CompletionParams {
-        text_document_position: TextDocumentPositionParams {
-          text_document: TextDocumentIdentifier {
-            uri: self.get_document_uri(),
+      .completion(
+        CompletionParams {
+          text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+              uri: self.get_document_uri(),
+            },
+            position: Position {
+              line: line_and_column.line_index as u32,
+              character: line_and_column.column_index as u32,
+            },
           },
-          position: Position {
-            line: line_and_column.line_index as u32,
-            character: line_and_column.column_index as u32,
+          work_done_progress_params: WorkDoneProgressParams {
+            work_done_token: None,
           },
+          partial_result_params: PartialResultParams {
+            partial_result_token: None,
+          },
+          context: Some(CompletionContext {
+            trigger_kind: CompletionTriggerKind::INVOKED,
+            trigger_character: None,
+          }),
         },
-        work_done_progress_params: WorkDoneProgressParams {
-          work_done_token: None,
-        },
-        partial_result_params: PartialResultParams {
-          partial_result_token: None,
-        },
-        context: Some(CompletionContext {
-          trigger_kind: CompletionTriggerKind::INVOKED,
-          trigger_character: None,
-        }),
-      })
+        token,
+      )
       .await
       .ok()
       .unwrap_or_default();
@@ -352,5 +362,6 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
       },
       ..Default::default()
     },
+    tracing: Default::default(),
   }
 }

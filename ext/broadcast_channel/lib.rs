@@ -3,8 +3,8 @@
 mod in_memory_broadcast_channel;
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::op2;
@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_features::FeatureChecker;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
@@ -94,7 +95,7 @@ where
   BC: BroadcastChannel + 'static,
 {
   state
-    .feature_checker
+    .borrow::<Arc<FeatureChecker>>()
     .check_or_exit(UNSTABLE_FEATURE_NAME, "BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
@@ -160,8 +161,3 @@ deno_core::extension!(deno_broadcast_channel,
     state.put(options.bc);
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("lib.deno_broadcast_channel.d.ts")
-}

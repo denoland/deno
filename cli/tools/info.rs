@@ -19,10 +19,12 @@ use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_lib::util::checksum;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_resolver::DenoResolveErrorKind;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -48,59 +50,73 @@ pub async fn info(
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = cli_options.maybe_lockfile();
+    let maybe_lockfile = factory.maybe_lockfile().await?;
     let resolver = factory.workspace_resolver().await?.clone();
-    let npmrc = cli_options.npmrc();
+    let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Ok(resolved) =
-      resolver.resolve(&specifier, &cwd_url)
-    {
+    let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
+      &specifier,
+      &cwd_url,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    ) {
       match resolved {
-        deno_config::workspace::MappedResolution::Normal {
-          specifier, ..
-        }
-        | deno_config::workspace::MappedResolution::ImportMap {
+        deno_resolver::workspace::MappedResolution::Normal {
           specifier,
           ..
         }
-        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+        | deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
           specifier,
           ..
         } => Some(specifier),
-        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+        deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
           target_pkg_json,
           sub_path,
           ..
-        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
-          target_pkg_json.clone().dir_path(),
-          sub_path.as_deref(),
-          Some(&cwd_url),
-          node_resolver::ResolutionMode::Import,
-          node_resolver::NodeResolutionKind::Execution,
-        )?),
-        deno_config::workspace::MappedResolution::PackageJson {
+        } => Some(
+          node_resolver
+            .resolve_package_subpath_from_deno_module(
+              target_pkg_json.clone().dir_path(),
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?
+            .into_url()?,
+        ),
+        deno_resolver::workspace::MappedResolution::PackageJson {
           alias,
           sub_path,
           dep_result,
           ..
         } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::File(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                .into_box()
+                .into(),
+            );
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
                 alias,
                 version_req,
               )?;
-            Some(node_resolver.resolve_package_subpath_from_deno_module(
-              pkg_folder,
-              sub_path.as_deref(),
-              Some(&cwd_url),
-              node_resolver::ResolutionMode::Import,
-              node_resolver::NodeResolutionKind::Execution,
-            )?)
+            Some(
+              node_resolver
+                .resolve_package_subpath_from_deno_module(
+                  pkg_folder,
+                  sub_path.as_deref(),
+                  Some(&cwd_url),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )?
+                .into_url()?,
+            )
           }
           deno_package_json::PackageJsonDepValue::Req(req) => {
             Some(ModuleSpecifier::parse(&format!(
@@ -183,9 +199,10 @@ fn print_cache_info(
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
+  let deno_version = DENO_VERSION_INFO.deno;
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
-  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
+  let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();
@@ -203,6 +220,7 @@ fn print_cache_info(
   if json {
     let mut json_output = serde_json::json!({
       "version": JSON_SCHEMA_VERSION,
+      "denoVersion": deno_version,
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
@@ -218,6 +236,7 @@ fn print_cache_info(
 
     display::write_json_to_stdout(&json_output)
   } else {
+    println!("{} {}", colors::bold("Deno version:"), deno_version);
     println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
       "{} {}",
@@ -689,7 +708,6 @@ impl<'a> GraphDisplayContext<'a> {
             }
           }
           Jsr(_) => "(loading error)",
-          NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
           Npm(_) => "(npm loading error)",
           TooManyRedirects => "(too many redirects error)",
         };

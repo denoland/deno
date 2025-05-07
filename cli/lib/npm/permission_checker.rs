@@ -61,7 +61,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
           Ok(Cow::Borrowed(path))
         } else {
           permissions
-            .check_read_path(path)
+            .check_read_path(Cow::Borrowed(path))
             .map_err(JsErrorBox::from_err)
         }
       }
@@ -112,7 +112,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
         }
 
         permissions
-          .check_read_path(path)
+          .check_read_path(Cow::Borrowed(path))
           .map_err(JsErrorBox::from_err)
       }
     }

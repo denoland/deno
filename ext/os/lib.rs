@@ -22,13 +22,10 @@ pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
+pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<&str>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
   // at https://nodejs.org/api/cli.html#environment-variables
-  let mut set = HashSet::new();
-  set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_OPTIONS".to_string());
-  set
+  HashSet::from(["NODE_DEBUG", "NODE_OPTIONS", "FORCE_COLOR", "NO_COLOR"])
 });
 
 #[derive(Clone, Default)]
@@ -69,6 +66,7 @@ deno_core::extension!(
     op_get_exit_code,
     op_system_memory_info,
     op_uid,
+    op_runtime_cpu_usage,
     op_runtime_memory_usage,
     ops::signal::op_signal_bind,
     ops::signal::op_signal_unbind,
@@ -76,46 +74,16 @@ deno_core::extension!(
   ],
   esm = ["30_os.js", "40_signals.js"],
   options = {
-    exit_code: ExitCode,
+    exit_code: Option<ExitCode>,
   },
   state = |state, options| {
-    state.put::<ExitCode>(options.exit_code);
+    if let Some(exit_code) = options.exit_code {
+      state.put::<ExitCode>(exit_code);
+    }
     #[cfg(unix)]
     {
       state.put(ops::signal::SignalState::default());
     }
-  }
-);
-
-deno_core::extension!(
-  deno_os_worker,
-  ops = [
-    op_env,
-    op_exec_path,
-    op_exit,
-    op_delete_env,
-    op_get_env,
-    op_gid,
-    op_hostname,
-    op_loadavg,
-    op_network_interfaces,
-    op_os_release,
-    op_os_uptime,
-    op_set_env,
-    op_set_exit_code,
-    op_get_exit_code,
-    op_system_memory_info,
-    op_uid,
-    op_runtime_memory_usage,
-    ops::signal::op_signal_bind,
-    ops::signal::op_signal_unbind,
-    ops::signal::op_signal_poll,
-  ],
-  esm = ["30_os.js", "40_signals.js"],
-  middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync()),
-    _ => op,
   }
 );
 
@@ -160,9 +128,35 @@ fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
     .map_err(OsError::InvalidUtf8)
 }
 
+fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
+  extern "C" {
+    #[cfg(unix)]
+    fn tzset();
+
+    #[cfg(windows)]
+    fn _tzset();
+  }
+
+  if key == "TZ" {
+    // SAFETY: tzset/_tzset (libc) is called to update the timezone information
+    unsafe {
+      #[cfg(unix)]
+      tzset();
+
+      #[cfg(windows)]
+      _tzset();
+    }
+
+    isolate.date_time_configuration_change_notification(
+      v8::TimeZoneDetection::Redetect,
+    );
+  }
+}
+
 #[op2(fast, stack_trace)]
 fn op_set_env(
   state: &mut OpState,
+  scope: &mut v8::HandleScope,
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
@@ -176,7 +170,9 @@ fn op_set_env(
   if value.contains('\0') {
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
+
   env::set_var(key, value);
+  dt_change_notif(scope, key);
   Ok(())
 }
 
@@ -195,7 +191,7 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key.as_str());
 
   if !skip_permission_check {
     state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
@@ -231,19 +227,25 @@ fn op_delete_env(
 
 #[op2(fast)]
 fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
-  state.borrow_mut::<ExitCode>().set(code);
+  if let Some(exit_code) = state.try_borrow_mut::<ExitCode>() {
+    exit_code.set(code);
+  }
 }
 
 #[op2(fast)]
 #[smi]
 fn op_get_exit_code(state: &mut OpState) -> i32 {
-  state.borrow_mut::<ExitCode>().get()
+  state
+    .try_borrow::<ExitCode>()
+    .map(|e| e.get())
+    .unwrap_or_default()
 }
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
-  let code = state.borrow::<ExitCode>().get();
-  exit(code)
+  if let Some(exit_code) = state.try_borrow::<ExitCode>() {
+    exit(exit_code.get())
+  }
 }
 
 #[op2(stack_trace)]
@@ -386,27 +388,126 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   Ok(None)
 }
 
-// HeapStats stores values from a isolate.get_heap_statistics() call
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MemoryUsage {
-  rss: usize,
-  heap_total: usize,
-  heap_used: usize,
-  external: usize,
+#[op2]
+#[serde]
+fn op_runtime_cpu_usage() -> (usize, usize) {
+  let (sys, user) = get_cpu_usage();
+  (sys.as_micros() as usize, user.as_micros() as usize)
+}
+
+#[cfg(unix)]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  let mut rusage = std::mem::MaybeUninit::uninit();
+
+  // Uses POSIX getrusage from libc
+  // to retrieve user and system times
+  // SAFETY: libc call
+  let ret = unsafe { libc::getrusage(libc::RUSAGE_SELF, rusage.as_mut_ptr()) };
+  if ret != 0 {
+    return Default::default();
+  }
+
+  // SAFETY: already checked the result
+  let rusage = unsafe { rusage.assume_init() };
+
+  let sys = std::time::Duration::from_micros(rusage.ru_stime.tv_usec as u64)
+    + std::time::Duration::from_secs(rusage.ru_stime.tv_sec as u64);
+  let user = std::time::Duration::from_micros(rusage.ru_utime.tv_usec as u64)
+    + std::time::Duration::from_secs(rusage.ru_utime.tv_sec as u64);
+
+  (sys, user)
+}
+
+#[cfg(windows)]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::minwindef::FILETIME;
+  use winapi::shared::minwindef::TRUE;
+  use winapi::um::minwinbase::SYSTEMTIME;
+  use winapi::um::processthreadsapi::GetCurrentProcess;
+  use winapi::um::processthreadsapi::GetProcessTimes;
+  use winapi::um::timezoneapi::FileTimeToSystemTime;
+
+  fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
+    std::time::Duration::from_secs(
+      system_time.wHour as u64 * 3600
+        + system_time.wMinute as u64 * 60
+        + system_time.wSecond as u64,
+    ) + std::time::Duration::from_millis(system_time.wMilliseconds as u64)
+  }
+
+  let mut creation_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut exit_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+
+  // SAFETY: winapi calls
+  let ret = unsafe {
+    GetProcessTimes(
+      GetCurrentProcess(),
+      creation_time.as_mut_ptr(),
+      exit_time.as_mut_ptr(),
+      kernel_time.as_mut_ptr(),
+      user_time.as_mut_ptr(),
+    )
+  };
+
+  if ret != TRUE {
+    return std::default::Default::default();
+  }
+
+  let mut kernel_system_time = std::mem::MaybeUninit::<SYSTEMTIME>::uninit();
+  let mut user_system_time = std::mem::MaybeUninit::<SYSTEMTIME>::uninit();
+
+  // SAFETY: convert to system time
+  unsafe {
+    let sys_ret = FileTimeToSystemTime(
+      kernel_time.assume_init_mut(),
+      kernel_system_time.as_mut_ptr(),
+    );
+    let user_ret = FileTimeToSystemTime(
+      user_time.assume_init_mut(),
+      user_system_time.as_mut_ptr(),
+    );
+
+    match (sys_ret, user_ret) {
+      (TRUE, TRUE) => (
+        convert_system_time(kernel_system_time.assume_init()),
+        convert_system_time(user_system_time.assume_init()),
+      ),
+      (TRUE, FALSE) => (
+        convert_system_time(kernel_system_time.assume_init()),
+        Default::default(),
+      ),
+      (FALSE, TRUE) => (
+        Default::default(),
+        convert_system_time(user_system_time.assume_init()),
+      ),
+      (_, _) => Default::default(),
+    }
+  }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+  Default::default()
 }
 
 #[op2]
 #[serde]
-fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
-  let mut s = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut s);
-  MemoryUsage {
-    rss: rss(),
-    heap_total: s.total_heap_size(),
-    heap_used: s.used_heap_size(),
-    external: s.external_memory(),
-  }
+fn op_runtime_memory_usage(
+  scope: &mut v8::HandleScope,
+) -> (usize, usize, usize, usize) {
+  let s = scope.get_heap_statistics();
+
+  let (rss, heap_total, heap_used, external) = (
+    rss(),
+    s.total_heap_size(),
+    s.used_heap_size(),
+    s.external_memory(),
+  );
+
+  (rss, heap_total, heap_used, external)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]

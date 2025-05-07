@@ -1,3 +1,5 @@
 Download http://localhost:4545/missing_non_existent.ts
 Check http://localhost:4545/missing_non_existent.ts
-error: TS2307 [ERROR]: Cannot find module 'http://localhost:4545/missing_non_existent.ts'.
+TS2307 [ERROR]: Cannot find module 'http://localhost:4545/missing_non_existent.ts'.
+
+error: Type checking failed.

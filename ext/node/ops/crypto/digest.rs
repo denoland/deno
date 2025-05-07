@@ -8,11 +8,17 @@ use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
 
+mod ring_sha2;
+
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {}
+impl GarbageCollected for Hasher {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Hasher"
+  }
+}
 
 impl Hasher {
   pub fn new(
@@ -198,8 +204,30 @@ impl Hash {
     output_length: Option<usize>,
   ) -> Result<Self, HashError> {
     match algorithm_name {
-      "shake128" => return Ok(Shake128(Default::default(), output_length)),
-      "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "shake128" | "shake-128" => {
+        return Ok(Shake128(Default::default(), output_length))
+      }
+      "shake256" | "shake-256" => {
+        return Ok(Shake256(Default::default(), output_length))
+      }
+      "sha256" => {
+        let digest = ring_sha2::RingSha256::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
+      "sha512" => {
+        let digest = ring_sha2::RingSha512::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
       _ => {}
     }
 

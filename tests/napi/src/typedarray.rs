@@ -144,10 +144,26 @@ extern "C" fn test_external(
   typedarray
 }
 
+extern "C" fn test_is_buffer(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut is_buffer: bool = false;
+  assert_napi_ok!(napi_is_buffer(env, args[0], &mut is_buffer));
+
+  let mut result: napi_value = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, is_buffer, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_external", test_external),
     napi_new_property!(env, "test_multiply", test_multiply),
+    napi_new_property!(env, "test_is_buffer", test_is_buffer),
   ];
 
   assert_napi_ok!(napi_define_properties(

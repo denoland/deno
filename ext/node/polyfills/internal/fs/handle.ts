@@ -5,8 +5,9 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { Mode, promises, read, write } from "node:fs";
+import { Mode, promises, read, ReadStream, write, WriteStream } from "node:fs";
 import { core } from "ext:core/mod.js";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -16,6 +17,12 @@ import {
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
+import {
+  CreateReadStreamOptions,
+  CreateWriteStreamOptions,
+} from "node:fs/promises";
 
 interface WriteResult {
   bytesWritten: number;
@@ -158,6 +165,14 @@ export class FileHandle extends EventEmitter {
     return promises.chmod(this.#path, mode);
   }
 
+  datasync(): Promise<void> {
+    return fsCall(fdatasyncPromise, this);
+  }
+
+  sync(): Promise<void> {
+    return fsCall(fsyncPromise, this);
+  }
+
   utimes(
     atime: number | string | Date,
     mtime: number | string | Date,
@@ -169,6 +184,14 @@ export class FileHandle extends EventEmitter {
   chown(uid: number, gid: number): Promise<void> {
     assertNotClosed(this, promises.chown.name);
     return promises.chown(this.#path, uid, gid);
+  }
+
+  createReadStream(options?: CreateReadStreamOptions): ReadStream {
+    return new ReadStream(undefined, { ...options, fd: this.fd });
+  }
+
+  createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
+    return new WriteStream(undefined, { ...options, fd: this.fd });
   }
 }
 

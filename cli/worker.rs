@@ -101,7 +101,7 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            result = hmr_result.map_err(Into::into);
+            result = hmr_result;
           },
           event_loop_result = event_loop_future => {
             result = event_loop_result;
@@ -365,6 +365,25 @@ impl CliMainWorkerFactory {
         self.root_permissions.clone(),
         vec![],
         Default::default(),
+        None,
+      )
+      .await
+  }
+
+  pub async fn create_main_worker_with_unconfigured_runtime(
+    &self,
+    mode: WorkerExecutionMode,
+    main_module: ModuleSpecifier,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    self
+      .create_custom_worker(
+        mode,
+        main_module,
+        self.root_permissions.clone(),
+        vec![],
+        Default::default(),
+        unconfigured_runtime,
       )
       .await
   }
@@ -376,6 +395,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
@@ -432,6 +452,7 @@ impl CliMainWorkerFactory {
       permissions,
       custom_extensions,
       stdio,
+      unconfigured_runtime,
     )?;
 
     if self.needs_test_modules {
@@ -486,7 +507,7 @@ mod tests {
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
     );
     let options = WorkerOptions {
-      startup_snapshot: crate::js::deno_isolate_init(),
+      startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       ..Default::default()
     };
 
@@ -497,6 +518,7 @@ mod tests {
     >(
       &main_module,
       WorkerServiceOptions {
+        deno_rt_native_addon_loader: None,
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(
           permission_desc_parser,

@@ -34,6 +34,8 @@ import {
   op_quic_send_stream_get_id,
   op_quic_send_stream_get_priority,
   op_quic_send_stream_set_priority,
+  op_webtransport_accept,
+  op_webtransport_connect,
 } from "ext:core/ops";
 import {
   getReadableStreamResourceBacking,
@@ -50,12 +52,16 @@ const {
 const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
+  ReflectConstruct,
   Symbol,
   SymbolAsyncIterator,
-  SafePromisePrototypeFinally,
 } = primordials;
 
 let getEndpointResource;
+
+function promiseFinallyWithoutUnhandled(p, f) {
+  return PromisePrototypeThen(p, f, f);
+}
 
 function transportOptions({
   keepAliveInterval,
@@ -205,6 +211,9 @@ class QuicIncoming {
   }
 }
 
+let webtransportConnect;
+let webtransportAccept;
+
 class QuicConn {
   #resource;
   #bidiStream = null;
@@ -309,6 +318,43 @@ class QuicConn {
   close({ closeCode = 0, reason = "" } = { __proto__: null }) {
     op_quic_connection_close(this.#resource, closeCode, reason);
   }
+
+  static {
+    webtransportConnect = async function webtransportConnect(conn, url) {
+      const {
+        0: connectTxRid,
+        1: connectRxRid,
+        2: settingsTxRid,
+        3: settingsRxRid,
+      } = await op_webtransport_connect(conn.#resource, url);
+      const connect = new QuicBidirectionalStream(
+        connectTxRid,
+        connectRxRid,
+        conn.closed,
+      );
+      const settingsTx = writableStream(settingsTxRid, conn.closed);
+      const settingsRx = readableStream(settingsRxRid, conn.closed);
+      return { connect, settingsTx, settingsRx };
+    };
+
+    webtransportAccept = async function webtransportAccept(conn) {
+      const {
+        0: url,
+        1: connectTxRid,
+        2: connectRxRid,
+        3: settingsTxRid,
+        4: settingsRxRid,
+      } = await op_webtransport_accept(conn.#resource);
+      const connect = new QuicBidirectionalStream(
+        connectTxRid,
+        connectRxRid,
+        conn.closed,
+      );
+      const settingsTx = writableStream(settingsTxRid, conn.closed);
+      const settingsRx = readableStream(settingsRxRid, conn.closed);
+      return { url, connect, settingsTx, settingsRx };
+    };
+  }
 }
 
 class QuicSendStream extends WritableStream {
@@ -342,18 +388,26 @@ class QuicReceiveStream extends ReadableStream {
 
 function readableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
-  return readableStreamForRid(rid, true, QuicReceiveStream);
+  return readableStreamForRid(
+    rid,
+    true,
+    (...args) => ReflectConstruct(QuicReceiveStream, args),
+  );
 }
 
 function writableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
-  return writableStreamForRid(rid, true, QuicSendStream);
+  return writableStreamForRid(
+    rid,
+    true,
+    (...args) => ReflectConstruct(QuicSendStream, args),
+  );
 }
 
 class QuicBidirectionalStream {
@@ -421,6 +475,7 @@ function connectQuic(options) {
       caCerts: options.caCerts,
       alpnProtocols: options.alpnProtocols,
       serverName: options.serverName,
+      serverCertificateHashes: options.serverCertificateHashes,
     },
     transportOptions(options),
     keyPair,
@@ -448,4 +503,6 @@ export {
   QuicListener,
   QuicReceiveStream,
   QuicSendStream,
+  webtransportAccept,
+  webtransportConnect,
 };

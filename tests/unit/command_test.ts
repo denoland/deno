@@ -1074,3 +1074,40 @@ Deno.test(async function outputWhenManuallyConsumingStreams() {
   assertEquals(status.stdout, new Uint8Array());
   assertEquals(status.stderr, new Uint8Array());
 });
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { run: ["cmd"], read: true, env: true },
+  },
+  async function envCaseInsensitiveWindows() {
+    const command = new Deno.Command("cmd", {
+      args: ["/d", "/s", "/c", "echo", "1"],
+      env: {
+        // notice Path is not PATH
+        Path: Deno.env.get("PATH")!,
+      },
+      clearEnv: true,
+    });
+    const child = await command.output();
+    assertEquals(child.success, true);
+  },
+);
+
+Deno.test(
+  { ignore: Deno.build.os === "windows" },
+  async function abortChildProcessRightWhenItExitsShouldNotThrow() {
+    const controller = new AbortController();
+    const cb = () => controller.abort();
+    Deno.addSignalListener("SIGCHLD", cb);
+    const output = await new Deno.Command("true", { signal: controller.signal })
+      .output();
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
+    assertEquals(output.stdout, new Uint8Array());
+    assertEquals(output.stderr, new Uint8Array());
+
+    Deno.removeSignalListener("SIGCHLD", cb);
+  },
+);

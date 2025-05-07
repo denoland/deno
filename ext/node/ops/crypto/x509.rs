@@ -30,7 +30,11 @@ pub(crate) struct Certificate {
   inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
 }
 
-impl deno_core::GarbageCollected for Certificate {}
+impl deno_core::GarbageCollected for Certificate {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Certificate"
+  }
+}
 
 impl Certificate {
   fn fingerprint<D: Digest>(&self) -> Option<String> {
@@ -121,6 +125,43 @@ pub fn op_node_x509_check_email(
     for name in &subject_alt.general_names {
       if let extensions::GeneralName::RFC822Name(n) = name {
         if *n == email {
+          return true;
+        }
+      }
+    }
+  }
+
+  false
+}
+
+#[op2(fast)]
+pub fn op_node_x509_check_host(
+  #[cppgc] cert: &Certificate,
+  #[string] host: &str,
+) -> bool {
+  let cert = cert.inner.get().deref();
+
+  let subject = cert.subject();
+  if subject
+    .iter_common_name()
+    .any(|e| e.as_str().unwrap_or("") == host)
+  {
+    return true;
+  }
+
+  let subject_alt = cert
+    .extensions()
+    .iter()
+    .find(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_ALT_NAME)
+    .and_then(|e| match e.parsed_extension() {
+      extensions::ParsedExtension::SubjectAlternativeName(s) => Some(s),
+      _ => None,
+    });
+
+  if let Some(subject_alt) = subject_alt {
+    for name in &subject_alt.general_names {
+      if let extensions::GeneralName::DNSName(n) = name {
+        if *n == host {
           return true;
         }
       }

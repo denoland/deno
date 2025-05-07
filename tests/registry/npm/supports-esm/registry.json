@@ -59,6 +59,5 @@
   "bugs": {
     "url": "https://github.com/targos/supports-esm/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

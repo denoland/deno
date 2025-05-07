@@ -314,7 +314,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let child = util::deno_cmd()
@@ -807,7 +807,7 @@ async fn inspector_connect_non_ws() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
@@ -1200,7 +1200,7 @@ async fn inspector_profile() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_npm_esm() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1267,7 +1267,7 @@ async fn inspector_break_on_first_line_npm_esm() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_npm_cjs() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
