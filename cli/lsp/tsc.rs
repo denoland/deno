@@ -4554,12 +4554,20 @@ fn op_load<'s>(
   } else {
     state.get_module(&specifier)
   };
-  let maybe_load_response = module.as_ref().map(|m| LoadResponse {
-    data: m.text.clone(),
-    script_kind: crate::tsc::as_ts_script_kind(m.media_type),
-    version: state.script_version(&specifier),
-    is_cjs: m.resolution_mode == ResolutionMode::Require,
-    is_classic_script: m.notebook_uri.is_some(),
+  let maybe_load_response = module.as_ref().map(|m| {
+    let data = if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
+      // VSCode's TS server types large JSON files this way.
+      DocumentText::Static("{}\n")
+    } else {
+      m.text.clone()
+    };
+    LoadResponse {
+      data,
+      script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+      version: state.script_version(&specifier),
+      is_cjs: m.resolution_mode == ResolutionMode::Require,
+      is_classic_script: m.notebook_uri.is_some(),
+    }
   });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
