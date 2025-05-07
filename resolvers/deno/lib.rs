@@ -169,13 +169,13 @@ pub struct DenoResolverOptions<
 }
 
 #[allow(clippy::disallowed_types)]
-pub type DenoResolverRc<
+pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
 > = crate::sync::MaybeArc<
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -183,9 +183,9 @@ pub type DenoResolverRc<
   >,
 >;
 
-/// Helper type for a DenoResolverRc that has the implementations
+/// Helper type for a RawDenoResolverRc that has the implementations
 /// used by the Deno CLI.
-pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+pub type DefaultRawDenoResolverRc<TSys> = RawDenoResolverRc<
   npm::DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
@@ -195,7 +195,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct DenoResolver<
+pub struct RawDenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
@@ -222,7 +222,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   >
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
