@@ -14,10 +14,12 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
+pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
+pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
@@ -185,7 +187,7 @@ pub type DenoResolverRc<
 /// used by the Deno CLI.
 pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   npm::DenoInNpmPackageChecker,
-  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
   TSys,
 >;
