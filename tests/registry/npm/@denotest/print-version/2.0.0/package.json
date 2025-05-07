@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/print-version",
+  "version": "2.0.0",
+  "bin": {
+    "print-version": "./print-version.js"
+  }
+}

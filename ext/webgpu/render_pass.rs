@@ -28,7 +28,11 @@ pub struct GPURenderPassEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPURenderPassEncoder {}
+impl GarbageCollected for GPURenderPassEncoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderPassEncoder"
+  }
+}
 
 #[op2]
 impl GPURenderPassEncoder {

@@ -444,6 +444,22 @@ Deno.test("Plugin - visitor :not", () => {
   assertEquals(result[0].node.name, "bar");
 });
 
+Deno.test("Plugin - parent", () => {
+  let parent: Deno.lint.Node | undefined;
+
+  testPlugin("const foo = 1;", {
+    create() {
+      return {
+        VariableDeclaration(node) {
+          parent = node.parent;
+        },
+      };
+    },
+  });
+
+  assertEquals(parent?.type, "Program");
+});
+
 Deno.test("Plugin - Program", async (t) => {
   await testSnapshot(t, "", "Program");
 });
@@ -901,6 +917,44 @@ Deno.test("Plugin - Abstract class", async (t) => {
   await testSnapshot(
     t,
     `abstract class SomeClass { abstract method(): string; }`,
+    "ClassDeclaration",
+  );
+});
+
+Deno.test("Plugin - Decorators", async (t) => {
+  // Class declaration
+  await testSnapshot(
+    t,
+    `@deco class Foo {}`,
+    "ClassDeclaration",
+  );
+
+  // Class expression
+  await testSnapshot(
+    t,
+    `let foo = class Foo { @deco foo() {} }`,
+    "ClassExpression",
+  );
+
+  // Other
+  await testSnapshot(
+    t,
+    `class Foo { @deco foobar() {} }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco get foo() { return 2 } }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco("arg") foo: string; constructor() { this.foo = "foo" } }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { foo(@deco foo: string) {} }`,
     "ClassDeclaration",
   );
 });

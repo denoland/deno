@@ -77,7 +77,12 @@ declare var Window: {
   new (): never;
 };
 
-/** @category Platform */
+/**
+ * The window variable was removed in Deno 2. This declaration should be
+ * removed at some point, but we're leaving it in out of caution.
+ * @ignore
+ * @category Platform
+ */
 declare var window: Window & typeof globalThis;
 /** @category Platform */
 declare var self: Window & typeof globalThis;

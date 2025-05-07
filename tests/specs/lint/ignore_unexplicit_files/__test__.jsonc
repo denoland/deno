@@ -1,5 +1,14 @@
 {
-  "args": "lint --ignore=./",
-  "output": "lint.out",
-  "exitCode": 1
+  "tests": {
+    "default": {
+      "args": "lint --ignore=./",
+      "output": "error: No target files found.\n",
+      "exitCode": 1
+    },
+    "permitted": {
+      "args": "lint --permit-no-files --ignore=./",
+      "output": "Checked 0 files\n",
+      "exitCode": 0
+    }
+  }
 }

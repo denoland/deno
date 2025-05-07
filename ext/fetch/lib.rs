@@ -11,6 +11,8 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
 use std::future;
+use std::future::Future;
+use std::net::IpAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -23,7 +25,6 @@ use bytes::Bytes;
 pub use data_url;
 use data_url::DataUrl;
 use deno_core::futures::stream::Peekable;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -46,7 +47,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_fs::FsError;
+use deno_fs::CheckedPath;
+pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
@@ -317,6 +319,7 @@ pub fn create_client_from_options(
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: options.client_builder_hook,
     },
   )
@@ -400,10 +403,10 @@ pub trait FetchPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
-    resolved: bool,
-    p: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError>;
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -419,23 +422,39 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read<'a>(
     &mut self,
-    resolved: bool,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
-    if resolved {
-      self
-        .check_special_file(path, api_name)
-        .map_err(FsError::NotCapable)?;
-      return Ok(Cow::Borrowed(path));
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    if self.allows_all() {
+      return Ok(deno_fs::CheckedPath::Unresolved(path));
     }
 
-    deno_permissions::PermissionsContainer::check_read_path(
+    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
+
+    let path = deno_permissions::PermissionsContainer::check_read_path(
       self,
-      path,
+      normalized_path,
       Some(api_name),
     )
-    .map_err(|_| FsError::NotCapable("read"))
+    .map_err(|_| FsError::NotCapable("read"))?;
+
+    let path = if needs_canonicalize {
+      let path = get_path.resolved(&path)?;
+
+      Cow::Owned(path)
+    } else {
+      path
+    };
+    self
+      .check_special_file(&path, api_name)
+      .map_err(FsError::NotCapable)?;
+
+    if needs_canonicalize {
+      Ok(CheckedPath::Resolved(path))
+    } else {
+      Ok(CheckedPath::Unresolved(path))
+    }
   }
 }
 
@@ -883,6 +902,7 @@ pub struct CreateHttpClientArgs {
   http2: bool,
   #[serde(default)]
   allow_host: bool,
+  local_address: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -942,6 +962,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
     },
   )?;
@@ -964,6 +985,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
@@ -980,6 +1002,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: None,
     }
   }
@@ -992,6 +1015,8 @@ pub enum HttpClientCreateError {
   Tls(deno_tls::TlsError),
   #[error("Illegal characters in User-Agent: received {0}")]
   InvalidUserAgent(String),
+  #[error("Invalid address: {0}")]
+  InvalidAddress(String),
   #[error("invalid proxy url")]
   InvalidProxyUrl,
   #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
@@ -1033,6 +1058,12 @@ pub fn create_http_client(
   let mut http_connector =
     HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
+  if let Some(local_address) = options.local_address {
+    let local_addr = local_address
+      .parse::<IpAddr>()
+      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
+    http_connector.set_local_address(Some(local_addr));
+  }
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())

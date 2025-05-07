@@ -63,6 +63,8 @@ deno_core::extension!(
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
+    #[cfg(not(unix))]
+    let _ = state;
   },
 );
 

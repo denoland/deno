@@ -14,13 +14,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::poll_fn;
 use std::future::ready;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::Either;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::spawn;
@@ -68,7 +68,11 @@ pub enum TlsKeys {
 
 pub struct TlsKeysHolder(RefCell<TlsKeys>);
 
-impl deno_core::GarbageCollected for TlsKeysHolder {}
+impl deno_core::GarbageCollected for TlsKeysHolder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TlsKeyHolder"
+  }
+}
 
 impl TlsKeysHolder {
   pub fn take(&self) -> TlsKeys {
@@ -241,7 +245,11 @@ pub struct TlsKeyLookup {
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
-impl deno_core::GarbageCollected for TlsKeyLookup {}
+impl deno_core::GarbageCollected for TlsKeyLookup {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TlsKeyLookup"
+  }
+}
 
 impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally

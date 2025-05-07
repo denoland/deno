@@ -145,13 +145,22 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for Rgba<T> {
     let alpha_index = pixel.len() - 1;
     let alpha = pixel[alpha_index];
 
+    // avoid to divide by zero
+    if alpha.to_f32().unwrap() == 0.0 {
+      return Rgba([pixel[0], pixel[1], pixel[2], pixel[alpha_index]]);
+    }
+
     for rgb in pixel.iter_mut().take(alpha_index) {
-      *rgb = NumCast::from(
-        (rgb.to_f32().unwrap()
-          / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
-        .round(),
-      )
-      .unwrap();
+      let unchecked_value = (rgb.to_f32().unwrap()
+        / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
+      .round();
+      let checked_value = if unchecked_value > max_t.to_f32().unwrap() {
+        max_t.to_f32().unwrap()
+      } else {
+        unchecked_value
+      };
+
+      *rgb = NumCast::from(checked_value).unwrap();
     }
 
     Rgba([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
@@ -176,13 +185,22 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for LumaA<T> {
     let alpha_index = pixel.len() - 1;
     let alpha = pixel[alpha_index];
 
+    // avoid to divide by zero
+    if alpha.to_f32().unwrap() == 0.0 {
+      return LumaA([pixel[0], pixel[alpha_index]]);
+    }
+
     for rgb in pixel.iter_mut().take(alpha_index) {
-      *rgb = NumCast::from(
-        (rgb.to_f32().unwrap()
-          / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
-        .round(),
-      )
-      .unwrap();
+      let unchecked_value = (rgb.to_f32().unwrap()
+        / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
+      .round();
+      let checked_value = if unchecked_value > max_t.to_f32().unwrap() {
+        max_t.to_f32().unwrap()
+      } else {
+        unchecked_value
+      };
+
+      *rgb = NumCast::from(checked_value).unwrap();
     }
 
     LumaA([pixel[0], pixel[alpha_index]])
@@ -590,6 +608,15 @@ mod tests {
     let rgba = Rgba::<u8>([127, 0, 0, 127]);
     let rgba = rgba.unpremultiply_alpha();
     assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 127]));
+
+    // https://github.com/denoland/deno/issues/28732
+    let rgba = Rgba::<u8>([247, 0, 0, 233]);
+    let rgba = rgba.unpremultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 233]));
+
+    let rgba = Rgba::<u8>([255, 0, 0, 0]);
+    let rgba = rgba.unpremultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 0]));
   }
 
   #[test]

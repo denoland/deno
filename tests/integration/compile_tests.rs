@@ -291,7 +291,7 @@ fn standalone_runtime_flags() {
     .name(&exe)
     .split_output()
     .run()
-    .assert_stdout_matches_text("0.147205063401058\n")
+    .assert_stdout_matches_text("0.1472050634010581\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     )
@@ -807,7 +807,7 @@ fn compile_npm_cowsay_main() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_local: false,
@@ -837,7 +837,7 @@ fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_local: false,
@@ -852,7 +852,7 @@ fn compile_npm_cowthink() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
     copy_temp_dir: None,
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowthink.out",
     node_modules_local: false,

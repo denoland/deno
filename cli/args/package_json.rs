@@ -10,8 +10,11 @@ use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageName;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use thiserror::Error;
 
@@ -28,6 +31,12 @@ pub struct InstallLocalPkg {
   pub target_dir: PathBuf,
 }
 
+#[derive(Debug)]
+pub struct InstallPatchPkg {
+  pub nv: PackageNv,
+  pub target_dir: PathBuf,
+}
+
 #[derive(Debug, Error, Clone)]
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
@@ -41,6 +50,7 @@ pub struct PackageJsonDepValueParseWithLocationError {
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
+  patch_pkgs: Vec<InstallPatchPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -53,6 +63,7 @@ impl NpmInstallDepsProvider {
     // todo(dsherret): estimate capacity?
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
+    let mut patch_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -172,11 +183,35 @@ impl NpmInstallDepsProvider {
       }
     }
 
+    if workspace.has_unstable("npm-patch") {
+      for pkg in workspace.patch_pkg_jsons() {
+        let Some(name) = pkg.name.as_ref() else {
+          continue;
+        };
+        let Some(version) = pkg
+          .version
+          .as_ref()
+          .and_then(|v| Version::parse_from_npm(v).ok())
+        else {
+          continue;
+        };
+        patch_pkgs.push(InstallPatchPkg {
+          nv: PackageNv {
+            name: PackageName::from_str(name),
+            version,
+          },
+          target_dir: pkg.dir_path().to_path_buf(),
+        })
+      }
+    }
+
     remote_pkgs.shrink_to_fit();
     local_pkgs.shrink_to_fit();
+    patch_pkgs.shrink_to_fit();
     Self {
       remote_pkgs,
       local_pkgs,
+      patch_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -187,6 +222,10 @@ impl NpmInstallDepsProvider {
 
   pub fn local_pkgs(&self) -> &[InstallLocalPkg] {
     &self.local_pkgs
+  }
+
+  pub fn patch_pkgs(&self) -> &[InstallPatchPkg] {
+    &self.patch_pkgs
   }
 
   pub fn pkg_json_dep_errors(
