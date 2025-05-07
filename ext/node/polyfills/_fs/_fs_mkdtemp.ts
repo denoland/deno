@@ -1,9 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -12,6 +9,18 @@ import {
   ERR_INVALID_OPT_VALUE_ENCODING,
 } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ObjectPrototypeIsPrototypeOf,
+  Array,
+  SafeArrayIterator,
+  MathRandom,
+  MathFloor,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ObjectPrototype,
+} = primordials;
 
 export type mkdtempCallback = (
   err: Error | null,
@@ -70,10 +79,13 @@ function parseEncoding(
   optionsOrCallback?: { encoding: string } | string | mkdtempCallback,
 ): string | undefined {
   let encoding: string | undefined;
-  if (typeof optionsOrCallback == "function") encoding = undefined;
-  else if (optionsOrCallback instanceof Object) {
-    encoding = optionsOrCallback?.encoding;
-  } else encoding = optionsOrCallback;
+  if (typeof optionsOrCallback === "function") {
+    encoding = undefined;
+  } else if (isOptionsObject(optionsOrCallback)) {
+    encoding = optionsOrCallback.encoding;
+  } else {
+    encoding = optionsOrCallback;
+  }
 
   if (encoding) {
     try {
@@ -97,9 +109,13 @@ function decode(str: string, encoding?: string): string {
 
 const CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function randomName(): string {
-  return [...Array(6)].map(() =>
-    CHARS[Math.floor(Math.random() * CHARS.length)]
-  ).join("");
+  return ArrayPrototypeJoin(
+    ArrayPrototypeMap(
+      [...new SafeArrayIterator(Array(6))],
+      () => CHARS[MathFloor(MathRandom() * CHARS.length)],
+    ),
+    "",
+  );
 }
 
 function tempDirPath(prefix: string): string {
@@ -109,4 +125,12 @@ function tempDirPath(prefix: string): string {
   } while (existsSync(path));
 
   return path;
+}
+
+function isOptionsObject(value: unknown): value is { encoding: string } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    ObjectPrototypeIsPrototypeOf(ObjectPrototype, value)
+  );
 }
