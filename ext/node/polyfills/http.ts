@@ -1397,6 +1397,7 @@ function onError(self, error, cb) {
 }
 
 export type ServerResponse = {
+  req: IncomingMessageForServer;
   statusCode: number;
   statusMessage?: string;
 
@@ -1461,9 +1462,11 @@ type ServerResponseStatic = {
 
 export const ServerResponse = function (
   this: ServerResponse,
+  req: IncomingMessageForServer,
   resolve: (value: Response | PromiseLike<Response>) => void,
   socket: FakeSocket,
 ) {
+  this.req = req;
   this.statusCode = 200;
   this.statusMessage = undefined;
   this._headers = { __proto__: null };
@@ -2001,7 +2004,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve, socket);
+          const res = new ServerResponse(req, resolve, socket);
 
           if (request.headers.has("expect")) {
             if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {
