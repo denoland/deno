@@ -7,8 +7,9 @@ const {
   ArrayPrototypeForEach,
   SafePromiseAll,
   SafePromisePrototypeFinally,
+  Symbol,
 } = primordials;
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import assert from "node:assert";
 
 const methodsToCopy = [
@@ -49,11 +50,20 @@ export function run() {
 
 function noop() {}
 
+const skippedSymbol = Symbol("skipped");
+
 class NodeTestContext {
   #denoContext: Deno.TestContext;
+  #parent: NodeTestContext | undefined;
+  #skipped = false;
 
-  constructor(t: Deno.TestContext) {
+  constructor(t: Deno.TestContext, parent: NodeTestContext | undefined) {
     this.#denoContext = t;
+    this.#parent = parent;
+  }
+
+  get [skippedSymbol]() {
+    return this.#skipped || (this.#parent?.[skippedSymbol] ?? false);
   }
 
   get assert() {
@@ -86,23 +96,33 @@ class NodeTestContext {
   }
 
   skip() {
-    warnNotImplemented("test.TestContext.skip");
+    this.#skipped = true;
     return null;
   }
 
   todo() {
-    warnNotImplemented("test.TestContext.todo");
+    this.#skipped = true;
     return null;
   }
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    const parentContext = this;
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
         fn: async (denoTestContext) => {
-          const newNodeTextContext = new NodeTestContext(denoTestContext);
-          await prepared.fn(newNodeTextContext);
+          const newNodeTextContext = new NodeTestContext(
+            denoTestContext,
+            parentContext,
+          );
+          try {
+            await prepared.fn(newNodeTextContext);
+          } catch (err) {
+            if (!newNodeTextContext[skippedSymbol]) {
+              throw err;
+            }
+          }
         },
         ignore: prepared.options.todo || prepared.options.skip,
         sanitizeExit: false,
@@ -144,9 +164,20 @@ class TestSuite {
     const prepared = prepareOptions(name, options, fn, overrides);
     const step = this.#denoTestContext.step({
       name: prepared.name,
-      fn: (denoTestContext) => {
-        const newNodeTextContext = new NodeTestContext(denoTestContext);
-        return prepared.fn(newNodeTextContext);
+      fn: async (denoTestContext) => {
+        const newNodeTextContext = new NodeTestContext(
+          denoTestContext,
+          undefined,
+        );
+        try {
+          return await prepared.fn(newNodeTextContext);
+        } catch (err) {
+          if (newNodeTextContext[skippedSymbol]) {
+            return undefined;
+          } else {
+            throw err;
+          }
+        }
       },
       ignore: prepared.options.todo || prepared.options.skip,
       sanitizeExit: false,
@@ -204,9 +235,13 @@ function prepareOptions(name, options, fn, overrides) {
 
 function wrapTestFn(fn, resolve) {
   return async function (t) {
-    const nodeTestContext = new NodeTestContext(t);
+    const nodeTestContext = new NodeTestContext(t, undefined);
     try {
       await fn(nodeTestContext);
+    } catch (err) {
+      if (!nodeTestContext[skippedSymbol]) {
+        throw err;
+      }
     } finally {
       resolve();
     }
