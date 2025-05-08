@@ -209,28 +209,32 @@ where
         }),
         sender,
       )
-    } else if cfg!(unix) {
-      let resource_rc = state
-        .resource_table
-        .take::<UnixStreamResource>(conn_rid)
-        .map_err(ConnError::Resource)?;
-      let resource =
-        Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
-      let (read_half, write_half) = resource.into_inner();
-      let tcp_stream = read_half.reunite(write_half)?;
-      let io = TokioIo::new(tcp_stream);
-      drop(state);
-      let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-
-      // Spawn a task to poll the connection, driving the HTTP state
-      (
-        tokio::task::spawn(async move {
-          conn.with_upgrades().await?;
-          Ok::<_, _>(())
-        }),
-        sender,
-      )
     } else {
+      #[cfg(unix)]
+      {
+        let resource_rc = state
+          .resource_table
+          .take::<UnixStreamResource>(conn_rid)
+          .map_err(ConnError::Resource)?;
+        let resource =
+          Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
+        let (read_half, write_half) = resource.into_inner();
+        let tcp_stream = read_half.reunite(write_half)?;
+        let io = TokioIo::new(tcp_stream);
+        drop(state);
+        let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+
+        // Spawn a task to poll the connection, driving the HTTP state
+        (
+          tokio::task::spawn(async move {
+            conn.with_upgrades().await?;
+            Ok::<_, _>(())
+          }),
+          sender,
+        )
+      }
+
+      #[cfg(not(unix))]
       return Err(ConnError::Resource(ResourceError::BadResourceId));
     }
   };
