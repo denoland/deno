@@ -107,6 +107,7 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // deno-lint-ignore no-this-alias
     const parentContext = this;
     return PromisePrototypeThen(
       this.#denoContext.step({
