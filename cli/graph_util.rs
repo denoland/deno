@@ -47,6 +47,7 @@ use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
 pub use crate::args::NpmCachingStrategy;
 use crate::cache;
 use crate::cache::FetchCacher;
@@ -77,6 +78,7 @@ pub struct GraphValidOptions<'a> {
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
+  pub ignore_graph_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -104,6 +106,7 @@ pub fn graph_valid(
       check_js: options.check_js,
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
+      ignore_graph_errors: options.ignore_graph_errors,
     },
   );
   if let Some(error) = errors.next() {
@@ -143,6 +146,7 @@ pub fn fill_graph_from_lockfile(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
 }
 
@@ -154,10 +158,55 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
+  fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
+    match err {
+      ResolutionError::InvalidSpecifier { .. } => true,
+      ResolutionError::ResolverError { error, .. } => match error.as_ref() {
+        ResolveError::Specifier(_) => true,
+        ResolveError::ImportMap(err) => match err.as_kind() {
+          import_map::ImportMapErrorKind::UnmappedBareSpecifier(_, _) => true,
+          import_map::ImportMapErrorKind::JsonParse(_)
+          | import_map::ImportMapErrorKind::ImportMapNotObject
+          | import_map::ImportMapErrorKind::ImportsFieldNotObject
+          | import_map::ImportMapErrorKind::ScopesFieldNotObject
+          | import_map::ImportMapErrorKind::ScopePrefixNotObject(_)
+          | import_map::ImportMapErrorKind::BlockedByNullEntry(_)
+          | import_map::ImportMapErrorKind::SpecifierResolutionFailure {
+            ..
+          }
+          | import_map::ImportMapErrorKind::SpecifierBacktracksAbovePrefix {
+            ..
+          } => false,
+        },
+        ResolveError::Other(_) => false,
+      },
+      ResolutionError::InvalidDowngrade { .. }
+      | ResolutionError::InvalidJsrHttpsTypesImport { .. }
+      | ResolutionError::InvalidLocalImport { .. } => false,
+    }
+  }
+
+  fn should_ignore_module_graph_error_for_types(
+    err: &ModuleGraphError,
+  ) -> bool {
+    match err {
+      ModuleGraphError::ResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::TypesResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::ModuleError(module_error) => {
+        matches!(module_error, ModuleError::Missing { .. })
+      }
+    }
+  }
+
   fn should_ignore_error(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
+    ignore_graph_errors: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -165,6 +214,11 @@ pub fn graph_walk_errors<'a>(
         error,
         ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
       )
+    {
+      return true;
+    }
+
+    if ignore_graph_errors && should_ignore_module_graph_error_for_types(error)
     {
       return true;
     }
@@ -190,6 +244,7 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
+        options.ignore_graph_errors,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -972,6 +1027,10 @@ impl ModuleGraphBuilder {
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
         allow_unknown_media_types,
+        ignore_graph_errors: !matches!(
+          self.cli_options.sub_command(),
+          DenoSubcommand::Install { .. }
+        ),
       },
     )
   }

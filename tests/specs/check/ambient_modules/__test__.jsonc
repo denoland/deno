@@ -1,0 +1,18 @@
+{
+  "steps": [{
+    "args": "check foo.ts",
+    "output": "foo.out"
+  }, {
+    "args": "check bar.ts",
+    "output": "bar.out",
+    "exitCode": 1
+  }, {
+    "args": "run foo.ts",
+    "output": "run.out",
+    "exitCode": 1
+  }, {
+    "args": "run bar.ts",
+    "output": "run.out",
+    "exitCode": 1
+  }]
+}
