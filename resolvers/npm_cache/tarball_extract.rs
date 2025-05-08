@@ -196,8 +196,6 @@ fn verify_tarball_integrity(
 pub enum IoErrorOperation {
   Creating,
   Canonicalizing,
-  Opening,
-  Writing,
 }
 
 impl std::fmt::Display for IoErrorOperation {
@@ -205,8 +203,6 @@ impl std::fmt::Display for IoErrorOperation {
     match self {
       IoErrorOperation::Creating => write!(f, "creating"),
       IoErrorOperation::Canonicalizing => write!(f, "canonicalizing"),
-      IoErrorOperation::Opening => write!(f, "opening"),
-      IoErrorOperation::Writing => write!(f, "writing"),
     }
   }
 }
@@ -308,10 +304,23 @@ fn extract_tarball(
     match entry_type {
       EntryType::Regular => {
         // todo(dsherret): switch back to using the sys so that this
-        // crate can work in Wasm
-        // let open_options = OpenOptions::new_write();
-        // let mut f = sys.fs_open(&absolute_path, &open_options)?;
-        // std::io::copy(&mut entry, &mut f)?;
+        // crate can work in Wasm. Beware that doing this broke
+        // stuff. See https://github.com/denoland/deno/pull/29156
+        // let mut f =
+        //     sys
+        //     .fs_open(&absolute_path, &open_options)
+        //     .map_err(|source| IoWithPathError {
+        //       path: absolute_path.to_path_buf(),
+        //       operation: IoErrorOperation::Opening,
+        //       source,
+        //     })?;
+        // std::io::copy(&mut entry, &mut f).map_err(|source| {
+        //   IoWithPathError {
+        //     path: absolute_path,
+        //     operation: IoErrorOperation::Writing,
+        //     source,
+        //   }
+        // })?;
         entry.unpack(&absolute_path)?;
       }
       EntryType::Symlink | EntryType::Link => {
