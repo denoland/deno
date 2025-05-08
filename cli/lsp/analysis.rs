@@ -594,7 +594,16 @@ impl<'a> TsResponseImportMapper<'a> {
         resolution_mode,
         NodeResolutionKind::Types,
       )
-      .is_ok()
+      .ok()
+      .filter(|s| {
+        let specifier = self
+          .tsc_specifier_map
+          .normalize(s.as_str())
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(s));
+        !specifier.as_str().contains("/node_modules/")
+      })
+      .is_some()
   }
 }
 
