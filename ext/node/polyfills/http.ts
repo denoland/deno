@@ -515,7 +515,12 @@ class ClientRequest extends OutgoingMessage {
           span.setAttribute("url.query", parsedUrl.search.slice(1));
         }
 
-        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        let baseConnRid;
+        try {
+          baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        } catch (err) {
+          throw (this.socket.errored || err);
+        }
         if (this._encrypted) {
           const hasCaCerts = this.agent?.options?.ca !== undefined;
           const caCerts = hasCaCerts

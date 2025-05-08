@@ -2080,3 +2080,31 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await promise;
   await new Promise((resolve) => server.close(resolve));
 });
+
+Deno.test("[node/http] client http over unix socket works", {
+  ignore: Deno.build.os == "windows",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socketPath = Deno.makeTempDirSync() + "/server.sock";
+  const server = Deno.serve({
+    transport: "unix",
+    path: socketPath,
+    onListen,
+  }, (_req) => new Response("ok"));
+
+  function onListen() {
+    const options = {
+      socketPath,
+      path: "/",
+      method: "GET",
+    };
+    http.request(options, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertEquals(await text(res), "ok");
+      resolve();
+      server.shutdown();
+    }).end();
+  }
+  await promise;
+  await server.finished;
+});
