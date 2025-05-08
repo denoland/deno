@@ -2,7 +2,6 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::rc::Weak;
 
 use deno_core::op2;

@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Rc;
 use std::rc::Weak;
 
 use deno_core::op2;
