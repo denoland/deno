@@ -421,22 +421,19 @@ function imageTypePatternMatchingAlgorithm(input) {
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#rules-for-sniffing-images-specifically
- * @param {string} mimeTypeString
- * @returns {string}
+ * @param {string | null} mimeTypeString
+ * @param {Uint8Array} byteSequence
+ * @returns {string | null}
  */
-function sniffImage(mimeTypeString) {
-  const mimeType = parseMimeType(mimeTypeString);
-  if (mimeType === null) {
+function sniffImage(mimeTypeString, byteSequence) {
+  // NOTE: Do we need to implement the "supplied MIME type" detection exactly?
+  // https://mimesniff.spec.whatwg.org/#supplied-mime-type-detection-algorithm
+
+  if (mimeTypeString !== null && isXML(mimeTypeString)) {
     return mimeTypeString;
   }
 
-  if (isXML(mimeType)) {
-    return mimeTypeString;
-  }
-
-  const imageTypeMatched = imageTypePatternMatchingAlgorithm(
-    new TextEncoder().encode(mimeTypeString),
-  );
+  const imageTypeMatched = imageTypePatternMatchingAlgorithm(byteSequence);
   if (imageTypeMatched !== undefined) {
     return imageTypeMatched;
   }

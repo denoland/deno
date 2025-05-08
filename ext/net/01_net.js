@@ -27,6 +27,7 @@ import {
   op_net_recv_unixpacket,
   op_net_send_udp,
   op_net_send_unixpacket,
+  op_net_set_broadcast_udp,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
@@ -377,6 +378,12 @@ class Listener {
   }
 }
 
+const _setBroadcast = Symbol("setBroadcast");
+
+function setDatagramBroadcast(conn, broadcast) {
+  return conn[_setBroadcast](broadcast);
+}
+
 class DatagramConn {
   #rid = 0;
   #addr = null;
@@ -391,6 +398,10 @@ class DatagramConn {
 
   get addr() {
     return this.#addr;
+  }
+
+  [_setBroadcast](broadcast) {
+    op_net_set_broadcast_udp(this.#rid, broadcast);
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -688,6 +699,7 @@ export {
   Listener,
   listenOptionApiName,
   resolveDns,
+  setDatagramBroadcast,
   TcpConn,
   UnixConn,
   UpgradedConn,

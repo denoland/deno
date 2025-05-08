@@ -4,18 +4,20 @@ use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use url::Url;
 
 use crate::cjs::CjsTracker;
+use crate::npm;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
 use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveErrorKind;
-use crate::DenoResolverRc;
 use crate::DenoResolverSys;
+use crate::RawDenoResolverRc;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
@@ -38,18 +40,48 @@ impl FoundPackageJsonDepFlag {
   }
 }
 
-type OnWarningFn = Box<
-  dyn Fn(&MappedResolutionDiagnostic, &Url, deno_graph::Position) + Send + Sync,
+pub struct MappedResolutionDiagnosticWithPosition<'a> {
+  pub diagnostic: &'a MappedResolutionDiagnostic,
+  pub referrer: &'a Url,
+  pub start: deno_graph::Position,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
+  dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
 
-/// A resolver for interfacing with deno_graph and displaying warnings.
-pub struct DenoGraphResolver<
+pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+  npm::DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  npm::NpmResolver<TSys>,
+  TSys,
+>;
+
+#[allow(clippy::disallowed_types)]
+pub type DenoResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  DenoResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
+
+/// The resolver used in the CLI for resolving and interfacing
+/// with deno_graph.
+pub struct DenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: DenoResolverSys,
 > {
-  resolver: DenoResolverRc<
+  resolver: RawDenoResolverRc<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -57,7 +89,7 @@ pub struct DenoGraphResolver<
   >,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
   warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
-  on_warning: OnWarningFn,
+  on_warning: Option<OnMappedResolutionDiagnosticFn>,
 }
 
 impl<
@@ -66,7 +98,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   > std::fmt::Debug
-  for DenoGraphResolver<
+  for DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -74,7 +106,7 @@ impl<
   >
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("DenoGraphResolver").finish()
+    f.debug_struct("DenoResolver").finish()
   }
 }
 
@@ -84,7 +116,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   >
-  DenoGraphResolver<
+  DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -92,14 +124,14 @@ impl<
   >
 {
   pub fn new(
-    resolver: DenoResolverRc<
+    resolver: RawDenoResolverRc<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
       TSys,
     >,
     found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
-    on_warning: OnWarningFn,
+    on_warning: Option<OnMappedResolutionDiagnosticFn>,
   ) -> Self {
     Self {
       resolver,
@@ -146,8 +178,14 @@ impl<
           reference,
           ..
         } => {
-          if self.warned_pkgs.insert(reference.req().clone()) {
-            (self.on_warning)(diagnostic, referrer, referrer_range_start);
+          if let Some(on_warning) = &self.on_warning {
+            if self.warned_pkgs.insert(reference.req().clone()) {
+              on_warning(MappedResolutionDiagnosticWithPosition {
+                diagnostic,
+                referrer,
+                start: referrer_range_start,
+              });
+            }
           }
         }
       }
@@ -183,7 +221,7 @@ pub struct DenoGraphResolverAdapter<
   TSys: DenoResolverSys,
 > {
   cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
-  resolver: &'a DenoGraphResolver<
+  resolver: &'a DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
