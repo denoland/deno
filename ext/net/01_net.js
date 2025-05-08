@@ -379,9 +379,14 @@ class Listener {
 }
 
 const _setBroadcast = Symbol("setBroadcast");
+const _dropMembership = Symbol("dropMembership");
 
 function setDatagramBroadcast(conn, broadcast) {
   return conn[_setBroadcast](broadcast);
+}
+
+function dropMembership(conn, v6, addr, multiInterface) {
+  return conn[_dropMembership](v6, addr, multiInterface);
 }
 
 class DatagramConn {
@@ -402,6 +407,14 @@ class DatagramConn {
 
   [_setBroadcast](broadcast) {
     op_net_set_broadcast_udp(this.#rid, broadcast);
+  }
+
+  [_dropMembership](v6, addr, multiInterface) {
+    if (v6) {
+      return op_net_leave_multi_v6_udp(this.#rid, addr, multiInterface);
+    }
+
+    return op_net_leave_multi_v4_udp(this.#rid, addr, multiInterface);
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -695,6 +708,7 @@ export {
   Conn,
   connect,
   createListenDatagram,
+  dropMembership,
   listen,
   Listener,
   listenOptionApiName,
