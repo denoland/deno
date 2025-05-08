@@ -300,8 +300,13 @@ export class UDP extends HandleWrap {
     return this.#doSend(req, bufs, count, args, AF_INET6);
   }
 
-  setBroadcast(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setBroadcast");
+  setBroadcast(bool: 0 | 1): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    net.setDatagramBroadcast(this.#listener, bool === 1);
+    return 0;
   }
 
   setMulticastInterface(_interfaceAddress: string): number {
