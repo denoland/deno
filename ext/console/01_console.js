@@ -3112,12 +3112,20 @@ function getConsoleInspectOptions(noColor) {
 
 class Console {
   #printFunc = null;
+  #noColorStdout = getStdoutNoColor();
+  #noColorStderr = getStderrNoColor();
   [isConsoleInstance] = false;
 
-  constructor(printFunc) {
+  constructor(printFunc, opts = { __proto__: null }) {
     this.#printFunc = printFunc;
     this.indentLevel = 0;
     this[isConsoleInstance] = true;
+    const {
+      noColorStdout = this.#noColorStdout,
+      noColorStderr =  this.#noColorStderr,
+    } = opts;
+    this.#noColorStdout = !!noColorStdout;
+    this.#noColorStderr = !!noColorStderr;
 
     // ref https://console.spec.whatwg.org/#console-namespace
     // For historical web-compatibility reasons, the namespace object for
@@ -3138,7 +3146,7 @@ class Console {
   log = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(noColorStdout()),
+        ...getConsoleInspectOptions(this.#noColorStdout),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3148,7 +3156,7 @@ class Console {
   debug = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(noColorStdout()),
+        ...getConsoleInspectOptions(this.#noColorStdout),
         indentLevel: this.indentLevel,
       }) + "\n",
       0,
@@ -3158,7 +3166,7 @@ class Console {
   info = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(noColorStdout()),
+        ...getConsoleInspectOptions(this.#noColorStdout),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3168,7 +3176,7 @@ class Console {
   dir = (obj = undefined, options = { __proto__: null }) => {
     this.#printFunc(
       inspectArgs([obj], {
-        ...getConsoleInspectOptions(noColorStdout()),
+        ...getConsoleInspectOptions(this.#noColorStdout),
         ...options,
       }) + "\n",
       1,
@@ -3180,7 +3188,7 @@ class Console {
   warn = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(noColorStderr()),
+        ...getConsoleInspectOptions(this.#noColorStderr),
         indentLevel: this.indentLevel,
       }) + "\n",
       2,
@@ -3190,7 +3198,7 @@ class Console {
   error = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(noColorStderr()),
+        ...getConsoleInspectOptions(this.#noColorStderr),
         indentLevel: this.indentLevel,
       }) + "\n",
       3,
@@ -3422,7 +3430,7 @@ class Console {
     const message = inspectArgs(
       args,
       {
-        ...getConsoleInspectOptions(noColorStderr()),
+        ...getConsoleInspectOptions(this.#noColorStderr),
         indentLevel: 0,
       },
     );
