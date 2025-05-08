@@ -1990,7 +1990,6 @@ setInterval(() => {
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
-  eprintln!("here1");
 
   // Misspelled `function` on purpose
   file_to_watch.write(
@@ -2006,8 +2005,6 @@ setInterval(() => {
 "#,
   );
 
-  eprintln!("here2");
   wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
-  eprintln!("here3");
   check_alive_then_kill(child);
 }
