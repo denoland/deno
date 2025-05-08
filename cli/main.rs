@@ -292,7 +292,7 @@ async fn run_subcommand(
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
-      tools::serve::serve(flags, serve_flags).await
+      tools::serve::serve(flags, serve_flags, unconfigured_runtime, roots).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
@@ -410,6 +410,14 @@ fn setup_panic_hook() {
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));
+
+  fn error_handler(file: &str, line: i32, message: &str) {
+    // Override C++ abort with a rust panic, so we
+    // get our message above and a nice backtrace.
+    panic!("Fatal error in {file}:{line}: {message}");
+  }
+
+  deno_core::v8::V8::set_fatal_error_handler(error_handler);
 }
 
 fn exit_with_message(message: &str, code: i32) -> ! {
@@ -610,6 +618,8 @@ fn wait_for_start(
   Some(async move {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::AsyncRead;
+    use tokio::io::AsyncWrite;
+    use tokio::io::AsyncWriteExt;
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
@@ -630,18 +640,23 @@ fn wait_for_start(
       vec![],
     );
 
-    let stream: Box<dyn AsyncRead + Unpin> = match addr.split_once(':') {
+    let (rx, mut tx): (
+      Box<dyn AsyncRead + Unpin>,
+      Box<dyn AsyncWrite + Send + Unpin>,
+    ) = match addr.split_once(':') {
       Some(("tcp", addr)) => {
         let listener = TcpListener::bind(addr).await?;
         let (stream, _) = listener.accept().await?;
-        Box::new(stream)
+        let (rx, tx) = stream.into_split();
+        (Box::new(rx), Box::new(tx))
       }
       Some(("unix", path)) => {
         let socket = UnixSocket::new_stream()?;
         socket.bind(path)?;
         let listener = socket.listen(1)?;
         let (stream, _) = listener.accept().await?;
-        Box::new(stream)
+        let (rx, tx) = stream.into_split();
+        (Box::new(rx), Box::new(tx))
       }
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
@@ -652,17 +667,29 @@ fn wait_for_start(
         let addr = VsockAddr::new(cid, port);
         let listener = VsockListener::bind(addr)?;
         let (stream, _) = listener.accept().await?;
-        Box::new(stream)
+        let (rx, tx) = stream.into_split();
+        (Box::new(rx), Box::new(tx))
       }
       _ => {
         deno_core::anyhow::bail!("invalid control sock");
       }
     };
 
-    let mut stream = BufReader::new(stream);
-
     let mut buf = Vec::with_capacity(1024);
-    stream.read_until(b'\n', &mut buf).await?;
+    BufReader::new(rx).read_until(b'\n', &mut buf).await?;
+
+    tokio::spawn(async move {
+      deno_runtime::deno_http::SERVE_NOTIFIER.notified().await;
+
+      #[derive(deno_core::serde::Serialize)]
+      enum Event {
+        Serving,
+      }
+
+      let mut buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      buf.push(b'\n');
+      let _ = tx.write_all(&buf).await;
+    });
 
     #[derive(deno_core::serde::Deserialize)]
     struct Start {

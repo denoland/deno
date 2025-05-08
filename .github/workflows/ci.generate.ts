@@ -177,7 +177,7 @@ const cloneRepoStep = [{
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
     // the checkout is too shallow.
-    "fetch-depth": 5,
+    "fetch-depth": 15,
     submodules: false,
   },
 }];
@@ -930,11 +930,7 @@ const ci = {
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
           run: [
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "./tools/release/upload_canary.ts arch ${{ github.sha }}",
           ].join("\n"),
         },
         {
@@ -1220,12 +1216,13 @@ const ci = {
         },
         // we want these crates to be Wasm compatible
         {
-          name: "Cargo build (deno_resolver)",
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
         },
         {
-          name: "Cargo build (deno_npm_cache)",
-          run: "cargo build --target wasm32-unknown-unknown -p deno_npm_cache",
+          name: "Cargo check (deno_npm_cache)",
+          run: "cargo check --target wasm32-unknown-unknown -p deno_npm_cache",
         },
       ]),
     },
@@ -1247,8 +1244,7 @@ const ci = {
         {
           name: "Upload canary version file to dl.deno.land",
           run: [
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+            "./tools/release/upload_canary.ts latest ${{ github.sha }}",
           ].join("\n"),
         },
       ],

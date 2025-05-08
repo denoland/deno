@@ -24,6 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  op_net_validate_multicast,
   op_node_unstable_net_listen_udp,
   op_node_unstable_net_listen_unixpacket,
 } from "ext:core/ops";
@@ -112,15 +113,38 @@ export class UDP extends HandleWrap {
     super(providerType.UDPWRAP);
   }
 
-  addMembership(_multicastAddress: string, _interfaceAddress?: string): number {
-    notImplemented("udp.UDP.prototype.addMembership");
+  addMembership(multicastAddress: string, interfaceAddress?: string): number {
+    try {
+      op_net_validate_multicast(multicastAddress, interfaceAddress);
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    if (this.#family === "IPv6") {
+      this.#listener.joinMulticastV6(multicastAddress, interfaceAddress);
+    } else if (this.#family === "IPv4") {
+      this.#listener.joinMulticastV4(multicastAddress, interfaceAddress);
+    }
+
+    return 0;
   }
 
   addSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
+    try {
+      op_net_validate_multicast(groupAddress, interfaceAddress);
+      op_net_validate_multicast(sourceAddress, interfaceAddress);
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+
     notImplemented("udp.UDP.prototype.addSourceSpecificMembership");
   }
 
@@ -196,17 +220,40 @@ export class UDP extends HandleWrap {
   }
 
   dropMembership(
-    _multicastAddress: string,
-    _interfaceAddress?: string,
+    multicastAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.dropMembership");
+    try {
+      op_net_validate_multicast(multicastAddress, interfaceAddress);
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    net.dropMembership(
+      this.#listener,
+      this.#family === "IPv6",
+      multicastAddress,
+      interfaceAddress,
+    );
+    return 0;
   }
 
   dropSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
+    try {
+      op_net_validate_multicast(groupAddress, interfaceAddress);
+      op_net_validate_multicast(sourceAddress, interfaceAddress);
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+
     notImplemented("udp.UDP.prototype.dropSourceSpecificMembership");
   }
 
@@ -300,8 +347,13 @@ export class UDP extends HandleWrap {
     return this.#doSend(req, bufs, count, args, AF_INET6);
   }
 
-  setBroadcast(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setBroadcast");
+  setBroadcast(bool: 0 | 1): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    net.setDatagramBroadcast(this.#listener, bool === 1);
+    return 0;
   }
 
   setMulticastInterface(_interfaceAddress: string): number {

@@ -19,7 +19,6 @@ use sys_traits::FsOpen;
 use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
-use sys_traits::OpenOptions;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
@@ -308,22 +307,12 @@ fn extract_tarball(
     let entry_type = entry.header().entry_type();
     match entry_type {
       EntryType::Regular => {
-        let open_options = OpenOptions::new_write();
-        let mut f =
-          sys
-            .fs_open(&absolute_path, &open_options)
-            .map_err(|source| IoWithPathError {
-              path: absolute_path.to_path_buf(),
-              operation: IoErrorOperation::Opening,
-              source,
-            })?;
-        std::io::copy(&mut entry, &mut f).map_err(|source| {
-          IoWithPathError {
-            path: absolute_path,
-            operation: IoErrorOperation::Writing,
-            source,
-          }
-        })?;
+        // todo(dsherret): switch back to using the sys so that this
+        // crate can work in Wasm
+        // let open_options = OpenOptions::new_write();
+        // let mut f = sys.fs_open(&absolute_path, &open_options)?;
+        // std::io::copy(&mut entry, &mut f)?;
+        entry.unpack(&absolute_path)?;
       }
       EntryType::Symlink | EntryType::Link => {
         // At the moment, npm doesn't seem to support uploading hardlinks or

@@ -34,7 +34,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 15
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
@@ -151,7 +151,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 15
           submodules: false
         if: '!(matrix.skip)'
       - name: Clone submodule ./tests/util/std
@@ -566,12 +566,7 @@ jobs:
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main')
-        run: |-
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo ${{ github.sha }} > canary-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+        run: './tools/release/upload_canary.ts arch ${{ github.sha }}'
       - name: Autobahn testsuite
         if: |-
           !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
@@ -787,7 +782,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 15
           submodules: false
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
@@ -795,11 +790,11 @@ jobs:
       - name: Install wasm target
         run: rustup target add wasm32-unknown-unknown
         if: '!(matrix.skip)'
-      - name: Cargo build (deno_resolver)
-        run: cargo build --target wasm32-unknown-unknown -p deno_resolver
+      - name: Cargo check (deno_resolver)
+        run: cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph
         if: '!(matrix.skip)'
-      - name: Cargo build (deno_npm_cache)
-        run: cargo build --target wasm32-unknown-unknown -p deno_npm_cache
+      - name: Cargo check (deno_npm_cache)
+        run: cargo check --target wasm32-unknown-unknown -p deno_npm_cache
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
@@ -820,6 +815,4 @@ jobs:
         with:
           project_id: denoland
       - name: Upload canary version file to dl.deno.land
-        run: |-
-          echo ${{ github.sha }} > canary-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+        run: './tools/release/upload_canary.ts latest ${{ github.sha }}'
