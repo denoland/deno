@@ -6398,6 +6398,25 @@ fn lsp_npm_managed_no_export_diagnostic() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/29177.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_missing_types_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  context.run_deno("add npm:react");
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file("file.ts", "import \"react\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]),);
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_cache_on_save() {

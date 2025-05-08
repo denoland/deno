@@ -1633,8 +1633,12 @@ impl DocumentModules {
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
       let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-      let (s, mt) =
-        scoped_resolver.npm_to_file_url(&npm_ref, referrer, resolution_mode)?;
+      let (s, mt) = scoped_resolver.npm_to_file_url(
+        &npm_ref,
+        referrer,
+        NodeResolutionKind::Types,
+        resolution_mode,
+      )?;
       specifier = s;
       media_type = Some(mt);
     }
