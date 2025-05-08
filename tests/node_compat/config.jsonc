@@ -427,6 +427,7 @@
       "test-dgram-error-message-address.js",
       "test-dgram-implicit-bind.js",
       "test-dgram-listen-after-bind.js",
+      "test-dgram-membership.js",
       "test-dgram-msgsize.js",
       "test-dgram-oob-buffer.js",
       "test-dgram-recv-error.js",
