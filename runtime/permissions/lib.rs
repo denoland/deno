@@ -410,6 +410,8 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
 
   pub fn is_allow_all(&self) -> bool {
     self.granted_global
+      && !self.flag_denied_global
+      && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
   }
@@ -4837,6 +4839,30 @@ mod tests {
 
     let write_query = parser.parse_path_query("/foo").unwrap().into_write();
     perms.write.check_partial(&write_query, None).unwrap();
+    assert!(perms.write.check(&write_query, None).is_err());
+  }
+
+  #[test]
+  fn test_check_allow_global_deny_global() {
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        deny_write: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.read.check_all(None).is_err());
+    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    assert!(perms.read.check(&read_query, None).is_err());
+
+    assert!(perms.write.check_all(None).is_err());
+    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
     assert!(perms.write.check(&write_query, None).is_err());
   }
 
