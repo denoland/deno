@@ -685,6 +685,13 @@ async fn get_auth_headers(
   Ok(authorizations)
 }
 
+#[derive(Debug)]
+struct CreatePackageInfo {
+  scope: String,
+  package: String,
+  create_url: String,
+}
+
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
@@ -693,7 +700,7 @@ async fn check_if_scope_and_package_exist(
   registry_manage_url: &Url,
   scope: &str,
   package: &str,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<CreatePackageInfo>, AnyError> {
   let response =
     registry::get_package(client, registry_api_url, scope, package).await?;
   if response.status() == 404 {
@@ -701,7 +708,11 @@ async fn check_if_scope_and_package_exist(
       "{}new?scope={}&package={}&from=cli",
       registry_manage_url, scope, package
     );
-    Ok(Some(create_url));
+    Ok(Some(CreatePackageInfo {
+      create_url,
+      scope: scope.to_string(),
+      package: package.to_string(),
+    }))
   } else {
     Ok(None)
   }
@@ -728,20 +739,16 @@ async fn ensure_scopes_and_packages_exist(
 
   let mut missing_packages = vec![];
 
-  while let Some(maybe_create_package_url) = futures.next().await {
-    if let Some(create_package_url) = maybe_create_package_url? {
-      missing_packages.push((
-        package.scope.clone(),
-        package.package.clone(),
-        create_package_url,
-      ));
+  while let Some(maybe_create_package_info) = futures.next().await {
+    if let Some(create_package_info) = maybe_create_package_info? {
+      missing_packages.push(create_package_info);
     };
   }
 
   if !std::io::stdin().is_terminal() {
-    let missing_packages_lines = missing_packages
+    let missing_packages_lines: Vec<_> = missing_packages
       .into_iter()
-      .map(|(_, _, url)| format!("- {}", url))
+      .map(|info| format!("- {}", info.create_url))
       .collect();
     if !missing_packages_lines.is_empty() {
       bail!(
@@ -752,25 +759,31 @@ async fn ensure_scopes_and_packages_exist(
     return Ok(());
   }
 
-  for (scope, package, create_package_url) in missing_packages {
+  for create_package_info in missing_packages {
     ring_bell();
     log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
-      &scope,
-      &package,
-      colors::cyan_with_underline(&create_package_url)
+      &create_package_info.scope,
+      &create_package_info.package,
+      colors::cyan_with_underline(&create_package_info.create_url)
     );
     log::warn!("{}", colors::gray("Waiting..."));
-    let _ = open::that_detached(&create_package_url);
+    let _ = open::that_detached(&create_package_info.create_url);
 
-    let package_api_url =
-      api::get_package_api_url(registry_api_url, &scope, &package);
+    let package_api_url = registry::get_package_api_url(
+      registry_api_url,
+      &create_package_info.scope,
+      &create_package_info.package,
+    );
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
       let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
-        let name = format!("@{}/{}", package.scope, package.package);
+        let name = format!(
+          "@{}/{}",
+          create_package_info.scope, create_package_info.package
+        );
         log::info!("Package {} created", colors::green(name));
         break;
       }
