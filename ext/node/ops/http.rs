@@ -39,7 +39,6 @@ use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
-use deno_net::io::UnixStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_permissions::PermissionCheckError;
 use http::header::HeaderMap;
@@ -214,7 +213,7 @@ where
       {
         let resource_rc = state
           .resource_table
-          .take::<UnixStreamResource>(conn_rid)
+          .take::<deno_net::io::UnixStreamResource>(conn_rid)
           .map_err(ConnError::Resource)?;
         let resource =
           Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
