@@ -27,6 +27,7 @@ import {
   op_net_recv_unixpacket,
   op_net_send_udp,
   op_net_send_unixpacket,
+  op_net_set_broadcast_udp,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
@@ -35,6 +36,7 @@ import {
 const UDP_DGRAM_MAXSIZE = 65507;
 
 const {
+  ArrayPrototypeMap,
   Error,
   Number,
   NumberIsNaN,
@@ -78,12 +80,13 @@ async function resolveDns(query, recordType, options) {
   }
 
   try {
-    return await op_dns_resolve({
+    const res = await op_dns_resolve({
       cancelRid,
       query,
       recordType,
       options,
     });
+    return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
       options.signal[abortSignal.remove](abortHandler);
@@ -375,6 +378,17 @@ class Listener {
   }
 }
 
+const _setBroadcast = Symbol("setBroadcast");
+const _dropMembership = Symbol("dropMembership");
+
+function setDatagramBroadcast(conn, broadcast) {
+  return conn[_setBroadcast](broadcast);
+}
+
+function dropMembership(conn, v6, addr, multiInterface) {
+  return conn[_dropMembership](v6, addr, multiInterface);
+}
+
 class DatagramConn {
   #rid = 0;
   #addr = null;
@@ -389,6 +403,18 @@ class DatagramConn {
 
   get addr() {
     return this.#addr;
+  }
+
+  [_setBroadcast](broadcast) {
+    op_net_set_broadcast_udp(this.#rid, broadcast);
+  }
+
+  [_dropMembership](v6, addr, multiInterface) {
+    if (v6) {
+      return op_net_leave_multi_v6_udp(this.#rid, addr, multiInterface);
+    }
+
+    return op_net_leave_multi_v4_udp(this.#rid, addr, multiInterface);
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -623,16 +649,36 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      let cancelRid;
+      let abortHandler;
+      if (args?.signal) {
+        args.signal.throwIfAborted();
+        cancelRid = createCancelHandle();
+        abortHandler = () => core.tryClose(cancelRid);
+        args.signal[abortSignal.add](abortHandler);
+      }
       const port = validatePort(args.port);
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
-        {
-          hostname: args.hostname ?? "127.0.0.1",
-          port,
-        },
-      );
-      localAddr.transport = "tcp";
-      remoteAddr.transport = "tcp";
-      return new TcpConn(rid, remoteAddr, localAddr);
+
+      try {
+        const { 0: rid, 1: localAddr, 2: remoteAddr } =
+          await op_net_connect_tcp(
+            {
+              hostname: args.hostname ?? "127.0.0.1",
+              port,
+            },
+            undefined,
+            cancelRid,
+          );
+        localAddr.transport = "tcp";
+        remoteAddr.transport = "tcp";
+
+        return new TcpConn(rid, remoteAddr, localAddr);
+      } finally {
+        if (args?.signal) {
+          args.signal[abortSignal.remove](abortHandler);
+          args.signal.throwIfAborted();
+        }
+      }
     }
     case "unix": {
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_unix(
@@ -662,10 +708,12 @@ export {
   Conn,
   connect,
   createListenDatagram,
+  dropMembership,
   listen,
   Listener,
   listenOptionApiName,
   resolveDns,
+  setDatagramBroadcast,
   TcpConn,
   UnixConn,
   UpgradedConn,

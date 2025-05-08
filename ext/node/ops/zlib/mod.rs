@@ -233,7 +233,11 @@ struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GarbageCollected for Zlib {}
+impl deno_core::GarbageCollected for Zlib {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Zlib"
+  }
+}
 
 impl deno_core::Resource for Zlib {
   fn name(&self) -> Cow<str> {

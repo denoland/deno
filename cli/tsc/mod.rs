@@ -280,9 +280,11 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
+    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -1425,11 +1427,7 @@ pub fn exec(
 
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
-  extensions.push(deno_cli_tsc::init_ops_and_esm(
-    request,
-    root_map,
-    remapped_specifiers,
-  ));
+  extensions.push(deno_cli_tsc::init(request, root_map, remapped_specifiers));
   let extension_code_cache = code_cache.map(|cache| {
     Rc::new(TscExtCodeCache::new(cache)) as Rc<dyn deno_core::ExtCodeCache>
   });
@@ -1541,7 +1539,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(None, None);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }

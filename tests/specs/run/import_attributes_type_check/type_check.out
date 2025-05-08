@@ -1,15 +1,20 @@
 Check file:///[WILDCARD]/type_check.ts
+TS2880 [ERROR]: Import assertions have been replaced by import attributes. Use 'with' instead of 'assert'.
+import data2 from "./data.json" assert { type: "json" };
+                                ~~~~~~
+    at [WILDLINE]type_check.ts:3:33
+
 TS2339 [ERROR]: Property 'foo' does not exist on type '{ a: string; c: { d: number; }; }'.
 console.log(data1.foo);
                   ~~~
-    at [WILDCARD]type_check.ts:5:19
+    at [WILDLINE]type_check.ts:5:19
 
 TS2339 [ERROR]: Property 'foo' does not exist on type '{ a: string; c: { d: number; }; }'.
 console.log(data2.foo);
                   ~~~
-    at [WILDCARD]type_check.ts:6:19
+    at [WILDLINE]type_check.ts:6:19
 
-Found 2 errors.
+Found 3 errors.
 
 error: Type checking failed.
 

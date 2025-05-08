@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1163 tests out of 3993 have been ported from Node 23.9.0 (29.13% ported, 71.40% remaining).
+1166 tests out of 3993 have been ported from Node 23.9.0 (29.20% ported, 71.32% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -282,7 +282,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-blocklist-clone.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-backing-arraybuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-backing-arraybuffer.js)
 - [parallel/test-buffer-compare.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-compare.js)
 - [parallel/test-buffer-constructor-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-deprecation-error.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
@@ -615,7 +614,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-create-socket-handle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-create-socket-handle.js)
 - [parallel/test-dgram-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-deprecation-error.js)
 - [parallel/test-dgram-exclusive-implicit-bind.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-exclusive-implicit-bind.js)
-- [parallel/test-dgram-membership.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-membership.js)
 - [parallel/test-dgram-multicast-loopback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-loopback.js)
 - [parallel/test-dgram-multicast-set-interface.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-set-interface.js)
 - [parallel/test-dgram-multicast-setTTL.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-setTTL.js)
@@ -626,7 +624,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-send-empty-packet.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-empty-packet.js)
 - [parallel/test-dgram-send-queue-info.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-queue-info.js)
 - [parallel/test-dgram-sendto.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-sendto.js)
-- [parallel/test-dgram-setBroadcast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-setBroadcast.js)
 - [parallel/test-dgram-setTTL.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-setTTL.js)
 - [parallel/test-dgram-udp6-link-local-address.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-udp6-link-local-address.js)
 - [parallel/test-dgram-unref-in-cluster.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-unref-in-cluster.js)
@@ -1777,7 +1774,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-process-config.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-config.js)
 - [parallel/test-process-constants-noatime.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-constants-noatime.js)
 - [parallel/test-process-constrained-memory.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-constrained-memory.js)
-- [parallel/test-process-cpuUsage.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-cpuUsage.js)
 - [parallel/test-process-default.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-default.js)
 - [parallel/test-process-dlopen-error-message-crash.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-dlopen-error-message-crash.js)
 - [parallel/test-process-emit.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-process-emit.js)
@@ -2736,6 +2732,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [pummel/test-net-timeout2.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-net-timeout2.js)
 - [pummel/test-net-write-callbacks.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-net-write-callbacks.js)
 - [pummel/test-next-tick-infinite-calls.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-next-tick-infinite-calls.js)
+- [pummel/test-process-cpuUsage.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-process-cpuUsage.js)
 - [pummel/test-process-hrtime.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-process-hrtime.js)
 - [pummel/test-regress-GH-892.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-regress-GH-892.js)
 - [pummel/test-string-decoder-large-buffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/pummel/test-string-decoder-large-buffer.js)

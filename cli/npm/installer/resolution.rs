@@ -1,10 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
-use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
@@ -101,41 +99,6 @@ impl NpmResolutionInstaller {
       },
     }
   }
-
-  pub async fn set_package_reqs(
-    &self,
-    package_reqs: &[PackageReq],
-  ) -> Result<(), AnyError> {
-    // only allow one thread in here at a time
-    let _snapshot_lock = self.update_queue.acquire().await;
-
-    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
-    let snapshot = add_package_reqs_to_snapshot(
-      &self.registry_info_provider,
-      package_reqs,
-      self.maybe_lockfile.clone(),
-      &self.patch_packages,
-      || {
-        let snapshot = self.resolution.snapshot();
-        let has_removed_package = !snapshot
-          .package_reqs()
-          .keys()
-          .all(|req| reqs_set.contains(req));
-        // if any packages were removed, we need to completely recreate the npm resolution snapshot
-        if has_removed_package {
-          snapshot.into_empty()
-        } else {
-          snapshot
-        }
-      },
-    )
-    .await
-    .into_result()?;
-
-    self.resolution.set_snapshot(snapshot);
-
-    Ok(())
-  }
 }
 
 async fn add_package_reqs_to_snapshot(
@@ -148,7 +111,7 @@ async fn add_package_reqs_to_snapshot(
   fn get_types_node_version() -> VersionReq {
     // WARNING: When bumping this version, check if anything needs to be
     // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-    VersionReq::parse_from_npm("22.9.0 - 22.12.0").unwrap()
+    VersionReq::parse_from_npm("22.9.0 - 22.15.15").unwrap()
   }
 
   let snapshot = get_new_snapshot();
@@ -308,7 +271,7 @@ fn populate_lockfile_from_snapshot(
         if dist.tarball
           == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
             &crate::npm::managed::DefaultTarballUrl,
-            &pkg.id,
+            &pkg.id.nv,
           )
         {
           None
@@ -317,8 +280,8 @@ fn populate_lockfile_from_snapshot(
         }
       }),
       deprecated: pkg.is_deprecated,
-      has_bin: pkg.has_bin,
-      has_scripts: pkg.has_scripts,
+      bin: pkg.has_bin,
+      scripts: pkg.has_scripts,
       optional_peers,
     }
   }

@@ -77,7 +77,7 @@ pub trait NodePermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
@@ -124,7 +124,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 
   fn check_read_path<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
@@ -458,6 +458,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::util::op_node_view_has_buffer,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
