@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::rc::Rc;
+use std::rc::Weak;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
@@ -23,8 +24,8 @@ pub struct Session {
   pub(crate) inner: *mut ffi::sqlite3_session,
   pub(crate) freed: Cell<bool>,
 
-  // Hold a strong reference to the database.
-  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // Hold a weak reference to the database.
+  pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
 impl GarbageCollected for Session {
@@ -65,7 +66,15 @@ impl Session {
   // Closes the session.
   #[fast]
   fn close(&self) -> Result<(), SqliteError> {
-    if self.db.borrow().is_none() {
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<()>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
       return SqliteError::create_enhanced_error(
         ffi::SQLITE_MISUSE,
         &SqliteError::AlreadyClosed.to_string(),
@@ -82,7 +91,15 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<Box<[u8]>>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
       return SqliteError::create_enhanced_error(
         ffi::SQLITE_MISUSE,
         &SqliteError::AlreadyClosed.to_string(),
@@ -105,7 +122,15 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<Box<[u8]>>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
       return SqliteError::create_enhanced_error(
         ffi::SQLITE_MISUSE,
         &SqliteError::AlreadyClosed.to_string(),

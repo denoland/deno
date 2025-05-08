@@ -3,6 +3,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::rc::Weak;
 
 use deno_core::op2;
 use deno_core::v8;
@@ -26,7 +27,7 @@ pub struct RunStatementResult {
 #[derive(Debug)]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
-  pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
@@ -146,7 +147,8 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            let db = self.db.borrow();
+            let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+            let db = db_rc.borrow();
             let db = db.as_ref().ok_or(SqliteError::InUse)?;
             let handle = db.handle();
 
@@ -293,7 +295,8 @@ impl StatementSync {
       let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
       let (as_int, lossless) = value.i64_value();
       if !lossless {
-        let db = self.db.borrow();
+        let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+        let db = db_rc.borrow();
         let db = db.as_ref().ok_or(SqliteError::InUse)?;
         // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
         let handle = unsafe { db.handle() };
@@ -310,7 +313,8 @@ impl StatementSync {
       // as it lives as long as the StatementSync instance.
       unsafe { ffi::sqlite3_bind_int64(raw, index, as_int) }
     } else {
-      let db = self.db.borrow();
+      let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+      let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
       // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
       let handle = unsafe { db.handle() };
@@ -327,7 +331,8 @@ impl StatementSync {
 
   fn check_error_code(&self, r: i32) -> Result<(), SqliteError> {
     if r != ffi::SQLITE_OK {
-      let db = self.db.borrow();
+      let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+      let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
       // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
       let handle = unsafe { db.handle() };
@@ -384,7 +389,8 @@ impl StatementSync {
 
             let e = bare_named_params.insert(bare_name, i);
             if e.is_some() {
-              let db = self.db.borrow();
+              let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+              let db = db_rc.borrow();
               let db = db.as_ref().ok_or(SqliteError::InUse)?;
               // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
               let handle = unsafe { db.handle() };
@@ -416,7 +422,8 @@ impl StatementSync {
             }
 
             if r == 0 {
-              let db = self.db.borrow();
+              let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+              let db = db_rc.borrow();
               let db = db.as_ref().ok_or(SqliteError::InUse)?;
               // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
               let handle = unsafe { db.handle() };
@@ -511,7 +518,8 @@ impl StatementSync {
     scope: &mut v8::HandleScope,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
-    let db = self.db.borrow();
+    let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+    let db = db_rc.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     self.bind_params(scope, params)?;
@@ -720,7 +728,8 @@ impl StatementSync {
     unsafe {
       let raw = ffi::sqlite3_expanded_sql(self.inner);
       if raw.is_null() {
-        let db = self.db.borrow();
+        let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
+        let db = db_rc.borrow();
         let db = db.as_ref().ok_or(SqliteError::InUse)?;
         let handle = db.handle();
 

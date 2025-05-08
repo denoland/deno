@@ -299,7 +299,7 @@ impl DatabaseSync {
 
     Ok(StatementSync {
       inner: raw_stmt,
-      db: self.conn.clone(),
+      db: Rc::downgrade(&self.conn),
       use_big_ints: Cell::new(false),
       allow_bare_named_params: Cell::new(true),
       is_iter_finished: false,
@@ -547,7 +547,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: self.conn.clone(),
+      db: Rc::downgrade(&self.conn),
     })
   }
 }
