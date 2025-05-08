@@ -9765,6 +9765,7 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     json!([
       "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );
