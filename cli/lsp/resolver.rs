@@ -353,6 +353,7 @@ impl LspScopedResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
+    resolution_kind: NodeResolutionKind,
     resolution_mode: ResolutionMode,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let npm_pkg_req_resolver = self.npm_pkg_req_resolver.as_ref()?;
@@ -363,7 +364,7 @@ impl LspScopedResolver {
           req_ref,
           referrer,
           resolution_mode,
-          NodeResolutionKind::Types,
+          resolution_kind,
         )
         .ok()?
         .into_url()
