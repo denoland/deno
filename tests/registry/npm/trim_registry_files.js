@@ -4,7 +4,7 @@
 // Run this to trim the registry.json files
 
 for (const dirPath of getPackageDirs()) {
-  if (dirPath.includes("@denotest")) {
+  if (dirPath.includes("@denotest") || dirPath.includes("@types/denotest__")) {
     continue;
   }
   const versions = Array.from(Deno.readDirSync(dirPath)
