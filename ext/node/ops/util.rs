@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
@@ -18,18 +19,18 @@ enum HandleType {
 }
 
 #[op2(fast)]
-pub fn op_node_guess_handle_type(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<u32, deno_core::error::ResourceError> {
-  let handle = state.resource_table.get_handle(rid)?;
+pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
+  let handle = match state.resource_table.get_handle(rid) {
+    Ok(handle) => handle,
+    _ => return HandleType::Unknown as u32,
+  };
 
   let handle_type = match handle {
     ResourceHandle::Fd(handle) => guess_handle_type(handle),
     _ => HandleType::Unknown,
   };
 
-  Ok(handle_type as u32)
+  handle_type as u32
 }
 
 #[cfg(windows)]
@@ -79,4 +80,9 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
     libc::S_IFSOCK => HandleType::Tcp,
     _ => HandleType::Unknown,
   }
+}
+
+#[op2(fast)]
+pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
+  buffer.has_buffer()
 }

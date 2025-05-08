@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.187.0"
+version = "0.202.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,9 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
+default = ["default_property_extractor"]
 "__http_tracing" = []
+default_property_extractor = []
 
 [lib]
 path = "lib.rs"
@@ -21,7 +23,7 @@ name = "compressible"
 harness = false
 
 [dependencies]
-async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
 base64.workspace = true
 brotli.workspace = true
@@ -30,6 +32,7 @@ cache_control.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_net.workspace = true
+deno_telemetry.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
 http.workspace = true
@@ -38,9 +41,10 @@ httparse.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-itertools = "0.10"
-memmem.workspace = true
-mime = "0.3.16"
+itertools.workspace = true
+log.workspace = true
+memchr.workspace = true
+mime.workspace = true
 once_cell.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true

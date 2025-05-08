@@ -1229,6 +1229,21 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
+  async function createHttpClientLocalAddress() {
+    const client = Deno.createHttpClient({
+      localAddress: "127.0.0.2",
+    });
+    const response = await fetch("http://localhost:4545/local_addr", {
+      client,
+    });
+    const addr = await response.text();
+    assertEquals(addr, "127.0.0.2");
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
@@ -1691,6 +1706,15 @@ Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
   }, Deno.errors.NotCapable);
 });
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function fetchSpecialFilePerm() {
+    await assertRejects(async () => {
+      await fetch("file:///proc/self/environ");
+    }, Deno.errors.NotCapable);
+  },
+);
 
 Deno.test(
   { permissions: { read: false } },

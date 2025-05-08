@@ -16,7 +16,7 @@ use capacity_builder::BytesAppendable;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_config::workspace::WorkspaceResolver;
+use deno_cache_dir::CACHE_PERM;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -44,22 +44,25 @@ use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::workspace::WorkspaceResolver;
 use indexmap::IndexMap;
-use node_resolver::analyze::CjsAnalysis;
-use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::ResolvedCjsAnalysis;
 
 use super::virtual_fs::output_vfs;
+use crate::args::get_default_v8_flags;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
 use crate::http_util::HttpClientProvider;
-use crate::node::CliCjsCodeAnalyzer;
+use crate::node::CliCjsModuleExportAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -77,7 +80,7 @@ pub enum StandaloneRelativeFileBaseUrl<'a> {
   Path(&'a Url),
 }
 
-impl<'a> StandaloneRelativeFileBaseUrl<'a> {
+impl StandaloneRelativeFileBaseUrl<'_> {
   /// Gets the module map key of the provided specifier.
   ///
   /// * Descendant file specifiers will be made relative to the base.
@@ -183,12 +186,13 @@ pub struct WriteBinOptions<'a> {
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
-  pub include_files: &'a [ModuleSpecifier],
+  pub include_paths: &'a [ModuleSpecifier],
+  pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
-  cjs_code_analyzer: CliCjsCodeAnalyzer,
+  cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
@@ -202,7 +206,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cjs_code_analyzer: CliCjsCodeAnalyzer,
+    cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
@@ -213,7 +217,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      cjs_code_analyzer,
+      cjs_module_export_analyzer,
       cjs_tracker,
       cli_options,
       deno_dir,
@@ -265,6 +269,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
@@ -284,18 +289,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
-
-    if !binary_path.exists() {
-      self
-        .download_base_binary(&download_directory, &binary_path_suffix)
-        .await
-        .context("Setting up base binary.")?;
-    }
+    log::debug!("Resolved denort: {}", binary_path.display());
 
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
     };
-    let archive_data = read_file(&binary_path)?;
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up base binary.")?
+    };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
       exe_name: "denort",
@@ -311,11 +317,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn download_base_binary(
     &self,
-    output_directory: &Path,
+    output_path: &Path,
     binary_path_suffix: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<u8>, AnyError> {
     let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
-    let maybe_bytes = {
+    let response = {
       let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
       let progress = progress_bars.update(&download_url);
 
@@ -324,28 +330,28 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .get_or_create()?
         .download_with_progress_and_retries(
           download_url.parse()?,
-          None,
+          &Default::default(),
           &progress,
         )
         .await?
     };
-    let bytes = match maybe_bytes {
-      Some(bytes) => bytes,
-      None => {
-        bail!("Download could not be found, aborting");
-      }
-    };
+    let bytes = response
+      .into_bytes()
+      .with_context(|| format!("Failed downloading '{}'", download_url))?;
 
     let create_dir_all = |dir: &Path| {
       std::fs::create_dir_all(dir)
         .with_context(|| format!("Creating {}", dir.display()))
     };
-    create_dir_all(output_directory)?;
-    let output_path = output_directory.join(binary_path_suffix);
     create_dir_all(output_path.parent().unwrap())?;
-    std::fs::write(&output_path, bytes)
-      .with_context(|| format!("Writing {}", output_path.display()))?;
-    Ok(())
+    atomic_write_file_with_retries(
+      &CliSys::default(),
+      output_path,
+      &bytes,
+      CACHE_PERM,
+    )
+    .with_context(|| format!("Writing {}", output_path.display()))?;
+    Ok(bytes)
   }
 
   /// This functions creates a standalone deno binary by appending a bundle
@@ -361,7 +367,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       display_output_filename,
       graph,
       entrypoint,
-      include_files,
+      include_paths,
+      exclude_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -372,6 +379,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
+    for path in exclude_paths {
+      vfs.add_exclude_path(path);
+    }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         let snapshot = managed
@@ -389,10 +399,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         None
       }
     };
-    for include_file in include_files {
+    for include_file in include_paths {
       let path = deno_path_util::url_to_file_path(include_file)?;
       vfs
-        .add_file_at_path(&path)
+        .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();
@@ -418,16 +428,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               m.is_script,
             )? {
               let cjs_analysis = self
-                .cjs_code_analyzer
-                .analyze_cjs(
+                .cjs_module_export_analyzer
+                .analyze_all_exports(
                   module.specifier(),
                   Some(Cow::Borrowed(m.source.as_ref())),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
-                CjsAnalysis::Esm(_) => CjsExportAnalysisEntry::Esm,
-                CjsAnalysis::Cjs(exports) => {
-                  CjsExportAnalysisEntry::Cjs(exports)
+                ResolvedCjsAnalysis::Esm(_) => CjsExportAnalysisEntry::Esm,
+                ResolvedCjsAnalysis::Cjs(exports) => {
+                  CjsExportAnalysisEntry::Cjs(
+                    exports.into_iter().collect::<Vec<_>>(),
+                  )
                 }
               });
             } else {
@@ -478,6 +490,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 maybe_transpiled,
                 maybe_source_map,
                 maybe_cjs_export_analysis,
+                mtime: file_path
+                  .metadata()
+                  .ok()
+                  .and_then(|m| m.modified().ok()),
               },
             )
             .with_context(|| {
@@ -539,26 +555,24 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .file_bytes(file.offset)
           .map(|text| String::from_utf8_lossy(text));
         let cjs_analysis_result = self
-          .cjs_code_analyzer
-          .analyze_cjs(&specifier, maybe_source)
+          .cjs_module_export_analyzer
+          .analyze_all_exports(&specifier, maybe_source)
           .await;
-        let maybe_analysis = match cjs_analysis_result {
-          Ok(CjsAnalysis::Esm(_)) => Some(CjsExportAnalysisEntry::Esm),
-          Ok(CjsAnalysis::Cjs(exports)) => {
-            Some(CjsExportAnalysisEntry::Cjs(exports))
+        let analysis = match cjs_analysis_result {
+          Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
+          Ok(ResolvedCjsAnalysis::Cjs(exports)) => {
+            CjsExportAnalysisEntry::Cjs(exports.into_iter().collect::<Vec<_>>())
           }
           Err(err) => {
             log::debug!(
-              "Ignoring cjs export analysis for '{}': {}",
+              "Had cjs export analysis error for '{}': {}",
               specifier,
               err
             );
-            None
+            CjsExportAnalysisEntry::Error(err.to_string())
           }
         };
-        if let Some(analysis) = &maybe_analysis {
-          to_add.push((file_path, bincode::serialize(analysis)?));
-        }
+        to_add.push((file_path, bincode::serialize(&analysis)?));
       }
     }
     for (file_path, analysis) in to_add {
@@ -642,7 +656,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
       permissions: self.cli_options.permissions_options(),
-      v8_flags: self.cli_options.v8_flags().clone(),
+      v8_flags: construct_v8_flags(
+        &get_default_v8_flags(),
+        self.cli_options.v8_flags(),
+        vec![],
+      ),
       unsafely_ignore_certificate_errors: self
         .cli_options
         .unsafely_ignore_certificate_errors()
@@ -693,9 +711,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         legacy_flag_enabled: false,
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
-        sloppy_imports: self.cli_options.unstable_sloppy_imports(),
         features: self.cli_options.unstable_features(),
+        lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
+        sloppy_imports: self.cli_options.unstable_sloppy_imports(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,

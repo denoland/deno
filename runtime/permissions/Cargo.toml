@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.48.0"
+version = "0.63.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,11 +19,11 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
-fqdn = "0.3.4"
+fqdn.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
-percent-encoding = { version = "2.3.1", features = [] }
+percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 thiserror.workspace = true
 which.workspace = true

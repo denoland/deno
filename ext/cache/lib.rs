@@ -118,10 +118,6 @@ deno_core::extension!(deno_cache,
   },
 );
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_cache.d.ts")
-}
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CachePutRequest {

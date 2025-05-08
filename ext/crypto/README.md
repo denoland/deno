@@ -41,9 +41,8 @@ Object.defineProperty(globalThis, "SubtleCrypto", {
 });
 ```
 
-Then from rust, provide:
-`deno_crypto::deno_crypto::init_ops_and_esm(Option<u64>)` in the `extensions`
-field of your `RuntimeOptions`
+Then from rust, provide: `deno_crypto::deno_crypto::init(Option<u64>)` in the
+`extensions` field of your `RuntimeOptions`
 
 Where the `Option<u64>` represents an optional seed for initialization.
 

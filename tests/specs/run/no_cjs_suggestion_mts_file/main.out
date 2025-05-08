@@ -1,0 +1,5 @@
+3
+error: Uncaught (in promise) ReferenceError: module is not defined
+module.isPreloading = true;
+^
+    at file:///[WILDLINE]/main.mts:5:1

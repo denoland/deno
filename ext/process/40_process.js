@@ -41,6 +41,9 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 
+// The key for private `input` option for `Deno.Command`
+const kInputOption = Symbol("kInputOption");
+
 function opKill(pid, signo, apiName) {
   op_kill(pid, signo, apiName);
 }
@@ -296,9 +299,14 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
+    const onAbort = () => {
+      try {
+        this.kill("SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
     signal?.[abortSignal.add](onAbort);
-
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
@@ -404,6 +412,7 @@ function spawnSync(command, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
+  [kInputOption]: input,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
@@ -425,6 +434,7 @@ function spawnSync(command, {
     extraStdio: [],
     detached: false,
     needsNpmProcessState: false,
+    input,
   });
   return {
     success: result.status.success,
@@ -484,4 +494,4 @@ class Command {
   }
 }
 
-export { ChildProcess, Command, kill, Process, run };
+export { ChildProcess, Command, kill, kInputOption, Process, run };

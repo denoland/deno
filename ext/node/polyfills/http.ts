@@ -9,11 +9,14 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_tls_key_null,
+  op_tls_key_static,
   op_tls_start,
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
+import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 import {
   _normalizeArgs,
   createConnection,
@@ -66,6 +69,15 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
+import { Response } from "ext:deno_fetch/23_response.js";
+import {
+  builtinTracer,
+  ContextManager,
+  enterSpan,
+  PROPAGATORS,
+  restoreSnapshot,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
@@ -75,7 +87,8 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase } = primordials;
+const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
+  primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -120,14 +133,18 @@ function validateHost(host, name) {
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
+const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 
 class FakeSocket extends EventEmitter {
+  /** Stores the underlying request for lazily binding to abort signal */
+  #request: Request | undefined;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
+      request?: Request;
     } = {},
   ) {
     super();
@@ -137,6 +154,15 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
+    this.#request = opts.request;
+  }
+
+  [kBindToAbortSignal]() {
+    const signal = this.#request?.signal;
+    signal?.addEventListener("abort", () => {
+      this.emit("error", signal.reason);
+      this.emit("close");
+    }, { once: true });
   }
 
   setKeepAlive() {}
@@ -458,6 +484,12 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
+    let span;
+    let snapshot;
+    if (TRACING_ENABLED) {
+      span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
+      snapshot = enterSpan(span);
+    }
     (async () => {
       try {
         const parsedUrl = new URL(url);
@@ -467,15 +499,46 @@ class ClientRequest extends OutgoingMessage {
           // This should be only happening in artificial test cases
           return;
         }
-        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        if (span) {
+          const context = ContextManager.active();
+          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+            propagator.inject(context, headers, {
+              set(carrier, key, value) {
+                carrier.push([key, value]);
+              },
+            });
+          }
+          span.setAttribute("http.request.method", this.method);
+          span.setAttribute("url.full", parsedUrl.href);
+          span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
+          span.setAttribute("url.path", parsedUrl.pathname);
+          span.setAttribute("url.query", parsedUrl.search.slice(1));
+        }
+
+        let baseConnRid;
+        try {
+          baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        } catch (err) {
+          throw (this.socket.errored || err);
+        }
         if (this._encrypted) {
+          const hasCaCerts = this.agent?.options?.ca !== undefined;
+          const caCerts = hasCaCerts
+            ? [this.agent.options.ca.toString("UTF-8")]
+            : [];
+          const hasTlsKey = this.agent?.options?.key !== undefined &&
+            this.agent?.options?.cert !== undefined;
+          const keyPair = hasTlsKey
+            ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
+            : op_tls_key_null();
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
             hostname: parsedUrl.hostname,
-            caCerts: [],
+            caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
-          });
+          }, keyPair);
         }
+
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -525,6 +588,15 @@ class ClientRequest extends OutgoingMessage {
         });
 
         const res = await op_node_http_await_response(this._req!.requestRid);
+
+        if (span) {
+          span.setAttribute("http.response.status_code", res.status);
+          if (res.status >= 400) {
+            span.setAttribute("error.type", String(res.status));
+            span.setStatus({ code: 2 }); // Code 2 = Error
+          }
+        }
+
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -541,15 +613,18 @@ class ClientRequest extends OutgoingMessage {
         // incoming.httpVersionMinor = versionMinor;
         // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
         // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
-        //  parser.joinDuplicateHeaders;
+        // parser.joinDuplicateHeaders;
 
         incoming.url = res.url;
         incoming.statusCode = res.status;
         incoming.statusMessage = res.statusText;
         incoming.upgrade = null;
 
-        for (const [key, _value] of res.headers) {
-          if (key.toLowerCase() === "upgrade") {
+        for (const [key, value] of res.headers) {
+          if (
+            key.toLowerCase() === "upgrade" &&
+            value.toLowerCase() === "websocket"
+          ) {
             incoming.upgrade = true;
             break;
           }
@@ -602,6 +677,10 @@ class ClientRequest extends OutgoingMessage {
           this.emit("response", incoming);
         }
       } catch (err) {
+        if (span) {
+          updateSpanFromError(span, err);
+        }
+
         if (this._req && this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -627,8 +706,14 @@ class ClientRequest extends OutgoingMessage {
         } else {
           this.emit("error", err);
         }
+      } finally {
+        span?.end();
       }
     })();
+
+    if (snapshot) {
+      restoreSnapshot(snapshot);
+    }
   }
 
   _implicitHeader() {
@@ -946,6 +1031,10 @@ export class IncomingMessageForClient extends NodeReadable {
     // Flag for when we decide that this message cannot possibly be
     // read by the user, so there's no point continuing to handle it.
     this._dumped = false;
+
+    this.on("close", () => {
+      this.socket.emit("close");
+    });
   }
 
   get connection() {
@@ -1308,6 +1397,7 @@ function onError(self, error, cb) {
 }
 
 export type ServerResponse = {
+  req: IncomingMessageForServer;
   statusCode: number;
   statusMessage?: string;
 
@@ -1372,9 +1462,11 @@ type ServerResponseStatic = {
 
 export const ServerResponse = function (
   this: ServerResponse,
+  req: IncomingMessageForServer,
   resolve: (value: Response | PromiseLike<Response>) => void,
   socket: FakeSocket,
 ) {
+  this.req = req;
   this.statusCode = 200;
   this.statusMessage = undefined;
   this._headers = { __proto__: null };
@@ -1435,7 +1527,16 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-
+  this.on("newListener", (event) => {
+    if (event === "close") {
+      this.socket?.[kBindToAbortSignal]();
+      this.socket?.on("close", () => {
+        if (!this.finished) {
+          this.emit("close");
+        }
+      });
+    }
+  });
   this._header = "";
 } as unknown as ServerResponseStatic;
 
@@ -1699,6 +1800,8 @@ Object.defineProperty(ServerResponse.prototype, "connection", {
   ),
 });
 
+const kRawHeaders = Symbol("rawHeaders");
+
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
@@ -1738,7 +1841,12 @@ export class IncomingMessageForServer extends NodeReadable {
     this.method = "";
     this.socket = socket;
     this.upgrade = null;
-    this.rawHeaders = [];
+    this[kRawHeaders] = [];
+    socket?.on("error", (e) => {
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", e);
+      }
+    });
   }
 
   get aborted() {
@@ -1756,7 +1864,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.rawHeaders);
+      const entries = headersEntries(this[kRawHeaders]);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1767,6 +1875,16 @@ export class IncomingMessageForServer extends NodeReadable {
 
   set headers(val) {
     this.#headers = val;
+  }
+
+  get rawHeaders() {
+    const entries = headersEntries(this[kRawHeaders]);
+    const out = new Array(entries.length * 2);
+    for (let i = 0; i < entries.length; i++) {
+      out[i * 2] = entries[i][0];
+      out[i * 2 + 1] = entries[i][1];
+    }
+    return out;
   }
 
   // connection is deprecated, but still tested in unit test.
@@ -1863,6 +1981,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
+        request,
       });
 
       const req = new IncomingMessageForServer(socket);
@@ -1872,7 +1991,7 @@ export class ServerImpl extends EventEmitter {
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
-      req.rawHeaders = request.headers;
+      req[kRawHeaders] = request.headers;
 
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
@@ -1885,7 +2004,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve, socket);
+          const res = new ServerResponse(req, resolve, socket);
 
           if (request.headers.has("expect")) {
             if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {

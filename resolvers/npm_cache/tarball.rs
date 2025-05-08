@@ -10,25 +10,18 @@ use deno_semver::package::PackageNv;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
-use http::StatusCode;
 use parking_lot::Mutex;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
 use url::Url;
 
-use crate::remote::maybe_auth_header_for_npm_registry;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::spawn_blocking;
 use crate::tarball_extract::verify_and_extract_tarball;
 use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
+use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
+use crate::NpmCacheSys;
 
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -48,21 +41,7 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct TarballCache<
-  THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsRemoveFile
-    + FsReadDir
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
-> {
+pub struct TarballCache<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> {
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   sys: TSys,
@@ -78,21 +57,9 @@ pub struct EnsurePackageError {
   #[source]
   source: Arc<JsErrorBox>,
 }
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsReadDir
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > TarballCache<THttpClient, TSys>
+
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  TarballCache<THttpClient, TSys>
 {
   pub fn new(
     cache: Arc<NpmCache<TSys>>,
@@ -174,6 +141,7 @@ impl<
     dist: NpmPackageVersionDistInfo,
   ) -> LoadFuture {
     let tarball_cache = self.clone();
+    let sys = self.sys.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
       let package_folder =
@@ -202,15 +170,19 @@ impl<
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
-      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
+      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
       let result = tarball_cache.http_client
-        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header)
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
         .await;
       let maybe_bytes = match result {
-        Ok(maybe_bytes) => maybe_bytes,
+        Ok(response) => match response {
+          NpmCacheHttpClientResponse::NotModified => unreachable!(), // no e-tag
+          NpmCacheHttpClientResponse::NotFound => None,
+          NpmCacheHttpClientResponse::Bytes(r) => Some(r.bytes),
+        },
         Err(err) => {
-          if err.status_code == Some(StatusCode::UNAUTHORIZED)
+          if err.status_code == Some(401)
             && maybe_registry_config.is_none()
             && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
           {
@@ -245,8 +217,9 @@ impl<
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
-          deno_unsync::spawn_blocking(move || {
+          spawn_blocking(move || {
             verify_and_extract_tarball(
+              &sys,
               &package_nv,
               &bytes,
               &dist,

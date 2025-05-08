@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.1.9"
+version = "2.3.1"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -40,11 +40,11 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
-libsui = "0.5.0"
+libsui.workspace = true
 node_resolver.workspace = true
 
 async-trait.workspace = true
-bincode = "=1.3.3"
+bincode.workspace = true
 import_map = { version = "=0.21.0", features = ["ext"] }
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
@@ -53,11 +53,11 @@ serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
-twox-hash.workspace = true
 url.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+memmap2.workspace = true
+
 [dev-dependencies]
-pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

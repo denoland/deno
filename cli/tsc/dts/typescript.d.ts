@@ -15,6 +15,9 @@ and limitations under the License.
 
 declare namespace ts {
     namespace deno {
+        function setEnterSpan(f: EnterSpan): void;
+        function setExitSpan(f: ExitSpan): void;
+        function spanned<T>(name: string, f: () => T): T;
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
         function setNodeOnlyGlobalNames(names: Set<string>): void;
         function setTypesNodeIgnorableNames(names: Set<string>): void;
@@ -26,6 +29,10 @@ declare namespace ts {
         function tryParseNpmPackageReference(text: string): NpmPackageReference | undefined;
         function parseNpmPackageReference(text: string): NpmPackageReference;
         type IsNodeSourceFileCallback = (sourceFile: ts.SourceFile) => boolean;
+        type EnterSpan = (name: string) => object;
+        type ExitSpan = (span: object) => void;
+        let enterSpan: EnterSpan;
+        let exitSpan: ExitSpan;
         interface DenoForkContext {
             hasNodeSourceFile: (node: ts.Node | undefined) => boolean;
             getGlobalsForName: (id: ts.__String) => ts.SymbolTable;
@@ -132,7 +139,7 @@ declare namespace ts {
             readonly kind: ActionWatchTypingLocations;
         }
     }
-    const versionMajorMinor = "5.7";
+    const versionMajorMinor = "5.8";
     /** The version of the TypeScript compiler release */
     const version: string;
     /**
@@ -2778,6 +2785,7 @@ declare namespace ts {
         getBigIntType(): Type;
         getBigIntLiteralType(value: PseudoBigInt): BigIntLiteralType;
         getBooleanType(): Type;
+        getUnknownType(): Type;
         getFalseType(): Type;
         getTrueType(): Type;
         getVoidType(): Type;
@@ -2837,6 +2845,7 @@ declare namespace ts {
          * and the operation is cancelled, then it should be discarded, otherwise it is safe to keep.
          */
         runWithCancellationToken<T>(token: CancellationToken, cb: (checker: TypeChecker) => T): T;
+        getTypeArgumentsForResolvedSignature(signature: Signature): readonly Type[] | undefined;
     }
     enum NodeBuilderFlags {
         None = 0,
@@ -3340,11 +3349,15 @@ declare namespace ts {
         String = 0,
         Number = 1,
     }
+    type ElementWithComputedPropertyName = (ClassElement | ObjectLiteralElement) & {
+        name: ComputedPropertyName;
+    };
     interface IndexInfo {
         keyType: Type;
         type: Type;
         isReadonly: boolean;
         declaration?: IndexSignatureDeclaration;
+        components?: ElementWithComputedPropertyName[];
     }
     enum InferencePriority {
         None = 0,
@@ -3515,6 +3528,7 @@ declare namespace ts {
         /** @deprecated */
         keyofStringsOnly?: boolean;
         lib?: string[];
+        libReplacement?: boolean;
         locale?: string;
         mapRoot?: string;
         maxNodeModuleJsDepth?: number;
@@ -3591,6 +3605,7 @@ declare namespace ts {
         /** Paths used to compute primary types search locations */
         typeRoots?: string[];
         verbatimModuleSyntax?: boolean;
+        erasableSyntaxOnly?: boolean;
         esModuleInterop?: boolean;
         useDefineForClassFields?: boolean;
         [option: string]: CompilerOptionsValue | TsConfigSourceFile | undefined;
@@ -3622,6 +3637,7 @@ declare namespace ts {
         ES2022 = 7,
         ESNext = 99,
         Node16 = 100,
+        Node18 = 101,
         NodeNext = 199,
         Preserve = 200,
     }
@@ -3914,8 +3930,9 @@ declare namespace ts {
         NonNullAssertions = 4,
         PartiallyEmittedExpressions = 8,
         ExpressionsWithTypeArguments = 16,
-        Assertions = 6,
-        All = 31,
+        Satisfies = 32,
+        Assertions = 38,
+        All = 63,
         ExcludeJSDocTypeAssertion = -2147483648,
     }
     type ImmediatelyInvokedFunctionExpression = CallExpression & {
@@ -7745,6 +7762,40 @@ declare namespace ts {
         host: LanguageServiceHost;
         span: TextSpan;
         preferences: UserPreferences;
+    }
+    function createCacheableExportInfoMap(host: CacheableExportInfoMapHost): ExportInfoMap;
+    enum ExportKind {
+        Named = 0,
+        Default = 1,
+        ExportEquals = 2,
+        UMD = 3,
+        Module = 4,
+    }
+    interface SymbolExportInfo {
+        readonly symbol: Symbol;
+        readonly moduleSymbol: Symbol;
+        /** Set if `moduleSymbol` is an external module, not an ambient module */
+        moduleFileName: string | undefined;
+        exportKind: ExportKind;
+        targetFlags: SymbolFlags;
+        /** True if export was only found via the package.json AutoImportProvider (for telemetry). */
+        isFromPackageJson: boolean;
+    }
+    interface ExportInfoMap {
+        isUsableByFile(importingFile: Path): boolean;
+        clear(): void;
+        add(importingFile: Path, symbol: Symbol, key: __String, moduleSymbol: Symbol, moduleFile: SourceFile | undefined, exportKind: ExportKind, isFromPackageJson: boolean, checker: TypeChecker): void;
+        get(importingFile: Path, key: ExportMapInfoKey): readonly SymbolExportInfo[] | undefined;
+        search<T>(importingFile: Path, preferCapitalized: boolean, matches: (name: string, targetFlags: SymbolFlags) => boolean, action: (info: readonly SymbolExportInfo[], symbolName: string, isFromAmbientModule: boolean, key: ExportMapInfoKey) => T | undefined): T | undefined;
+        releaseSymbols(): void;
+        isEmpty(): boolean;
+        /** @returns Whether the change resulted in the cache being cleared */
+        onFileChanged(oldSourceFile: SourceFile, newSourceFile: SourceFile, typeAcquisitionEnabled: boolean): boolean;
+    }
+    interface CacheableExportInfoMapHost {
+        getCurrentProgram(): Program | undefined;
+        getPackageJsonAutoImportProvider(): Program | undefined;
+        getGlobalTypingsCacheLocation(): string | undefined;
     }
     type ExportMapInfoKey = string & {
         __exportInfoKey: void;

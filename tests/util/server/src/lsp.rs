@@ -14,7 +14,6 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +33,7 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
+use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
@@ -291,13 +291,12 @@ impl InitializeParamsBuilder {
   }
 
   #[allow(deprecated)]
-  pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri =
-      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
+  pub fn set_maybe_root_uri(&mut self, value: Option<Uri>) -> &mut Self {
+    self.params.root_uri = value;
     self
   }
 
-  pub fn set_root_uri(&mut self, value: Url) -> &mut Self {
+  pub fn set_root_uri(&mut self, value: Uri) -> &mut Self {
     self.set_maybe_root_uri(Some(value))
   }
 
@@ -437,8 +436,8 @@ impl InitializeParamsBuilder {
 }
 
 pub struct LspClientBuilder {
-  print_stderr: bool,
-  capture_stderr: bool,
+  stderr_inherit: bool,
+  stderr_null: bool,
   log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
@@ -456,8 +455,8 @@ impl LspClientBuilder {
 
   pub fn new_with_dir(deno_dir: TempDir) -> Self {
     Self {
-      print_stderr: false,
-      capture_stderr: false,
+      stderr_inherit: false,
+      stderr_null: false,
       log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
@@ -476,13 +475,13 @@ impl LspClientBuilder {
   // not deprecated, this is just here so you don't accidentally
   // commit code with this enabled
   #[deprecated]
-  pub fn print_stderr(mut self) -> Self {
-    self.print_stderr = true;
+  pub fn stderr_inherit(mut self) -> Self {
+    self.stderr_inherit = true;
     self
   }
 
-  pub fn capture_stderr(mut self) -> Self {
-    self.capture_stderr = true;
+  pub fn stderr_null(mut self) -> Self {
+    self.stderr_null = true;
     self
   }
 
@@ -493,9 +492,10 @@ impl LspClientBuilder {
 
   /// Whether to collect performance records (marks / measures, as emitted
   /// by the lsp in the `performance` module).
-  /// Implies `capture_stderr`.
+  /// Disables `stderr_inherit` and `stderr_null`.
   pub fn collect_perf(mut self) -> Self {
-    self.capture_stderr = true;
+    self.stderr_inherit = false;
+    self.stderr_null = false;
     self.collect_perf = true;
     self
   }
@@ -550,10 +550,10 @@ impl LspClientBuilder {
     for (key, value) in &self.envs {
       command.env(key, value);
     }
-    if self.capture_stderr {
-      command.stderr(Stdio::piped());
-    } else if !self.print_stderr {
+    if self.stderr_null {
       command.stderr(Stdio::null());
+    } else if !self.stderr_inherit {
+      command.stderr(Stdio::piped());
     }
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().unwrap();
@@ -563,52 +563,52 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
-    let (stderr_lines_rx, perf_rx) = if self.capture_stderr {
-      let stderr = child.stderr.take().unwrap();
-      let print_stderr = self.print_stderr;
-      let (tx, rx) = mpsc::channel::<String>();
-      let (perf_tx, perf_rx) =
-        self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
-      std::thread::spawn(move || {
-        let stderr = BufReader::new(stderr);
-        for line in stderr.lines() {
-          match line {
-            Ok(line) => {
-              #[allow(clippy::print_stderr)]
-              if print_stderr {
-                eprintln!("{}", line);
-              }
-              if let Some(tx) = perf_tx.as_ref() {
-                // look for perf records
-                if line.starts_with('{') && line.ends_with("},") {
-                  match serde_json::from_str::<PerfRecord>(
-                    line.trim_end_matches(','),
-                  ) {
-                    Ok(record) => {
-                      tx.send(record).unwrap();
-                      continue;
-                    }
-                    Err(err) => {
-                      #[allow(clippy::print_stderr)]
-                      {
-                        eprintln!("failed to parse perf record: {:#}", err);
+    let (stderr_lines_rx, perf_rx) =
+      if !self.stderr_null && !self.stderr_inherit {
+        let stderr = child.stderr.take().unwrap();
+        let (tx, rx) = mpsc::channel::<String>();
+        let (perf_tx, perf_rx) =
+          self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
+        std::thread::spawn(move || {
+          let stderr = BufReader::new(stderr);
+          for line in stderr.lines() {
+            match line {
+              Ok(line) => {
+                #[allow(clippy::print_stderr)]
+                {
+                  eprintln!("{}", line);
+                }
+                if let Some(tx) = perf_tx.as_ref() {
+                  // look for perf records
+                  if line.starts_with('{') && line.ends_with("},") {
+                    match serde_json::from_str::<PerfRecord>(
+                      line.trim_end_matches(','),
+                    ) {
+                      Ok(record) => {
+                        tx.send(record).unwrap();
+                        continue;
+                      }
+                      Err(err) => {
+                        #[allow(clippy::print_stderr)]
+                        {
+                          eprintln!("failed to parse perf record: {:#}", err);
+                        }
                       }
                     }
                   }
                 }
+                tx.send(line).unwrap();
               }
-              tx.send(line).unwrap();
-            }
-            Err(err) => {
-              panic!("failed to read line from stderr: {:#}", err);
+              Err(err) => {
+                panic!("failed to read line from stderr: {:#}", err);
+              }
             }
           }
-        }
-      });
-      (Some(rx), perf_rx)
-    } else {
-      (None, None)
-    };
+        });
+        (Some(rx), perf_rx)
+      } else {
+        (None, None)
+      };
 
     Ok(LspClient {
       child,
@@ -730,7 +730,7 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Ok(Some(_)) => {}
       Err(e) => panic!("pebble error: {e}"),
     }
   }
@@ -775,7 +775,7 @@ impl LspClient {
     let lines_rx = self
       .stderr_lines_rx
       .as_ref()
-      .expect("must setup with client_builder.capture_stderr()");
+      .expect("must not setup with client_builder.stderr_null() or client_builder.stderr_inherit()");
     let mut found_lines = Vec::new();
     while Instant::now() < timeout_time {
       if let Ok(line) = lines_rx.try_recv() {
@@ -853,7 +853,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.url_dir());
+    builder.set_root_uri(self.root_dir.uri_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
@@ -916,6 +916,42 @@ impl LspClient {
 
   pub fn did_open_raw(&mut self, params: Value) {
     self.write_notification("textDocument/didOpen", params);
+  }
+
+  pub fn notebook_did_open(
+    &mut self,
+    uri: Uri,
+    version: i32,
+    cells: Vec<Value>,
+  ) -> CollectedDiagnostics {
+    let cells = cells
+      .into_iter()
+      .map(|c| serde_json::from_value::<lsp::TextDocumentItem>(c).unwrap())
+      .collect::<Vec<_>>();
+    let params = lsp::DidOpenNotebookDocumentParams {
+      notebook_document: lsp::NotebookDocument {
+        uri,
+        notebook_type: "jupyter-notebook".to_string(),
+        version,
+        metadata: None,
+        cells: cells
+          .iter()
+          .map(|c| lsp::NotebookCell {
+            kind: if c.language_id == "markdown" {
+              lsp::NotebookCellKind::Markup
+            } else {
+              lsp::NotebookCellKind::Code
+            },
+            document: c.uri.clone(),
+            metadata: None,
+            execution_summary: None,
+          })
+          .collect(),
+      },
+      cell_text_documents: cells,
+    };
+    self.write_notification("notebookDocument/didOpen", json!(params));
+    self.read_diagnostics()
   }
 
   pub fn change_configuration(&mut self, config: Value) {
@@ -999,6 +1035,10 @@ impl LspClient {
   pub fn shutdown(&mut self) {
     self.write_request("shutdown", json!(null));
     self.write_notification("exit", json!(null));
+  }
+
+  pub fn wait_exit(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    self.child.wait()
   }
 
   // it's flaky to assert for a notification because a notification
@@ -1089,11 +1129,8 @@ impl LspClient {
 
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
-    let msg = format!(
-      "Content-Length: {}\r\n\r\n{}",
-      value_str.as_bytes().len(),
-      value_str
-    );
+    let msg =
+      format!("Content-Length: {}\r\n\r\n{}", value_str.len(), value_str);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }
@@ -1226,11 +1263,11 @@ impl CollectedDiagnostics {
       .collect()
   }
 
-  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+  pub fn for_file(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .filter(|p| p.uri.as_str() == uri.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()

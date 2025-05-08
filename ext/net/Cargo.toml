@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.181.0"
+version = "0.196.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,12 +16,13 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-hickory-proto = "0.25.0-alpha.4"
+hickory-proto.workspace = true
 hickory-resolver.workspace = true
 pin-project.workspace = true
-quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
+quinn = { workspace = true, features = ["runtime-tokio", "rustls", "ring"] }
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 sha2.workspace = true
@@ -29,4 +30,7 @@ socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-web-transport-proto = "0.2.3"
+web-transport-proto.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+tokio-vsock.workspace = true

@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
+#![expect(unexpected_cfgs)]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
+use std::ffi::c_void;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -16,6 +18,7 @@ use std::task::Context;
 use std::task::Poll;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 
 use deno_core::futures::channel::mpsc;
@@ -38,10 +41,14 @@ use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
+pub use opentelemetry::metrics::Gauge;
+pub use opentelemetry::metrics::Histogram;
 use opentelemetry::metrics::InstrumentBuilder;
-use opentelemetry::metrics::MeterProvider as _;
+pub use opentelemetry::metrics::MeterProvider;
+pub use opentelemetry::metrics::UpDownCounter;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
+use opentelemetry::trace::Event;
 use opentelemetry::trace::Link;
 use opentelemetry::trace::SpanContext;
 use opentelemetry::trace::SpanId;
@@ -51,10 +58,10 @@ use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
 use opentelemetry::InstrumentationScope;
-use opentelemetry::Key;
-use opentelemetry::KeyValue;
-use opentelemetry::StringValue;
-use opentelemetry::Value;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
@@ -90,6 +97,8 @@ use tokio::task::JoinSet;
 deno_core::extension!(
   deno_telemetry,
   ops = [
+    op_otel_collect_isolate_metrics,
+    op_otel_enable_isolate_metrics,
     op_otel_log,
     op_otel_log_foreign,
     op_otel_span_attribute1,
@@ -124,21 +133,36 @@ pub struct OtelConfig {
   pub tracing_enabled: bool,
   pub metrics_enabled: bool,
   pub console: OtelConsoleConfig,
-  pub deterministic: bool,
+  pub deterministic_prefix: Option<u8>,
+  pub propagators: std::collections::HashSet<OtelPropagators>,
 }
 
 impl OtelConfig {
   pub fn as_v8(&self) -> Box<[u8]> {
-    Box::new([
+    let mut data = vec![
       self.tracing_enabled as u8,
       self.metrics_enabled as u8,
       self.console as u8,
-      self.deterministic as u8,
-    ])
+    ];
+
+    data.extend(self.propagators.iter().map(|propagator| *propagator as u8));
+
+    data.into_boxed_slice()
   }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+  Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash,
+)]
+#[repr(u8)]
+pub enum OtelPropagators {
+  TraceContext = 0,
+  Baggage = 1,
+  #[default]
+  None = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
   Ignore = 0,
@@ -196,7 +220,7 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
 }
 
 #[derive(Clone, Copy)]
-struct OtelSharedRuntime;
+pub struct OtelSharedRuntime;
 
 impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
   fn execute(&self, fut: BoxFuture<'static, ()>) {
@@ -586,20 +610,39 @@ mod hyper_client {
   }
 }
 
-struct OtelGlobals {
-  span_processor: BatchSpanProcessor<OtelSharedRuntime>,
-  log_processor: BatchLogProcessor<OtelSharedRuntime>,
-  id_generator: DenoIdGenerator,
-  meter_provider: SdkMeterProvider,
-  builtin_instrumentation_scope: InstrumentationScope,
+#[derive(Debug)]
+pub struct OtelGlobals {
+  pub span_processor: BatchSpanProcessor<OtelSharedRuntime>,
+  pub log_processor: BatchLogProcessor<OtelSharedRuntime>,
+  pub id_generator: DenoIdGenerator,
+  pub meter_provider: SdkMeterProvider,
+  pub builtin_instrumentation_scope: InstrumentationScope,
+  pub config: OtelConfig,
 }
 
-static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
+impl OtelGlobals {
+  pub fn has_tracing(&self) -> bool {
+    self.config.tracing_enabled
+  }
+
+  pub fn has_metrics(&self) -> bool {
+    self.config.metrics_enabled
+  }
+}
+
+pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 pub fn init(
   rt_config: OtelRuntimeConfig,
-  config: &OtelConfig,
+  config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
+  if !config.metrics_enabled
+    && !config.tracing_enabled
+    && config.console == OtelConsoleConfig::Ignore
+  {
+    return Ok(());
+  }
+
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
@@ -710,8 +753,8 @@ pub fn init(
       .with_version(rt_config.runtime_version.clone())
       .build();
 
-  let id_generator = if config.deterministic {
-    DenoIdGenerator::deterministic()
+  let id_generator = if let Some(prefix) = config.deterministic_prefix {
+    DenoIdGenerator::deterministic(prefix)
   } else {
     DenoIdGenerator::random()
   };
@@ -723,6 +766,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
@@ -774,7 +818,7 @@ pub fn handle_log(record: &log::Record) {
 
   struct Visitor<'s>(&'s mut LogRecord);
 
-  impl<'s, 'kvs> log::kv::VisitSource<'kvs> for Visitor<'s> {
+  impl<'kvs> log::kv::VisitSource<'kvs> for Visitor<'_> {
     fn visit_pair(
       &mut self,
       key: log::kv::Key<'kvs>,
@@ -808,7 +852,7 @@ pub fn handle_log(record: &log::Record) {
 }
 
 #[derive(Debug)]
-enum DenoIdGenerator {
+pub enum DenoIdGenerator {
   Random(RandomIdGenerator),
   Deterministic {
     next_trace_id: AtomicU64,
@@ -850,10 +894,11 @@ impl DenoIdGenerator {
     Self::Random(RandomIdGenerator::default())
   }
 
-  fn deterministic() -> Self {
+  fn deterministic(prefix: u8) -> Self {
+    let prefix = u64::from(prefix) << 56;
     Self::Deterministic {
-      next_trace_id: AtomicU64::new(1),
-      next_span_id: AtomicU64::new(1),
+      next_trace_id: AtomicU64::new(prefix + 1),
+      next_span_id: AtomicU64::new(prefix + 1),
     }
   }
 }
@@ -1095,7 +1140,11 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {}
+impl deno_core::GarbageCollected for OtelTracer {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelTracer"
+  }
+}
 
 #[op2]
 impl OtelTracer {
@@ -1184,7 +1233,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1251,7 +1300,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1304,7 +1353,11 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {}
+impl deno_core::GarbageCollected for OtelSpan {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelSpan"
+  }
+}
 
 #[op2]
 impl OtelSpan {
@@ -1350,6 +1403,25 @@ impl OtelSpan {
   }
 
   #[fast]
+  fn add_event(&self, #[string] name: String, start_time: f64) {
+    let start_time = if start_time.is_nan() {
+      SystemTime::now()
+    } else {
+      SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_secs_f64(start_time / 1000.0))
+        .unwrap()
+    };
+    let mut state = self.0.borrow_mut();
+    let OtelSpanState::Recording(span) = &mut **state else {
+      return;
+    };
+    span
+      .events
+      .events
+      .push(Event::new(name, start_time, vec![], 0));
+  }
+
+  #[fast]
   fn drop_event(&self) {
     let mut state = self.0.borrow_mut();
     match &mut **state {
@@ -1366,7 +1438,7 @@ impl OtelSpan {
       SystemTime::now()
     } else {
       SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_secs_f64(end_time))
+        .checked_add(Duration::from_secs_f64(end_time / 1000.0))
         .unwrap()
     };
 
@@ -1388,10 +1460,34 @@ impl OtelSpan {
   }
 }
 
+fn span_attributes(
+  span: &mut SpanData,
+  location: u32,
+) -> Option<(&mut Vec<KeyValue>, &mut u32)> {
+  match location {
+    // SELF
+    0 => Some((&mut span.attributes, &mut span.dropped_attributes_count)),
+    // LAST_EVENT
+    1 => span
+      .events
+      .events
+      .last_mut()
+      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    // LAST_LINK
+    2 => span
+      .links
+      .links
+      .last_mut()
+      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    _ => None,
+  }
+}
+
 #[op2(fast)]
 fn op_otel_span_attribute1<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
 ) {
@@ -1402,7 +1498,12 @@ fn op_otel_span_attribute1<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key, value);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key, value);
   }
 }
 
@@ -1410,6 +1511,7 @@ fn op_otel_span_attribute1<'s>(
 fn op_otel_span_attribute2<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1422,8 +1524,13 @@ fn op_otel_span_attribute2<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
   }
 }
 
@@ -1432,6 +1539,7 @@ fn op_otel_span_attribute2<'s>(
 fn op_otel_span_attribute3<'s>(
   scope: &mut v8::HandleScope<'s>,
   span: v8::Local<'_, v8::Value>,
+  #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1446,9 +1554,14 @@ fn op_otel_span_attribute3<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    attr!(scope, span.attributes => span.dropped_attributes_count, key1, value1);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key2, value2);
-    attr!(scope, span.attributes => span.dropped_attributes_count, key3, value3);
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
   }
 }
 
@@ -1517,7 +1630,11 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {}
+impl deno_core::GarbageCollected for OtelMeter {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelMeter"
+  }
+}
 
 #[op2]
 impl OtelMeter {
@@ -1708,13 +1825,17 @@ impl OtelMeter {
 
 enum Instrument {
   Counter(opentelemetry::metrics::Counter<f64>),
-  UpDownCounter(opentelemetry::metrics::UpDownCounter<f64>),
+  UpDownCounter(UpDownCounter<f64>),
   Gauge(opentelemetry::metrics::Gauge<f64>),
-  Histogram(opentelemetry::metrics::Histogram<f64>),
+  Histogram(Histogram<f64>),
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {}
+impl GarbageCollected for Instrument {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Instrument"
+  }
+}
 
 fn create_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> InstrumentBuilder<'b, T>,
@@ -2140,5 +2261,153 @@ async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
 fn op_otel_metric_observation_done(state: &mut OpState) {
   if let Some(ObservationDone(done)) = state.try_take::<ObservationDone>() {
     let _ = done.send(());
+  }
+}
+
+struct GcMetricDataInner {
+  start: Instant,
+  duration: Histogram<f64>,
+}
+
+struct GcMetricData(RefCell<GcMetricDataInner>);
+
+impl GcMetricData {
+  extern "C" fn prologue_callback(
+    isolate: *mut v8::Isolate,
+    _gc_type: v8::GCType,
+    _flags: v8::GCCallbackFlags,
+    _data: *mut c_void,
+  ) {
+    // SAFETY: Isolate is valid during callback
+    let isolate = unsafe { &mut *isolate };
+    let this = isolate.get_slot::<Self>().unwrap();
+    this.0.borrow_mut().start = Instant::now();
+  }
+
+  extern "C" fn epilogue_callback(
+    isolate: *mut v8::Isolate,
+    gc_type: v8::GCType,
+    _flags: v8::GCCallbackFlags,
+    _data: *mut c_void,
+  ) {
+    // SAFETY: Isolate is valid during callback
+    let isolate = unsafe { &mut *isolate };
+    let this = isolate.get_slot::<Self>().unwrap();
+    let this = this.0.borrow_mut();
+
+    let elapsed = this.start.elapsed();
+
+    // https://opentelemetry.io/docs/specs/semconv/runtime/v8js-metrics/#metric-v8jsgcduration
+    let gc_type = KeyValue::new(
+      "v8js.gc.type",
+      match gc_type {
+        v8::GCType::kGCTypeScavenge => "minor",
+        v8::GCType::kGCTypeMinorMarkSweep => "minor",
+        v8::GCType::kGCTypeMarkSweepCompact => "major",
+        v8::GCType::kGCTypeIncrementalMarking => "incremental",
+        v8::GCType::kGCTypeProcessWeakCallbacks => "weakcb",
+        _ => return,
+      },
+    );
+
+    this.duration.record(elapsed.as_secs_f64(), &[gc_type]);
+  }
+}
+
+#[derive(Clone)]
+struct HeapMetricData {
+  heap_limit: Gauge<u64>,
+  heap_size: Gauge<u64>,
+  available_size: Gauge<u64>,
+  physical_size: Gauge<u64>,
+}
+
+#[op2(fast)]
+fn op_otel_enable_isolate_metrics(scope: &mut v8::HandleScope) {
+  if scope.get_slot::<GcMetricData>().is_some() {
+    return;
+  }
+
+  let meter = OTEL_GLOBALS.get().unwrap().meter_provider.meter("v8js");
+
+  // https://opentelemetry.io/docs/specs/semconv/runtime/v8js-metrics/#metric-v8jsgcduration
+  let duration = meter
+    .f64_histogram("v8js.gc.duration")
+    .with_unit("S")
+    .with_description("Garbage collection duration")
+    .with_boundaries(vec![0.01, 0.1, 1.0, 10.0])
+    .build();
+
+  scope.set_slot(GcMetricData(RefCell::new(GcMetricDataInner {
+    start: Instant::now(),
+    duration,
+  })));
+
+  scope.add_gc_prologue_callback(
+    GcMetricData::prologue_callback,
+    std::ptr::null_mut(),
+    v8::GCType::kGCTypeAll,
+  );
+
+  scope.add_gc_epilogue_callback(
+    GcMetricData::epilogue_callback,
+    std::ptr::null_mut(),
+    v8::GCType::kGCTypeAll,
+  );
+
+  let heap_limit = meter
+    .u64_gauge("v8js.memory.heap.limit")
+    .with_unit("By")
+    .with_description("Total heap memory size pre-allocated.")
+    .build();
+  let heap_size = meter
+    .u64_gauge("v8js.memory.heap.size")
+    .with_unit("By")
+    .with_description("Heap Memory size allocated.")
+    .build();
+  let available_size = meter
+    .u64_gauge("v8js.memory.space.available_size")
+    .with_unit("By")
+    .with_description("Heap space available size.")
+    .build();
+  let physical_size = meter
+    .u64_gauge("v8js.memory.space.physical_size")
+    .with_unit("By")
+    .with_description("Committed size of a heap space.")
+    .build();
+
+  scope.set_slot(HeapMetricData {
+    heap_limit,
+    heap_size,
+    available_size,
+    physical_size,
+  });
+}
+
+#[op2(fast)]
+fn op_otel_collect_isolate_metrics(scope: &mut v8::HandleScope) {
+  let data = scope.get_slot::<HeapMetricData>().unwrap().clone();
+  for i in 0..scope.get_number_of_data_slots() {
+    let Some(space) = scope.get_heap_space_statistics(i as _) else {
+      continue;
+    };
+    // SAFETY: api has wrong lifetime, 'static is correct:
+    // https://github.com/denoland/rusty_v8/pull/1744
+    let space_name: &'static std::ffi::CStr =
+      unsafe { std::ffi::CStr::from_ptr(space.space_name().as_ptr()) };
+    let Ok(space_name) = space_name.to_str() else {
+      continue;
+    };
+    let attributes = [KeyValue::new("v8js.heap.space.name", space_name)];
+    data.heap_limit.record(space.space_size() as _, &attributes);
+    data
+      .heap_size
+      .record(space.space_used_size() as _, &attributes);
+    data
+      .available_size
+      .record(space.space_available_size() as _, &attributes);
+    data
+      .physical_size
+      .record(space.physical_space_size() as _, &attributes);
   }
 }

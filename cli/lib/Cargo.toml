@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_lib"
-version = "0.5.0"
+version = "0.20.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
-deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_error.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_media_type.workspace = true
@@ -26,7 +25,7 @@ deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_terminal.workspace = true
-env_logger = "=0.10.0"
+env_logger.workspace = true
 faster-hex.workspace = true
 indexmap.workspace = true
 libsui.workspace = true
@@ -38,9 +37,5 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom"] }
 thiserror.workspace = true
-tokio.workspace = true
 twox-hash.workspace = true
 url.workspace = true
-
-[dev-dependencies]
-test_util.workspace = true

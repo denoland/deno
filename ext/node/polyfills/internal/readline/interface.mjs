@@ -52,7 +52,7 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Readable } from "ext:deno_node/_stream.mjs";
+import { Readable } from "node:stream";
 import process from "node:process";
 
 import { StringDecoder } from "node:string_decoder";

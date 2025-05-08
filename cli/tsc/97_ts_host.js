@@ -11,6 +11,18 @@ const ops = core.ops;
 let logDebug = false;
 let logSource = "JS";
 
+function spanned(name, f) {
+  if (!ops.op_make_span) {
+    return f();
+  }
+  const span = ops.op_make_span(name, false);
+  try {
+    return f();
+  } finally {
+    ops.op_exit_span(span);
+  }
+}
+
 // The map from the normalized specifier to the original.
 // TypeScript normalizes the specifier in its internal processing,
 // but the original specifier is needed when looking up the source from the runtime.
@@ -119,7 +131,7 @@ export function assert(cond, msg = "Assertion failed.") {
 /** @type {Map<string, ts.SourceFile>} */
 export const SOURCE_FILE_CACHE = new Map();
 
-/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; isClassicScript?: boolean; }>} */
 export const SCRIPT_SNAPSHOT_CACHE = new Map();
 
 /** @type {Map<string, number>} */
@@ -162,7 +174,17 @@ export const LAST_REQUEST_SCOPE = {
   },
 };
 
-ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
+/** @type {string | null} */
+let lastRequestNotebookUri = null;
+export const LAST_REQUEST_NOTEBOOK_URI = {
+  get: () => lastRequestNotebookUri,
+  set: (notebookUri) => {
+    lastRequestNotebookUri = notebookUri;
+  },
+};
+
+/** @param sourceFile {ts.SourceFile} */
+function isNodeSourceFile(sourceFile) {
   const fileName = sourceFile.fileName;
   let isNodeSourceFile = IS_NODE_SOURCE_FILE_CACHE.get(fileName);
   if (isNodeSourceFile == null) {
@@ -171,7 +193,9 @@ ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
     IS_NODE_SOURCE_FILE_CACHE.set(fileName, isNodeSourceFile);
   }
   return isNodeSourceFile;
-});
+}
+
+ts.deno.setIsNodeSourceFileCallback(isNodeSourceFile);
 
 /**
  * @param msg {string}
@@ -332,8 +356,6 @@ const IGNORED_DIAGNOSTICS = [
   // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
   // so we will ignore complaints about this compiler setting.
   5070,
-  // TS6053: File '{0}' not found.
-  6053,
   // TS7016: Could not find a declaration file for module '...'. '...'
   // implicitly has an 'any' type.  This is due to `allowJs` being off by
   // default but importing of a JavaScript module.
@@ -366,14 +388,15 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
+/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
   // @ts-ignore Will be set later.
   unscoped: null,
   byScope: new Map(),
+  byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
+/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -384,7 +407,7 @@ export function clearScriptNamesCache() {
  * specific "bindings" to the Deno environment that tsc needs to work.
  *
  * @type {ts.CompilerHost & ts.LanguageServiceHost} */
-export const host = {
+const hostImpl = {
   fileExists(specifier) {
     if (logDebug) {
       debug(`host.fileExists("${specifier}")`);
@@ -416,13 +439,6 @@ export const host = {
     PROJECT_VERSION_CACHE.set(projectVersion);
     debug(`getProjectVersion cache miss : ${projectVersion}`);
     return projectVersion;
-  },
-  // @ts-ignore Undocumented method.
-  getCachedExportInfoMap() {
-    return exportMapCache;
-  },
-  getGlobalTypingsCacheLocation() {
-    return undefined;
   },
   // @ts-ignore Undocumented method.
   toPath(fileName) {
@@ -662,16 +678,22 @@ export const host = {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope } = ops.op_script_names();
+      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
         unscoped,
         byScope: new Map(Object.entries(byScope)),
+        byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
     const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
-      : null) ?? SCRIPT_NAMES_CACHE.unscoped;
+    const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
+    return (lastRequestNotebookUri
+      ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
+      : null) ??
+      (lastRequestScope
+        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+        : null) ??
+      SCRIPT_NAMES_CACHE.unscoped;
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -708,22 +730,54 @@ export const host = {
     }
     let scriptSnapshot = SCRIPT_SNAPSHOT_CACHE.get(specifier);
     if (scriptSnapshot == undefined) {
-      /** @type {{ data: string, version: string, isCjs: boolean }} */
+      /** @type {{ data: string, version: string, isCjs: boolean, isClassicScript: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
         return undefined;
       }
       scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
       scriptSnapshot.isCjs = fileInfo.isCjs;
+      scriptSnapshot.isClassicScript = fileInfo.isClassicScript;
       SCRIPT_SNAPSHOT_CACHE.set(specifier, scriptSnapshot);
       SCRIPT_VERSION_CACHE.set(specifier, fileInfo.version);
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // always return `undefined` in order to short-circuit
+    // a codepath in the TypeScript compiler that always
+    // ends up returning `undefined` in Deno anyway
+    return undefined;
+  },
 };
 
-// @ts-ignore Undocumented function.
-const exportMapCache = ts.createCacheableExportInfoMap(host);
+// these host methods are super noisy (often thousands of calls per TSC request)
+const excluded = new Set([
+  "getScriptVersion",
+  "fileExists",
+  "getScriptSnapshot",
+  "getCompilationSettings",
+  "getCurrentDirectory",
+  "useCaseSensitiveFileNames",
+  "getModuleSpecifierCache",
+  "getGlobalTypingsCacheLocation",
+  "getSourceFile",
+]);
+/** @type {typeof hostImpl} */
+export const host = {
+  log(msg) {
+    ops.op_log_event(msg);
+  },
+};
+for (const [key, value] of Object.entries(hostImpl)) {
+  if (typeof value === "function" && !excluded.has(key)) {
+    host[key] = (...args) => {
+      return spanned(key, () => value.bind(host)(...args));
+    };
+  } else {
+    host[key] = value;
+  }
+}
 
 // override the npm install @types package diagnostics to be deno specific
 ts.setLocalizedDiagnosticMessages((() => {
@@ -749,7 +803,22 @@ export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
   }
-
+  // surface not found diagnostics inside npm packages
+  // because we don't analyze it with deno_graph
+  if (
+    // TS6053: File '{0}' not found.
+    diagnostic.code === 6053 &&
+    (diagnostic.file == null || !isNodeSourceFile(diagnostic.file))
+  ) {
+    return false;
+  }
+  const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
+  if (isClassicScript) {
+    // Top-level-await, standard and loops.
+    if (diagnostic.code == 1375 || diagnostic.code == 1431) {
+      return false;
+    }
+  }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
     diagnostic.category = ts.DiagnosticCategory.Warning;
@@ -855,17 +924,3 @@ const setTypesNodeIgnorableNames = new Set([
   "WritableStreamDefaultWriter",
 ]);
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
-
-export function getAssets() {
-  /** @type {{ specifier: string; text: string; }[]} */
-  const assets = [];
-  for (const sourceFile of SOURCE_FILE_CACHE.values()) {
-    if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
-      assets.push({
-        specifier: sourceFile.fileName,
-        text: sourceFile.text,
-      });
-    }
-  }
-  return assets;
-}

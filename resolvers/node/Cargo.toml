@@ -2,7 +2,7 @@
 
 [package]
 name = "node_resolver"
-version = "0.27.0"
+version = "0.42.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ description = "Node.js module resolution algorithm used in Deno"
 path = "lib.rs"
 
 [features]
+graph = ["deno_graph"]
 sync = ["deno_package_json/sync"]
 
 [dependencies]
@@ -23,16 +24,21 @@ boxed_error.workspace = true
 dashmap.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
+deno_graph = { workspace = true, optional = true }
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
+deno_semver.workspace = true
 futures.workspace = true
 lazy-regex.workspace = true
 once_cell.workspace = true
-path-clean = "=0.1.0"
+path-clean.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["memory"] }

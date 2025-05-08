@@ -59,6 +59,7 @@ import { Socket } from "node:net";
 import {
   kDetached,
   kExtraStdio,
+  kInputOption,
   kIpc,
   kNeedsNpmProcessState,
 } from "ext:deno_process/40_process.js";
@@ -985,6 +986,27 @@ function parseSpawnSyncOutputStreams(
   }
 }
 
+function normalizeInput(input: unknown) {
+  if (input == null) {
+    return null;
+  }
+  if (typeof input === "string") {
+    return Buffer.from(input);
+  }
+  if (input instanceof Uint8Array) {
+    return input;
+  }
+  if (input instanceof DataView) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  throw new ERR_INVALID_ARG_TYPE("input", [
+    "string",
+    "Buffer",
+    "TypedArray",
+    "DataView",
+  ], input);
+}
+
 export function spawnSync(
   command: string,
   args: string[],
@@ -992,6 +1014,7 @@ export function spawnSync(
 ): SpawnSyncResult {
   const {
     env = Deno.env.toObject(),
+    input,
     stdio = ["pipe", "pipe", "pipe"],
     shell = false,
     cwd,
@@ -1008,6 +1031,7 @@ export function spawnSync(
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
   [command, args] = buildCommand(command, args ?? [], shell);
+  const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
   try {
@@ -1021,6 +1045,7 @@ export function spawnSync(
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
+      [kInputOption]: input_,
     }).outputSync();
 
     const status = output.signal ? null : output.code;

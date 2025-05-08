@@ -8,11 +8,10 @@ use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::DenoDirResolutionError;
 use deno_cache_dir::GlobalHttpCacheRc;
-use deno_cache_dir::HttpCacheRc;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
@@ -23,9 +22,10 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
-use node_resolver::ConditionsFromResolutionMode;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
+use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonResolverRc;
@@ -45,7 +45,11 @@ use sys_traits::SystemRandom;
 use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
 use thiserror::Error;
+use url::Url;
 
+use crate::cjs::CjsTracker;
+use crate::cjs::CjsTrackerRc;
+use crate::cjs::IsCjsResolutionMode;
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
@@ -60,17 +64,18 @@ use crate::npm::NpmResolverCreateOptions;
 use crate::npmrc::discover_npmrc_from_workspace;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
-use crate::sloppy_imports::SloppyImportsCachedFs;
-use crate::sloppy_imports::SloppyImportsResolver;
-use crate::sloppy_imports::SloppyImportsResolverRc;
 use crate::sync::new_rc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
-use crate::DefaultDenoResolverRc;
-use crate::DenoResolver;
+use crate::workspace::FsCacheOptions;
+use crate::workspace::PackageJsonDepResolution;
+use crate::workspace::SloppyImportsOptions;
+use crate::workspace::WorkspaceResolver;
+use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
 use crate::NodeAndNpmReqResolver;
 use crate::NpmCacheDirRc;
+use crate::RawDenoResolver;
 use crate::WorkspaceResolverRc;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
@@ -126,13 +131,32 @@ pub enum ConfigDiscoveryOption {
   Disabled,
 }
 
+/// Resolves the JSR regsitry URL to use for the given system.
+pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
+  let env_var_name = "JSR_URL";
+  if let Ok(registry_url) = sys.env_var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  Url::parse("https://jsr.io/").unwrap()
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait SpecifiedImportMapProvider:
   std::fmt::Debug + MaybeSend + MaybeSync
 {
   async fn get(
     &self,
-  ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, anyhow::Error>;
+  ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -252,11 +276,13 @@ impl<
 {
 }
 
-pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
+pub struct WorkspaceFactory<TSys: WorkspaceFactorySys + sys_traits::ThreadSleep>
+{
   sys: TSys,
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
-  http_cache: Deferred<HttpCacheRc>,
+  http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
+  jsr_url: Deferred<Url>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
@@ -286,6 +312,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       sys,
       global_http_cache: Default::default(),
       http_cache: Default::default(),
+      jsr_url: Default::default(),
       node_modules_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
@@ -301,6 +328,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     workspace_directory: WorkspaceDirectoryRc,
   ) {
     self.workspace_directory = Deferred::from(workspace_directory);
+  }
+
+  pub fn jsr_url(&self) -> &Url {
+    self.jsr_url.get_or_init(|| resolve_jsr_url(&self.sys))
   }
 
   pub fn initial_cwd(&self) -> &PathBuf {
@@ -439,7 +470,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
-  pub fn http_cache(&self) -> Result<&HttpCacheRc, HttpCacheCreateError> {
+  pub fn http_cache(
+    &self,
+  ) -> Result<&deno_cache_dir::GlobalOrLocalHttpCache<TSys>, HttpCacheCreateError>
+  {
     self.http_cache.get_or_try_init(|| {
       let global_cache = self.global_http_cache()?.clone();
       match self.workspace_directory()?.workspace.vendor_dir_path() {
@@ -448,10 +482,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             local_path.clone(),
             global_cache,
             deno_cache_dir::GlobalToLocalCopy::Allow,
+            self.jsr_url().clone(),
           );
-          Ok(new_rc(local_cache))
+          Ok(new_rc(local_cache).into())
         }
-        None => Ok(global_cache),
+        None => Ok(global_cache.into()),
       }
     })
   }
@@ -556,20 +591,32 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ResolverFactoryOptions {
-  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
-  pub no_sloppy_imports_cache: bool,
+  pub is_cjs_resolution_mode: IsCjsResolutionMode,
   pub npm_system_info: NpmSystemInfo,
+  pub node_resolver_options: NodeResolverOptions,
+  pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
+  /// Whether to resolve bare node builtins (ex. "path" as "node:path").
+  pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
+  #[cfg(feature = "graph")]
+  pub on_mapped_resolution_diagnostic:
+    Option<crate::graph::OnMappedResolutionDiagnosticFn>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
-  deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
+  sys: NodeResolutionSys<TSys>,
+  cjs_tracker: Deferred<CjsTrackerRc<DenoInNpmPackageChecker, TSys>>,
+  #[cfg(feature = "graph")]
+  deno_resolver:
+    async_once_cell::OnceCell<crate::graph::DefaultDenoResolverRc<TSys>>,
+  #[cfg(feature = "graph")]
+  found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -590,8 +637,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
-  sloppy_imports_resolver:
-    Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
+  raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
   workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
 }
@@ -602,28 +648,36 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
+      sys: NodeResolutionSys::new(
+        workspace_factory.sys.clone(),
+        options.node_resolution_cache.clone(),
+      ),
+      cjs_tracker: Default::default(),
+      raw_deno_resolver: Default::default(),
+      #[cfg(feature = "graph")]
       deno_resolver: Default::default(),
+      #[cfg(feature = "graph")]
+      found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
       pkg_json_resolver: Default::default(),
-      sloppy_imports_resolver: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
       options,
     }
   }
 
-  pub async fn deno_resolver(
+  pub async fn raw_deno_resolver(
     &self,
-  ) -> Result<&DefaultDenoResolverRc<TSys>, anyhow::Error> {
+  ) -> Result<&DefaultRawDenoResolverRc<TSys>, anyhow::Error> {
     self
-      .deno_resolver
+      .raw_deno_resolver
       .get_or_try_init(
         async {
-          Ok(new_rc(DenoResolver::new(DenoResolverOptions {
+          Ok(new_rc(RawDenoResolver::new(DenoResolverOptions {
             in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
             node_and_req_resolver: if self.workspace_factory.no_npm() {
               None
@@ -633,19 +687,54 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
+            bare_node_builtins: self.bare_node_builtins()?,
             is_byonm: self.use_byonm()?,
             maybe_vendor_dir: self
               .workspace_factory
               .workspace_directory()?
               .workspace
               .vendor_dir_path(),
-            sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             workspace_resolver: self.workspace_resolver().await?.clone(),
           })))
         }
         // boxed to prevent the futures getting big and exploding the stack
         .boxed_local(),
       )
+      .await
+  }
+
+  pub fn cjs_tracker(
+    &self,
+  ) -> Result<&CjsTrackerRc<DenoInNpmPackageChecker, TSys>, anyhow::Error> {
+    self.cjs_tracker.get_or_try_init(|| {
+      Ok(new_rc(CjsTracker::new(
+        self.in_npm_package_checker()?.clone(),
+        self.pkg_json_resolver().clone(),
+        self.options.is_cjs_resolution_mode,
+      )))
+    })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn found_package_json_dep_flag(
+    &self,
+  ) -> &crate::graph::FoundPackageJsonDepFlagRc {
+    &self.found_package_json_dep_flag
+  }
+
+  #[cfg(feature = "graph")]
+  pub async fn deno_resolver(
+    &self,
+  ) -> Result<&crate::graph::DefaultDenoResolverRc<TSys>, anyhow::Error> {
+    self
+      .deno_resolver
+      .get_or_try_init(async {
+        Ok(new_rc(crate::graph::DenoResolver::new(
+          self.raw_deno_resolver().await?.clone(),
+          self.found_package_json_dep_flag.clone(),
+          self.options.on_mapped_resolution_diagnostic.clone(),
+        )))
+      })
       .await
   }
 
@@ -688,8 +777,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.workspace_factory.sys.clone(),
-        self.options.conditions_from_resolution_mode.clone(),
+        self.sys.clone(),
+        self.options.node_resolver_options.clone(),
       )))
     })
   }
@@ -723,7 +812,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {
@@ -763,38 +852,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
-  pub fn sloppy_imports_resolver(
-    &self,
-  ) -> Result<
-    Option<&SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>,
-    anyhow::Error,
-  > {
-    self
-      .sloppy_imports_resolver
-      .get_or_try_init(|| {
-        let enabled = self.options.unstable_sloppy_imports
-          || self
-            .workspace_factory
-            .workspace_directory()?
-            .workspace
-            .has_unstable("sloppy-imports");
-        if enabled {
-          Ok(Some(new_rc(SloppyImportsResolver::new(
-            if self.options.no_sloppy_imports_cache {
-              SloppyImportsCachedFs::new_without_stat_cache(
-                self.workspace_factory.sys.clone(),
-              )
-            } else {
-              SloppyImportsCachedFs::new(self.workspace_factory.sys.clone())
-            },
-          ))))
-        } else {
-          Ok(None)
-        }
-      })
-      .map(|v| v.as_ref())
-  }
-
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&WorkspaceResolverRc<TSys>, anyhow::Error> {
@@ -808,7 +865,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             Some(import_map) => import_map.get().await?,
             None => None,
           };
-          let options = deno_config::workspace::CreateResolverOptions {
+          let options = crate::workspace::CreateResolverOptions {
             pkg_json_dep_resolution: match self
               .options
               .package_json_dep_resolution
@@ -827,9 +884,20 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               }
             },
             specified_import_map,
+            sloppy_imports_options: if self.options.unstable_sloppy_imports
+              || workspace.has_unstable("sloppy-imports")
+            {
+              SloppyImportsOptions::Enabled
+            } else {
+              SloppyImportsOptions::Disabled
+            },
+            fs_cache_options: FsCacheOptions::Enabled,
           };
-          let resolver = workspace
-            .create_resolver(self.workspace_factory.sys.clone(), options)?;
+          let resolver = WorkspaceResolver::from_workspace(
+            workspace,
+            self.workspace_factory.sys.clone(),
+            options,
+          )?;
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility
@@ -849,6 +917,17 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
+  }
+
+  pub fn bare_node_builtins(&self) -> Result<bool, anyhow::Error> {
+    Ok(
+      self.options.bare_node_builtins
+        || self
+          .workspace_factory
+          .workspace_directory()?
+          .workspace
+          .has_unstable("bare-node-builtins"),
+    )
   }
 
   pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {

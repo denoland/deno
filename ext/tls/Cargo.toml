@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_tls"
-version = "0.176.0"
+version = "0.191.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
-deno_native_certs = "0.3.0"
+deno_native_certs.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
