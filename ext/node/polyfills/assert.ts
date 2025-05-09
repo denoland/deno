@@ -18,6 +18,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
+import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
+import { deprecate } from "node:util";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 
@@ -903,6 +905,12 @@ Object.assign(strict, {
   strictEqual,
   throws,
 });
+
+assert.CallTracker = deprecate(
+  CallTracker,
+  "assert.CallTracker is deprecated.",
+  "DEP0173",
+);
 
 export default Object.assign(assert, {
   AssertionError,
