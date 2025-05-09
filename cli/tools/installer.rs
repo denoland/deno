@@ -119,17 +119,11 @@ fn get_installer_bin_dir(
   cwd: &Path,
   root_flag: Option<&str>,
 ) -> Result<PathBuf, AnyError> {
-  let root = if let Some(root) = root_flag {
-    canonicalize_path_maybe_not_exists(&cwd.join(root))?
+  if let Some(root) = root_flag {
+    Ok(canonicalize_path_maybe_not_exists(&cwd.join(root))?)
   } else {
-    get_installer_root()?
-  };
-
-  Ok(if !root.ends_with("bin") {
-    root.join("bin")
-  } else {
-    root
-  })
+    get_installer_root()
+  }
 }
 
 fn get_installer_root() -> Result<PathBuf, AnyError> {
@@ -157,6 +151,7 @@ fn get_installer_root() -> Result<PathBuf, AnyError> {
         )
       })?;
   home_path.push(".deno");
+  home_path.push("bin");
   Ok(home_path)
 }
 
@@ -914,7 +909,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1204,6 +1199,7 @@ mod tests {
   #[tokio::test]
   async fn install_npm_lockfile_default() {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
+    let bin_dir = temp_dir.join("bin");
     let shim_data = resolve_shim_data(
       &HttpClientProvider::new(None, None),
       &Flags {
@@ -1217,14 +1213,14 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.to_string_lossy().to_string()),
+        root: Some(bin_dir.to_string_lossy().to_string()),
         force: false,
       },
     )
     .await
     .unwrap();
 
-    let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
+    let lock_path = bin_dir.join(".cowsay.lock.json");
     assert_eq!(
       shim_data.args,
       vec![
@@ -1291,7 +1287,7 @@ mod tests {
         module_url: local_module_str.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1321,7 +1317,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1342,7 +1338,7 @@ mod tests {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1364,7 +1360,7 @@ mod tests {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: true,
       },
     )
@@ -1395,7 +1391,7 @@ mod tests {
         module_url: "http://localhost:4545/cat.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: true,
       },
     )
@@ -1425,7 +1421,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1466,7 +1462,7 @@ mod tests {
         module_url: local_module_str.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: false,
       },
     )
@@ -1512,7 +1508,7 @@ mod tests {
         module_url: "http://localhost:4545/cat.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: true,
       },
     )
@@ -1555,7 +1551,7 @@ mod tests {
         module_url: file_module_string.to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(temp_dir.path().to_string()),
+        root: Some(bin_dir.to_string()),
         force: true,
       },
     )
@@ -1612,7 +1608,7 @@ mod tests {
       UninstallFlags {
         kind: UninstallKind::Global(UninstallFlagsGlobal {
           name: "echo_test".to_string(),
-          root: Some(temp_dir.path().to_string()),
+          root: Some(bin_dir.to_string()),
         }),
       },
     )
