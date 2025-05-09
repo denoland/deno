@@ -3921,7 +3921,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn project_changed<'a>(
+  fn project_changed(
     &mut self,
     changed_specifiers: impl IntoIterator<Item = (Arc<Url>, ChangeKind)>,
     scopes_change: ProjectScopesChange,
