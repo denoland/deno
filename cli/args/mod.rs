@@ -441,8 +441,6 @@ impl CliOptions {
       }
     }
 
-    load_env_variables_from_env_file(flags.env_file.as_ref());
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -1095,7 +1093,7 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
+      let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
         .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
@@ -1284,7 +1282,7 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+pub fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
   let Some(env_file_names) = filename else {
     return;
   };

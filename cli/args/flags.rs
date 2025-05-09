@@ -4473,7 +4473,7 @@ impl CommandExt for Command {
       .display_order(next_display_order())
     );
 
-    for feature in crate::UNSTABLE_FEATURES.iter() {
+    for feature in deno_runtime::UNSTABLE_FEATURES.iter() {
       let mut arg = Arg::new(feature.flag_name)
         .long(feature.flag_name)
         .help(feature.help_text)
@@ -4501,10 +4501,6 @@ impl CommandExt for Command {
       }
 
       arg = arg.long_help(long_help_val);
-      if let Some(env_var_name) = feature.env_var {
-        arg = arg.env(env_var_name);
-      }
-
       cmd = cmd.arg(arg);
     }
 
@@ -6127,7 +6123,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-npm-lazy-caching");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for feature in crate::UNSTABLE_FEATURES {
+    for feature in deno_runtime::UNSTABLE_FEATURES {
       if matches.get_flag(feature.flag_name) {
         flags
           .unstable_config

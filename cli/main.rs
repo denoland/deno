@@ -51,7 +51,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -59,6 +58,7 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
+use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::get_default_v8_flags;
@@ -513,7 +513,7 @@ pub fn main() {
 fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
-  let flags = match flags_from_vec(args) {
+  let mut flags = match flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
@@ -528,6 +528,9 @@ fn resolve_flags_and_init(
       exit_for_error(AnyError::from(err))
     }
   };
+
+  load_env_variables_from_env_file(flags.env_file.as_ref());
+  flags.unstable_config.fill_with_env();
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
