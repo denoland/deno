@@ -1,0 +1,67 @@
+{
+  program: [
+    { type: "Line", range: [ 0, 14 ], value: " before line" },
+    {
+      type: "Block",
+      range: [ 15, 38 ],
+      value: "*\n * before block\n "
+    },
+    { type: "Line", range: [ 58, 72 ], value: " inside line" },
+    {
+      type: "Block",
+      range: [ 75, 102 ],
+      value: "*\n   * inside block\n   "
+    },
+    { type: "Line", range: [ 106, 119 ], value: " after line" },
+    {
+      type: "Block",
+      range: [ 120, 142 ],
+      value: "*\n * after block\n "
+    }
+  ],
+  all: [
+    { type: "Line", range: [ 0, 14 ], value: " before line" },
+    {
+      type: "Block",
+      range: [ 15, 38 ],
+      value: "*\n * before block\n "
+    },
+    { type: "Line", range: [ 58, 72 ], value: " inside line" },
+    {
+      type: "Block",
+      range: [ 75, 102 ],
+      value: "*\n   * inside block\n   "
+    },
+    { type: "Line", range: [ 106, 119 ], value: " after line" },
+    {
+      type: "Block",
+      range: [ 120, 142 ],
+      value: "*\n * after block\n "
+    }
+  ],
+  before: [
+    { type: "Line", range: [ 0, 14 ], value: " before line" },
+    {
+      type: "Block",
+      range: [ 15, 38 ],
+      value: "*\n * before block\n "
+    }
+  ],
+  after: [
+    { type: "Line", range: [ 106, 119 ], value: " after line" },
+    {
+      type: "Block",
+      range: [ 120, 142 ],
+      value: "*\n * after block\n "
+    }
+  ],
+  inside: [
+    { type: "Line", range: [ 58, 72 ], value: " inside line" },
+    {
+      type: "Block",
+      range: [ 75, 102 ],
+      value: "*\n   * inside block\n   "
+    }
+  ]
+}
+Checked 1 file

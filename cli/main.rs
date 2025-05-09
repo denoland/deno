@@ -686,7 +686,8 @@ fn wait_for_start(
         Serving,
       }
 
-      let buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      let mut buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      buf.push(b'\n');
       let _ = tx.write_all(&buf).await;
     });
 

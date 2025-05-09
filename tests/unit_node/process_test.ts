@@ -657,6 +657,7 @@ Deno.test({
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
     assertEquals(process.stdout.columns, consoleSize?.columns);
     assertEquals(process.stdout.rows, consoleSize?.rows);
+    assert([1, 4, 8, 24].includes(process.stdout.getColorDepth()));
     assertEquals(
       `${process.stdout.getWindowSize()}`,
       `${consoleSize && [consoleSize.columns, consoleSize.rows]}`,

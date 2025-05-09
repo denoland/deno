@@ -53,8 +53,8 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.46.6", features = ["transpiling"] }
-deno_core = { version = "0.346.0" }
+deno_ast = { version = "=0.46.7", features = ["transpiling"] }
+deno_core = { version = "0.347.0" }
 
 deno_cache_dir = "=0.20.0"
 deno_config = { version = "=0.54.2", features = ["workspace"] }
@@ -291,7 +291,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.95.0"
+dprint-plugin-typescript = "=0.95.1"
 env_logger = "=0.11.6"
 eszip = "=0.87.0"
 fancy-regex = "=0.14.0"
