@@ -25,8 +25,9 @@ async function uploadCanaryForCurrentArch(currentGitSha: string) {
 }
 
 async function uploadCanaryLatest(currentGitSha: string) {
-  const latestCanaryHash = $`gsutil cat gs://dl.deno.land/canary-latest.txt`
-    .text();
+  const latestCanaryHash =
+    await $`gsutil cat gs://dl.deno.land/canary-latest.txt`
+      .text();
   const commitExistsInHistory = await $`git cat-file -e ${latestCanaryHash}`;
 
   if (commitExistsInHistory.code === 0) {
