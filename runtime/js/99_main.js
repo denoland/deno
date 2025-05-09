@@ -805,7 +805,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: servePort,
       10: serveHost,
       11: serveIsMain,
-      12: serveWorkerCount,
+      12: serveWorkerCountOrIndex,
       13: otelConfig,
       15: standalone,
     } = runtimeOptions;
@@ -813,21 +813,15 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     denoNs.build.standalone = standalone;
 
     if (mode === executionModes.serve) {
-      if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-global-assign
-        console = new internalConsole.Console((msg, level) =>
-          core.print("[serve-worker-0 ] " + msg, level > 1)
-        );
-      } else if (serveWorkerCount !== null) {
-        const base = `serve-worker-${serveWorkerCount + 1}`;
-        // 15 = "serve-worker-nn".length, assuming
-        // serveWorkerCount < 100
-        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-        // deno-lint-ignore no-global-assign
-        console = new internalConsole.Console((msg, level) =>
-          core.print(`${prefix} ` + msg, level > 1)
-        );
-      }
+      const serveWorkerIndex = serveIsMain ? 0 : serveWorkerCountOrIndex;
+      const base = `serve-worker-${serveWorkerIndex}`;
+      // 15 = "serve-worker-nn".length, assuming
+      // serveWorkerCount < 100
+      const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+      // deno-lint-ignore no-global-assign
+      console = new internalConsole.Console((msg, level) =>
+        core.print(`${prefix} ` + msg, level > 1)
+      );
     }
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -870,7 +864,14 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
+            serve({
+              servePort,
+              serveHost,
+              serveIsMain,
+              serveWorkerCount: serveIsMain
+                ? serveWorkerCountOrIndex
+                : undefined,
+            });
           }
         }
       });

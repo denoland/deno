@@ -262,9 +262,7 @@ impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
       permit_no_files: test_flags.permit_no_files,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      concurrent_jobs: parallelism_count(test_flags.parallel),
       doc: test_flags.doc,
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter.clone(),
@@ -1316,6 +1314,19 @@ pub fn get_default_v8_flags() -> Vec<String> {
     // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
     "--no-harmony-import-assertions".to_string(),
   ]
+}
+
+pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
+  parallel
+    .then(|| {
+      if let Ok(value) = env::var("DENO_JOBS") {
+        value.parse::<NonZeroUsize>().ok()
+      } else {
+        std::thread::available_parallelism().ok()
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
 }
 
 /// Gets the --allow-import host from the provided url

@@ -1107,12 +1107,16 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
-  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+  return ({
+    servePort,
+    serveHost,
+    serveIsMain,
+    serveWorkerCount,
+  }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-        serveWorkerCount !== null,
+      [kLoadBalanced]: serveIsMain ? serveWorkerCount > 1 : true,
       onListen: ({ transport, port, hostname, path, cid }) => {
         if (serveIsMain) {
           const nThreads = serveWorkerCount > 1
