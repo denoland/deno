@@ -254,6 +254,7 @@ impl DatabaseSync {
     // Finalize all prepared statements
     for stmt in self.statements.borrow_mut().drain(..) {
       if !stmt.is_null() {
+        // SAFETY: `stmt` is a valid statement handle.
         unsafe {
           libsqlite3_sys::sqlite3_finalize(stmt);
         }
