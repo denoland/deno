@@ -684,7 +684,7 @@ impl LspTestReporter {
         let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test,
-          messages: vec![failure_to_test_message(uri, &failure)],
+          messages: vec![failure_to_test_message(uri, failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -791,7 +791,7 @@ impl LspTestReporter {
         let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test,
-          messages: vec![failure_to_test_message(uri, &failure)],
+          messages: vec![failure_to_test_message(uri, failure)],
           duration: Some(elapsed as u32),
         })
       }
