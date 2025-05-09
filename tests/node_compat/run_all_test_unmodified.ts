@@ -337,11 +337,7 @@ async function main() {
     const result = await runSingle(testPath);
     results[testPath] = result;
     if (result[0] === RESULT_KIND.PASS) {
-      console.log(
-        `${tests / node_compat / runner / suite} %cPASS`,
-        "color: green",
-        testPath,
-      );
+      console.log(`${num} %cPASS`, "color: green", testPath);
     } else if (result[0] === RESULT_KIND.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
     } else {
