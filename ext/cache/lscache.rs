@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use async_stream::try_stream;
@@ -34,12 +35,45 @@ const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 #[derive(Clone, Default)]
 pub struct LscBackend {
   shard: Rc<RefCell<Option<Rc<CacheShard>>>>,
+  named_shards: Rc<RefCell<HashMap<String, Rc<CacheShard>>>>,
   id2name: Rc<RefCell<Slab<String>>>,
 }
 
 impl LscBackend {
   pub fn set_shard(&self, shard: Rc<CacheShard>) {
     *self.shard.borrow_mut() = Some(shard);
+  }
+
+  pub fn set_named_shard(&self, name: String, shard: Rc<CacheShard>) {
+    self.named_shards.borrow_mut().insert(name, shard);
+  }
+
+  fn build_cache_object_key(
+    &self,
+    cache_name: &str,
+    request_url: &[u8],
+  ) -> Option<(Rc<CacheShard>, String)> {
+    if let Some(shard) = self.named_shards.borrow().get(cache_name) {
+      Some((
+        shard.clone(),
+        format!(
+          "v2/{}",
+          base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(request_url),
+        ),
+      ))
+    } else {
+      self.shard.borrow().as_ref().map(|shard| {
+        (
+          shard.clone(),
+          format!(
+            "v1/{}/{}",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cache_name),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+              .encode(request_url),
+          ),
+        )
+      })
+    }
   }
 }
 
@@ -80,10 +114,6 @@ impl LscBackend {
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
   ) -> Result<(), CacheError> {
-    let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(CacheError::NotAvailable);
-    };
-
     let Some(cache_name) = self
       .id2name
       .borrow_mut()
@@ -92,10 +122,12 @@ impl LscBackend {
     else {
       return Err(CacheError::NotFound);
     };
-    let object_key = build_cache_object_key(
-      cache_name.as_bytes(),
+    let Some((shard, object_key)) = self.build_cache_object_key(
+      &cache_name,
       request_response.request_url.as_bytes(),
-    );
+    ) else {
+      return Err(CacheError::NotAvailable);
+    };
     let mut headers = HeaderMap::new();
     for hdr in &request_response.request_headers {
       headers.insert(
@@ -156,9 +188,6 @@ impl LscBackend {
     Option<(CacheMatchResponseMeta, Option<CacheResponseResource>)>,
     CacheError,
   > {
-    let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(CacheError::NotAvailable);
-    };
     let Some(cache_name) = self
       .id2name
       .borrow()
@@ -167,10 +196,11 @@ impl LscBackend {
     else {
       return Err(CacheError::NotFound);
     };
-    let object_key = build_cache_object_key(
-      cache_name.as_bytes(),
-      request.request_url.as_bytes(),
-    );
+    let Some((shard, object_key)) =
+      self.build_cache_object_key(&cache_name, request.request_url.as_bytes())
+    else {
+      return Err(CacheError::NotAvailable);
+    };
     let Some(res) = shard.get_object(&object_key).await? else {
       return Ok(None);
     };
@@ -257,10 +287,6 @@ impl LscBackend {
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
-    let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(CacheError::NotAvailable);
-    };
-
     let Some(cache_name) = self
       .id2name
       .borrow_mut()
@@ -269,10 +295,11 @@ impl LscBackend {
     else {
       return Err(CacheError::NotFound);
     };
-    let object_key = build_cache_object_key(
-      cache_name.as_bytes(),
-      request.request_url.as_bytes(),
-    );
+    let Some((shard, object_key)) =
+      self.build_cache_object_key(&cache_name, request.request_url.as_bytes())
+    else {
+      return Err(CacheError::NotAvailable);
+    };
     let mut headers = HeaderMap::new();
     headers.insert(
       HeaderName::from_bytes(b"expires")?,
@@ -322,12 +349,4 @@ fn vary_header_matches(
     }
   }
   true
-}
-
-fn build_cache_object_key(cache_name: &[u8], request_url: &[u8]) -> String {
-  format!(
-    "v1/{}/{}",
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cache_name),
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(request_url),
-  )
 }

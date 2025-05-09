@@ -353,16 +353,41 @@ impl MainWorker {
           let token = elems[1];
           use deno_cache::CacheShard;
 
-          let shard =
-            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
-          let create_cache_fn = move || {
-            let x = deno_cache::LscBackend::default();
-            x.set_shard(shard.clone());
-
-            Ok(CacheImpl::Lsc(x))
+          let create_cache = if token.contains('=') {
+            let named_shards = token
+              .split(',')
+              .filter_map(|x| x.split_once('='))
+              .map(|(name, token)| {
+                (
+                  name.to_string(),
+                  Rc::new(CacheShard::new(
+                    endpoint.to_string(),
+                    token.to_string(),
+                  )),
+                )
+              })
+              .collect::<Vec<_>>();
+            let y = move || {
+              let x = deno_cache::LscBackend::default();
+              for (name, shard) in named_shards.iter() {
+                x.set_named_shard(name.clone(), shard.clone());
+              }
+              Ok(CacheImpl::Lsc(x))
+            };
+            #[allow(clippy::arc_with_non_send_sync)]
+            CreateCache(Arc::new(y))
+          } else {
+            let shard =
+              Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+            let y = move || {
+              let x = deno_cache::LscBackend::default();
+              x.set_shard(shard.clone());
+              Ok(CacheImpl::Lsc(x))
+            };
+            #[allow(clippy::arc_with_non_send_sync)]
+            CreateCache(Arc::new(y))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
-          return Some(CreateCache(Arc::new(create_cache_fn)));
+          return Some(create_cache);
         }
       }
 
