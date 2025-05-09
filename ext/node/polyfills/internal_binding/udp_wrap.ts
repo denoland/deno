@@ -364,8 +364,23 @@ export class UDP extends HandleWrap {
     notImplemented("udp.UDP.prototype.setMulticastLoopback");
   }
 
-  setMulticastTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setMulticastTTL");
+  setMulticastTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      if (this.#family === "IPv4") {
+        net.setMulticastTTL(this.#listener, ttl);
+      }
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   setTTL(_ttl: number): number {
