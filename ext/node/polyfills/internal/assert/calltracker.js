@@ -1,3 +1,6 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright Node.js contributors. All rights reserved. MIT License.
+
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePush,
