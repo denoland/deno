@@ -16,6 +16,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::WorkspaceNpmPatchPackages;
 
 pub mod bin_entries;
+mod deno_task_executor;
 pub mod lifecycle_scripts;
 
 /// Part of the resolution that interacts with the file system.

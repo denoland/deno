@@ -23,6 +23,8 @@ use crate::args::LifecycleScriptsConfig;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
 
+pub trait LifecycleScriptsExecutor {}
+
 pub trait LifecycleScriptsStrategy {
   fn can_run_scripts(&self) -> bool {
     true
@@ -57,9 +59,9 @@ pub struct LifecycleScripts<'a> {
 }
 
 impl<'a> LifecycleScripts<'a> {
-  pub fn new<T: LifecycleScriptsStrategy + 'a>(
+  pub fn new<TLifecycleScriptsStrategy: LifecycleScriptsStrategy + 'a>(
     config: &'a LifecycleScriptsConfig,
-    strategy: T,
+    strategy: TLifecycleScriptsStrategy,
   ) -> Self {
     Self {
       config,
@@ -375,8 +377,8 @@ impl<'a> LifecycleScripts<'a> {
 static LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
   "DENO_INTERNAL_IS_LIFECYCLE_SCRIPT";
 
-pub fn is_running_lifecycle_script() -> bool {
-  std::env::var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
+pub fn is_running_lifecycle_script(sys: &impl sys_traits::EnvVar) -> bool {
+  sys.env_var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
 }
 
 // take in all (non copy) packages from snapshot,

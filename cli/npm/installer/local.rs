@@ -227,7 +227,7 @@ async fn sync_resolution_with_fs(
 
   // don't set up node_modules (and more importantly try to acquire the file lock)
   // if we're running as part of a lifecycle script
-  if super::common::lifecycle_scripts::is_running_lifecycle_script() {
+  if super::common::lifecycle_scripts::is_running_lifecycle_script(sys) {
     return Ok(());
   }
 
