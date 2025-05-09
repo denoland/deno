@@ -400,13 +400,18 @@ impl TestFailure {
   }
 
   pub fn error_location(&self) -> Option<TestLocation> {
+    const TEST_RUNNER: &str = "ext:cli/40_test.js";
     match self {
-      // TODO: What happens if not enough call stack frames were recorded?
-      // TODO: Could anything else trigger the ext:cli/40_test.js file? Maybe we should also test for the method name
       TestFailure::JsError(js_error) => js_error
         .frames
         .iter()
-        .position(|v| v.file_name.as_deref() == Some("ext:cli/40_test.js"))
+        // The first line of user code comes above the test file.
+        // The call stack usually contains the top 10 frames, and cuts off after that.
+        // We need to explicitly check for the test runner here.
+        // - Checking for a `ext:` is not enough, since other Deno `ext:`s can appear in the call stack.
+        // - This check guarantees that the next frame is inside of the Deno.test(),
+        //   and not somewhere else.
+        .position(|v| v.file_name.as_deref() == Some(TEST_RUNNER))
         // Go one up in the stack frame, this is where the user code was
         .and_then(|index| index.checked_sub(1))
         .and_then(|index| {

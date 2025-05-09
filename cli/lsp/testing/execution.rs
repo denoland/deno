@@ -116,7 +116,6 @@ fn failure_to_test_message(
   let location = failure.error_location().map(|v| {
     let pos = lsp::Position {
       line: v.line_number,
-      // TODO: The column number might be wrong if Unicode is involved
       character: v.column_number,
     };
     lsp::Location {
