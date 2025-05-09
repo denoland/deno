@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
+// deno-lint-ignore-file prefer-primordials
+
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePush,
@@ -100,6 +102,7 @@ class CallTracker {
   }
 
   calls(fn, expected = 1) {
+    // deno-lint-ignore no-process-global
     if (process._exiting) {
       throw new ERR_UNAVAILABLE_DURING_EXIT();
     }
