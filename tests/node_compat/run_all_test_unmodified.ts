@@ -285,7 +285,11 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     } else {
       return [RESULT_KIND.FAIL, {
         code: result.code,
-        stderr: truncateTestOutput(new TextDecoder().decode(result.stderr)),
+        stderr: truncateTestOutput(
+          new TextDecoder().decode(
+            usesNodeTest ? result.stdout : result.stderr,
+          ),
+        ),
       }];
     }
   } catch (e) {
@@ -405,6 +409,7 @@ async function main() {
         }
         case RESULT_KIND.FAIL: {
           console.log(`    %cFAIL`, "color: red", testPath);
+          console.log(results[testPath][1]);
           break;
         }
         case RESULT_KIND.SKIP: {
@@ -439,22 +444,26 @@ async function main() {
 
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   // Store the results in a JSON file
-  await Deno.writeTextFile(
-    "tests/node_compat/report.json",
-    JSON.stringify(
-      {
-        date: new Date().toISOString().slice(0, 10),
-        denoVersion: Deno.version.deno,
-        os: Deno.build.os,
-        arch: Deno.build.arch,
-        nodeVersion,
-        runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
-        total,
-        pass,
-        results,
-      } satisfies TestReport,
-    ),
-  );
+
+  if (!filterTerm) {
+    await Deno.writeTextFile(
+      "tests/node_compat/report.json",
+      JSON.stringify(
+        {
+          date: new Date().toISOString().slice(0, 10),
+          denoVersion: Deno.version.deno,
+          os: Deno.build.os,
+          arch: Deno.build.arch,
+          nodeVersion,
+          runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
+          total,
+          pass,
+          results,
+        } satisfies TestReport,
+      ),
+    );
+  }
+
   Deno.exit(0);
 }
 
