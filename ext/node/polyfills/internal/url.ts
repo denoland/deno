@@ -1,17 +1,23 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
+import { primordials } from "ext:core/mod.js";
+const {
+  Number,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  Symbol,
+  decodeURIComponent,
+} = primordials;
 
 const searchParams = Symbol("query");
 
 export function toPathIfFileURL(
   fileURLOrPath: string | Buffer | URL,
 ): string | Buffer {
-  if (!(fileURLOrPath instanceof URL)) {
+  if (!(ObjectPrototypeIsPrototypeOf(URL.prototype, fileURLOrPath))) {
     return fileURLOrPath;
   }
   return fileURLToPath(fileURLOrPath);
@@ -26,8 +32,8 @@ export function urlToHttpOptions(url: any): any {
   const options: any = {
     protocol: url.protocol,
     hostname: typeof url.hostname === "string" &&
-        url.hostname.startsWith("[")
-      ? url.hostname.slice(1, -1)
+        StringPrototypeStartsWith(url.hostname, "[")
+      ? StringPrototypeSlice(url.hostname, 1, -1)
       : url.hostname,
     hash: url.hash,
     search: url.search,
