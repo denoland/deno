@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::rc::Weak;
 
 use deno_core::op2;
@@ -27,6 +28,7 @@ pub struct RunStatementResult {
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub statements: Rc<RefCell<Vec<*mut ffi::sqlite3_stmt>>>,
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
@@ -36,10 +38,16 @@ pub struct StatementSync {
 
 impl Drop for StatementSync {
   fn drop(&mut self) {
-    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-    // no other references to this pointer exist.
-    unsafe {
-      ffi::sqlite3_finalize(self.inner);
+    if self.statements.borrow().contains(&self.inner) {
+      self
+        .statements
+        .borrow_mut()
+        .retain(|stmt| *stmt != self.inner);
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // no other references to this pointer exist.
+      unsafe {
+        ffi::sqlite3_finalize(self.inner);
+      }
     }
   }
 }

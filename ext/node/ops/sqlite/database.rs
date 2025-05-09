@@ -67,6 +67,7 @@ struct ApplyChangesetOptions<'a> {
 
 pub struct DatabaseSync {
   conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
   options: DatabaseSyncOptions,
   location: String,
 }
@@ -209,6 +210,7 @@ impl DatabaseSync {
 
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
+      statements: Rc::new(RefCell::new(Vec::new())),
       location,
       options,
     })
@@ -249,7 +251,17 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyClosed);
     }
 
-    *self.conn.borrow_mut() = None;
+    // Finalize all prepared statements
+    for stmt in self.statements.borrow_mut().drain(..) {
+      if !stmt.is_null() {
+        unsafe {
+          libsqlite3_sys::sqlite3_finalize(stmt);
+        }
+      }
+    }
+
+    let _ = self.conn.borrow_mut().take();
+
     Ok(())
   }
 
@@ -297,9 +309,12 @@ impl DatabaseSync {
       return Err(SqliteError::PrepareFailed);
     }
 
+    self.statements.borrow_mut().push(raw_stmt);
+
     Ok(StatementSync {
       inner: raw_stmt,
       db: Rc::downgrade(&self.conn),
+      statements: Rc::clone(&self.statements),
       use_big_ints: Cell::new(false),
       allow_bare_named_params: Cell::new(true),
       is_iter_finished: false,
