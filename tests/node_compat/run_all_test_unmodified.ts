@@ -337,7 +337,11 @@ async function main() {
     const result = await runSingle(testPath);
     results[testPath] = result;
     if (result[0] === RESULT_KIND.PASS) {
-      console.log(`${num} %cPASS`, "color: green", testPath);
+      console.log(
+        `${tests / node_compat / runner / suite} %cPASS`,
+        "color: green",
+        testPath,
+      );
     } else if (result[0] === RESULT_KIND.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
     } else {
@@ -391,7 +395,11 @@ async function main() {
     const s = tests.filter((test) =>
       results[test][0] === RESULT_KIND.PASS
     ).length;
-    const all = tests.length;
+    const all = filterTerm
+      ? tests.map((testPath) => results[testPath][0]).filter((result) =>
+        result !== RESULT_KIND.SKIP
+      ).length
+      : tests.length;
     console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
     for (const testPath of tests) {
       switch (results[testPath][0]) {
@@ -416,12 +424,23 @@ async function main() {
   }
 
   // Summary
-  const total = tests.length;
+  let total;
   const pass =
     tests.filter((test) => results[test][0] === RESULT_KIND.PASS).length;
-  console.log(
-    `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
-  );
+  if (filterTerm) {
+    total = tests.map((testPath) =>
+      results[testPath][0]
+    ).filter((result) => result !== RESULT_KIND.SKIP).length;
+    console.log(
+      `Filtered tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+    );
+  } else {
+    total = tests.length;
+    console.log(
+      `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+    );
+  }
+
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   // Store the results in a JSON file
   await Deno.writeTextFile(
