@@ -884,8 +884,15 @@ function isValidThenable(maybeThennable: any): boolean {
   return isThenable && typeof maybeThennable !== "function";
 }
 
+const CallTracker_ = deprecate(
+  CallTracker,
+  "assert.CallTracker is deprecated.",
+  "DEP0173",
+);
+
 Object.assign(strict, {
   AssertionError,
+  CallTracker: CallTracker_,
   deepEqual: deepStrictEqual,
   deepStrictEqual,
   doesNotMatch,
@@ -906,14 +913,9 @@ Object.assign(strict, {
   throws,
 });
 
-assert.CallTracker = deprecate(
-  CallTracker,
-  "assert.CallTracker is deprecated.",
-  "DEP0173",
-);
-
 export default Object.assign(assert, {
   AssertionError,
+  CallTracker: CallTracker_,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,
