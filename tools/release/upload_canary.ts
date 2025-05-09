@@ -5,14 +5,15 @@
 
 import { $ } from "jsr:@david/dax@0.41.0";
 
-async function uploadCanaryForCurrentArch(currentGitSha) {
+async function uploadCanaryForCurrentArch(currentGitSha: string) {
   const currentGitRev = await $`git rev-parse HEAD`.text();
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/${currentGitRev}/`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/${currentGitRev}/`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/${currentGitRev}/`;
-  const llvmTriple = await $`rustc -vV | sed -n "s|host: ||p"`;
+  const llvmTriple = await $`rustc -vV | sed -n "s|host: ||p"`.text();
   const latestCanaryHash =
-    await $`gsutil cat gs://dl.deno.land/canary-${llvmTriple}-latest.txt`;
+    await $`gsutil cat gs://dl.deno.land/canary-${llvmTriple}-latest.txt`
+      .text();
   const commitExistsInHistory = await $`git cat-file -e ${latestCanaryHash}`;
 
   if (commitExistsInHistory.code === 0) {
@@ -23,8 +24,9 @@ async function uploadCanaryForCurrentArch(currentGitSha) {
   }
 }
 
-async function uploadCanaryLatest(currentGitSha) {
-  const latestCanaryHash = $`gsutil cat gs://dl.deno.land/canary-latest.txt`;
+async function uploadCanaryLatest(currentGitSha: string) {
+  const latestCanaryHash = $`gsutil cat gs://dl.deno.land/canary-latest.txt`
+    .text();
   const commitExistsInHistory = await $`git cat-file -e ${latestCanaryHash}`;
 
   if (commitExistsInHistory.code === 0) {
