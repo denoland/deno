@@ -214,8 +214,14 @@ function truncateTestOutput(output: string): string {
   return output;
 }
 
+const RESULT_KIND = {
+  PASS: 0,
+  FAIL: 1,
+  SKIP: 2,
+};
+
 export type SingleResult = [
-  pass: boolean,
+  pass: number,
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
 ];
 type ErrorExit = {
@@ -275,11 +281,15 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
-      return [true];
+      return [RESULT_KIND.PASS];
     } else {
-      return [false, {
+      return [RESULT_KIND.FAIL, {
         code: result.code,
-        stderr: truncateTestOutput(new TextDecoder().decode(result.stderr)),
+        stderr: truncateTestOutput(
+          new TextDecoder().decode(
+            usesNodeTest ? result.stdout : result.stderr,
+          ),
+        ),
       }];
     }
   } catch (e) {
@@ -289,17 +299,24 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       } catch {
         // ignore
       }
-      return [false, { timeout: TIMEOUT }];
+      return [RESULT_KIND.FAIL, { timeout: TIMEOUT }];
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, retry + 1);
     } else {
-      return [false, { message: (e as Error).message }];
+      return [RESULT_KIND.FAIL, { message: (e as Error).message }];
     }
   }
 }
 
 async function main() {
+  const filterIdx = Deno.args.indexOf("--filter");
+  let filterTerm = undefined;
+
+  if (filterIdx > -1) {
+    filterTerm = Deno.args[filterIdx + 1];
+  }
+
   const start = Date.now();
   const tests = [] as string[];
   const categories = {} as Record<string, string[]>;
@@ -323,16 +340,41 @@ async function main() {
     const num = String(++i).padStart(4, " ");
     const result = await runSingle(testPath);
     results[testPath] = result;
-    if (result[0]) {
+    if (result[0] === RESULT_KIND.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);
-    } else {
+    } else if (result[0] === RESULT_KIND.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
+    } else {
+      // console.log(`${num} %cSKIP`, "color: yellow", testPath);
     }
   }
-  const [sequential, parallel] = partition(
+  let [sequential, parallel] = partition(
     tests,
     (test) => getGroupRelUrl(test) === "sequential",
   );
+
+  console.log;
+  if (filterTerm) {
+    sequential = sequential.filter((term) => {
+      if (term.includes(filterTerm)) {
+        return true;
+      }
+
+      results[term] = [RESULT_KIND.SKIP];
+      return false;
+    });
+    parallel = parallel.filter((term) => {
+      if (term.includes(filterTerm)) {
+        return true;
+      }
+      results[term] = [RESULT_KIND.SKIP];
+      return false;
+    });
+    console.log(
+      `Found ${sequential.length} sequential tests and ${parallel.length} parallel tests`,
+    );
+  }
+
   // Runs sequential tests
   for (const path of sequential) {
     await run(path);
@@ -347,42 +389,81 @@ async function main() {
   // Reporting to stdout
   console.log(`Result by categories (${categoryList.length}):`);
   for (const [category, tests] of categoryList) {
-    const s = tests.filter((test) => results[test][0]).length;
-    const all = tests.length;
+    if (tests.every((test) => results[test][0] === RESULT_KIND.SKIP)) {
+      continue;
+    }
+    const s = tests.filter((test) =>
+      results[test][0] === RESULT_KIND.PASS
+    ).length;
+    const all = filterTerm
+      ? tests.map((testPath) => results[testPath][0]).filter((result) =>
+        result !== RESULT_KIND.SKIP
+      ).length
+      : tests.length;
     console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
     for (const testPath of tests) {
-      if (results[testPath][0]) {
-        console.log(`    %cPASS`, "color: green", testPath);
-      } else {
-        console.log(`    %cFAIL`, "color: red", testPath);
+      switch (results[testPath][0]) {
+        case RESULT_KIND.PASS: {
+          console.log(`    %cPASS`, "color: green", testPath);
+          break;
+        }
+        case RESULT_KIND.FAIL: {
+          console.log(`    %cFAIL`, "color: red", testPath);
+          console.log(results[testPath][1]);
+          break;
+        }
+        case RESULT_KIND.SKIP: {
+          // console.log(`    %cSKIP`, "color: yellow", testPath);
+          break;
+        }
+        default:
+          console.warn(
+            `Unknown result (${results[testPath][0]}) for ${testPath}`,
+          );
       }
     }
   }
 
   // Summary
-  const total = tests.length;
-  const pass = tests.filter((test) => results[test][0]).length;
-  console.log(
-    `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
-  );
+  let total;
+  const pass =
+    tests.filter((test) => results[test][0] === RESULT_KIND.PASS).length;
+  if (filterTerm) {
+    total = tests.map((testPath) =>
+      results[testPath][0]
+    ).filter((result) => result !== RESULT_KIND.SKIP).length;
+    console.log(
+      `Filtered tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+    );
+  } else {
+    total = tests.length;
+    console.log(
+      `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+    );
+  }
+
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   // Store the results in a JSON file
-  await Deno.writeTextFile(
-    "tests/node_compat/report.json",
-    JSON.stringify(
-      {
-        date: new Date().toISOString().slice(0, 10),
-        denoVersion: Deno.version.deno,
-        os: Deno.build.os,
-        arch: Deno.build.arch,
-        nodeVersion,
-        runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
-        total,
-        pass,
-        results,
-      } satisfies TestReport,
-    ),
-  );
+
+  if (!filterTerm) {
+    await Deno.writeTextFile(
+      "tests/node_compat/report.json",
+      JSON.stringify(
+        {
+          date: new Date().toISOString().slice(0, 10),
+          denoVersion: Deno.version.deno,
+          os: Deno.build.os,
+          arch: Deno.build.arch,
+          nodeVersion,
+          runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
+          total,
+          pass,
+          results,
+        } satisfies TestReport,
+      ),
+    );
+  }
+
   Deno.exit(0);
 }
 
