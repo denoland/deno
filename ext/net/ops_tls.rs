@@ -278,7 +278,7 @@ where
     .collect::<Vec<_>>();
 
   let hostname_dns = ServerName::try_from(hostname.to_string())
-    .map_err(|_| NetError::InvalidHostname(hostname.clone()))?;
+    .map_err(|_| NetError::InvalidHostname(hostname))?;
 
   let unsafely_ignore_certificate_errors = if reject_unauthorized {
     state
@@ -288,14 +288,6 @@ where
   } else {
     Some(Vec::new())
   };
-
-  {
-    let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&hostname, None), "Deno.startTls()")
-      .map_err(NetError::Permission)?;
-  }
 
   let root_cert_store = state
     .borrow()
