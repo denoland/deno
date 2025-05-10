@@ -19,6 +19,7 @@ import {
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
+const IS_CI = !!Deno.env.get("CI");
 
 // The metadata of the test report
 export type TestReportMetadata = {
@@ -208,7 +209,7 @@ function collectNonCategorizedItems(categories: Record<string, string[]>) {
 
 function truncateTestOutput(output: string): string {
   output = stripAnsiCode(output);
-  if (output.length > 2000) {
+  if (IS_CI && output.length > 2000) {
     return output.slice(0, 2000) + " ...";
   }
   return output;
