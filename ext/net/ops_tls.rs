@@ -188,6 +188,7 @@ pub struct StartTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
+  reject_unauthorized: Option<bool>,
 }
 
 #[op2]
@@ -264,6 +265,7 @@ where
   NP: NetPermissions + 'static,
 {
   let rid = args.rid;
+  let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
     "" => "localhost".to_string(),
     n => n.to_string(),
@@ -276,12 +278,24 @@ where
     .collect::<Vec<_>>();
 
   let hostname_dns = ServerName::try_from(hostname.to_string())
-    .map_err(|_| NetError::InvalidHostname(hostname))?;
+    .map_err(|_| NetError::InvalidHostname(hostname.clone()))?;
 
-  let unsafely_ignore_certificate_errors = state
-    .borrow()
-    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
-    .and_then(|it| it.0.clone());
+  let unsafely_ignore_certificate_errors = if reject_unauthorized {
+    state
+      .borrow()
+      .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+      .and_then(|it| it.0.clone())
+  } else {
+    Some(Vec::new())
+  };
+
+  {
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<NP>();
+    permissions
+      .check_net(&(&hostname, None), "Deno.startTls()")
+      .map_err(NetError::Permission)?;
+  }
 
   let root_cert_store = state
     .borrow()

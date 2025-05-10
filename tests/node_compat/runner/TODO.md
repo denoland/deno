@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1167 tests out of 3993 have been ported from Node 23.9.0 (29.23% ported, 71.30% remaining).
+1168 tests out of 3993 have been ported from Node 23.9.0 (29.25% ported, 71.27% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2190,7 +2190,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-tls-connect-no-host.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-no-host.js)
 - [parallel/test-tls-connect-pipe.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-pipe.js)
 - [parallel/test-tls-connect-secure-context.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-secure-context.js)
-- [parallel/test-tls-connect-simple.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-simple.js)
 - [parallel/test-tls-connect-stream-writes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-stream-writes.js)
 - [parallel/test-tls-connect-timeout-option.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-timeout-option.js)
 - [parallel/test-tls-delayed-attach-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-delayed-attach-error.js)

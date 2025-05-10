@@ -1204,6 +1204,7 @@
       "test-tls-alert-handling.js",
       "test-tls-alert.js",
       "test-tls-client-renegotiation-limit.js",
+      "test-tls-connect-simple.js",
       "test-tls-dhe.js",
       "test-tls-ecdh-auto.js",
       "test-tls-ecdh-multiple.js",
