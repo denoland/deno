@@ -529,7 +529,7 @@ fn resolve_flags_and_init(
     }
   };
 
-  load_env_variables_from_env_file(flags.env_file.as_ref());
+  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
 
   let otel_config = flags.otel_config();
