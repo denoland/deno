@@ -19,7 +19,6 @@ import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { core } from "ext:core/mod.js";
 import {
   constants as PipeConstants,
   Pipe,
