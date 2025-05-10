@@ -262,9 +262,7 @@ impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
       permit_no_files: test_flags.permit_no_files,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      concurrent_jobs: parallelism_count(test_flags.parallel),
       doc: test_flags.doc,
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter.clone(),
@@ -442,8 +440,6 @@ impl CliOptions {
         log::error!("{}", colors::yellow(msg));
       }
     }
-
-    load_env_variables_from_env_file(flags.env_file.as_ref());
 
     Ok(Self {
       flags,
@@ -1097,7 +1093,7 @@ impl CliOptions {
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
+      let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
         .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
@@ -1286,7 +1282,10 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+pub fn load_env_variables_from_env_file(
+  filename: Option<&Vec<String>>,
+  flags_log_level: Option<log::Level>,
+) {
   let Some(env_file_names) = filename else {
     return;
   };
@@ -1295,11 +1294,17 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
     match from_filename(env_file_name) {
       Ok(_) => (),
       Err(error) => {
-        match error {
-          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
-          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        #[allow(clippy::print_stderr)]
+        if flags_log_level
+          .map(|l| l >= log::Level::Info)
+          .unwrap_or(true)
+        {
+          match error {
+            dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
+            dotenvy::Error::Io(_)=> eprintln!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
+            dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+            _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+          }
         }
       }
     }
@@ -1316,6 +1321,19 @@ pub fn get_default_v8_flags() -> Vec<String> {
     // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
     "--no-harmony-import-assertions".to_string(),
   ]
+}
+
+pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
+  parallel
+    .then(|| {
+      if let Ok(value) = env::var("DENO_JOBS") {
+        value.parse::<NonZeroUsize>().ok()
+      } else {
+        std::thread::available_parallelism().ok()
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
 }
 
 /// Gets the --allow-import host from the provided url

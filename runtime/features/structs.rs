@@ -15,6 +15,5 @@ pub struct UnstableFeatureDefinition {
   pub show_in_help: bool,
   pub id: i32,
   pub kind: UnstableFeatureKind,
-  pub env_var: Option<&'static str>,
   pub config_file_option: &'static str,
 }
