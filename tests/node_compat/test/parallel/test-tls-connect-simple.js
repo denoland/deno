@@ -49,7 +49,7 @@ const server = tls.Server(options, common.mustCall(function(socket) {
   }
 }, 2));
 
-server.listen(0, function(e) {
+server.listen(0, function() {
   const client1options = {
     port: this.address().port,
     rejectUnauthorized: false
