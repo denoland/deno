@@ -812,19 +812,21 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     denoNs.build.standalone = standalone;
 
-    if (
-      mode === executionModes.serve &&
-      (!serveIsMain || serveWorkerCountOrIndex > 1)
-    ) {
-      const serveWorkerIndex = serveIsMain ? 0 : serveWorkerCountOrIndex;
-      const base = `serve-worker-${serveWorkerIndex}`;
-      // 15 = "serve-worker-nn".length, assuming
-      // serveWorkerCount < 100
-      const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-      // deno-lint-ignore no-global-assign
-      console = new internalConsole.Console((msg, level) =>
-        core.print(`${prefix} ` + msg, level > 1)
-      );
+    if (mode === executionModes.serve) {
+      const hasMultipleThreads = serveIsMain
+        ? serveWorkerCountOrIndex > 0 // count > 0
+        : true;
+      if (hasMultipleThreads) {
+        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const base = `serve-worker-${serveLogIndex}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
+      }
     }
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -870,8 +872,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             serve({
               servePort,
               serveHost,
-              serveIsMain,
-              serveWorkerCount: serveIsMain
+              workerCountWhenMain: serveIsMain
                 ? serveWorkerCountOrIndex
                 : undefined,
             });

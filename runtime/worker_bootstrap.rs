@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::num::NonZeroUsize;
 use std::thread;
 
 use deno_core::v8;
@@ -30,10 +29,10 @@ pub enum WorkerExecutionMode {
   Bench,
   /// `deno serve`
   ServeMain {
-    worker_count: NonZeroUsize,
+    worker_count: usize,
   },
   ServeWorker {
-    worker_index: NonZeroUsize,
+    worker_index: usize,
   },
   /// `deno jupyter`
   Jupyter,
@@ -223,13 +222,9 @@ impl BootstrapOptions {
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
       matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
-      match &self.mode {
-        WorkerExecutionMode::ServeMain { worker_count } => {
-          Some(worker_count.get())
-        }
-        WorkerExecutionMode::ServeWorker { worker_index } => {
-          Some(worker_index.get())
-        }
+      match self.mode {
+        WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
+        WorkerExecutionMode::ServeWorker { worker_index } => Some(worker_index),
         _ => None,
       },
       self.otel_config.as_v8(),

@@ -1110,17 +1110,18 @@ function registerDeclarativeServer(exports) {
   return ({
     servePort,
     serveHost,
-    serveIsMain,
-    serveWorkerCount,
+    workerCountWhenMain,
   }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: serveIsMain ? serveWorkerCount > 1 : true,
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
       onListen: ({ transport, port, hostname, path, cid }) => {
-        if (serveIsMain) {
-          const nThreads = serveWorkerCount > 1
-            ? ` with ${serveWorkerCount} threads`
+        if (workerCountWhenMain != null) {
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
           let target;

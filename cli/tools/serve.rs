@@ -83,10 +83,11 @@ pub async fn serve(
 async fn do_serve(
   worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
-  worker_count: NonZeroUsize,
+  parallelism_count: NonZeroUsize,
   hmr: bool,
   unconfigured_runtime: Option<UnconfiguredRuntime>,
 ) -> Result<i32, AnyError> {
+  let worker_count = parallelism_count.get() - 1;
   let mut worker = worker_factory
     .create_main_worker_with_unconfigured_runtime(
       deno_runtime::WorkerExecutionMode::ServeMain { worker_count },
@@ -94,32 +95,24 @@ async fn do_serve(
       unconfigured_runtime,
     )
     .await?;
-  let worker_count = match worker_count.get() {
-    1 => return worker.run().await.map_err(Into::into),
+  let worker_count = match worker_count {
+    0 => return worker.run().await.map_err(Into::into),
     c => c,
   };
 
   let main = deno_core::unsync::spawn(async move { worker.run().await });
 
-  let extra_workers = worker_count.saturating_sub(1);
-
-  let mut channels = Vec::with_capacity(extra_workers);
-  for i in 1..=extra_workers {
+  let mut channels = Vec::with_capacity(worker_count);
+  for i in 0..worker_count {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
     std::thread::Builder::new()
-      .name(format!("serve-worker-{i}"))
+      .name(format!("serve-worker-{}", i + 1))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result = run_worker(
-            NonZeroUsize::new(i).unwrap(),
-            worker_factory,
-            main_module,
-            hmr,
-          )
-          .await;
+          let result = run_worker(i, worker_factory, main_module, hmr).await;
           let _ = tx.send(result);
         });
       })?;
@@ -143,7 +136,7 @@ async fn do_serve(
 }
 
 async fn run_worker(
-  worker_index: NonZeroUsize,
+  worker_index: usize,
   worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
@@ -165,7 +158,7 @@ async fn run_worker(
 async fn serve_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
-  worker_count: NonZeroUsize,
+  parallelism_count: NonZeroUsize,
 ) -> Result<i32, AnyError> {
   let hmr = watch_flags.hmr;
   crate::util::file_watcher::watch_recv(
@@ -192,8 +185,14 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(worker_factory, main_module.clone(), worker_count, hmr, None)
-          .await?;
+        do_serve(
+          worker_factory,
+          main_module.clone(),
+          parallelism_count,
+          hmr,
+          None,
+        )
+        .await?;
 
         Ok(())
       })
