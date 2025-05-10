@@ -191,6 +191,25 @@ async function startTls(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
+function startTlsInternal(
+  conn,
+  {
+    hostname = "127.0.0.1",
+    caCerts = [],
+    alpnProtocols = undefined,
+    rejectUnauthorized,
+  },
+) {
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
+    rid: conn[internalRidSymbol],
+    hostname,
+    caCerts,
+    alpnProtocols,
+    rejectUnauthorized,
+  }, null);
+  return new TlsConn(rid, remoteAddr, localAddr);
+}
+
 const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
 
@@ -228,6 +247,7 @@ export {
   listenTls,
   loadTlsKeyPair,
   startTls,
+  startTlsInternal,
   TlsConn,
   TlsListener,
 };

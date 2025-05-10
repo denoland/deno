@@ -31,6 +31,7 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { startTlsInternal } from "ext:deno_net/02_tls.js";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -99,6 +100,7 @@ export class TLSSocket extends net.Socket {
     }
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
+    tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -163,7 +165,10 @@ export class TLSSocket extends net.Socket {
         }
 
         try {
-          const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          const conn = await startTlsInternal(
+            handle[kStreamBaseField],
+            options,
+          );
           try {
             const hs = await conn.handshake();
             if (hs.alpnProtocol) {
