@@ -957,7 +957,7 @@ fn print_worker_error(
 
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-pub fn run_web_worker(
+pub async fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
@@ -968,55 +968,55 @@ pub fn run_web_worker(
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
 
-  let fut = async move {
-    let internal_handle = worker.internal_handle.clone();
+  // let fut = async move {
+  let internal_handle = worker.internal_handle.clone();
 
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code.into());
-      worker.start_polling_for_messages();
-      r
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      match worker.preload_main_module(&specifier).await {
-        Ok(id) => {
-          worker.start_polling_for_messages();
-          worker.execute_main_module(id).await
-        }
-        Err(e) => Err(e),
+  // Execute provided source code immediately
+  let result = if let Some(source_code) = maybe_source_code.take() {
+    let r = worker.execute_script(located_script_name!(), source_code.into());
+    worker.start_polling_for_messages();
+    r
+  } else {
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
+    // script instead of module
+    match worker.preload_main_module(&specifier).await {
+      Ok(id) => {
+        worker.start_polling_for_messages();
+        worker.execute_main_module(id).await
       }
-    };
-
-    // If sender is closed it means that worker has already been closed from
-    // within using "globalThis.close()"
-    if internal_handle.is_terminated() {
-      return Ok(());
+      Err(e) => Err(e),
     }
+  };
 
-    let result = if result.is_ok() {
-      worker
-        .run_event_loop(PollEventLoopOptions {
-          wait_for_inspector: true,
-          ..Default::default()
-        })
-        .await
-    } else {
-      result
-    };
+  // If sender is closed it means that worker has already been closed from
+  // within using "globalThis.close()"
+  if internal_handle.is_terminated() {
+    return Ok(());
+  }
 
-    if let Err(e) = result {
-      print_worker_error(&e, &name, format_js_error_fn.as_deref());
-      internal_handle
-        .post_event(WorkerControlEvent::TerminalError(e))
-        .expect("Failed to post message to host");
-
-      // Failure to execute script is a terminal error, bye, bye.
-      return Ok(());
-    }
-
-    debug!("Worker thread shuts down {}", &name);
+  let result = if result.is_ok() {
+    worker
+      .run_event_loop(PollEventLoopOptions {
+        wait_for_inspector: true,
+        ..Default::default()
+      })
+      .await
+  } else {
     result
   };
-  create_and_run_current_thread(fut)
+
+  if let Err(e) = result {
+    print_worker_error(&e, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(e))
+      .expect("Failed to post message to host");
+
+    // Failure to execute script is a terminal error, bye, bye.
+    return Ok(());
+  }
+
+  debug!("Worker thread shuts down {}", &name);
+  result
+  // };
+  // create_and_run_current_thread(fut)
 }
