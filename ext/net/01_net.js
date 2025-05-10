@@ -380,6 +380,7 @@ class Listener {
 
 const _setBroadcast = Symbol("setBroadcast");
 const _dropMembership = Symbol("dropMembership");
+const _setMulticastTTL = Symbol("setMulticastTTL");
 
 function setDatagramBroadcast(conn, broadcast) {
   return conn[_setBroadcast](broadcast);
@@ -387,6 +388,10 @@ function setDatagramBroadcast(conn, broadcast) {
 
 function dropMembership(conn, v6, addr, multiInterface) {
   return conn[_dropMembership](v6, addr, multiInterface);
+}
+
+function setMulticastTTL(conn, ttl) {
+  return conn[_setMulticastTTL](ttl);
 }
 
 class DatagramConn {
@@ -415,6 +420,10 @@ class DatagramConn {
     }
 
     return op_net_leave_multi_v4_udp(this.#rid, addr, multiInterface);
+  }
+
+  [_setMulticastTTL](ttl) {
+    return op_net_set_multi_ttl_udp(this.#rid, ttl);
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -714,6 +723,7 @@ export {
   listenOptionApiName,
   resolveDns,
   setDatagramBroadcast,
+  setMulticastTTL,
   TcpConn,
   UnixConn,
   UpgradedConn,
