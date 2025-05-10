@@ -1,12 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { Mode, promises, read, ReadStream, write, WriteStream } from "node:fs";
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
@@ -23,6 +20,15 @@ import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
+const {
+  Error,
+  ObjectAssign,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromiseResolve,
+  SafeArrayIterator,
+  Uint8ArrayPrototype,
+} = primordials;
 
 interface WriteResult {
   bytesWritten: number;
@@ -62,7 +68,7 @@ export class FileHandle extends EventEmitter {
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
-    if (bufferOrOpt instanceof Uint8Array) {
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
       return new Promise((resolve, reject) => {
         read(
           this.fd,
@@ -109,7 +115,7 @@ export class FileHandle extends EventEmitter {
     lengthOrEncoding: number | string,
     position?: number,
   ): Promise<WriteResult> {
-    if (bufferOrStr instanceof Uint8Array) {
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrStr)) {
       const buffer = bufferOrStr;
       const offset = offsetOrPosition;
       const length = lengthOrEncoding;
@@ -151,7 +157,7 @@ export class FileHandle extends EventEmitter {
 
   close(): Promise<void> {
     // Note that Deno.close is not async
-    return Promise.resolve(core.close(this.fd));
+    return PromiseResolve(core.close(this.fd));
   }
 
   stat(): Promise<Stats>;
@@ -198,7 +204,7 @@ export class FileHandle extends EventEmitter {
 function assertNotClosed(handle: FileHandle, syscall: string) {
   if (handle.fd === -1) {
     const err = new Error("file closed");
-    throw Object.assign(err, {
+    throw ObjectAssign(err, {
       code: "EBADF",
       syscall,
     });
@@ -207,7 +213,7 @@ function assertNotClosed(handle: FileHandle, syscall: string) {
 
 function fsCall(fn, handle, ...args) {
   assertNotClosed(handle, fn.name);
-  return fn(handle.fd, ...args);
+  return fn(handle.fd, ...new SafeArrayIterator(args));
 }
 
 export default {
