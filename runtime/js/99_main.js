@@ -812,7 +812,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     denoNs.build.standalone = standalone;
 
-    if (mode === executionModes.serve) {
+    if (
+      mode === executionModes.serve &&
+      (!serveIsMain || serveWorkerCountOrIndex > 1)
+    ) {
       const serveWorkerIndex = serveIsMain ? 0 : serveWorkerCountOrIndex;
       const base = `serve-worker-${serveWorkerIndex}`;
       // 15 = "serve-worker-nn".length, assuming
