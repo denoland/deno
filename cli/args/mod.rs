@@ -1294,6 +1294,7 @@ pub fn load_env_variables_from_env_file(
     match from_filename(env_file_name) {
       Ok(_) => (),
       Err(error) => {
+        #[allow(clippy::print_stderr)]
         if flags_log_level
           .map(|l| l >= log::Level::Info)
           .unwrap_or(true)
