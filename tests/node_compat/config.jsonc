@@ -429,6 +429,7 @@
       "test-dgram-listen-after-bind.js",
       "test-dgram-membership.js",
       "test-dgram-msgsize.js",
+      "test-dgram-multicast-loopback.js",
       "test-dgram-multicast-setTTL.js",
       "test-dgram-oob-buffer.js",
       "test-dgram-recv-error.js",
