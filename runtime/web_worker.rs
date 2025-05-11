@@ -61,7 +61,6 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
@@ -957,6 +956,8 @@ fn print_worker_error(
 
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
+// TODO(bartlomieju): run following block using "select!"
+// with terminate
 pub async fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
@@ -964,11 +965,6 @@ pub async fn run_web_worker(
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
   let name = worker.name.to_string();
-
-  // TODO(bartlomieju): run following block using "select!"
-  // with terminate
-
-  // let fut = async move {
   let internal_handle = worker.internal_handle.clone();
 
   // Execute provided source code immediately
@@ -1017,6 +1013,4 @@ pub async fn run_web_worker(
 
   debug!("Worker thread shuts down {}", &name);
   result
-  // };
-  // create_and_run_current_thread(fut)
 }
