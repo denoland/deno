@@ -6,7 +6,7 @@
 import { $ } from "jsr:@david/dax@0.41.0";
 
 async function uploadCanaryForCurrentArch(currentGitSha) {
-  const currentGitRev = await $`git rev-parse HEAD`.text();
+  const currentGitRev = await $`git rev-parse HEAD`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/${currentGitRev}/`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/${currentGitRev}/`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/${currentGitRev}/`;
