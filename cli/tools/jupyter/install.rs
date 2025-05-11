@@ -18,7 +18,7 @@ const DENO_ICON_SVG: &[u8] = include_bytes!("./resources/deno-logo-svg.svg");
 pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
   let user_data_dir = user_data_dir()?;
 
-  let kernel_name = maybe_name.clone().unwrap_or("deno");
+  let kernel_name = maybe_name.unwrap_or("deno");
   let kernel_spec_dir_path = user_data_dir.join("kernels").join(kernel_name);
   let kernel_spec_path = kernel_spec_dir_path.join("kernel.json");
 
@@ -32,7 +32,7 @@ pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
     let mut install_cmd = "deno jupyter --install".to_string();
     if let Some(name) = maybe_name {
       install_cmd.push_str(" --name ");
-      install_cmd.push_str(&name);
+      install_cmd.push_str(name);
     }
     log::warn!(
       "ℹ️ Deno kernel is not yet installed, run `{}` to set it up",
@@ -60,7 +60,7 @@ pub fn install(
 ) -> Result<(), AnyError> {
   let user_data_dir = user_data_dir()?;
 
-  let kernel_name = maybe_name.clone().unwrap_or("deno");
+  let kernel_name = maybe_name.unwrap_or("deno");
   let kernel_spec_dir_path = user_data_dir.join("kernels").join(kernel_name);
   let kernel_spec_path = kernel_spec_dir_path.join("kernel.json");
 
