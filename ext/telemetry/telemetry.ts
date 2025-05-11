@@ -27,7 +27,6 @@ import {
   OtelTracer,
 } from "ext:core/ops";
 import { Console } from "ext:deno_console/01_console.js";
-import console from "node:console";
 
 const {
   ArrayFrom,
@@ -1160,7 +1159,6 @@ async function observe(): Promise<void> {
 let isObserving = false;
 function startObserving() {
   if (!isObserving) {
-    console.log("start observing", (new Error()).stack);
     isObserving = true;
     (async () => {
       while (true) {
