@@ -333,3 +333,13 @@ Deno.test("[node/sqlite] StatementSync empty blob", () => {
 
   db.close();
 });
+
+Deno.test("[node/sqlite] Database close locks", () => {
+  const db = new DatabaseSync(`${tempDir}/test4.db`);
+  const statement = db.prepare(
+    "CREATE TABLE test (key INTEGER PRIMARY KEY, value TEXT)",
+  );
+  statement.run();
+  db.close();
+  Deno.removeSync(`${tempDir}/test4.db`);
+});

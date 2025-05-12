@@ -284,13 +284,10 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     if (result.code === 0) {
       return [RESULT_KIND.PASS];
     } else {
+      const output = usesNodeTest ? result.stdout : result.stderr;
       return [RESULT_KIND.FAIL, {
         code: result.code,
-        stderr: truncateTestOutput(
-          new TextDecoder().decode(
-            usesNodeTest ? result.stdout : result.stderr,
-          ),
-        ),
+        stderr: truncateTestOutput(new TextDecoder().decode(output)),
       }];
     }
   } catch (e) {
