@@ -3,20 +3,26 @@
 use std::env::current_exe;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use jupyter_runtime::dirs::user_data_dir;
+
+static TEST_ENV_VAR_NAME: &str = "DENO_TEST_JUPYTER_PATH";
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
 const DENO_ICON_64: &[u8] = include_bytes!("./resources/deno-logo-64x64.png");
 const DENO_ICON_SVG: &[u8] = include_bytes!("./resources/deno-logo-svg.svg");
 
 pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
-  let user_data_dir = user_data_dir()?;
+  let user_data_dir = if let Ok(env_var) = std::env::var(TEST_ENV_VAR_NAME) {
+    PathBuf::from(env_var)
+  } else {
+    jupyter_runtime::dirs::user_data_dir()?
+  };
 
   let kernel_name = maybe_name.unwrap_or("deno");
   let kernel_spec_dir_path = user_data_dir.join("kernels").join(kernel_name);
@@ -58,7 +64,11 @@ pub fn install(
   maybe_display_name: Option<&str>,
   force: bool,
 ) -> Result<(), AnyError> {
-  let user_data_dir = user_data_dir()?;
+  let user_data_dir = if let Ok(env_var) = std::env::var(TEST_ENV_VAR_NAME) {
+    PathBuf::from(env_var)
+  } else {
+    jupyter_runtime::dirs::user_data_dir()?
+  };
 
   let kernel_name = maybe_name.unwrap_or("deno");
   let kernel_spec_dir_path = user_data_dir.join("kernels").join(kernel_name);
