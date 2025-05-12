@@ -15,6 +15,7 @@ pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
 pub struct TaskDefinition {
   pub name: String,
   pub command: Option<String>,
+  pub description: Option<String>,
   pub source_uri: lsp::Uri,
 }
 
