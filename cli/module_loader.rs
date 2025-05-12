@@ -224,22 +224,19 @@ impl ModuleLoadPreparer {
 
     // type check if necessary
     if self.options.type_check_mode().is_true() && !has_type_checked {
-      self
-        .type_checker
-        .check(
-          // todo(perf): since this is only done the first time the graph is
-          // created, we could avoid the clone of the graph here by providing
-          // the actual graph on the first run and then getting the Arc<ModuleGraph>
-          // back from the return value.
-          graph.clone(),
-          CheckOptions {
-            build_fast_check_graph: true,
-            lib,
-            reload: self.options.reload_flag(),
-            type_check_mode: self.options.type_check_mode(),
-          },
-        )
-        .await?;
+      self.type_checker.check(
+        // todo(perf): since this is only done the first time the graph is
+        // created, we could avoid the clone of the graph here by providing
+        // the actual graph on the first run and then getting the Arc<ModuleGraph>
+        // back from the return value.
+        graph.clone(),
+        CheckOptions {
+          build_fast_check_graph: true,
+          lib,
+          reload: self.options.reload_flag(),
+          type_check_mode: self.options.type_check_mode(),
+        },
+      )?;
     }
 
     // write the lockfile if there is one and do so after type checking

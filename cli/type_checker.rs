@@ -140,12 +140,12 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check(
+  pub fn check(
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options).await?;
+    let mut diagnostics = self.check_diagnostics(graph, options)?;
     let mut failed = false;
     for result in diagnostics.by_ref() {
       let mut diagnostics = result?;
@@ -174,7 +174,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check_diagnostics(
+  pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
