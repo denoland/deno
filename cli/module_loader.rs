@@ -243,7 +243,7 @@ impl ModuleLoadPreparer {
     }
 
     // write the lockfile if there is one and do so after type checking
-    // as type checking might discover more dependencies
+    // as type checking might discover `@types/node`
     if let Some(lockfile) = &self.lockfile {
       lockfile.write_if_changed()?;
     }
