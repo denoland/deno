@@ -364,7 +364,6 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  npm_installer: Option<Arc<NpmInstaller>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
 }
@@ -372,13 +371,11 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    npm_installer: Option<Arc<NpmInstaller>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      npm_installer,
       module_graph_builder,
       type_checker,
     }
@@ -500,12 +497,6 @@ impl ModuleGraphCreator {
       .module_graph_builder
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
-
-    if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
-    }
 
     Ok(graph)
   }
@@ -785,7 +776,15 @@ impl ModuleGraphBuilder {
         },
         options.npm_caching,
       )
-      .await
+      .await?;
+
+    if let Some(npm_installer) = &self.npm_installer {
+      if graph.has_node_specifier && options.graph_kind.include_types() {
+        npm_installer.inject_synthetic_types_node_package().await?;
+      }
+    }
+
+    Ok(())
   }
 
   async fn build_graph_with_npm_resolution_and_build_options<'a>(
