@@ -516,3 +516,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+dprint-plugin-typescript = { git = "https://github.com/kt3k/dprint-plugin-typescript.git", branch = "allow-external-formatter-to-throw-errors" }
