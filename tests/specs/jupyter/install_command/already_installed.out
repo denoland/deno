@@ -1,2 +1,2 @@
 Warning "deno jupyter" is unstable and might change in the future.
-error: Deno kernel already exists at [WILDLINE]/kernels/deno, run again with `--force` to overwrite it
+error: Deno kernel already exists at [WILDLINE]deno, run again with `--force` to overwrite it
