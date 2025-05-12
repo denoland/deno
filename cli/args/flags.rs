@@ -358,7 +358,7 @@ pub struct ServeFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
-  pub worker_count: Option<usize>,
+  pub parallel: bool,
   pub open_site: bool,
 }
 
@@ -370,7 +370,7 @@ impl ServeFlags {
       watch: None,
       port,
       host: host.to_owned(),
-      worker_count: None,
+      parallel: false,
       open_site: false,
     }
   }
@@ -419,10 +419,10 @@ pub struct TestFlags {
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
+  pub parallel: bool,
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
-  pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_leaks: bool,
   pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
@@ -961,8 +961,8 @@ impl Flags {
       .contains(&String::from("otel"));
 
     let otel_var = |name| match std::env::var(name) {
-      Ok(s) if s.to_lowercase() == "true" => Some(true),
-      Ok(s) if s.to_lowercase() == "false" => Some(false),
+      Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
+      Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),
       Ok(_) => {
         log::warn!("'{name}' env var value not recognized, only 'true' and 'false' are accepted");
         None
@@ -1900,6 +1900,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
+      .arg(env_file_arg())
   })
 }
 
@@ -4499,7 +4500,7 @@ impl CommandExt for Command {
       .display_order(next_display_order())
     );
 
-    for feature in crate::UNSTABLE_FEATURES.iter() {
+    for feature in deno_runtime::UNSTABLE_FEATURES.iter() {
       let mut arg = Arg::new(feature.flag_name)
         .long(feature.flag_name)
         .help(feature.help_text)
@@ -4527,10 +4528,6 @@ impl CommandExt for Command {
       }
 
       arg = arg.long_help(long_help_val);
-      if let Some(env_var_name) = feature.env_var {
-        arg = arg.env(env_var_name);
-      }
-
       cmd = cmd.arg(arg);
     }
 
@@ -4685,6 +4682,7 @@ fn cache_parse(
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
   allow_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -5370,8 +5368,6 @@ fn serve_parse(
     .unwrap_or_else(|| "0.0.0.0".to_owned());
   let open_site = matches.remove_one::<bool>("open").unwrap_or(false);
 
-  let worker_count = parallel_arg_parse(matches).map(|v| v.get());
-
   runtime_args_parse(flags, matches, true, true, true)?;
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
@@ -5414,7 +5410,7 @@ fn serve_parse(
     watch: watch_arg_parse_with_paths(matches)?,
     port,
     host,
-    worker_count,
+    parallel: matches.get_flag("parallel"),
     open_site,
   });
 
@@ -5475,18 +5471,6 @@ fn task_parse(
   Ok(())
 }
 
-fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
-  if matches.get_flag("parallel") {
-    if let Ok(value) = env::var("DENO_JOBS") {
-      value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else {
-    None
-  }
-}
-
 fn test_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -5536,8 +5520,6 @@ fn test_parse(
     flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = parallel_arg_parse(matches);
-
   let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
   } else {
@@ -5576,7 +5558,7 @@ fn test_parse(
     filter,
     shuffle,
     permit_no_files: permit_no_files_parse(matches),
-    concurrent_jobs,
+    parallel: matches.get_flag("parallel"),
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches)?,
     reporter,
@@ -6175,7 +6157,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-npm-lazy-caching");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for feature in crate::UNSTABLE_FEATURES {
+    for feature in deno_runtime::UNSTABLE_FEATURES {
       if matches.get_flag(feature.flag_name) {
         flags
           .unstable_config
@@ -7613,6 +7595,18 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "cache", "--env-file", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Cache(CacheFlags {
+          files: svec!["script.ts"],
+        }),
+        env_file: Some(svec![".env"]),
         ..Flags::default()
       }
     );
@@ -9514,7 +9508,7 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
@@ -9599,7 +9593,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
@@ -9643,7 +9637,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
@@ -9781,7 +9775,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
@@ -9818,7 +9812,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
@@ -9854,7 +9848,7 @@ mod tests {
             include: vec!["./".to_string()],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
@@ -9892,7 +9886,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: None,
+          parallel: false,
           trace_leaks: false,
           coverage_dir: None,
           coverage_raw_data_only: false,

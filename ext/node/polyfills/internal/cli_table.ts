@@ -1,10 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { getStringWidth } from "ext:deno_node/internal/util/inspect.mjs";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  SafeArrayIterator,
+  StringPrototypeRepeat,
+  MathCeil,
+  MathMax,
+  ObjectHasOwn,
+} = primordials;
 
 const tableChars = {
   middleMiddle: "\u2500",
@@ -30,7 +37,7 @@ const renderRow = (row: string[], columnWidths: number[]) => {
     const needed = columnWidths[i] - len;
     // round(needed) + ceil(needed) will always add up to the amount
     // of spaces we need while also left justifying the output.
-    out += cell + " ".repeat(Math.ceil(needed));
+    out += cell + StringPrototypeRepeat(" ", MathCeil(needed));
     if (i !== row.length - 1) {
       out += tableChars.middle;
     }
@@ -41,8 +48,10 @@ const renderRow = (row: string[], columnWidths: number[]) => {
 
 const table = (head: string[], columns: string[][]) => {
   const rows: string[][] = [];
-  const columnWidths = head.map((h) => getStringWidth(h));
-  const longestColumn = Math.max(...columns.map((a) => a.length));
+  const columnWidths = ArrayPrototypeMap(head, (h) => getStringWidth(h));
+  const longestColumn = MathMax(
+    ...new SafeArrayIterator(ArrayPrototypeMap(columns, (a) => a.length)),
+  );
 
   for (let i = 0; i < head.length; i++) {
     const column = columns[i];
@@ -50,31 +59,32 @@ const table = (head: string[], columns: string[][]) => {
       if (rows[j] === undefined) {
         rows[j] = [];
       }
-      const value = rows[j][i] = Object.hasOwn(column, j) ? column[j] : "";
+      const value = rows[j][i] = ObjectHasOwn(column, j) ? column[j] : "";
       const width = columnWidths[i] || 0;
       const counted = getStringWidth(value);
-      columnWidths[i] = Math.max(width, counted);
+      columnWidths[i] = MathMax(width, counted);
     }
   }
 
-  const divider = columnWidths.map((i) =>
-    tableChars.middleMiddle.repeat(i + 2)
+  const divider = ArrayPrototypeMap(
+    columnWidths,
+    (i) => StringPrototypeRepeat(tableChars.middleMiddle, i + 2),
   );
 
   let result = tableChars.topLeft +
-    divider.join(tableChars.topMiddle) +
+    ArrayPrototypeJoin(divider, tableChars.topMiddle) +
     tableChars.topRight + "\n" +
     renderRow(head, columnWidths) + "\n" +
     tableChars.leftMiddle +
-    divider.join(tableChars.rowMiddle) +
+    ArrayPrototypeJoin(divider, tableChars.rowMiddle) +
     tableChars.rightMiddle + "\n";
 
-  for (const row of rows) {
+  for (const row of new SafeArrayIterator(rows)) {
     result += `${renderRow(row, columnWidths)}\n`;
   }
 
   result += tableChars.bottomLeft +
-    divider.join(tableChars.bottomMiddle) +
+    ArrayPrototypeJoin(divider, tableChars.bottomMiddle) +
     tableChars.bottomRight;
 
   return result;

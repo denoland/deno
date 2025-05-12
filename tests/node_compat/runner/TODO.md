@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1166 tests out of 3993 have been ported from Node 23.9.0 (29.20% ported, 71.32% remaining).
+1167 tests out of 3993 have been ported from Node 23.9.0 (29.23% ported, 71.30% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -616,7 +616,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-exclusive-implicit-bind.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-exclusive-implicit-bind.js)
 - [parallel/test-dgram-multicast-loopback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-loopback.js)
 - [parallel/test-dgram-multicast-set-interface.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-set-interface.js)
-- [parallel/test-dgram-multicast-setTTL.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-setTTL.js)
 - [parallel/test-dgram-reuseport.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-reuseport.js)
 - [parallel/test-dgram-send-address-types.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-address-types.js)
 - [parallel/test-dgram-send-empty-array.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-empty-array.js)
