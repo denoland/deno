@@ -11395,7 +11395,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "jupyter", "--install",]);
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--force"]);
     assert_eq!(
       r.unwrap(),
       Flags {
