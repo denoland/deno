@@ -15,6 +15,7 @@ use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -218,4 +219,31 @@ pub struct UnstableConfig {
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
+}
+
+impl UnstableConfig {
+  pub fn fill_with_env(&mut self) {
+    fn maybe_set(value: &mut bool, var_name: &str) {
+      if !*value && has_flag_env_var(var_name) {
+        *value = true;
+      }
+    }
+
+    maybe_set(
+      &mut self.bare_node_builtins,
+      UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
+    );
+    maybe_set(
+      &mut self.lazy_dynamic_imports,
+      UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
+    );
+    maybe_set(
+      &mut self.npm_lazy_caching,
+      UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
+    );
+    maybe_set(
+      &mut self.sloppy_imports,
+      UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
+    );
+  }
 }
