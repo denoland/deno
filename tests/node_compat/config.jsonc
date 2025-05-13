@@ -271,6 +271,7 @@
       "test-buffer-bigint64.js",
       "test-buffer-bytelength.js",
       "test-buffer-compare-offset.js",
+      "test-buffer-compare.js",
       "test-buffer-concat.js",
       "test-buffer-constants.js",
       "test-buffer-copy.js",
