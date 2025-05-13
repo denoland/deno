@@ -182,13 +182,11 @@ async function startTls(
     alpnProtocols = undefined,
   } = { __proto__: null },
 ) {
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
-    rid: conn[internalRidSymbol],
+  return startTlsInternal(conn, {
     hostname,
     caCerts,
     alpnProtocols,
-  }, null);
-  return new TlsConn(rid, remoteAddr, localAddr);
+  });
 }
 
 function startTlsInternal(

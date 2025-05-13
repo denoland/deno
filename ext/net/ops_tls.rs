@@ -280,6 +280,7 @@ where
   let hostname_dns = ServerName::try_from(hostname.to_string())
     .map_err(|_| NetError::InvalidHostname(hostname))?;
 
+  // --unsafely-ignore-certificate-errors overrides the `rejectUnauthorized` option.
   let unsafely_ignore_certificate_errors = if reject_unauthorized {
     state
       .borrow()
