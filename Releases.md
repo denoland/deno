@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.13 / 2025.05.13
+
+- fix: handling of contradictory global permission flags (#29213)
+- fix: make --allow-env stronger that --deny-env (#29079)
+
 ### 2.1.12 / 2025.04.11
 
 The 2.1.11 release had an incorrect version number when doing `deno -v`.
