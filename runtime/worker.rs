@@ -319,6 +319,7 @@ pub(crate) fn request_builder_hook(
 ) -> Result<(), JsErrorBox> {
   const X_DENO_FETCH_TOKEN: http::HeaderName =
     http::HeaderName::from_static("x-deno-fetch-token");
+  const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
   static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
     OnceLock::new();
 
@@ -339,6 +340,16 @@ pub(crate) fn request_builder_hook(
     request
       .headers_mut()
       .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(cdn_loop) = cdn_loop_value {
+    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
   }
 
   Ok(())
