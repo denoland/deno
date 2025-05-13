@@ -158,6 +158,7 @@ impl Intercept {
       Target::Socks { ref mut auth, .. } => {
         *auth = Some((user.into(), pass.into()));
       }
+      #[cfg(not(windows))]
       Target::Unix { .. } => {
         // Auth not supported for Unix sockets
       }
@@ -239,6 +240,7 @@ impl Target {
     Some(target)
   }
 
+  #[cfg(not(windows))]
   pub(crate) fn new_unix(path: PathBuf) -> Self {
     Target::Unix { path }
   }

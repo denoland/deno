@@ -6222,7 +6222,7 @@ declare namespace Deno {
    *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
    *    through a different server.
    *  - Unix domain socket: this sends all requests to a local Unix domain
-   *    socket rather than a TCP socket.
+   *    socket rather than a TCP socket. *Not supported on Windows.*
    *
    * @category Fetch
    */

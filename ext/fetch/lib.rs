@@ -1108,6 +1108,8 @@ pub enum HttpClientCreateError {
   #[class(inherit)]
   #[error(transparent)]
   RootCertStore(JsErrorBox),
+  #[error("Unix proxy is not supported on Windows")]
+  UnixProxyNotSupportedOnWindows,
 }
 
 /// Create new instance of async Client. This client supports
@@ -1174,8 +1176,15 @@ pub fn create_http_client(
         intercept
       }
       Proxy::Unix { path } => {
-        let target = proxy::Target::new_unix(PathBuf::from(path));
-        proxy::Intercept::all(target)
+        #[cfg(not(windows))]
+        {
+          let target = proxy::Target::new_unix(PathBuf::from(path));
+          proxy::Intercept::all(target)
+        }
+        #[cfg(windows)]
+        {
+          return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
+        }
       }
     };
     proxies.prepend(intercept);
