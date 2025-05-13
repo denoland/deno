@@ -281,10 +281,25 @@ export function Server(options: any, listener: any) {
 export class ServerImpl extends EventEmitter {
   listener?: Deno.TlsListener;
   #closed = false;
+  #unrefed = false;
   constructor(public options: any, listener: any) {
     super();
     if (listener) {
       this.on("secureConnection", listener);
+    }
+  }
+
+  unref() {
+    this.#unrefed = true;
+    if (this.listener) {
+      this.listener.unref();
+    }
+  }
+
+  ref() {
+    this.#unrefed = false;
+    if (this.listener) {
+      this.listener.ref();
     }
   }
 
@@ -302,6 +317,11 @@ export class ServerImpl extends EventEmitter {
   }
 
   async #listen(listener: Deno.TlsListener) {
+    if (this.#unrefed) {
+      listener.unref();
+      return;
+    }
+
     while (!this.#closed) {
       try {
         // Creates TCP handle and socket directly from Deno.TlsConn.
