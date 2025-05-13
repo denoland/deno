@@ -14,10 +14,12 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
+pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
+pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
@@ -42,6 +44,8 @@ use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
 pub mod factory;
+#[cfg(feature = "graph")]
+pub mod graph;
 pub mod npm;
 pub mod npmrc;
 mod sync;
@@ -128,12 +132,22 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
+pub trait DenoResolverSys:
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
+{
+}
+
+impl<T> DenoResolverSys for T where
+  T: FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
+{
+}
+
 pub struct DenoResolverOptions<
   'a,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_and_req_resolver: Option<
@@ -155,13 +169,13 @@ pub struct DenoResolverOptions<
 }
 
 #[allow(clippy::disallowed_types)]
-pub type DenoResolverRc<
+pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
 > = crate::sync::MaybeArc<
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -169,11 +183,11 @@ pub type DenoResolverRc<
   >,
 >;
 
-/// Helper type for a DenoResolverRc that has the implementations
+/// Helper type for a RawDenoResolverRc that has the implementations
 /// used by the Deno CLI.
-pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+pub type DefaultRawDenoResolverRc<TSys> = RawDenoResolverRc<
   npm::DenoInNpmPackageChecker,
-  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
   TSys,
 >;
@@ -181,11 +195,11 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct DenoResolver<
+pub struct RawDenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   node_and_npm_resolver: Option<
@@ -206,9 +220,9 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+    TSys: DenoResolverSys,
   >
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,

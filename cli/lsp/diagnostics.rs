@@ -25,6 +25,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -40,6 +41,7 @@ use import_map::ImportMap;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
+use node_resolver::NodeResolutionKind;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::Duration;
@@ -1577,10 +1579,12 @@ fn maybe_ambient_specifier_resolution_err(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
   resolution: &Resolution,
+  resolution_kind: ResolutionKind,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
@@ -1647,6 +1651,7 @@ fn diagnose_resolution(
             .npm_to_file_url(
               &pkg_ref,
               &referrer_module.specifier,
+              NodeResolutionKind::from_deno_graph(resolution_kind),
               referrer_module.resolution_mode,
             )
             .is_none()
@@ -1774,22 +1779,27 @@ fn diagnose_dependency(
         .includes(i.specifier_range.range.start)
         .is_some()
     });
-
+  let resolution;
+  let resolution_kind;
+  if dependency.maybe_code.is_none()
+  // If not @ts-types, diagnose the types if the code errored because
+  // it's likely resolving into the node_modules folder, which might be
+  // erroring correctly due to resolution only being for bundlers. Let this
+  // fail at runtime if necessary, but don't bother erroring in the editor
+  || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+    && matches!(dependency.maybe_code, Resolution::Err(_))
+  {
+    resolution = &dependency.maybe_type;
+    resolution_kind = ResolutionKind::Types;
+  } else {
+    resolution = &dependency.maybe_code;
+    resolution_kind = ResolutionKind::Execution;
+  };
   let (resolution_diagnostics, deferred) = diagnose_resolution(
     snapshot,
     dependency_key,
-    if dependency.maybe_code.is_none()
-        // If not @ts-types, diagnose the types if the code errored because
-        // it's likely resolving into the node_modules folder, which might be
-        // erroring correctly due to resolution only being for bundlers. Let this
-        // fail at runtime if necessary, but don't bother erroring in the editor
-        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
-          && matches!(dependency.maybe_code, Resolution::Err(_))
-    {
-      &dependency.maybe_type
-    } else {
-      &dependency.maybe_code
-    },
+    resolution,
+    resolution_kind,
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
@@ -1825,6 +1835,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       &dependency.maybe_type,
+      ResolutionKind::Types,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,

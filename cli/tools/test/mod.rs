@@ -640,6 +640,7 @@ async fn configure_main_worker(
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;

@@ -984,6 +984,7 @@ pub async fn run(
     StorageKeyResolver::empty(),
     sys.clone(),
     lib_main_worker_options,
+    Default::default(),
   );
 
   // Initialize v8 once from the main thread.

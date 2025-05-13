@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
+  op_http_notify_serving,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
@@ -40,6 +41,7 @@ const {
   PromisePrototypeCatch,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   Symbol,
@@ -58,7 +60,6 @@ import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { headerListFromHeaders } from "ext:deno_fetch/20_headers.js";
 import {
   abortRequest,
   fromInnerRequest,
@@ -501,15 +502,8 @@ function fastSyncResponseOrStream(
     return;
   }
 
-  let stream;
-  let body;
-  if (respBody.streamOrStatic) {
-    stream = respBody.streamOrStatic;
-    body = stream.body;
-  } else {
-    stream = respBody;
-    body = respBody;
-  }
+  const stream = respBody.streamOrStatic;
+  const body = stream.body;
   if (body !== undefined) {
     // We ensure the response has not been consumed yet in the caller of this
     // function.
@@ -640,19 +634,8 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    let status;
-    let headers;
-    let body;
-    if (inner) {
-      status = inner.status;
-      headers = inner.headerList;
-      body = inner.body;
-    } else {
-      status = response.status;
-      headers = headerListFromHeaders(response.headers);
-      body = response.body;
-    }
-
+    const status = inner.status;
+    const headers = inner.headerList;
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
@@ -661,7 +644,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, body, status, innerRequest);
+    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
   if (TRACING_ENABLED) {
@@ -787,43 +770,88 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const { 0: overrideKind, 1: overrideHost, 2: overridePort } =
-    op_http_serve_address_override();
-  switch (overrideKind) {
-    case 1: {
-      // TCP
-      options = {
-        ...options,
-        hostname: overrideHost,
-        port: overridePort,
-      };
-      delete options.path;
-      delete options.cid;
-      break;
+  const {
+    0: overrideKind,
+    1: overrideHost,
+    2: overridePort,
+    3: duplicateListener,
+  } = op_http_serve_address_override();
+  if (overrideKind) {
+    let envOptions = duplicateListener ? { __proto__: null } : options;
+
+    switch (overrideKind) {
+      case 1: {
+        // TCP
+        envOptions = {
+          ...envOptions,
+          hostname: overrideHost,
+          port: overridePort,
+        };
+        delete envOptions.path;
+        delete envOptions.cid;
+        break;
+      }
+      case 2: {
+        // Unix
+        envOptions = {
+          ...envOptions,
+          path: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        break;
+      }
+      case 3: {
+        // Vsock
+        envOptions = {
+          ...envOptions,
+          cid: Number(overrideHost),
+          port: overridePort,
+        };
+        delete envOptions.hostname;
+        delete envOptions.path;
+        break;
+      }
     }
-    case 2: {
-      // Unix
-      options = {
-        ...options,
-        path: overrideHost,
+
+    if (duplicateListener) {
+      envOptions.onListen = () => {
+        // override default console.log behavior
       };
-      delete options.hostname;
-      delete options.port;
-      break;
-    }
-    case 3: {
-      // Vsock
-      options = {
-        ...options,
-        cid: Number(overrideHost),
-        port: overridePort,
+      const envListener = serveInner(envOptions, handler);
+      const userListener = serveInner(options, handler);
+
+      return {
+        addr: userListener.addr,
+        finished: SafePromiseAll([envListener.finished, userListener.finished]),
+        shutdown() {
+          return SafePromiseAll([
+            envListener.shutdown(),
+            userListener.shutdown(),
+          ]);
+        },
+        ref() {
+          envListener.ref();
+          userListener.ref();
+        },
+        unref() {
+          envListener.unref();
+          userListener.unref();
+        },
+        [SymbolAsyncDispose]() {
+          return this.shutdown();
+        },
       };
-      delete options.hostname;
-      delete options.path;
-      break;
     }
+
+    options = envOptions;
   }
 
+  return serveInner(options, handler);
+}
+
+function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
@@ -1022,6 +1050,8 @@ function serveHttpOn(context, addr, callback) {
     }
   })();
 
+  op_http_notify_serving();
+
   return {
     addr,
     finished,
@@ -1071,41 +1101,57 @@ internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
-  if (ObjectHasOwn(exports, "fetch")) {
-    if (typeof exports.fetch !== "function") {
-      throw new TypeError(
-        "Invalid type for fetch: must be a function with a single or no parameter",
-      );
-    }
-    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
-      Deno.serve({
-        port: servePort,
-        hostname: serveHost,
-        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-          serveWorkerCount !== null,
-        onListen: ({ port, hostname }) => {
-          if (serveIsMain) {
-            const nThreads = serveWorkerCount > 1
-              ? ` with ${serveWorkerCount} threads`
-              : "";
-            const host = formatHostName(hostname);
+  if (!ObjectHasOwn(exports, "fetch")) return;
 
-            import.meta.log(
-              "info",
-              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
-              "color: green",
-              "color: inherit",
-              "color: yellow",
-              "color: inherit",
-            );
-          }
-        },
-        handler: (req, connInfo) => {
-          return exports.fetch(req, connInfo);
-        },
-      });
-    };
+  if (typeof exports.fetch !== "function") {
+    throw new TypeError("Invalid type for fetch: must be a function");
   }
+
+  return ({
+    servePort,
+    serveHost,
+    workerCountWhenMain,
+  }) => {
+    Deno.serve({
+      port: servePort,
+      hostname: serveHost,
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
+      onListen: ({ transport, port, hostname, path, cid }) => {
+        if (workerCountWhenMain != null) {
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
+            : "";
+
+          let target;
+          switch (transport) {
+            case "tcp":
+              target = `http://${formatHostName(hostname)}:${port}/`;
+              break;
+            case "unix":
+              target = path;
+              break;
+            case "vsock":
+              target = `vsock:${cid}:${port}`;
+              break;
+          }
+
+          import.meta.log(
+            "info",
+            `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
+            "color: green",
+            "color: inherit",
+            "color: yellow",
+            "color: inherit",
+          );
+        }
+      },
+      handler: (req, connInfo) => {
+        return exports.fetch(req, connInfo);
+      },
+    });
+  };
 }
 
 export {

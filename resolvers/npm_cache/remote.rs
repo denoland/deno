@@ -3,7 +3,6 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_npm::npm_rc::RegistryConfig;
-use http::header;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AuthHeaderForNpmRegistryError {
@@ -16,24 +15,15 @@ pub enum AuthHeaderForNpmRegistryError {
 }
 
 // TODO(bartlomieju): support more auth methods besides token and basic auth
-pub fn maybe_auth_header_for_npm_registry(
+pub fn maybe_auth_header_value_for_npm_registry(
   registry_config: &RegistryConfig,
-) -> Result<
-  Option<(header::HeaderName, header::HeaderValue)>,
-  AuthHeaderForNpmRegistryError,
-> {
+) -> Result<Option<String>, AuthHeaderForNpmRegistryError> {
   if let Some(token) = registry_config.auth_token.as_ref() {
-    return Ok(Some((
-      header::AUTHORIZATION,
-      header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
-    )));
+    return Ok(Some(format!("Bearer {}", token)));
   }
 
   if let Some(auth) = registry_config.auth.as_ref() {
-    return Ok(Some((
-      header::AUTHORIZATION,
-      header::HeaderValue::from_str(&format!("Basic {}", auth)).unwrap(),
-    )));
+    return Ok(Some(format!("Basic {}", auth)));
   }
 
   let (username, password) = (
@@ -59,10 +49,7 @@ pub fn maybe_auth_header_for_npm_registry(
       String::from_utf8_lossy(&pw_base64)
     ));
 
-    return Ok(Some((
-      header::AUTHORIZATION,
-      header::HeaderValue::from_str(&format!("Basic {}", bearer)).unwrap(),
-    )));
+    return Ok(Some(format!("Basic {}", bearer)));
   }
 
   Ok(None)

@@ -3,7 +3,6 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_core::snapshot::*;
 use deno_core::v8;
@@ -25,62 +24,49 @@ pub fn create_runtime_snapshot(
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
   // and `runtime/snapshot.rs`!
-  let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
-    deno_telemetry::deno_telemetry::init(),
-    deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
-    deno_web::deno_web::init::<Permissions>(
-      Default::default(),
-      Default::default(),
-    ),
-    deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init(None),
-    deno_websocket::deno_websocket::init::<Permissions>(
-      "".to_owned(),
-      None,
-      None,
-    ),
-    deno_webstorage::deno_webstorage::init(None),
-    deno_crypto::deno_crypto::init(None),
-    deno_broadcast_channel::deno_broadcast_channel::init(
-      deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-    ),
-    deno_ffi::deno_ffi::init::<Permissions>(None),
-    deno_net::deno_net::init::<Permissions>(None, None),
-    deno_tls::deno_tls::init(),
-    deno_kv::deno_kv::init(
-      deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None, None),
-      deno_kv::KvConfig::builder().build(),
+    deno_telemetry::deno_telemetry::lazy_init(),
+    deno_webidl::deno_webidl::lazy_init(),
+    deno_console::deno_console::lazy_init(),
+    deno_url::deno_url::lazy_init(),
+    deno_web::deno_web::lazy_init::<Permissions>(),
+    deno_webgpu::deno_webgpu::lazy_init(),
+    deno_canvas::deno_canvas::lazy_init(),
+    deno_fetch::deno_fetch::lazy_init::<Permissions>(),
+    deno_cache::deno_cache::lazy_init(),
+    deno_websocket::deno_websocket::lazy_init::<Permissions>(),
+    deno_webstorage::deno_webstorage::lazy_init(),
+    deno_crypto::deno_crypto::lazy_init(),
+    deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
+      deno_broadcast_channel::InMemoryBroadcastChannel,
+    >(),
+    deno_ffi::deno_ffi::lazy_init::<Permissions>(),
+    deno_net::deno_net::lazy_init::<Permissions>(),
+    deno_tls::deno_tls::lazy_init(),
+    deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler<Permissions>>(
     ),
     deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
-    deno_napi::deno_napi::init::<Permissions>(None),
-    deno_http::deno_http::init(deno_http::Options::default()),
-    deno_io::deno_io::init(Default::default()),
-    deno_fs::deno_fs::init::<Permissions>(fs.clone()),
-    deno_os::deno_os::init(Default::default()),
-    deno_process::deno_process::init(Default::default()),
-    deno_node::deno_node::init::<
+    deno_napi::deno_napi::lazy_init::<Permissions>(),
+    deno_http::deno_http::lazy_init(),
+    deno_io::deno_io::lazy_init(),
+    deno_fs::deno_fs::lazy_init::<Permissions>(),
+    deno_os::deno_os::lazy_init(),
+    deno_process::deno_process::lazy_init(),
+    deno_node::deno_node::lazy_init::<
       Permissions,
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
-    >(None, fs.clone()),
-    ops::runtime::deno_runtime::init("deno:runtime".parse().unwrap()),
-    ops::worker_host::deno_worker_host::init(
-      Arc::new(|_| unreachable!("not used in snapshot.")),
-      None,
-    ),
-    ops::fs_events::deno_fs_events::init(),
-    ops::permissions::deno_permissions::init(),
-    ops::tty::deno_tty::init(),
-    ops::http::deno_http_runtime::init(),
-    ops::bootstrap::deno_bootstrap::init(Some(snapshot_options)),
-    runtime::init(),
-    ops::web_worker::deno_web_worker::init(),
+    >(),
+    ops::runtime::deno_runtime::lazy_init(),
+    ops::worker_host::deno_worker_host::lazy_init(),
+    ops::fs_events::deno_fs_events::lazy_init(),
+    ops::permissions::deno_permissions::lazy_init(),
+    ops::tty::deno_tty::lazy_init(),
+    ops::http::deno_http_runtime::lazy_init(),
+    ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
+    runtime::lazy_init(),
+    ops::web_worker::deno_web_worker::lazy_init(),
   ];
   extensions.extend(custom_extensions);
 

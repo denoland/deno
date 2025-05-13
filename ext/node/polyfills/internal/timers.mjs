@@ -1,14 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { primordials } from "ext:core/mod.js";
 const {
+  FunctionPrototypeBind,
   MapPrototypeDelete,
   MapPrototypeSet,
+  NumberIsFinite,
+  SafeArrayIterator,
   SafeMap,
+  Symbol,
+  SymbolToPrimitive,
 } = primordials;
 
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
@@ -61,11 +63,21 @@ Timeout.prototype[createTimer] = function () {
     if (!this._isRepeat) {
       MapPrototypeDelete(activeTimers, this[kTimerId]);
     }
-    return callback.bind(this)(...args);
+    return FunctionPrototypeBind(callback, this)(
+      ...new SafeArrayIterator(args),
+    );
   };
   const id = this._isRepeat
-    ? setInterval_(cb, this._idleTimeout, ...this._timerArgs)
-    : setTimeout_(cb, this._idleTimeout, ...this._timerArgs);
+    ? setInterval_(
+      cb,
+      this._idleTimeout,
+      ...new SafeArrayIterator(this._timerArgs),
+    )
+    : setTimeout_(
+      cb,
+      this._idleTimeout,
+      ...new SafeArrayIterator(this._timerArgs),
+    );
   if (!this[kRefed]) {
     Deno.unrefTimer(id);
   }
@@ -112,13 +124,13 @@ Timeout.prototype.hasRef = function () {
   return this[kRefed];
 };
 
-Timeout.prototype[Symbol.toPrimitive] = function () {
+Timeout.prototype[SymbolToPrimitive] = function () {
   return this[kTimerId];
 };
 
 // Immediate constructor function.
 export function Immediate(callback, ...args) {
-  this._immediateId = setImmediate_(callback, ...args);
+  this._immediateId = setImmediate_(callback, ...new SafeArrayIterator(args));
 }
 
 // Make sure the linked list only shows the minimal necessary information.
@@ -153,7 +165,7 @@ Immediate.prototype.hasRef = function () {
 export function getTimerDuration(msecs, name) {
   validateNumber(msecs, name);
 
-  if (msecs < 0 || !Number.isFinite(msecs)) {
+  if (msecs < 0 || !NumberIsFinite(msecs)) {
     throw new ERR_OUT_OF_RANGE(name, "a non-negative finite number", msecs);
   }
 

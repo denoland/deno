@@ -15,7 +15,7 @@ pub fn otel_runtime_config() -> OtelRuntimeConfig {
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 const TYPESCRIPT: &str = "5.8.3";
-pub const DENO_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DENO_VERSION: &str = env!("DENO_VERSION");
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
@@ -40,13 +40,9 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
 
     DenoVersionInfo {
       deno: if release_channel == ReleaseChannel::Canary {
-        concat!(
-          env!("CARGO_PKG_VERSION"),
-          "+",
-          env!("GIT_COMMIT_HASH_SHORT")
-        )
+        concat!(env!("DENO_VERSION"), "+", env!("GIT_COMMIT_HASH_SHORT"))
       } else {
-        env!("CARGO_PKG_VERSION")
+        env!("DENO_VERSION")
       },
 
       release_channel,
@@ -57,12 +53,12 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
       user_agent: if release_channel == ReleaseChannel::Canary {
         concat!(
           "Deno/",
-          env!("CARGO_PKG_VERSION"),
+          env!("DENO_VERSION"),
           "+",
           env!("GIT_COMMIT_HASH_SHORT")
         )
       } else {
-        concat!("Deno/", env!("CARGO_PKG_VERSION"))
+        concat!("Deno/", env!("DENO_VERSION"))
       },
 
       typescript: TYPESCRIPT,

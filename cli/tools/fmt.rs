@@ -618,6 +618,8 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
+      declaration_order_group_by:
+        config::DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
     },
   };
   // Wraps the text in a css block of `a { ... }`
@@ -640,10 +642,21 @@ fn format_embedded_css(
       continue;
     }
     let mut chars = l.chars();
+
+    // indent width option is disregarded when use tabs is true since
+    // only one tab will be inserted when indented once
+    // https://malva.netlify.app/config/indent-width.html
+    let indent_width = if config.use_tabs {
+      1
+    } else {
+      config.indent_width as usize
+    };
+
     // drop the indentation
-    for _ in 0..config.indent_width {
+    for _ in 0..indent_width {
       chars.next();
     }
+
     buf.push(chars.as_str());
   }
   Some(buf.join("\n").to_string())
@@ -711,6 +724,7 @@ fn format_embedded_html(
       script_formatter: None,
       ignore_comment_directive: "deno-fmt-ignore".into(),
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+      single_attr_same_line: true,
     },
   };
   let Ok(text) = markup_fmt::format_text(
@@ -1463,6 +1477,8 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    declaration_order_group_by:
+      DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
   };
 
   FormatOptions {
@@ -1523,6 +1539,7 @@ fn get_resolved_markup_fmt_config(
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    single_attr_same_line: true,
   };
 
   FormatOptions {

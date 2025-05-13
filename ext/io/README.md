@@ -11,9 +11,8 @@ From javascript, include the extension's source:
 import * as io from "ext:deno_io/12_io.js";
 ```
 
-Then from rust, provide:
-`deno_io::deno_io::init_ops_and_esm(Option<deno_io::Stdio>)` in the `extensions`
-field of your `RuntimeOptions`
+Then from rust, provide: `deno_io::deno_io::init(Option<deno_io::Stdio>)` in the
+`extensions` field of your `RuntimeOptions`
 
 Where `deno_io::Stdio` implements `Default`, and can therefore be provided as
 `Some(deno_io::Stdio::default())`

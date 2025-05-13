@@ -109,6 +109,7 @@ pub async fn kernel(
         stdout: StdioPipe::file(stdout),
         stderr: StdioPipe::file(stderr),
       },
+      None,
     )
     .await?;
   worker.setup_repl().await?;
