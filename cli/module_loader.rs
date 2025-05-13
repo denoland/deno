@@ -220,11 +220,6 @@ impl ModuleLoadPreparer {
 
     self.graph_roots_valid(graph, roots, allow_unknown_media_types)?;
 
-    // write the lockfile if there is one
-    if let Some(lockfile) = &self.lockfile {
-      lockfile.write_if_changed()?;
-    }
-
     drop(_pb_clear_guard);
 
     // type check if necessary
@@ -245,6 +240,12 @@ impl ModuleLoadPreparer {
           },
         )
         .await?;
+    }
+
+    // write the lockfile if there is one and do so after type checking
+    // as type checking might discover `@types/node`
+    if let Some(lockfile) = &self.lockfile {
+      lockfile.write_if_changed()?;
     }
 
     log::debug!("Prepared module load.");
