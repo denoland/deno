@@ -14,6 +14,7 @@ use std::future;
 use std::future::Future;
 use std::net::IpAddr;
 use std::path::Path;
+#[cfg(not(windows))]
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -1175,16 +1176,14 @@ pub fn create_http_client(
         }
         intercept
       }
+      #[cfg(not(windows))]
       Proxy::Unix { path } => {
-        #[cfg(not(windows))]
-        {
-          let target = proxy::Target::new_unix(PathBuf::from(path));
-          proxy::Intercept::all(target)
-        }
-        #[cfg(windows)]
-        {
-          return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
-        }
+        let target = proxy::Target::new_unix(PathBuf::from(path));
+        proxy::Intercept::all(target)
+      }
+      #[cfg(windows)]
+      Proxy::Unix { .. } => {
+        return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
     };
     proxies.prepend(intercept);

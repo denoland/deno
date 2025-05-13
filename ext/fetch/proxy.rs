@@ -6,6 +6,7 @@
 use std::env;
 use std::future::Future;
 use std::net::IpAddr;
+#[cfg(not(windows))]
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
