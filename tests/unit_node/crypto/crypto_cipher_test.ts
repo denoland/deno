@@ -384,6 +384,7 @@ Deno.test({
   name: "getCiphers",
   fn() {
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
+    assertEquals(crypto.getCiphers().includes("aes-256-ctr"), true);
 
     const getZeroKey = (cipher: string) => zeros(+cipher.match(/\d+/)![0] / 8);
     const getZeroIv = (cipher: string) => {
