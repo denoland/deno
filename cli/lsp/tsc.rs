@@ -52,6 +52,7 @@ use lazy_regex::lazy_regex;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -4875,6 +4876,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
             scope,
+            NodeResolutionKind::Types,
             ResolutionMode::Import,
           ) else {
             lsp_log!("failed to resolve {req_ref} to file URL");
@@ -5054,7 +5056,7 @@ fn run_tsc_thread(
   ));
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
-    create_params: create_isolate_create_params(),
+    create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()

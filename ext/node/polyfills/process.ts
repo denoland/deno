@@ -789,9 +789,11 @@ process.getBuiltinModule = getBuiltinModule;
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
 
-process.loadEnvFile = (path = ".env") => {
+export function loadEnvFile(path = ".env") {
   return op_node_load_env_file(path);
-};
+}
+
+process.loadEnvFile = loadEnvFile;
 
 /** https://nodejs.org/api/process.html#processexecpath */
 

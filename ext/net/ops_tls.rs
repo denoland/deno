@@ -188,6 +188,7 @@ pub struct StartTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
+  reject_unauthorized: Option<bool>,
 }
 
 #[op2]
@@ -264,6 +265,7 @@ where
   NP: NetPermissions + 'static,
 {
   let rid = args.rid;
+  let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
     "" => "localhost".to_string(),
     n => n.to_string(),
@@ -278,10 +280,15 @@ where
   let hostname_dns = ServerName::try_from(hostname.to_string())
     .map_err(|_| NetError::InvalidHostname(hostname))?;
 
-  let unsafely_ignore_certificate_errors = state
-    .borrow()
-    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
-    .and_then(|it| it.0.clone());
+  // --unsafely-ignore-certificate-errors overrides the `rejectUnauthorized` option.
+  let unsafely_ignore_certificate_errors = if reject_unauthorized {
+    state
+      .borrow()
+      .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+      .and_then(|it| it.0.clone())
+  } else {
+    Some(Vec::new())
+  };
 
   let root_cert_store = state
     .borrow()
