@@ -382,25 +382,14 @@ const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
-  if (isUint8Array(a)) {
-    a = BufferFrom(
-      a,
-      TypedArrayPrototypeGetByteOffset(a),
-      TypedArrayPrototypeGetByteLength(a),
-    );
+  if (!isUint8Array(a)) {
+    throw new codes.ERR_INVALID_ARG_TYPE('buf1', ['Buffer', 'Uint8Array'], a);
   }
-  if (isUint8Array(b)) {
-    b = BufferFrom(
-      b,
-      TypedArrayPrototypeGetByteOffset(b),
-      TypedArrayPrototypeGetByteLength(b),
-    );
+
+  if (!isUint8Array(b)) {
+    throw new ERR_INVALID_ARG_TYPE('buf2', ['Buffer', 'Uint8Array'], b);
   }
-  if (!BufferIsBuffer(a) || !BufferIsBuffer(b)) {
-    throw new TypeError(
-      'The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array',
-    );
-  }
+
   if (a === b) {
     return 0;
   }
