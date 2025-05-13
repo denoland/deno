@@ -278,8 +278,11 @@ pub struct JSONReferenceFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JupyterFlags {
   pub install: bool,
+  pub name: Option<String>,
+  pub display: Option<String>,
   pub kernel: bool,
   pub conn_file: Option<String>,
+  pub force: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2723,12 +2726,35 @@ fn json_reference_subcommand() -> Command {
 }
 
 fn jupyter_subcommand() -> Command {
-  command("jupyter", "Deno kernel for Jupyter notebooks", UnstableArgsConfig::ResolutionAndRuntime)
+  command("jupyter", "Deno kernel for Jupyter notebooks", UnstableArgsConfig::None)
     .arg(
       Arg::new("install")
         .long("install")
-        .help("Installs kernelspec, requires 'jupyter' command to be available.")
+        .help("Install a kernelspec")
         .conflicts_with("kernel")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("name")
+        .long("name")
+        .short('n')
+        .help(cstr!("Set a name for the kernel (defaults to 'deno'). <p(245)>Useful when maintaing multiple Deno kernels.</>"))
+        .value_parser(value_parser!(String))
+        .conflicts_with("kernel")
+    )
+    .arg(
+      Arg::new("display")
+        .long("display")
+        .short('d')
+        .help(cstr!("Set a display name for the kernel (defaults to 'Deno'). <p(245)>Useful when maintaing multiple Deno kernels.</>"))
+        .value_parser(value_parser!(String))
+        .requires("install")
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .help("Force installation of a kernel, overwriting previously existing kernelspec")
+        .requires("install")
         .action(ArgAction::SetTrue)
     )
     .arg(
@@ -5163,11 +5189,17 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let conn_file = matches.remove_one::<String>("conn");
   let kernel = matches.get_flag("kernel");
   let install = matches.get_flag("install");
+  let display = matches.remove_one::<String>("display");
+  let name = matches.remove_one::<String>("name");
+  let force = matches.get_flag("force");
 
   flags.subcommand = DenoSubcommand::Jupyter(JupyterFlags {
     install,
     kernel,
     conn_file,
+    name,
+    display,
+    force,
   });
 }
 
@@ -11340,6 +11372,9 @@ mod tests {
           install: false,
           kernel: false,
           conn_file: None,
+          name: None,
+          display: None,
+          force: false,
         }),
         ..Flags::default()
       }
@@ -11353,6 +11388,65 @@ mod tests {
           install: true,
           kernel: false,
           conn_file: None,
+          name: None,
+          display: None,
+          force: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--force"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          kernel: false,
+          conn_file: None,
+          name: None,
+          display: None,
+          force: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--install",
+      "--name",
+      "debugdeno",
+      "--display",
+      "Deno (debug)"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          kernel: false,
+          conn_file: None,
+          name: Some("debugdeno".to_string()),
+          display: Some("Deno (debug)".to_string()),
+          force: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "jupyter", "-n", "debugdeno",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: false,
+          conn_file: None,
+          name: Some("debugdeno".to_string()),
+          display: None,
+          force: false,
         }),
         ..Flags::default()
       }
@@ -11372,6 +11466,9 @@ mod tests {
           install: false,
           kernel: true,
           conn_file: Some(String::from("path/to/conn/file")),
+          name: None,
+          display: None,
+          force: false,
         }),
         ..Flags::default()
       }
@@ -11388,6 +11485,12 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "jupyter", "--kernel",]);
     r.unwrap_err();
     let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--display", "deno"]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--kernel", "--display"]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--force"]);
     r.unwrap_err();
   }
 
@@ -11733,6 +11836,9 @@ mod tests {
           install: false,
           kernel: false,
           conn_file: None,
+          name: None,
+          display: None,
+          force: false,
         }),
         unstable_config: UnstableConfig {
           bare_node_builtins: true,
