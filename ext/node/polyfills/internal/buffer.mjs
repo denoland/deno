@@ -383,11 +383,11 @@ const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
   if (!isUint8Array(a)) {
-    throw new codes.ERR_INVALID_ARG_TYPE('buf1', ['Buffer', 'Uint8Array'], a);
+    throw new codes.ERR_INVALID_ARG_TYPE("buf1", ["Buffer", "Uint8Array"], a);
   }
 
   if (!isUint8Array(b)) {
-    throw new ERR_INVALID_ARG_TYPE('buf2', ['Buffer', 'Uint8Array'], b);
+    throw new ERR_INVALID_ARG_TYPE("buf2", ["Buffer", "Uint8Array"], b);
   }
 
   if (a === b) {
