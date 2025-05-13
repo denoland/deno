@@ -128,7 +128,8 @@ pub fn get_cache_storage_dir() -> PathBuf {
 
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
 /// Instead probe for the total memory on the system and use it instead
-/// as a default.
+/// as a default. In case the platform is Linux and `DENO_USE_CGROUPS` is set,
+/// parse cgroup config to get the cgroup-constrained memory limit.
 pub fn create_isolate_create_params<TSys: DenoLibSys>(
   // This is used only in Linux to get cgroup-constrained memory limit.
   #[allow(unused_variables)] sys: &TSys,
