@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.13 / 2025.05.13
+
+- fix: handling of contradictory global permission flags (#29213)
+- fix: make --allow-env stronger that --deny-env (#29079)
+
 ### 2.2.12 / 2025.04.24
 
 - fix: correctly style rust logs with colors (#29040)
