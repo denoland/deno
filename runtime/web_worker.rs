@@ -63,6 +63,7 @@ use crate::ops;
 use crate::shared::runtime;
 use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
+use crate::worker::request_builder_hook;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
@@ -500,6 +501,7 @@ impl WebWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          request_builder_hook: Some(request_builder_hook),
           ..Default::default()
         },
       ),

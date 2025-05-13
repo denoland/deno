@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -32,6 +33,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -312,6 +314,36 @@ pub fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
+pub(crate) fn request_builder_hook(
+  request: &mut http::Request<deno_fetch::ReqBody>,
+) -> Result<(), JsErrorBox> {
+  const X_DENO_FETCH_TOKEN: http::HeaderName =
+    http::HeaderName::from_static("x-deno-fetch-token");
+  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+    OnceLock::new();
+
+  // Scrub Deno-specific headers.
+  if let http::header::Entry::Occupied(entry) =
+    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+  {
+    entry.remove_entry_mult();
+  }
+
+  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(token) = maybe_x_deno_fetch_token {
+    request
+      .headers_mut()
+      .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  Ok(())
+}
+
 impl MainWorker {
   pub fn bootstrap_from_options<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
@@ -488,6 +520,7 @@ impl MainWorker {
               .unsafely_ignore_certificate_errors
               .clone(),
             file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+            request_builder_hook: Some(request_builder_hook),
             resolver: services.fetch_dns_resolver,
             ..Default::default()
           },
