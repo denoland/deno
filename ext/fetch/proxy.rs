@@ -25,6 +25,7 @@ use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
 use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
+#[cfg(not(windows))]
 use tokio::net::UnixStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
@@ -441,6 +442,7 @@ pub enum Proxied<T> {
   /// Tunneled through SOCKS and TLS
   SocksTls(TokioIo<TlsStream<TokioIo<TokioIo<TcpStream>>>>),
   /// Forwarded via Unix socket
+  #[cfg(not(windows))]
   Unix(TokioIo<UnixStream>),
 }
 
@@ -538,6 +540,7 @@ where
             }
           })
         }
+        #[cfg(not(windows))]
         Target::Unix { path } => {
           let path = path.clone();
           Box::pin(async move {
