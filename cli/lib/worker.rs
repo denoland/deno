@@ -159,6 +159,11 @@ mod linux {
     let system_total_memory = deno_runtime::deno_os::sys_info::mem_info()
       .map(|mem_info| mem_info.total);
 
+    // For performance, parse cgroup config only when DENO_USE_CGROUPS is set
+    if !std::env::var("DENO_USE_CGROUPS").is_ok() {
+      return system_total_memory;
+    }
+
     let Ok(self_cgroup) = sys.fs_read_to_string("/proc/self/cgroup") else {
       return system_total_memory;
     };
