@@ -1225,8 +1225,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>NO_COLOR</>               Set to disable color
   <g>NO_PROXY</>               Comma-separated list of hosts which do not use a proxy
                           <p(245)>(module downloads, fetch)</>
-  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry."
-  <g>X_DENO_FETCH_TOKEN</>     Set a value for X_DENO_FETCH_TOKEN header for fetch API.#
+  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry.
+  <g>X_DENO_FETCH_TOKEN</>     Set a value for X_DENO_FETCH_TOKEN header for fetch API."#
 );
 
 static DENO_HELP: &str = cstr!(
