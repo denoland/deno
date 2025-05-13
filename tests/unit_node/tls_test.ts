@@ -271,7 +271,10 @@ Deno.test("tls connect upgrade tcp", async () => {
   socket.destroy();
 });
 
-Deno.test("[node/tls] tls.Server.unref() works", async () => {
+Deno.test({
+  name: "[node/tls] tls.Server.unref() works",
+  ignore: Deno.build.os === "windows",
+}, async () => {
   const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
     args: [
       "eval",
