@@ -2247,10 +2247,13 @@ Deno.test(
       }
     });
 
+    // Canonicalize the path, because permission checks are done so that
+    // the symlink doesn't change in between the calls.
+    const resolvedPath = await Deno.realPath(socketPath);
     using client = Deno.createHttpClient({
       proxy: {
         transport: "unix",
-        path: socketPath,
+        path: resolvedPath,
       },
     });
 
