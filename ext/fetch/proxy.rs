@@ -70,6 +70,7 @@ pub(crate) enum Target {
     dst: Uri,
     auth: Option<(String, String)>,
   },
+  #[cfg(not(windows))]
   Unix {
     path: PathBuf,
   },
@@ -657,6 +658,7 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_read(cx, buf),
     }
   }
@@ -677,6 +679,7 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write(cx, buf),
     }
   }
@@ -691,6 +694,7 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_flush(cx),
     }
   }
@@ -705,6 +709,7 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_shutdown(cx),
     }
   }
@@ -716,6 +721,7 @@ where
       Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
       Proxied::Socks(ref p) => p.is_write_vectored(),
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
+      #[cfg(not(windows))]
       Proxied::Unix(ref p) => p.is_write_vectored(),
     }
   }
@@ -737,6 +743,7 @@ where
       }
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
     }
   }
@@ -767,6 +774,7 @@ where
           tunneled_tls.0.connected()
         }
       }
+      #[cfg(not(windows))]
       Proxied::Unix(_) => Connected::new(),
     }
   }
