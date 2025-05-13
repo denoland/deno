@@ -1,0 +1,6 @@
+Headers {
+[WILDCARD]
+  "cdn-loop": "land",
+[WILDCARD]
+  "x-deno-fetch-token": "deno"
+}

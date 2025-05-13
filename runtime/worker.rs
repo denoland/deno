@@ -322,6 +322,7 @@ pub(crate) fn request_builder_hook(
   const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
   static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
     OnceLock::new();
+  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
 
   // Scrub Deno-specific headers.
   if let http::header::Entry::Occupied(entry) =

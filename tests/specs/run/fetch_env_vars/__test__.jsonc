@@ -1,0 +1,9 @@
+{
+  "args": "run --quiet -A main.ts",
+  "output": "main.out",
+  "exitCode": 0,
+  "envs": {
+    "X_DENO_FETCH_TOKEN": "deno",
+    "CDN_LOOP": "land"
+  }
+}
