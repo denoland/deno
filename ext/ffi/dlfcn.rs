@@ -262,7 +262,11 @@ struct FunctionData {
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {}
+impl GarbageCollected for FunctionData {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"FunctionData"
+  }
+}
 
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.

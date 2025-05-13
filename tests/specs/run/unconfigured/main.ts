@@ -36,6 +36,7 @@ Deno.writeTextFile(
   `
 console.log(Deno[Deno.internal].isFromUnconfiguredRuntime());
 console.log(Deno.env.get('A'));
+Deno.serve({ onListen() {} }, () => {}).shutdown();
 `,
 );
 
@@ -46,5 +47,10 @@ const data = JSON.stringify({
 });
 
 await sock.write(new TextEncoder().encode(data + "\n"));
+
+const buf = new Uint8Array(128);
+const n = await sock.read(buf);
+
+console.log("EVENT:", new TextDecoder().decode(buf.subarray(0, n)));
 
 console.log(await child.status);

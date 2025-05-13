@@ -5,6 +5,7 @@ import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
 import * as http from "node:http";
 import * as dns from "node:dns";
+import util from "node:util";
 import console from "node:console";
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
@@ -273,4 +274,12 @@ Deno.test("dns.resolve with ttl", async () => {
   const ret2 = await d2.promise as string[];
   assert(ret2.length > 0);
   assert(typeof ret2[0] === "string");
+});
+
+Deno.test("[node/dns] dns.lookup (all=true) util promisify", async () => {
+  const lookup = util.promisify(dns.lookup);
+  const result = await lookup("localhost", { all: true });
+  assert(Array.isArray(result));
+  assert(typeof result[0].address === "string");
+  assert(typeof result[0].family === "number");
 });

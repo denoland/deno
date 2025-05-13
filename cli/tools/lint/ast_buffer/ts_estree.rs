@@ -8,6 +8,7 @@ use deno_ast::swc::common::Span;
 use deno_ast::view::TruePlusMinus;
 
 use super::buffer::AstBufSerializer;
+use super::buffer::CommentKind;
 use super::buffer::NodeRef;
 use super::buffer::SerializeCtx;
 use crate::util::text_encoding::Utf16Map;
@@ -2889,6 +2890,10 @@ impl TsEsTreeBuilder {
       Some(TruePlusMinus::True) => self.ctx.write_bool(prop, true),
       _ => self.ctx.write_undefined(prop),
     }
+  }
+
+  pub fn write_comment(&mut self, kind: CommentKind, value: &str, span: &Span) {
+    self.ctx.write_comment(kind, value, span);
   }
 }
 

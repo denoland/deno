@@ -740,6 +740,12 @@ pub fn cover_files(
     }
   }
 
+  // All covered files, might have had ignore directive and we can end up
+  // with no reports at this point.
+  if file_reports.is_empty() {
+    return Err(anyhow!("No covered files included in the report"));
+  }
+
   for reporter in reporters {
     reporter.done(&coverage_root, &file_reports);
   }

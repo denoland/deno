@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
+  op_http_notify_serving,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
@@ -1049,6 +1050,8 @@ function serveHttpOn(context, addr, callback) {
     }
   })();
 
+  op_http_notify_serving();
+
   return {
     addr,
     finished,
@@ -1104,16 +1107,21 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
-  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+  return ({
+    servePort,
+    serveHost,
+    workerCountWhenMain,
+  }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-        serveWorkerCount !== null,
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
       onListen: ({ transport, port, hostname, path, cid }) => {
-        if (serveIsMain) {
-          const nThreads = serveWorkerCount > 1
-            ? ` with ${serveWorkerCount} threads`
+        if (workerCountWhenMain != null) {
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
           let target;

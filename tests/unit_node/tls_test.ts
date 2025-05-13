@@ -71,7 +71,6 @@ Deno.test("tls.connect makes tls connection", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "localhost",
     port,
     secureContext: {
       ca: rootCaCert,

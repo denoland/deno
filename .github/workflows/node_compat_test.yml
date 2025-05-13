@@ -26,6 +26,10 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -55,6 +59,10 @@ jobs:
           submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:

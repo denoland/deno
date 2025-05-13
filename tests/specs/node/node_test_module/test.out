@@ -1,61 +1,35 @@
 [WILDCARD]
-running 67 tests from ./test.js
-sync pass todo ...
-------- output -------
-Warning: Not implemented: test.TestContext.todo
------ output end -----
-sync pass todo ... ok [WILDCARD]
-sync pass todo with message ...
-------- output -------
-Warning: Not implemented: test.TestContext.todo
------ output end -----
-sync pass todo with message ... ok [WILDCARD]
-sync fail todo ...
-------- output -------
-Warning: Not implemented: test.TestContext.todo
------ output end -----
-sync fail todo ... FAILED [WILDCARD]
-sync fail todo with message ...
-------- output -------
-Warning: Not implemented: test.TestContext.todo
------ output end -----
-sync fail todo with message ... FAILED [WILDCARD]
-sync skip pass ...
-------- output -------
-Warning: Not implemented: test.TestContext.skip
------ output end -----
-sync skip pass ... ok [WILDCARD]
-sync skip pass with message ...
-------- output -------
-Warning: Not implemented: test.TestContext.skip
------ output end -----
-sync skip pass with message ... ok [WILDCARD]
+running 69 tests from ./test.js
+sync pass todo ... ok ([WILDLINE])
+sync pass todo with message ... ok ([WILDLINE])
+sync fail todo ... ok ([WILDLINE])
+todo thrown sub test ...
+  test ... ok ([WILDLINE])
+todo thrown sub test ... ok ([WILDLINE])
+sync fail todo with message ... ok ([WILDLINE])
+sync skip pass ... ok ([WILDLINE])
+sync skip pass with message ... ok ([WILDLINE])
+skip thrown sub test ...
+  test ... ok ([WILDLINE])
+skip thrown sub test ... ok ([WILDLINE])
 sync pass ...
 ------- output -------
 DIAGNOSTIC: this test should pass
 ----- output end -----
-sync pass ... ok [WILDCARD]
-sync throw fail ... FAILED [WILDCARD]
-async skip pass ...
-------- output -------
-Warning: Not implemented: test.TestContext.skip
------ output end -----
-async skip pass ... ok [WILDCARD]
-async pass ... ok [WILDCARD]
-async throw fail ... FAILED [WILDCARD]
+sync pass ... ok ([WILDLINE])
+sync throw fail ... FAILED ([WILDLINE])
+async skip pass ... ok ([WILDLINE])
+async pass ... ok ([WILDLINE])
+async throw fail ... FAILED ([WILDLINE])
 nested test ...
   nested 1 ...
-    nested 2 ... ok [WILDCARD]
-  nested 1 ... ok [WILDCARD]
-nested test ... ok [WILDCARD]
-async skip fail ...
-------- output -------
-Warning: Not implemented: test.TestContext.skip
------ output end -----
-async skip fail ... FAILED [WILDCARD]
-async assertion fail ... FAILED [WILDCARD]
-resolve pass ... ok [WILDCARD]
-reject fail ... FAILED [WILDCARD]
+    nested 2 ... ok ([WILDLINE])
+  nested 1 ... ok ([WILDLINE])
+nested test ... ok ([WILDLINE])
+async skip fail ... ok ([WILDLINE])
+async assertion fail ... FAILED ([WILDLINE])
+resolve pass ... ok ([WILDLINE])
+reject fail ... FAILED ([WILDLINE])
 suite ...
   test 1 ... ok ([WILDLINE])
   test 2 ... ok ([WILDLINE])
@@ -95,82 +69,69 @@ suite ... FAILED (due to 3 failed steps) ([WILDLINE])
 assertions available via text context ... ok ([WILDLINE])
 unhandled rejection - passes but warns ...
 Uncaught error from ./test.js FAILED
-unhandled rejection - passes but warns ... cancelled ([WILDCARD])
-async unhandled rejection - passes but warns ... cancelled ([WILDCARD])
-immediate throw - passes but warns ... cancelled ([WILDCARD])
-immediate reject - passes but warns ... cancelled ([WILDCARD])
-immediate resolve pass ... cancelled ([WILDCARD])
-subtest sync throw fail ... cancelled ([WILDCARD])
-sync throw non-error fail ... cancelled ([WILDCARD])
-level 0a ... cancelled ([WILDCARD])
-top level ... cancelled ([WILDCARD])
-invalid subtest - pass but subtest fails ... cancelled ([WILDCARD])
-sync skip option ... ignored ([WILDCARD])
-sync skip option with message ... cancelled ([WILDCARD])
-sync skip option is false fail ... cancelled ([WILDCARD])
-noop ... cancelled ([WILDCARD])
-functionOnly ... cancelled ([WILDCARD])
-<anonymous> ... cancelled ([WILDCARD])
-test with only a name provided ... cancelled ([WILDCARD])
-noop ... cancelled ([WILDCARD])
-noop ... ignored ([WILDCARD])
-test with a name and options provided ... ignored ([WILDCARD])
-functionAndOptions ... ignored ([WILDCARD])
-escaped skip message ... cancelled ([WILDCARD])
-escaped todo message ... cancelled ([WILDCARD])
-escaped diagnostic ... cancelled ([WILDCARD])
-callback pass ... cancelled ([WILDCARD])
-callback fail ... cancelled ([WILDCARD])
-sync t is this in test ... cancelled ([WILDCARD])
-async t is this in test ... cancelled ([WILDCARD])
-callback t is this in test ... cancelled ([WILDCARD])
-callback also returns a Promise ... cancelled ([WILDCARD])
-callback throw ... cancelled ([WILDCARD])
-callback called twice ... cancelled ([WILDCARD])
-callback called twice in different ticks ... cancelled ([WILDCARD])
-callback called twice in future tick ... cancelled ([WILDCARD])
-callback async throw ... cancelled ([WILDCARD])
-callback async throw after done ... cancelled ([WILDCARD])
-custom inspect symbol fail ... cancelled ([WILDCARD])
-custom inspect symbol that throws fail ... cancelled ([WILDCARD])
-subtest sync throw fails ... cancelled ([WILDCARD])
-timed out async test ... cancelled ([WILDCARD])
-timed out callback test ... cancelled ([WILDCARD])
-large timeout async test is ok ... cancelled ([WILDCARD])
-large timeout callback test is ok ... cancelled ([WILDCARD])
-successful thenable ... cancelled ([WILDCARD])
-rejected thenable ... cancelled ([WILDCARD])
-unfinished test with uncaughtException ... cancelled ([WILDCARD])
-unfinished test with unhandledRejection ... cancelled ([WILDCARD])
+unhandled rejection - passes but warns ... cancelled ([WILDLINE])
+async unhandled rejection - passes but warns ... cancelled ([WILDLINE])
+immediate throw - passes but warns ... cancelled ([WILDLINE])
+immediate reject - passes but warns ... cancelled ([WILDLINE])
+immediate resolve pass ... cancelled ([WILDLINE])
+subtest sync throw fail ... cancelled ([WILDLINE])
+sync throw non-error fail ... cancelled ([WILDLINE])
+level 0a ... cancelled ([WILDLINE])
+top level ... cancelled ([WILDLINE])
+invalid subtest - pass but subtest fails ... cancelled ([WILDLINE])
+sync skip option ... ignored ([WILDLINE])
+sync skip option with message ... cancelled ([WILDLINE])
+sync skip option is false fail ... cancelled ([WILDLINE])
+noop ... cancelled ([WILDLINE])
+functionOnly ... cancelled ([WILDLINE])
+<anonymous> ... cancelled ([WILDLINE])
+test with only a name provided ... cancelled ([WILDLINE])
+noop ... cancelled ([WILDLINE])
+noop ... ignored ([WILDLINE])
+test with a name and options provided ... ignored ([WILDLINE])
+functionAndOptions ... ignored ([WILDLINE])
+escaped skip message ... cancelled ([WILDLINE])
+escaped todo message ... cancelled ([WILDLINE])
+escaped diagnostic ... cancelled ([WILDLINE])
+callback pass ... cancelled ([WILDLINE])
+callback fail ... cancelled ([WILDLINE])
+sync t is this in test ... cancelled ([WILDLINE])
+async t is this in test ... cancelled ([WILDLINE])
+callback t is this in test ... cancelled ([WILDLINE])
+callback also returns a Promise ... cancelled ([WILDLINE])
+callback throw ... cancelled ([WILDLINE])
+callback called twice ... cancelled ([WILDLINE])
+callback called twice in different ticks ... cancelled ([WILDLINE])
+callback called twice in future tick ... cancelled ([WILDLINE])
+callback async throw ... cancelled ([WILDLINE])
+callback async throw after done ... cancelled ([WILDLINE])
+custom inspect symbol fail ... cancelled ([WILDLINE])
+custom inspect symbol that throws fail ... cancelled ([WILDLINE])
+subtest sync throw fails ... cancelled ([WILDLINE])
+timed out async test ... cancelled ([WILDLINE])
+timed out callback test ... cancelled ([WILDLINE])
+large timeout async test is ok ... cancelled ([WILDLINE])
+large timeout callback test is ok ... cancelled ([WILDLINE])
+successful thenable ... cancelled ([WILDLINE])
+rejected thenable ... cancelled ([WILDLINE])
+unfinished test with uncaughtException ... cancelled ([WILDLINE])
+unfinished test with unhandledRejection ... cancelled ([WILDLINE])
 
  ERRORS 
 
-sync fail todo => ./test.js:20:1
-error: Error: thrown from sync fail todo
-  throw new Error("thrown from sync fail todo");
-[WILDCARD]
-
-sync fail todo with message => ./test.js:25:1
-error: Error: thrown from sync fail todo with message
-  throw new Error("thrown from sync fail todo with message");
-[WILDCARD]
-
-sync throw fail => ./test.js:42:1
+sync throw fail => [WILDLINE]
 error: Error: thrown from sync throw fail
   throw new Error("thrown from sync throw fail");
-[WILDCARD]
+        ^
+    at [WILDCARD]
 
-async throw fail => ./test.js:53:1
+async throw fail => [WILDLINE]
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
-[WILDCARD]
+        ^
+    at [WILDCARD]
 
-async skip fail => ./test.js:64:1
-error: Error: thrown from async throw fail
-  throw new Error("thrown from async throw fail");
-[WILDCARD]
-
-async assertion fail => ./test.js:69:1
+async assertion fail => [WILDLINE]
 error: AssertionError: Values are not strictly equal:
 
 
@@ -182,25 +143,25 @@ error: AssertionError: Values are not strictly equal:
 
     at [WILDCARD]
 
-reject fail => ./test.js:78:1
+reject fail => [WILDLINE]
 error: Error: rejected from reject fail
   return Promise.reject(new Error("rejected from reject fail"));
                         ^
     at [WILDCARD]
 
-suite ... test 2 => ./test.js:[WILDLINE]
+suite ... test 2 => [WILDLINE]
 error: Error: thrown from test 2
     throw new Error("thrown from test 2");
           ^
     at [WILDCARD]
 
-suite ... sub suite 1 ... nested test 2 => ./test.js:[WILDLINE]
+suite ... sub suite 1 ... nested test 2 => [WILDLINE]
 error: Error: thrown from nested test 2
       throw new Error("thrown from nested test 2");
             ^
     at [WILDCARD]
 
-suite ... sub suite 2 ... nested test 1 => ./test.js:[WILDLINE]
+suite ... sub suite 2 ... nested test 1 => [WILDLINE]
 error: Error: thrown from nested test 1
       throw new Error("thrown from nested test 1");
             ^
@@ -216,18 +177,15 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
  FAILURES 
 
-sync fail todo => ./test.js:20:1
-sync fail todo with message => ./test.js:25:1
-sync throw fail => ./test.js:42:1
-async throw fail => ./test.js:53:1
-async skip fail => ./test.js:64:1
-async assertion fail => ./test.js:69:1
-reject fail => ./test.js:78:1
-suite ... test 2 => ./test.js:[WILDLINE]
-suite ... sub suite 1 ... nested test 2 => ./test.js:[WILDLINE]
-suite ... sub suite 2 ... nested test 1 => ./test.js:[WILDLINE]
+sync throw fail => [WILDLINE]
+async throw fail => [WILDLINE]
+async assertion fail => [WILDLINE]
+reject fail => [WILDLINE]
+suite ... test 2 => [WILDLINE]
+suite ... sub suite 1 ... nested test 2 => [WILDLINE]
+suite ... sub suite 2 ... nested test 1 => [WILDLINE]
 ./test.js (uncaught error)
 
-FAILED | 12 passed (21 steps) | 52 failed (5 steps) | 4 ignored [WILDCARD]
+FAILED | 17 passed (23 steps) | 49 failed (5 steps) | 4 ignored ([WILDLINE])
 
 error: Test failed
