@@ -66,25 +66,31 @@ pub enum RequireErrorKind {
   #[error(transparent)]
   Permission(#[inherit] JsErrorBox),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageExportsResolve(
     #[from] node_resolver::errors::PackageExportsResolveError,
   ),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageImportsResolve(
     #[from] node_resolver::errors::PackageImportsResolveError,
   ),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   UrlConversion(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
