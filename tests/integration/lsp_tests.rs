@@ -1295,11 +1295,13 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "command": "deno test",
+        "description": null,
         "sourceUri": url_to_uri(&temp_dir.url().join("deno.jsonc").unwrap()).unwrap(),
       },
       {
         "name": "serve",
         "command": "deno run -RN server.ts",
+        "description": "Start the dev server",
         "sourceUri": url_to_uri(&temp_dir.url().join("deno.jsonc").unwrap()).unwrap(),
       }
     ])
@@ -6398,6 +6400,25 @@ fn lsp_npm_managed_no_export_diagnostic() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/29177.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_missing_types_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  context.run_deno("add npm:react");
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file("file.ts", "import \"react\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]),);
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_cache_on_save() {
@@ -8871,6 +8892,74 @@ fn lsp_npm_reexport_from_non_export() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28412.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_reexport_from_non_export_add_import_quick_fix() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "auto",
+    })
+    .to_string(),
+  );
+  context.run_deno("add npm:@denotest/reexport-from-non-export");
+  temp_dir.write(
+    "other.ts",
+    "import \"@denotest/reexport-from-non-export\";\n",
+  );
+  let file = temp_dir.source_file("file.ts", "getValue;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 8 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add import from \"@denotest/reexport-from-non-export\"",
+        "kind": "quickfix",
+        "diagnostics": diagnostics.all(),
+        "edit": {
+          "documentChanges": [{
+            "textDocument": {
+              "uri": file.uri(),
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { getValue } from \"@denotest/reexport-from-non-export\";\n\n",
+            }],
+          }],
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/28676.
 #[test]
 #[timeout(300_000)]
@@ -9678,6 +9767,7 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     json!([
       "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );

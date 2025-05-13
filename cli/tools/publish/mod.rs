@@ -357,18 +357,15 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let mut diagnostics_by_folder = self
-          .type_checker
-          .check_diagnostics(
-            graph,
-            CheckOptions {
-              build_fast_check_graph: false, // already built
-              lib: self.cli_options.ts_type_lib_window(),
-              reload: self.cli_options.reload_flag(),
-              type_check_mode: self.cli_options.type_check_mode(),
-            },
-          )
-          .await?;
+        let mut diagnostics_by_folder = self.type_checker.check_diagnostics(
+          graph,
+          CheckOptions {
+            build_fast_check_graph: false, // already built
+            lib: self.cli_options.ts_type_lib_window(),
+            reload: self.cli_options.reload_flag(),
+            type_check_mode: self.cli_options.type_check_mode(),
+          },
+        )?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
         for result in diagnostics_by_folder.by_ref() {
@@ -685,6 +682,13 @@ async fn get_auth_headers(
   Ok(authorizations)
 }
 
+#[derive(Debug)]
+struct CreatePackageInfo {
+  scope: String,
+  package: String,
+  create_url: String,
+}
+
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
@@ -693,30 +697,22 @@ async fn check_if_scope_and_package_exist(
   registry_manage_url: &Url,
   scope: &str,
   package: &str,
-) -> Result<Option<String>, AnyError> {
-  let mut needs_scope = false;
-  let mut needs_package = false;
-
-  let response = registry::get_scope(client, registry_api_url, scope).await?;
-  if response.status() == 404 {
-    needs_scope = true;
-  }
-
+) -> Result<Option<CreatePackageInfo>, AnyError> {
   let response =
     registry::get_package(client, registry_api_url, scope, package).await?;
   if response.status() == 404 {
-    needs_package = true;
-  }
-
-  if needs_scope || needs_package {
     let create_url = format!(
       "{}new?scope={}&package={}&from=cli",
       registry_manage_url, scope, package
     );
-    return Ok(Some(create_url));
+    Ok(Some(CreatePackageInfo {
+      create_url,
+      scope: scope.to_string(),
+      package: package.to_string(),
+    }))
+  } else {
+    Ok(None)
   }
-
-  Ok(None)
 }
 
 async fn ensure_scopes_and_packages_exist(
@@ -725,23 +721,32 @@ async fn ensure_scopes_and_packages_exist(
   registry_manage_url: &Url,
   packages: &[Rc<PreparedPublishPackage>],
 ) -> Result<(), AnyError> {
+  let mut futures = FuturesUnordered::new();
+
+  for package in packages {
+    let future = check_if_scope_and_package_exist(
+      client,
+      registry_api_url,
+      registry_manage_url,
+      &package.scope,
+      &package.package,
+    );
+    futures.push(future);
+  }
+
+  let mut missing_packages = vec![];
+
+  while let Some(maybe_create_package_info) = futures.next().await {
+    if let Some(create_package_info) = maybe_create_package_info? {
+      missing_packages.push(create_package_info);
+    };
+  }
+
   if !std::io::stdin().is_terminal() {
-    let mut missing_packages_lines = vec![];
-    for package in packages {
-      let maybe_create_package_url = check_if_scope_and_package_exist(
-        client,
-        registry_api_url,
-        registry_manage_url,
-        &package.scope,
-        &package.package,
-      )
-      .await?;
-
-      if let Some(create_package_url) = maybe_create_package_url {
-        missing_packages_lines.push(format!(" - {}", create_package_url));
-      }
-    }
-
+    let missing_packages_lines: Vec<_> = missing_packages
+      .into_iter()
+      .map(|info| format!("- {}", info.create_url))
+      .collect();
     if !missing_packages_lines.is_empty() {
       bail!(
         "Following packages don't exist, follow the links and create them:\n{}",
@@ -751,41 +756,31 @@ async fn ensure_scopes_and_packages_exist(
     return Ok(());
   }
 
-  for package in packages {
-    let maybe_create_package_url = check_if_scope_and_package_exist(
-      client,
-      registry_api_url,
-      registry_manage_url,
-      &package.scope,
-      &package.package,
-    )
-    .await?;
-
-    let Some(create_package_url) = maybe_create_package_url else {
-      continue;
-    };
-
+  for create_package_info in missing_packages {
     ring_bell();
     log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
-      &package.scope,
-      &package.package,
-      colors::cyan_with_underline(&create_package_url)
+      &create_package_info.scope,
+      &create_package_info.package,
+      colors::cyan_with_underline(&create_package_info.create_url)
     );
     log::warn!("{}", colors::gray("Waiting..."));
-    let _ = open::that_detached(&create_package_url);
+    let _ = open::that_detached(&create_package_info.create_url);
 
     let package_api_url = registry::get_package_api_url(
       registry_api_url,
-      &package.scope,
-      &package.package,
+      &create_package_info.scope,
+      &create_package_info.package,
     );
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
       let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
-        let name = format!("@{}/{}", package.scope, package.package);
+        let name = format!(
+          "@{}/{}",
+          create_package_info.scope, create_package_info.package
+        );
         log::info!("Package {} created", colors::green(name));
         break;
       }
