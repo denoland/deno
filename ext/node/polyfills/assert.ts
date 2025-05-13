@@ -938,6 +938,7 @@ export default Object.assign(assert, {
 
 export {
   AssertionError,
+  CallTracker_ as CallTracker,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,
