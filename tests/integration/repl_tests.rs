@@ -1178,7 +1178,7 @@ fn repl_no_globalthis() {
     .env("NO_COLOR", "1")
     .args_vec(["repl", "-A"])
     .with_pty(|mut console| {
-      console.write_line_raw("delete·globalThis.globalThis;");
+      console.write_line_raw("delete globalThis.globalThis;");
       console.expect("true");
       console.write_line_raw("console.log('Hello World')");
       console.expect(r#"Hello World"#);
