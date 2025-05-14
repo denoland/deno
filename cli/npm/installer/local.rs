@@ -77,7 +77,7 @@ pub struct LocalNpmPackageInstaller {
 impl std::fmt::Debug for LocalNpmPackageInstaller {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("LocalNpmPackageInstaller")
-      .field("cache", &self.npm_cache)
+      .field("npm_cache", &self.npm_cache)
       .field("npm_install_deps_provider", &self.npm_install_deps_provider)
       .field("progress_bar", &self.progress_bar)
       .field("resolution", &self.resolution)
