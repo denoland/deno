@@ -168,6 +168,7 @@ pub enum NpmProcessStateKind {
 
 pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
   LazyLock::new(|| {
+    /// Allows for passing either a file descriptor or file path.
     enum FdOrPath {
       Fd(usize),
       Path(PathBuf),
