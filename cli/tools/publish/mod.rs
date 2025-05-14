@@ -357,18 +357,15 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let mut diagnostics_by_folder = self
-          .type_checker
-          .check_diagnostics(
-            graph,
-            CheckOptions {
-              build_fast_check_graph: false, // already built
-              lib: self.cli_options.ts_type_lib_window(),
-              reload: self.cli_options.reload_flag(),
-              type_check_mode: self.cli_options.type_check_mode(),
-            },
-          )
-          .await?;
+        let mut diagnostics_by_folder = self.type_checker.check_diagnostics(
+          graph,
+          CheckOptions {
+            build_fast_check_graph: false, // already built
+            lib: self.cli_options.ts_type_lib_window(),
+            reload: self.cli_options.reload_flag(),
+            type_check_mode: self.cli_options.type_check_mode(),
+          },
+        )?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
         for result in diagnostics_by_folder.by_ref() {

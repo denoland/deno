@@ -206,8 +206,16 @@ impl NpmInstaller {
     &self,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
+
+    // don't inject this if it's already been added
+    if self
+      .npm_resolution
+      .any_top_level_package(|id| id.nv.name == "@types/node")
+    {
+      return Ok(());
+    }
+
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    // add and ensure this isn't added to the lockfile
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
