@@ -52,6 +52,7 @@ use lazy_regex::lazy_regex;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -4554,12 +4555,20 @@ fn op_load<'s>(
   } else {
     state.get_module(&specifier)
   };
-  let maybe_load_response = module.as_ref().map(|m| LoadResponse {
-    data: m.text.clone(),
-    script_kind: crate::tsc::as_ts_script_kind(m.media_type),
-    version: state.script_version(&specifier),
-    is_cjs: m.resolution_mode == ResolutionMode::Require,
-    is_classic_script: m.notebook_uri.is_some(),
+  let maybe_load_response = module.as_ref().map(|m| {
+    let data = if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
+      // VSCode's TS server types large JSON files this way.
+      DocumentText::Static("{}\n")
+    } else {
+      m.text.clone()
+    };
+    LoadResponse {
+      data,
+      script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+      version: state.script_version(&specifier),
+      is_cjs: m.resolution_mode == ResolutionMode::Require,
+      is_classic_script: m.notebook_uri.is_some(),
+    }
   });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
@@ -4867,6 +4876,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
             scope,
+            NodeResolutionKind::Types,
             ResolutionMode::Import,
           ) else {
             lsp_log!("failed to resolve {req_ref} to file URL");
@@ -5046,7 +5056,7 @@ fn run_tsc_thread(
   ));
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
-    create_params: create_isolate_create_params(),
+    create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
@@ -5861,7 +5871,7 @@ mod tests {
       rx,
       Arc::new(AtomicBool::new(true)),
     );
-    let mut op_state = OpState::new(None, None);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }

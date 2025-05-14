@@ -20,14 +20,14 @@ use self::global::GlobalNpmPackageInstaller;
 use self::local::LocalNpmPackageInstaller;
 pub use self::resolution::AddPkgReqsResult;
 pub use self::resolution::NpmResolutionInstaller;
+use super::CliNpmCache;
+use super::CliNpmTarballCache;
 use super::NpmResolutionInitializer;
 use super::WorkspaceNpmPatchPackages;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::PackageJsonDepValueParseWithLocationError;
-use crate::npm::CliNpmCache;
-use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -206,8 +206,16 @@ impl NpmInstaller {
     &self,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
+
+    // don't inject this if it's already been added
+    if self
+      .npm_resolution
+      .any_top_level_package(|id| id.nv.name == "@types/node")
+    {
+      return Ok(());
+    }
+
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    // add and ensure this isn't added to the lockfile
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;

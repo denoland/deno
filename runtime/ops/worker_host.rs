@@ -19,6 +19,7 @@ use deno_web::MessagePortError;
 use log::debug;
 
 use crate::ops::TestingFeaturesEnabled;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -206,33 +207,37 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
+    let fut = async move {
+      let (worker, external_handle) =
+        (create_web_worker_cb.0)(CreateWebWorkerArgs {
+          name: worker_name,
+          worker_id,
+          parent_permissions,
+          permissions: worker_permissions,
+          main_module: module_specifier.clone(),
+          worker_type,
+          close_on_idle: args.close_on_idle,
+          maybe_worker_metadata,
+        });
 
-    let (worker, external_handle) =
-      (create_web_worker_cb.0)(CreateWebWorkerArgs {
-        name: worker_name,
-        worker_id,
-        parent_permissions,
-        permissions: worker_permissions,
-        main_module: module_specifier.clone(),
-        worker_type,
-        close_on_idle: args.close_on_idle,
-        maybe_worker_metadata,
-      });
+      // Send thread safe handle from newly created worker to host thread
+      handle_sender.send(external_handle).unwrap();
+      drop(handle_sender);
 
-    // Send thread safe handle from newly created worker to host thread
-    handle_sender.send(external_handle).unwrap();
-    drop(handle_sender);
+      // At this point the only method of communication with host
+      // is using `worker.internal_channels`.
+      //
+      // Host can already push messages and interact with worker.
+      run_web_worker(
+        worker,
+        module_specifier,
+        maybe_source_code,
+        format_js_error_fn.0,
+      )
+      .await
+    };
 
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    run_web_worker(
-      worker,
-      module_specifier,
-      maybe_source_code,
-      format_js_error_fn.0,
-    )
+    create_and_run_current_thread(fut)
   })?;
 
   // Receive WebWorkerHandle from newly created worker

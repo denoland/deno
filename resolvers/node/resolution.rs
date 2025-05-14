@@ -106,6 +106,15 @@ impl ResolutionMode {
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(mode: deno_graph::source::ResolutionMode) -> Self {
+    use deno_graph::source::ResolutionMode::*;
+    match mode {
+      Import => Self::Import,
+      Require => Self::Require,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -117,6 +126,15 @@ pub enum NodeResolutionKind {
 impl NodeResolutionKind {
   pub fn is_types(&self) -> bool {
     matches!(self, NodeResolutionKind::Types)
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(kind: deno_graph::source::ResolutionKind) -> Self {
+    use deno_graph::source::ResolutionKind::*;
+    match kind {
+      Execution => Self::Execution,
+      Types => Self::Types,
+    }
   }
 }
 

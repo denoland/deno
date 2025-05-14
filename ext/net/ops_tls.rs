@@ -188,6 +188,7 @@ pub struct StartTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
+  reject_unauthorized: Option<bool>,
 }
 
 #[op2]
@@ -196,7 +197,7 @@ pub fn op_tls_key_null() -> TlsKeysHolder {
   TlsKeysHolder::from(TlsKeys::Null)
 }
 
-#[op2]
+#[op2(reentrant)]
 #[cppgc]
 pub fn op_tls_key_static(
   #[string] cert: &str,
@@ -258,11 +259,13 @@ pub fn op_tls_cert_resolver_resolve_error(
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
+  #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   let rid = args.rid;
+  let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
     "" => "localhost".to_string(),
     n => n.to_string(),
@@ -277,10 +280,15 @@ where
   let hostname_dns = ServerName::try_from(hostname.to_string())
     .map_err(|_| NetError::InvalidHostname(hostname))?;
 
-  let unsafely_ignore_certificate_errors = state
-    .borrow()
-    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
-    .and_then(|it| it.0.clone());
+  // --unsafely-ignore-certificate-errors overrides the `rejectUnauthorized` option.
+  let unsafely_ignore_certificate_errors = if reject_unauthorized {
+    state
+      .borrow()
+      .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+      .and_then(|it| it.0.clone())
+  } else {
+    Some(Vec::new())
+  };
 
   let root_cert_store = state
     .borrow()
@@ -304,11 +312,13 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
+  let tls_null = TlsKeysHolder::from(TlsKeys::Null);
+  let key_pair = key_pair.unwrap_or(&tls_null);
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    TlsKeys::Null,
+    key_pair.take(),
     SocketUse::GeneralSsl,
   )?;
 

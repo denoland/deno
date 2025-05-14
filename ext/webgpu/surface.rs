@@ -45,7 +45,11 @@ pub struct GPUCanvasContext {
   pub canvas: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for GPUCanvasContext {}
+impl GarbageCollected for GPUCanvasContext {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCanvasContext"
+  }
+}
 
 #[op2]
 impl GPUCanvasContext {
