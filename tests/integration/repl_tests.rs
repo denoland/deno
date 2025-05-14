@@ -1169,3 +1169,19 @@ fn repl_json_imports() {
       console.expect(r#"{ hello: "world" }"#);
     });
 }
+
+#[test]
+fn repl_no_globalthis() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line_raw("delete globalThis.globalThis;");
+      console.expect("true");
+      console.write_line_raw("console.log('Hello World')");
+      console.expect(r#"Hello World"#);
+      console.expect(r#"undefined"#);
+    });
+}

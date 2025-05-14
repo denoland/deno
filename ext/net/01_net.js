@@ -378,15 +378,25 @@ class Listener {
   }
 }
 
-const _setBroadcast = Symbol("setBroadcast");
 const _dropMembership = Symbol("dropMembership");
+const _setBroadcast = Symbol("setBroadcast");
+const _setMultiLoopback = Symbol("setMultiLoopback");
+const _setMulticastTTL = Symbol("setMulticastTTL");
 
 function setDatagramBroadcast(conn, broadcast) {
   return conn[_setBroadcast](broadcast);
 }
 
+function setMulticastLoopback(conn, v6, loopback) {
+  return conn[_setMultiLoopback](v6, loopback);
+}
+
 function dropMembership(conn, v6, addr, multiInterface) {
   return conn[_dropMembership](v6, addr, multiInterface);
+}
+
+function setMulticastTTL(conn, ttl) {
+  return conn[_setMulticastTTL](ttl);
 }
 
 class DatagramConn {
@@ -415,6 +425,14 @@ class DatagramConn {
     }
 
     return op_net_leave_multi_v4_udp(this.#rid, addr, multiInterface);
+  }
+
+  [_setMulticastTTL](ttl) {
+    return op_net_set_multi_ttl_udp(this.#rid, ttl);
+  }
+
+  [_setMultiLoopback](v6, loopback) {
+    return op_net_set_multi_loopback_udp(this.#rid, !v6, loopback);
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -714,6 +732,8 @@ export {
   listenOptionApiName,
   resolveDns,
   setDatagramBroadcast,
+  setMulticastLoopback,
+  setMulticastTTL,
   TcpConn,
   UnixConn,
   UpgradedConn,

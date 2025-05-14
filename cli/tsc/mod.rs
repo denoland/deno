@@ -1433,7 +1433,7 @@ pub fn exec(
   });
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions,
-    create_params: create_isolate_create_params(),
+    create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     extension_code_cache,
     ..Default::default()

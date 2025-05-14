@@ -973,7 +973,6 @@ impl CliFactory {
             cli_options.clone(),
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.sys(),
             self.tsconfig_resolver()?.clone(),
@@ -1034,7 +1033,6 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(ModuleGraphCreator::new(
             cli_options.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.module_graph_builder().await?.clone(),
             self.type_checker().await?.clone(),
           )))
@@ -1115,7 +1113,7 @@ impl CliFactory {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
-      for feature in crate::UNSTABLE_FEATURES {
+      for feature in deno_runtime::UNSTABLE_FEATURES {
         if unstable_features.contains(&feature.name.to_string()) {
           checker.enable_feature(feature.name);
         }

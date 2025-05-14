@@ -360,12 +360,36 @@ export class UDP extends HandleWrap {
     notImplemented("udp.UDP.prototype.setMulticastInterface");
   }
 
-  setMulticastLoopback(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setMulticastLoopback");
+  setMulticastLoopback(bool: 0 | 1): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    net.setMulticastLoopback(
+      this.#listener,
+      this.#family === "IPv6",
+      bool === 1,
+    );
+    return 0;
   }
 
-  setMulticastTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setMulticastTTL");
+  setMulticastTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      if (this.#family === "IPv4") {
+        net.setMulticastTTL(this.#listener, ttl);
+      }
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   setTTL(_ttl: number): number {
