@@ -206,13 +206,6 @@ fn format_js_error_inner(
 
   s.push_str(&js_error.exception_message);
 
-  if !js_error.additional_properties.is_empty() {
-    write!(s, "\n").unwrap();
-    for (k, v) in &js_error.additional_properties {
-      write!(s, "    {k}: {v}").unwrap();
-    }
-  }
-
   if let Some(circular) = &circular {
     if js_error.is_same_error(circular.reference.to) {
       write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
