@@ -215,7 +215,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> NpmResolver<TSys> {
     matches!(self, NpmResolver::Managed(_))
   }
 
-  pub fn as_managed(&self) -> Option<&ManagedNpmResolver<TSys>> {
+  pub fn as_managed(&self) -> Option<&ManagedNpmResolverRc<TSys>> {
     match self {
       NpmResolver::Managed(resolver) => Some(resolver),
       NpmResolver::Byonm(_) => None,

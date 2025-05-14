@@ -177,7 +177,7 @@ pub async fn info(
       let mut output = String::new();
       GraphDisplayContext::write(
         &graph,
-        maybe_npm_info.as_ref().map(|(r, s)| (*r, s)),
+        maybe_npm_info.as_ref().map(|(r, s)| (r.as_ref(), s)),
         &mut output,
       )?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
