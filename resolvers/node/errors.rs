@@ -58,6 +58,7 @@ impl NodeJsErrorCode {
     }
   }
 
+  #[allow(clippy::should_implement_trait)]
   pub fn from_str(s: &str) -> Self {
     use NodeJsErrorCode::*;
     match s {
@@ -702,7 +703,11 @@ pub struct UnknownBuiltInNodeModuleError {
 }
 
 pub fn get_code(e: &dyn JsErrorClass) -> String {
-  e.get_additional_properties().iter().find_map(|(k, v)| k.eq("code").then_some(v)).unwrap().to_string()
+  e.get_additional_properties()
+    .iter()
+    .find_map(|(k, v)| k.eq("code").then_some(v))
+    .unwrap()
+    .to_string()
 }
 
 #[cfg(test)]
