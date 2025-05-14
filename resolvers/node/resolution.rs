@@ -30,7 +30,6 @@ use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
-use crate::errors::NodeJsErrorCoded;
 use crate::errors::NodeResolveError;
 use crate::errors::NodeResolveRelativeJoinError;
 use crate::errors::PackageExportsResolveError;
@@ -973,7 +972,7 @@ impl<
               resolution_kind,
             ) {
               Ok((url, _)) => Ok(url),
-              Err(err) => match err.code() {
+              Err(err) => match NodeJsErrorCode::from_str(&errors::get_code(&err)) {
                 NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
                 | NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
                 | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
@@ -1130,7 +1129,7 @@ impl<
       Ok(maybe_resolved) => Ok(maybe_resolved),
       Err(err) => {
         if resolution_kind.is_types()
-          && err.code() == NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+          && errors::get_code(&err) == NodeJsErrorCode::ERR_TYPES_NOT_FOUND.as_str()
           && conditions != TYPES_ONLY_CONDITIONS
         {
           // try resolving with just "types" conditions for when someone misconfigures
@@ -1211,7 +1210,7 @@ impl<
             continue;
           }
           Err(e) => {
-            if e.code() == NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET {
+            if errors::get_code(&e) == NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET.as_str() {
               last_error = Some(e);
               continue;
             } else {
