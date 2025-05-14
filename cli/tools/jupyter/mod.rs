@@ -49,12 +49,16 @@ pub async fn kernel(
   );
 
   if !jupyter_flags.install && !jupyter_flags.kernel {
-    install::status()?;
+    install::status(jupyter_flags.name.as_deref())?;
     return Ok(());
   }
 
   if jupyter_flags.install {
-    install::install()?;
+    install::install(
+      jupyter_flags.name.as_deref(),
+      jupyter_flags.display.as_deref(),
+      jupyter_flags.force,
+    )?;
     return Ok(());
   }
 

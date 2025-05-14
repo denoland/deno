@@ -973,7 +973,6 @@ impl CliFactory {
             cli_options.clone(),
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.sys(),
             self.tsconfig_resolver()?.clone(),
@@ -1034,7 +1033,6 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(ModuleGraphCreator::new(
             cli_options.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.module_graph_builder().await?.clone(),
             self.type_checker().await?.clone(),
           )))

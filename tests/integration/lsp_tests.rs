@@ -1295,11 +1295,13 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "command": "deno test",
+        "description": null,
         "sourceUri": url_to_uri(&temp_dir.url().join("deno.jsonc").unwrap()).unwrap(),
       },
       {
         "name": "serve",
         "command": "deno run -RN server.ts",
+        "description": "Start the dev server",
         "sourceUri": url_to_uri(&temp_dir.url().join("deno.jsonc").unwrap()).unwrap(),
       }
     ])
