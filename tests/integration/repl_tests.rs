@@ -1170,7 +1170,6 @@ fn repl_json_imports() {
     });
 }
 
-
 #[test]
 fn repl_no_globalthis() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
