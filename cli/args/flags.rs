@@ -463,6 +463,7 @@ pub struct CleanFlags {
 pub struct BundleFlags {
   pub entrypoint: String,
   pub output_path: Option<String>,
+  pub external: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1892,6 +1893,13 @@ fn bundle_subcommand() -> Command {
           .num_args(1)
           .value_parser(value_parser!(String))
           .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("external")
+          .long("external")
+          .action(ArgAction::Append)
+          .num_args(1)
+          .value_parser(value_parser!(String)),
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
@@ -4684,6 +4692,10 @@ fn bundle_parse(
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoint: file,
     output_path: output,
+    external: matches
+      .remove_many::<String>("external")
+      .map(|f| f.collect::<Vec<_>>())
+      .unwrap_or_default(),
   });
   Ok(())
 }

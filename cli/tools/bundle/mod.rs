@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use deno_ast::ModuleSpecifier;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -29,13 +31,13 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
+use crate::sys::CliSys;
 
 pub async fn bundle(
   flags: Arc<Flags>,
-  bundle_flags: BundleFlags,
+  mut bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let main_worker_factory = factory.create_cli_main_worker_factory().await?;
 
   let resolver = factory.deno_resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
@@ -46,6 +48,7 @@ pub async fn bundle(
   let npm_resolver = factory.npm_resolver().await?.clone();
   let node_resolver = factory.node_resolver().await?.clone();
   let cli_options = factory.cli_options()?;
+  let http_cache = factory.http_cache()?.clone();
 
   let init_cwd = cli_options.initial_cwd().canonicalize()?;
 
@@ -61,6 +64,7 @@ pub async fn bundle(
     npm_req_resolver,
     npm_resolver,
     node_resolver,
+    http_cache,
   });
   let esbuild = EsbuildService::new(path, "0.25.4", plugin_handler.clone())
     .await
@@ -82,12 +86,20 @@ pub async fn bundle(
     });
   }
 
+  bundle_flags.external.push("*.node".into());
+
   let output_path = bundle_flags
     .output_path
     .unwrap_or_else(|| "./dist/bundled.js".to_string());
   let flags = EsbuildFlagsBuilder::default()
     .outfile(output_path)
     .bundle(true)
+    .external(bundle_flags.external)
+    .loader(
+      [(".node".into(), esbuild_rs::BuiltinLoader::File)]
+        .into_iter()
+        .collect(),
+    )
     // .outfile("./temp/mod.js".into())
     .build()
     .unwrap();
@@ -167,6 +179,8 @@ enum BundleError {
   PackageReqReferenceParse(
     #[from] deno_semver::package::PackageReqReferenceParseError,
   ),
+  #[error("Http cache error")]
+  HttpCache,
 }
 
 struct DenoPluginHandler {
@@ -177,6 +191,8 @@ struct DenoPluginHandler {
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   node_resolver: Arc<CliNodeResolver>,
+  #[allow(dead_code)]
+  http_cache: GlobalOrLocalHttpCache<CliSys>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -186,16 +202,21 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
     args: esbuild_rs::OnResolveArgs,
   ) -> Result<Option<esbuild_rs::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    let result = self.bundle_resolve(
-      &args.path,
-      args.importer.as_deref(),
-      args.resolve_dir.as_deref(),
-      args.kind,
-      args.with,
-    )?;
+    let result = self
+      .bundle_resolve(
+        &args.path,
+        args.importer.as_deref(),
+        args.resolve_dir.as_deref(),
+        args.kind,
+        args.with,
+      )
+      .await?;
 
     Ok(result.map(|r| esbuild_rs::OnResolveResult {
-      namespace: if r.starts_with("jsr:") {
+      namespace: if r.starts_with("jsr:")
+        || r.starts_with("https:")
+        || r.starts_with("http:")
+      {
         Some("deno".into())
       } else {
         None
@@ -225,8 +246,56 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
   }
 }
 
+fn import_kind_to_resolution_mode(
+  kind: esbuild_rs::protocol::ImportKind,
+) -> ResolutionMode {
+  match kind {
+    protocol::ImportKind::EntryPoint
+    | protocol::ImportKind::ImportStatement
+    | protocol::ImportKind::ComposesFrom
+    | protocol::ImportKind::DynamicImport
+    | protocol::ImportKind::ImportRule
+    | protocol::ImportKind::UrlToken => ResolutionMode::Import,
+    protocol::ImportKind::RequireCall
+    | protocol::ImportKind::RequireResolve => ResolutionMode::Require,
+  }
+}
+
 impl DenoPluginHandler {
-  fn bundle_resolve(
+  fn get_final_path(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<String, AnyError> {
+    match specifier.scheme() {
+      "file" => {
+        let path = specifier.to_file_path().unwrap();
+        Ok(path.to_string_lossy().to_string())
+      }
+      "npm" => {
+        let req_ref = NpmPackageReqReference::from_specifier(specifier)?;
+        let path = self.npm_req_resolver.resolve_req_reference(
+          &req_ref,
+          specifier,
+          ResolutionMode::Import,
+          NodeResolutionKind::Execution,
+        )?;
+        Ok(path.to_string_lossy().to_string())
+      }
+      "https" | "http" => Ok(match &self.http_cache {
+        GlobalOrLocalHttpCache::Global(global_http_cache) => global_http_cache
+          .local_path_for_url(specifier)?
+          .to_string_lossy()
+          .to_string(),
+        GlobalOrLocalHttpCache::Local(local_http_cache) => local_http_cache
+          .local_path_for_url(specifier)?
+          .ok_or(BundleError::HttpCache)?
+          .to_string_lossy()
+          .to_string(),
+      }),
+      _ => Ok(specifier.to_string()),
+    }
+  }
+  async fn bundle_resolve(
     &self,
     path: &str,
     importer: Option<&str>,
@@ -263,10 +332,19 @@ impl DenoPluginHandler {
         ));
       }
     }
+
+    log::debug!(
+      "{}: {} {} {} {:?}",
+      deno_terminal::colors::magenta("op_bundle_resolve"),
+      path,
+      resolve_dir,
+      referrer,
+      import_kind_to_resolution_mode(kind)
+    );
     let result = resolver.resolve(
       &path,
       &referrer,
-      ResolutionMode::Import,
+      import_kind_to_resolution_mode(kind),
       node_resolver::NodeResolutionKind::Execution,
     );
 
@@ -281,6 +359,48 @@ impl DenoPluginHandler {
     // nothing resolved it, then error out with this error.
     match result {
       Ok(result) => {
+        log::debug!(
+          "{}: {:?}",
+          deno_terminal::colors::cyan("preparing module load"),
+          result.url
+        );
+        self.prepare_module_load(result.url.clone()).await?;
+        log::debug!(
+          "{}: {:?}",
+          deno_terminal::colors::green("prepared module load"),
+          result.url
+        );
+
+        let graph = self.module_graph_container.graph();
+        let module = graph.get(&result.url);
+        if let Some(module) = module {
+          log::debug!(
+            "{}: {} -> {}",
+            deno_terminal::colors::cyan("module"),
+            result.url,
+            module.specifier()
+          );
+          let specifier = match module {
+            deno_graph::Module::Npm(_) => {
+              let req_ref =
+                NpmPackageReqReference::from_specifier(&result.url)?;
+              return Ok(Some(file_path_or_url(
+                &self
+                  .npm_req_resolver
+                  .resolve_req_reference(
+                    &req_ref,
+                    &referrer,
+                    ResolutionMode::Import,
+                    NodeResolutionKind::Execution,
+                  )?
+                  .into_url()?,
+              )));
+            }
+            _ => module.specifier().clone(),
+          };
+          return Ok(Some(file_path_or_url(&specifier)));
+        }
+
         if result.url.scheme() == "npm" {
           let req_ref = NpmPackageReqReference::from_specifier(&result.url)?;
           Ok(Some(file_path_or_url(
@@ -305,6 +425,40 @@ impl DenoPluginHandler {
     }
   }
 
+  async fn prepare_module_load(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
+    // eprintln!("about to prepare module load");
+    let prepared = self
+      .module_load_preparer
+      .prepare_module_load(
+        graph,
+        &[specifier],
+        PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: TsTypeLib::default(),
+          permissions: self.permissions.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: false,
+        },
+      )
+      .await
+      .inspect_err(|e| {
+        // eprintln!(
+        //   "{}: error preparing module load: {:?}",
+        //   deno_terminal::colors::red("ERROR"),
+        //   e
+        // );
+      })?;
+    // eprintln!("prepared module load");
+    graph_permit.commit();
+    Ok(())
+  }
+
   async fn bundle_load(
     &self,
     specifier: &str,
@@ -315,7 +469,6 @@ impl DenoPluginHandler {
     let resolve_dir = Path::new(&resolve_dir);
     let specifier = deno_core::resolve_url_or_path(&specifier, resolve_dir)?;
 
-    let npm_req_resolver = self.npm_req_resolver.clone();
     let npm_resolver = self.npm_resolver.clone();
     let node_resolver = self.node_resolver.clone();
     {

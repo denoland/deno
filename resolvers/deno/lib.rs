@@ -260,8 +260,16 @@ impl<
     if let Some(node_and_npm_resolver) = self.node_and_npm_resolver.as_ref() {
       let node_resolver = &node_and_npm_resolver.node_resolver;
       if referrer.scheme() == "file"
-        && self.in_npm_pkg_checker.in_npm_package(referrer)
+        && dbg!(self.in_npm_pkg_checker.in_npm_package(referrer))
       {
+        log::debug!(
+          "{}: specifier={} referrer={} mode={:?} kind={:?}",
+          deno_terminal::colors::magenta("resolving in npm package"),
+          raw_specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind
+        );
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
           .and_then(|res| {
