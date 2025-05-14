@@ -4,7 +4,7 @@ Deno.serve({
     Deno.exit(0);
   },
   onListen(addr) {
-    const url = `http://${addr.hostname}:${addr.port}/`;
+    const url = `http://localhost:${addr.port}/`;
     fetch(url);
   },
   port: 0,
