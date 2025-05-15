@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
