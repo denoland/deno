@@ -461,9 +461,27 @@ pub struct CleanFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
-  pub entrypoint: String,
+  pub entrypoints: Vec<String>,
   pub output_path: Option<String>,
   pub external: Vec<String>,
+  pub format: BundleFormat,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum BundleFormat {
+  Esm,
+  Cjs,
+  Iife,
+}
+
+impl std::fmt::Display for BundleFormat {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      BundleFormat::Esm => write!(f, "esm"),
+      BundleFormat::Cjs => write!(f, "cjs"),
+      BundleFormat::Iife => write!(f, "iife"),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1872,6 +1890,14 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
+  fn format_parser(s: &str) -> Result<BundleFormat, clap::Error> {
+    match s {
+      "esm" => Ok(BundleFormat::Esm),
+      "cjs" => Ok(BundleFormat::Cjs),
+      "iife" => Ok(BundleFormat::Iife),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
   command(
     "bundle",
     "bundle a thing",
@@ -1900,6 +1926,12 @@ fn bundle_subcommand() -> Command {
           .action(ArgAction::Append)
           .num_args(1)
           .value_parser(value_parser!(String)),
+      )
+      .arg(
+        Arg::new("format")
+          .long("format")
+          .value_parser(clap::builder::ValueParser::new(format_parser))
+          .default_value("esm"),
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
@@ -4686,16 +4718,17 @@ fn bundle_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  let file = matches.remove_one::<String>("file").unwrap();
+  let file = matches.remove_many::<String>("file").unwrap();
   let output = matches.remove_one::<String>("output");
   compile_args_without_check_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
-    entrypoint: file,
+    entrypoints: file.collect(),
     output_path: output,
     external: matches
       .remove_many::<String>("external")
       .map(|f| f.collect::<Vec<_>>())
       .unwrap_or_default(),
+    format: matches.remove_one::<BundleFormat>("format").unwrap(),
   });
   Ok(())
 }

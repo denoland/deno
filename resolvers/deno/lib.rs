@@ -260,7 +260,7 @@ impl<
     if let Some(node_and_npm_resolver) = self.node_and_npm_resolver.as_ref() {
       let node_resolver = &node_and_npm_resolver.node_resolver;
       if referrer.scheme() == "file"
-        && dbg!(self.in_npm_pkg_checker.in_npm_package(referrer))
+        && self.in_npm_pkg_checker.in_npm_package(referrer)
       {
         log::debug!(
           "{}: specifier={} referrer={} mode={:?} kind={:?}",

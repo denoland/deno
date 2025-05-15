@@ -20,6 +20,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
 use crate::args::BundleFlags;
+use crate::args::BundleFormat;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
@@ -95,19 +96,22 @@ pub async fn bundle(
     .outfile(output_path)
     .bundle(true)
     .external(bundle_flags.external)
-    .loader(
-      [(".node".into(), esbuild_rs::BuiltinLoader::File)]
-        .into_iter()
-        .collect(),
-    )
-    // .outfile("./temp/mod.js".into())
+    .format(match bundle_flags.format {
+      BundleFormat::Esm => esbuild_rs::Format::Esm,
+      BundleFormat::Cjs => esbuild_rs::Format::Cjs,
+      BundleFormat::Iife => esbuild_rs::Format::Iife,
+    })
     .build()
     .unwrap();
-  let entrypoint = bundle_flags.entrypoint;
+  let entries = bundle_flags
+    .entrypoints
+    .into_iter()
+    .map(|e| ("".into(), e.into()))
+    .collect();
 
   let response = client
     .send_build_request(protocol::BuildRequest {
-      entries: vec![("".into(), entrypoint.into())],
+      entries,
       key: 0,
       flags: flags.to_flags(),
       write: true,
@@ -118,7 +122,7 @@ pub async fn bundle(
       mangle_cache: None.into(),
       node_paths: vec![],
       plugins: Some(vec![protocol::BuildPlugin {
-        name: "test".into(),
+        name: "deno".into(),
         on_start: false,
         on_end: false,
         on_resolve: (vec![protocol::OnResolveSetupOptions {
