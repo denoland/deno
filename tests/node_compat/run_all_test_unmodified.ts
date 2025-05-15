@@ -394,7 +394,6 @@ async function main() {
     }
   }
   collectNonCategorizedItems(categories);
-  console.log("Running", tests.length, "tests");
   const categoryList = Object.entries(categories)
     .sort(([c0], [c1]) => c0.localeCompare(c1));
   const reports = {} as TestReports;
@@ -441,6 +440,7 @@ async function main() {
     );
   }
 
+  console.log("Running", sequential.length + parallel.length, "tests");
   // Runs sequential tests
   for (const path of sequential) {
     await run(path);
