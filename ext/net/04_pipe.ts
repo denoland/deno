@@ -147,7 +147,7 @@ function connect(opts: Options) {
       rid = op_pipe_connect(opts.path, "Deno.pipe.connect");
       return new Pipe(rid);
     case "windows":
-      rid = op_pipe_connect(opts.path, "Deno.pipe.connect");
+      rid = op_pipe_connect(opts, "Deno.pipe.connect");
       return new Pipe(rid);
     default:
       throw new Error(`Unsupported kind: ${opts.kind}`);
