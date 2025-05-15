@@ -799,7 +799,7 @@ impl WebWorker {
       return;
     }
 
-    if !MEMORY_TRIM_HANDLER_ENABLED {
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
       return;
     }
 
