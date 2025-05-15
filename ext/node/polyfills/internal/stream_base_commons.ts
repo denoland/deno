@@ -20,9 +20,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   kArrayBufferOffset,
@@ -38,7 +35,16 @@ import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { clearTimeout, setUnrefTimeout } from "node:timers";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { primordials } from "ext:core/mod.js";
 import { Buffer } from "node:buffer";
+
+const {
+  Array,
+  FunctionPrototypeBind,
+  MapPrototypeGet,
+  Symbol,
+  TypedArrayPrototypeGetBuffer,
+} = primordials;
 
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
@@ -255,7 +261,14 @@ export function onStreamRead(
       const offset = streamBaseState[kArrayBufferOffset];
       // Performance note: Pass ArrayBuffer to Buffer#from to avoid
       // copy.
-      const buf = Buffer.from(arrayBuffer.buffer, offset, nread);
+      const buf = Buffer.from(
+        TypedArrayPrototypeGetBuffer(arrayBuffer),
+        offset,
+        nread,
+      );
+      // Ignore use of primordial here. The `push` method is from a `Readable`
+      // stream instance.
+      // deno-lint-ignore prefer-primordials
       result = stream.push(buf);
     }
 
@@ -278,7 +291,7 @@ export function onStreamRead(
     return;
   }
 
-  if (nread !== codeMap.get("EOF")) {
+  if (nread !== MapPrototypeGet(codeMap, "EOF")) {
     // CallJSOnreadMethod expects the return value to be a buffer.
     // Ref: https://github.com/nodejs/node/pull/34375
     stream.destroy(errnoException(nread, "read"));
@@ -311,6 +324,9 @@ export function onStreamRead(
     // Push a null to signal the end of data.
     // Do it before `maybeDestroy` for correct order of events:
     // `end` -> `close`
+    // Ignore use of primordial. The `push` method is from a `Readable` stream
+    // instance.
+    // deno-lint-ignore prefer-primordials
     stream.push(null);
     stream.read(0);
   }
@@ -341,7 +357,10 @@ export function setStreamTimeout(
       this.removeListener("timeout", callback);
     }
   } else {
-    this[kTimeout] = setUnrefTimeout(this._onTimeout.bind(this), msecs);
+    this[kTimeout] = setUnrefTimeout(
+      FunctionPrototypeBind(this._onTimeout, this),
+      msecs,
+    );
 
     if (this[kSession]) {
       this[kSession][kUpdateTimer]();

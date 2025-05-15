@@ -77,6 +77,9 @@ const supportedCiphers = [
   "aes256",
   "aes-128-gcm",
   "aes-256-gcm",
+  "aes-128-ctr",
+  "aes-192-ctr",
+  "aes-256-ctr",
 ];
 
 export function getCiphers(): string[] {

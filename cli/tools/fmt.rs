@@ -542,7 +542,7 @@ fn create_external_formatter_for_typescript(
   MediaType,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   let unstable_sql = unstable_options.sql;
   move |media_type, text, config| match media_type {
     MediaType::Css => format_embedded_css(&text, config),
@@ -551,10 +551,10 @@ fn create_external_formatter_for_typescript(
       if unstable_sql {
         format_embedded_sql(&text, config)
       } else {
-        None
+        Ok(None)
       }
     }
-    _ => None,
+    _ => Ok(None),
   }
 }
 
@@ -571,7 +571,7 @@ fn create_external_formatter_for_typescript(
 fn format_embedded_css(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   use malva::config;
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
@@ -624,13 +624,11 @@ fn format_embedded_css(
   };
   // Wraps the text in a css block of `a { ... }`
   // to make it valid css (scss)
-  let Ok(text) = malva::format_text(
+  let text = malva::format_text(
     &format!("a{{\n{}\n}}", text),
     malva::Syntax::Scss,
     &options,
-  ) else {
-    return None;
-  };
+  )?;
   let mut buf = vec![];
   for (i, l) in text.lines().enumerate() {
     // skip the first line (a {)
@@ -659,14 +657,14 @@ fn format_embedded_css(
 
     buf.push(chars.as_str());
   }
-  Some(buf.join("\n").to_string())
+  Ok(Some(buf.join("\n").to_string()))
 }
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
@@ -727,23 +725,25 @@ fn format_embedded_html(
       single_attr_same_line: true,
     },
   };
-  let Ok(text) = markup_fmt::format_text(
+  let text = markup_fmt::format_text(
     text,
     markup_fmt::Language::Html,
     &options,
     |code, _| Ok::<_, std::convert::Infallible>(code.into()),
-  ) else {
-    return None;
-  };
-  Some(text.to_string())
+  )?;
+  Ok(Some(text.to_string()))
 }
 
 /// Formats the embedded SQL code blocks in JavaScript and TypeScript.
 fn format_embedded_sql(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
-  Some(format_sql_text(text, config.use_tabs, config.indent_width))
+) -> deno_core::anyhow::Result<Option<String>> {
+  Ok(Some(format_sql_text(
+    text,
+    config.use_tabs,
+    config.indent_width,
+  )))
 }
 
 fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {

@@ -10,12 +10,14 @@ use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_semver::package::PackageNv;
+pub use deno_task_executor::DenoTaskLifeCycleScriptsExecutor;
 
 use super::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::WorkspaceNpmPatchPackages;
 
 pub mod bin_entries;
+mod deno_task_executor;
 pub mod lifecycle_scripts;
 
 /// Part of the resolution that interacts with the file system.
@@ -27,48 +29,56 @@ pub trait NpmPackageFsInstaller: std::fmt::Debug + Send + Sync {
   ) -> Result<(), JsErrorBox>;
 }
 
-pub trait NpmPackageExtraInfoProvider: std::fmt::Debug + Send + Sync {
-  async fn get_package_extra_info(
-    &self,
-    package_id: &PackageNv,
-    package_path: &Path,
-    expected: ExpectedExtraInfo,
-  ) -> Result<deno_npm::NpmPackageExtraInfo, JsErrorBox>;
+pub struct CachedNpmPackageExtraInfoProvider {
+  inner: Arc<NpmPackageExtraInfoProvider>,
+  cache: RwLock<rustc_hash::FxHashMap<PackageNv, NpmPackageExtraInfo>>,
 }
 
-impl<T: NpmPackageExtraInfoProvider + ?Sized> NpmPackageExtraInfoProvider
-  for Arc<T>
-{
-  async fn get_package_extra_info(
+impl CachedNpmPackageExtraInfoProvider {
+  pub fn new(inner: Arc<NpmPackageExtraInfoProvider>) -> Self {
+    Self {
+      inner,
+      cache: Default::default(),
+    }
+  }
+
+  pub async fn get_package_extra_info(
     &self,
-    package_id: &PackageNv,
+    package_nv: &PackageNv,
     package_path: &Path,
     expected: ExpectedExtraInfo,
-  ) -> Result<deno_npm::NpmPackageExtraInfo, JsErrorBox> {
+  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
+    if let Some(extra_info) = self.cache.read().get(package_nv) {
+      return Ok(extra_info.clone());
+    }
+
+    let extra_info = self
+      .inner
+      .get_package_extra_info(package_nv, package_path, expected)
+      .await?;
     self
-      .as_ref()
-      .get_package_extra_info(package_id, package_path, expected)
-      .await
+      .cache
+      .write()
+      .insert(package_nv.clone(), extra_info.clone());
+    Ok(extra_info)
   }
 }
 
-pub struct ExtraInfoProvider {
+pub struct NpmPackageExtraInfoProvider {
   npm_cache: Arc<CliNpmCache>,
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-  cache: RwLock<rustc_hash::FxHashMap<PackageNv, NpmPackageExtraInfo>>,
   workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
-impl std::fmt::Debug for ExtraInfoProvider {
+impl std::fmt::Debug for NpmPackageExtraInfoProvider {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("ExtraInfoProvider")
+    f.debug_struct("NpmPackageExtraInfoProvider")
       .field("npm_cache", &self.npm_cache)
-      .field("cache", &self.cache)
       .finish()
   }
 }
 
-impl ExtraInfoProvider {
+impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_cache: Arc<CliNpmCache>,
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
@@ -77,7 +87,6 @@ impl ExtraInfoProvider {
     Self {
       npm_cache,
       npm_registry_info_provider,
-      cache: RwLock::new(rustc_hash::FxHashMap::default()),
       workspace_patch_packages,
     }
   }
@@ -100,7 +109,43 @@ impl ExpectedExtraInfo {
   }
 }
 
-impl ExtraInfoProvider {
+impl NpmPackageExtraInfoProvider {
+  pub async fn get_package_extra_info(
+    &self,
+    package_nv: &PackageNv,
+    package_path: &Path,
+    expected: ExpectedExtraInfo,
+  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
+    if expected.deprecated {
+      // we need the registry version info to get the deprecated string, since it's not in the
+      // package's package.json
+      self.fetch_from_registry(package_nv).await
+    } else {
+      match self.fetch_from_package_json(package_path).await {
+        Ok(extra_info) => {
+          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
+          // still not sure how that happens
+          if (expected.bin && extra_info.bin.is_none())
+            || (expected.scripts && extra_info.scripts.is_empty())
+          {
+            self.fetch_from_registry(package_nv).await
+          } else {
+            Ok(extra_info)
+          }
+        }
+        Err(err) => {
+          log::debug!(
+            "failed to get extra info for {} from package.json at {}: {}",
+            package_nv,
+            package_path.join("package.json").display(),
+            err
+          );
+          self.fetch_from_registry(package_nv).await
+        }
+      }
+    }
+  }
+
   async fn fetch_from_registry(
     &self,
     package_nv: &PackageNv,
@@ -137,53 +182,6 @@ impl ExtraInfoProvider {
       })
       .await
       .map_err(JsErrorBox::from_err)??;
-    Ok(extra_info)
-  }
-}
-
-impl super::common::NpmPackageExtraInfoProvider for ExtraInfoProvider {
-  async fn get_package_extra_info(
-    &self,
-    package_nv: &PackageNv,
-    package_path: &Path,
-    expected: ExpectedExtraInfo,
-  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    if let Some(extra_info) = self.cache.read().get(package_nv) {
-      return Ok(extra_info.clone());
-    }
-
-    let extra_info = if expected.deprecated {
-      // we need the registry version info to get the deprecated string, since it's not in the
-      // package's package.json
-      self.fetch_from_registry(package_nv).await?
-    } else {
-      match self.fetch_from_package_json(package_path).await {
-        Ok(extra_info) => {
-          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-          // still not sure how that happens
-          if (expected.bin && extra_info.bin.is_none())
-            || (expected.scripts && extra_info.scripts.is_empty())
-          {
-            self.fetch_from_registry(package_nv).await?
-          } else {
-            extra_info
-          }
-        }
-        Err(err) => {
-          log::debug!(
-            "failed to get extra info for {} from package.json at {}: {}",
-            package_nv,
-            package_path.join("package.json").display(),
-            err
-          );
-          self.fetch_from_registry(package_nv).await?
-        }
-      }
-    };
-    self
-      .cache
-      .write()
-      .insert(package_nv.clone(), extra_info.clone());
     Ok(extra_info)
   }
 }

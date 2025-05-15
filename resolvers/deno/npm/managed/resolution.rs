@@ -141,6 +141,13 @@ impl NpmResolutionCell {
       .collect::<Vec<_>>()
   }
 
+  pub fn any_top_level_package(
+    &self,
+    check: impl Fn(&NpmPackageId) -> bool,
+  ) -> bool {
+    self.snapshot.read().top_level_packages().any(check)
+  }
+
   pub fn all_system_packages(
     &self,
     system_info: &NpmSystemInfo,
