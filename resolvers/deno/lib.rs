@@ -132,13 +132,9 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
+#[sys_traits::auto_impl]
 pub trait DenoResolverSys:
   FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
-{
-}
-
-impl<T> DenoResolverSys for T where
-  T: FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
 {
 }
 

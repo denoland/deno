@@ -5,17 +5,18 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use anyhow::Error as AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
+use deno_npm_cache::NpmCacheSys;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 
-use super::CachedNpmPackageExtraInfoProvider;
-use crate::args::LifecycleScriptsConfig;
-use crate::util::progress_bar::ProgressBar;
+use crate::CachedNpmPackageExtraInfoProvider;
+use crate::LifecycleScriptsConfig;
+use crate::PackagesAllowedScripts;
 
 pub struct PackageWithScript<'a> {
   pub package: &'a NpmResolutionPackage,
@@ -23,7 +24,7 @@ pub struct PackageWithScript<'a> {
   pub package_folder: PathBuf,
 }
 
-pub struct LifecycleScriptsExecutorOptions<'a> {
+pub struct LifecycleScriptsExecutorOptions<'a, TSys: NpmCacheSys> {
   pub init_cwd: &'a Path,
   pub process_state: &'a str,
   pub root_node_modules_dir_path: &'a Path,
@@ -33,27 +34,29 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   pub snapshot: &'a NpmResolutionSnapshot,
   pub system_packages: &'a [NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
-  pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider,
+  pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider<TSys>,
 }
 
 #[derive(Debug)]
 pub struct NullLifecycleScriptsExecutor;
 
 #[async_trait::async_trait(?Send)]
-impl LifecycleScriptsExecutor for NullLifecycleScriptsExecutor {
+impl<TSys: NpmCacheSys> LifecycleScriptsExecutor<TSys>
+  for NullLifecycleScriptsExecutor
+{
   async fn execute(
     &self,
-    _options: LifecycleScriptsExecutorOptions<'_>,
+    _options: LifecycleScriptsExecutorOptions<'_, TSys>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait LifecycleScriptsExecutor: Sync + Send {
+pub trait LifecycleScriptsExecutor<TSys: NpmCacheSys>: Sync + Send {
   async fn execute(
     &self,
-    options: LifecycleScriptsExecutorOptions<'_>,
+    options: LifecycleScriptsExecutorOptions<'_, TSys>,
   ) -> Result<(), AnyError>;
 }
 
@@ -125,7 +128,6 @@ impl<'a> LifecycleScripts<'a> {
     if !self.strategy.can_run_scripts() {
       return false;
     }
-    use crate::args::PackagesAllowedScripts;
     match &self.config.allowed {
       PackagesAllowedScripts::All => true,
       // TODO: make this more correct

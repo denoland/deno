@@ -19,7 +19,7 @@ use rustc_hash::FxHashSet;
 pub use self::common::lifecycle_scripts::LifecycleScriptsExecutor;
 pub use self::common::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use self::common::NpmPackageExtraInfoProvider;
-pub use self::common::NpmPackageFsInstaller;
+use self::common::NpmPackageFsInstaller;
 use self::global::GlobalNpmPackageInstaller;
 use self::local::LocalNpmPackageInstaller;
 pub use self::resolution::AddPkgReqsResult;
@@ -39,12 +39,6 @@ mod common;
 mod global;
 mod local;
 mod resolution;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PackageCaching<'a> {
-  Only(Cow<'a, [PackageReq]>),
-  All,
-}
 
 #[derive(Debug)]
 pub struct NpmInstaller {

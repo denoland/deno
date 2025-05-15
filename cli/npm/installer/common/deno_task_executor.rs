@@ -8,18 +8,16 @@ use std::rc::Rc;
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
+use deno_npm_installer::BinEntries;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_task_shell::KillSignal;
 
-use super::bin_entries::BinEntries;
 use super::lifecycle_scripts::is_broken_default_install_script;
 use super::lifecycle_scripts::LifecycleScriptsExecutor;
 use super::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use super::lifecycle_scripts::PackageWithScript;
 use super::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
-use super::CachedNpmPackageExtraInfoProvider;
-use super::ExpectedExtraInfo;
 use crate::sys::CliSys;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -31,7 +29,7 @@ pub enum DenoTaskLifecycleScriptsError {
   Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  BinEntries(#[from] super::bin_entries::BinEntriesError),
+  BinEntries(#[from] deno_npm_installer::BinEntriesError),
   #[class(inherit)]
   #[error(
     "failed to create npm process state tempfile for running lifecycle scripts"
