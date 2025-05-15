@@ -46,7 +46,7 @@ impl NamedPipe {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
-      Inner::Receiver(_) => Err(io::ErrorKind::UnexpectedEof.into()),
+      Inner::Receiver(_) => Err(io::ErrorKind::Unsupported.into()),
       Inner::Sender(sender) => sender.write(buf).try_or_cancel(cancel).await,
     }
   }
@@ -58,7 +58,7 @@ impl NamedPipe {
       Inner::Receiver(receiver) => {
         receiver.read(buf).try_or_cancel(cancel).await
       }
-      Inner::Sender(_) => Err(io::ErrorKind::UnexpectedEof.into()),
+      Inner::Sender(_) => Err(io::ErrorKind::Unsupported.into()),
     }
   }
 }

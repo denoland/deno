@@ -11,7 +11,16 @@ const {
   ObjectDefineProperty,
   SymbolDispose,
   SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  SetPrototypeForEach,
 } = primordials;
+import {
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  writableStreamForRid,
+} from "ext:deno_web/06_streams.js";
 
 enum PipeMode {
   Message = "message",
