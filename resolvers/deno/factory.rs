@@ -252,8 +252,7 @@ pub trait WorkspaceFactorySys:
 {
 }
 
-pub struct WorkspaceFactory<TSys: WorkspaceFactorySys + sys_traits::ThreadSleep>
-{
+pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   sys: TSys,
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
