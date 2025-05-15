@@ -8,7 +8,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_config::workspace::Workspace;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::TryStreamExt;
@@ -18,28 +17,28 @@ use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
+use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
 use deno_npm_cache::NpmCacheHttpClientResponse;
+use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::BinEntries;
+use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
+use deno_npm_installer::ExpectedExtraInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
-use deno_runtime::colors;
 use deno_runtime::deno_io::FromRawIoHandle;
-use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::SmallStackString;
-use deno_semver::StackString;
-use deno_semver::Version;
 use deno_task_shell::KillSignal;
-use indexmap::IndexMap;
-use thiserror::Error;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -61,6 +60,13 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliNpmResolutionInitializer =
+  deno_npm_installer::initializer::NpmResolutionInitializer<CliSys>;
+pub type CliNpmResolutionInstaller =
+  deno_npm_installer::resolution::NpmResolutionInstaller<
+    CliNpmCacheHttpClient,
+    CliSys,
+  >;
 
 pub struct NpmPackageInfoApiAdapter {
   api: Arc<dyn NpmRegistryApi + Send + Sync>,
@@ -120,7 +126,8 @@ async fn get_infos(
       Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
         deno_lockfile::Lockfile5NpmInfo {
           tarball_url: version_info.dist.as_ref().and_then(|d| {
-            if d.tarball == DefaultTarballUrl.default_tarball_url(v) {
+            let tarball_url_provider = NpmRegistryDefaultTarballUrlProvider;
+            if d.tarball == tarball_url_provider.default_tarball_url(v) {
               None
             } else {
               Some(d.tarball.clone())
@@ -370,10 +377,10 @@ pub struct DenoTaskLifeCycleScriptsExecutor {
 }
 
 #[async_trait::async_trait(?Send)]
-impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
+impl LifecycleScriptsExecutor<CliSys> for DenoTaskLifeCycleScriptsExecutor {
   async fn execute(
     &self,
-    options: LifecycleScriptsExecutorOptions<'_>,
+    options: LifecycleScriptsExecutorOptions<'_, CliSys>,
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
     let mut bin_entries = BinEntries::new();
@@ -438,7 +445,10 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
           {
             continue;
           }
-          let _guard = options.progress_bar.update_with_prompt(
+          let pb = ProgressBar::new(
+            crate::util::progress_bar::ProgressBarStyle::TextOnly,
+          );
+          let _guard = pb.update_with_prompt(
             ProgressMessagePrompt::Initialize,
             &format!("{}: running '{script_name}' script", package.id.nv),
           );
@@ -540,7 +550,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   // custom commands available to the task runner
   async fn resolve_baseline_custom_commands<'a>(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
     bin_entries: &mut BinEntries<'a>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
@@ -583,7 +593,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     P: IntoIterator<Item = &'a NpmResolutionPackage>,
   >(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
     bin_entries: &mut BinEntries<'a>,
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
@@ -635,7 +645,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   // note that this will overwrite any existing custom commands.
   async fn resolve_custom_commands_from_deps(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
     baseline: crate::task_runner::TaskCustomCommands,
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,

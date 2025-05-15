@@ -75,10 +75,11 @@ pub struct LifecycleScriptsConfig {
 
 pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
   type Guard;
+  type ClearGuard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard;
   fn on_initializing(&self, message: &str) -> Self::Guard;
-  fn clear_guard(&self) -> Self::Guard;
+  fn clear_guard(&self) -> Self::ClearGuard;
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +87,7 @@ pub struct LogReporter;
 
 impl Reporter for LogReporter {
   type Guard = ();
+  type ClearGuard = ();
 
   fn on_blocking(&self, message: &str) -> Self::Guard {
     log::info!("{} {}", deno_terminal::colors::cyan("Blocking"), message);
@@ -95,7 +97,7 @@ impl Reporter for LogReporter {
     log::info!("{} {}", deno_terminal::colors::green("Initialize"), message);
   }
 
-  fn clear_guard(&self) -> Self::Guard {
+  fn clear_guard(&self) -> Self::ClearGuard {
     ()
   }
 }

@@ -268,6 +268,7 @@ pub struct ProgressBar {
 
 impl deno_npm_installer::Reporter for ProgressBar {
   type Guard = UpdateGuard;
+  type ClearGuard = ClearGuard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard {
     self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
@@ -277,7 +278,7 @@ impl deno_npm_installer::Reporter for ProgressBar {
     self.update_with_prompt(ProgressMessagePrompt::Initialize, message)
   }
 
-  fn clear_guard(&self) -> Self::Guard {
+  fn clear_guard(&self) -> Self::ClearGuard {
     self.clear_guard()
   }
 }

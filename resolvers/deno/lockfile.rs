@@ -52,7 +52,7 @@ impl<T> std::ops::DerefMut for Guard<'_, T> {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct LockfileFlags {
   pub no_lock: bool,
   pub frozen_lockfile: Option<bool>,
@@ -128,7 +128,7 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
 
   pub async fn discover(
     sys: TSys,
-    flags: &LockfileFlags,
+    flags: LockfileFlags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
     api: &(dyn NpmPackageInfoProvider + Send + Sync),
@@ -162,8 +162,8 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
     if flags.no_lock {
       return Ok(None);
     }
-    let file_path = match &flags.lock {
-      Some(lock) => PathBuf::from(lock),
+    let file_path = match flags.lock {
+      Some(path) => path,
       None => match workspace.resolve_lockfile_path()? {
         Some(path) => path,
         None => return Ok(None),
