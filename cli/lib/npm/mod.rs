@@ -4,6 +4,8 @@ mod permission_checker;
 
 use std::sync::Arc;
 
+use deno_npm_installer::process_state::NpmProcessState;
+use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_resolver::npm::NpmResolver;
@@ -36,10 +38,11 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
   for ManagedNpmProcessStateProvider<TSys>
 {
   fn get_npm_process_state(&self) -> String {
-    serialize_npm_process_state(
+    NpmProcessState::new_managed(
       self.0.resolution().serialized_valid_snapshot(),
       self.0.root_node_modules_path(),
     )
+    .as_serialized()
   }
 }
 
@@ -52,13 +55,13 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
   for ByonmNpmProcessStateProvider<TSys>
 {
   fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
+    NpmProcessState {
       kind: NpmProcessStateKind::Byonm,
       local_node_modules_path: self
         .0
         .root_node_modules_path()
         .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
+    }
+    .as_serialized()
   }
 }

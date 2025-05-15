@@ -2138,6 +2138,7 @@ dependencies = [
  "deno_media_type",
  "deno_node",
  "deno_npm",
+ "deno_npm_installer",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",

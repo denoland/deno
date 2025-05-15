@@ -20,6 +20,7 @@ mod extra_info;
 mod flag;
 mod fs;
 mod global;
+mod initializer;
 mod lifecycle_scripts;
 mod local;
 pub mod package_json;
@@ -36,6 +37,7 @@ pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
 pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
 use self::global::GlobalNpmPackageInstaller;
+use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
@@ -70,7 +72,7 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
-pub trait Reporter: std::fmt::Debug + Send + Sync {
+pub trait Reporter: std::fmt::Debug + Send + Sync + 'static {
   type Guard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard;
@@ -121,7 +123,7 @@ pub struct NpmInstaller<
 > {
   fs_installer: Arc<dyn NpmPackageFsInstaller>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-  npm_resolution_initializer: Arc<NpmResolutionInitializer>,
+  npm_resolution_initializer: Arc<NpmResolutionInitializer<TSys>>,
   npm_resolution_installer:
     Arc<NpmResolutionInstaller<TNpmCacheHttpClient, TSys>>,
   maybe_lockfile: Option<Arc<CliLockfile<TSys>>>,
@@ -142,7 +144,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
     >,
     npm_resolution: Arc<NpmResolutionCell>,
-    npm_resolution_initializer: Arc<NpmResolutionInitializer>,
+    npm_resolution_initializer: Arc<NpmResolutionInitializer<TSys>>,
     npm_resolution_installer: Arc<
       NpmResolutionInstaller<TNpmCacheHttpClient, TSys>,
     >,

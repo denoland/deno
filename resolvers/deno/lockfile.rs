@@ -30,7 +30,7 @@ pub struct CliLockfileReadFromPathOptions {
 
 #[sys_traits::auto_impl]
 pub trait LockfileSys:
-  deno_path_util::fs::AtomicWriteFileWithRetriesSys
+  std::fmt::Debug + deno_path_util::fs::AtomicWriteFileWithRetriesSys
 {
 }
 

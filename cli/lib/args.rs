@@ -10,6 +10,8 @@ use std::sync::LazyLock;
 
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm_installer::process_state::NpmProcessState;
+use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
