@@ -66,11 +66,11 @@ use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 #[cfg(target_os = "linux")]
+use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
+#[cfg(target_os = "linux")]
 use crate::worker::SIGUSR2_RX;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
-#[cfg(target_os = "linux")]
-use crate::MEMORY_TRIM_HANDLER_ENABLED;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
