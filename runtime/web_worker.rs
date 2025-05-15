@@ -69,6 +69,8 @@ use crate::worker::FormatJsErrorFn;
 use crate::worker::SIGUSR2_RX;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
+#[cfg(target_os = "linux")]
+use crate::MEMORY_TRIM_HANDLER_ENABLED;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -794,6 +796,10 @@ impl WebWorker {
   #[cfg(target_os = "linux")]
   pub fn setup_memory_trim_handler(&mut self) {
     if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !MEMORY_TRIM_HANDLER_ENABLED {
       return;
     }
 

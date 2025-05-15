@@ -61,6 +61,10 @@ use crate::FeatureChecker;
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
 #[cfg(target_os = "linux")]
+pub(crate) static MEMORY_TRIM_HANDLER_ENABLED: LazyLock<bool> =
+  LazyLock::new(|| std::env::var_os("DENO_USR2_MEMORY_TRIM").is_some());
+
+#[cfg(target_os = "linux")]
 pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
   LazyLock::new(|| {
     let (tx, rx) = tokio::sync::watch::channel(());
@@ -762,6 +766,10 @@ impl MainWorker {
   #[cfg(target_os = "linux")]
   pub fn setup_memory_trim_handler(&mut self) {
     if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !MEMORY_TRIM_HANDLER_ENABLED {
       return;
     }
 
