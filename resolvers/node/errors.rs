@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
-use deno_error::JsErrorClass;
 use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
@@ -57,42 +56,32 @@ impl NodeJsErrorCode {
       ERR_UNKNOWN_BUILTIN_MODULE => "ERR_UNKNOWN_BUILTIN_MODULE",
     }
   }
+}
 
-  #[allow(clippy::should_implement_trait)]
-  pub fn from_str(s: &str) -> Self {
-    use NodeJsErrorCode::*;
-    match s {
-      "ERR_INVALID_MODULE_SPECIFIER" => ERR_INVALID_MODULE_SPECIFIER,
-      "ERR_INVALID_PACKAGE_CONFIG" => ERR_INVALID_PACKAGE_CONFIG,
-      "ERR_INVALID_PACKAGE_TARGET" => ERR_INVALID_PACKAGE_TARGET,
-      "ERR_MODULE_NOT_FOUND" => ERR_MODULE_NOT_FOUND,
-      "ERR_PACKAGE_IMPORT_NOT_DEFINED" => ERR_PACKAGE_IMPORT_NOT_DEFINED,
-      "ERR_PACKAGE_PATH_NOT_EXPORTED" => ERR_PACKAGE_PATH_NOT_EXPORTED,
-      "ERR_UNKNOWN_FILE_EXTENSION" => ERR_UNKNOWN_FILE_EXTENSION,
-      "ERR_UNSUPPORTED_DIR_IMPORT" => ERR_UNSUPPORTED_DIR_IMPORT,
-      "ERR_UNSUPPORTED_ESM_URL_SCHEME" => ERR_UNSUPPORTED_ESM_URL_SCHEME,
-      "ERR_TYPES_NOT_FOUND" => ERR_TYPES_NOT_FOUND,
-      "ERR_INVALID_FILE_URL_PATH" => ERR_INVALID_FILE_URL_PATH,
-      "ERR_UNKNOWN_BUILTIN_MODULE" => ERR_UNKNOWN_BUILTIN_MODULE,
-      _ => unreachable!(),
-    }
-  }
+pub trait NodeJsErrorCoded {
+  fn code(&self) -> NodeJsErrorCode;
 }
 
 #[derive(Debug, Clone, Error, JsError)]
 #[error(
   "[{}] Invalid module '{}' {}{}",
-  get_code(self),
+  self.code(),
   request,
   reason,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
 )]
 #[class(type)]
-#[property("code" = NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER)]
+#[property("code" = self.code())]
 pub struct InvalidModuleSpecifierError {
   pub request: String,
   pub reason: Cow<'static, str>,
   pub maybe_referrer: Option<String>,
+}
+
+impl NodeJsErrorCoded for InvalidModuleSpecifierError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -108,6 +97,15 @@ pub enum LegacyResolveErrorKind {
   ModuleNotFound(#[from] ModuleNotFoundError),
 }
 
+impl NodeJsErrorCoded for LegacyResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      LegacyResolveErrorKind::TypesNotFound(e) => e.code(),
+      LegacyResolveErrorKind::ModuleNotFound(e) => e.code(),
+    }
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 #[error(
   "Could not find package '{}' from referrer '{}'{}.",
@@ -116,12 +114,18 @@ pub enum LegacyResolveErrorKind {
   referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
 )]
 #[class(generic)]
-#[property("code" = NodeJsErrorCode::ERR_MODULE_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct PackageNotFoundError {
   pub package_name: String,
   pub referrer: UrlOrPath,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
+}
+
+impl NodeJsErrorCoded for PackageNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -131,23 +135,48 @@ pub struct PackageNotFoundError {
   referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
 )]
 #[class(generic)]
-#[property("code" = NodeJsErrorCode::ERR_MODULE_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct ReferrerNotFoundError {
   pub referrer: UrlOrPath,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
 }
 
+impl NodeJsErrorCoded for ReferrerNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 #[class(inherit)]
 #[error("Failed resolving '{package_name}' from referrer '{referrer}'.")]
-#[property("code" = NodeJsErrorCode::ERR_MODULE_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct PackageFolderResolveIoError {
   pub package_name: String,
   pub referrer: UrlOrPath,
   #[source]
   #[inherit]
   pub source: std::io::Error,
+}
+
+impl NodeJsErrorCoded for PackageFolderResolveIoError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
+impl NodeJsErrorCoded for PackageFolderResolveErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      PackageFolderResolveErrorKind::PackageNotFound(e) => e.code(),
+      PackageFolderResolveErrorKind::ReferrerNotFound(e) => e.code(),
+      PackageFolderResolveErrorKind::Io(e) => e.code(),
+      PackageFolderResolveErrorKind::PathToUrl(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
+    }
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -166,8 +195,19 @@ pub enum PackageFolderResolveErrorKind {
   Io(#[from] PackageFolderResolveIoError),
   #[class(inherit)]
   #[error(transparent)]
-  #[property("code" = NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH)]
+  #[property("code" = self.code())]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
+}
+
+impl NodeJsErrorCoded for PackageSubpathResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
+      PackageSubpathResolveErrorKind::Exports(e) => e.code(),
+      PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
+      PackageSubpathResolveErrorKind::FinalizeResolution(e) => e.code(),
+    }
+  }
 }
 
 impl PackageSubpathResolveError {
@@ -246,13 +286,35 @@ impl PackageSubpathResolveErrorKind {
     NodeResolutionKind::Types => " for types",
   }
 )]
-#[property("code" = NodeJsErrorCode::ERR_MODULE_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
   pub maybe_referrer: Option<UrlOrPath>,
   pub resolution_mode: ResolutionMode,
   pub resolution_kind: NodeResolutionKind,
+}
+
+impl NodeJsErrorCoded for PackageTargetNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
+impl NodeJsErrorCoded for PackageTargetResolveErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      PackageTargetResolveErrorKind::NotFound(e) => e.code(),
+      PackageTargetResolveErrorKind::InvalidPackageTarget(e) => e.code(),
+      PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageTargetResolveErrorKind::PackageResolve(e) => e.code(),
+      PackageTargetResolveErrorKind::TypesNotFound(e) => e.code(),
+      PackageTargetResolveErrorKind::UnknownBuiltInNodeModule(e) => e.code(),
+      PackageTargetResolveErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
+    }
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -280,7 +342,7 @@ pub enum PackageTargetResolveErrorKind {
   UnknownBuiltInNodeModule(#[from] UnknownBuiltInNodeModuleError),
   #[class(inherit)]
   #[error(transparent)]
-  #[property("code" = NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH)]
+  #[property("code" = self.code())]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
 }
 
@@ -289,6 +351,15 @@ impl PackageTargetResolveErrorKind {
     match self {
       Self::TypesNotFound(not_found) => Some(not_found),
       _ => None,
+    }
+  }
+}
+
+impl NodeJsErrorCoded for PackageExportsResolveErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      PackageExportsResolveErrorKind::PackagePathNotExported(e) => e.code(),
+      PackageExportsResolveErrorKind::PackageTargetResolve(e) => e.code(),
     }
   }
 }
@@ -309,12 +380,12 @@ pub enum PackageExportsResolveErrorKind {
 #[derive(Debug, Error, JsError)]
 #[error(
     "[{}] Could not find types for '{}'{}",
-    get_code(self),
+    self.code(),
     self.0.code_specifier,
     self.0.maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
   )]
 #[class(generic)]
-#[property("code" = NodeJsErrorCode::ERR_TYPES_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct TypesNotFoundError(pub Box<TypesNotFoundErrorData>);
 
 #[derive(Debug)]
@@ -323,18 +394,38 @@ pub struct TypesNotFoundErrorData {
   pub maybe_referrer: Option<UrlOrPath>,
 }
 
+impl NodeJsErrorCoded for TypesNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 #[error(
   "[{}] Invalid package config. {}",
-  get_code(self),
+  self.code(),
   self.0
 )]
-#[property("code" = NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG)]
+#[property("code" = self.code())]
 pub struct PackageJsonLoadError(
   #[source]
   #[from]
   pub deno_package_json::PackageJsonLoadError,
 );
+
+impl NodeJsErrorCoded for PackageJsonLoadError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+  }
+}
+
+impl NodeJsErrorCoded for ClosestPkgJsonError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      ClosestPkgJsonErrorKind::Load(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Boxed, JsError)]
 pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
@@ -350,16 +441,22 @@ pub enum ClosestPkgJsonErrorKind {
 #[class(type)]
 #[error(
   "[{}] Package import specifier \"{}\" is not defined{}{}",
-  get_code(self),
+  self.code(),
   name,
   package_json_path.as_ref().map(|p| format!(" in package {}", p.display())).unwrap_or_default(),
   maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
 )]
-#[property("code" = NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED)]
+#[property("code" = self.code())]
 pub struct PackageImportNotDefinedError {
   pub name: String,
   pub package_json_path: Option<PathBuf>,
   pub maybe_referrer: Option<UrlOrPath>,
+}
+
+impl NodeJsErrorCoded for PackageImportNotDefinedError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -386,6 +483,32 @@ impl PackageImportsResolveErrorKind {
     match self {
       Self::Target(err) => err.as_types_not_found(),
       _ => None,
+    }
+  }
+}
+
+impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      Self::ClosestPkgJson(e) => e.code(),
+      Self::InvalidModuleSpecifier(e) => e.code(),
+      Self::NotDefined(e) => e.code(),
+      Self::Target(e) => e.code(),
+    }
+  }
+}
+
+impl NodeJsErrorCoded for PackageResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
+      PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
+      PackageResolveErrorKind::ExportsResolve(e) => e.code(),
+      PackageResolveErrorKind::SubpathResolve(e) => e.code(),
+      PackageResolveErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
     }
   }
 }
@@ -521,21 +644,34 @@ pub enum FinalizeResolutionErrorKind {
   UnsupportedDirImport(#[from] UnsupportedDirImportError),
   #[class(inherit)]
   #[error(transparent)]
-  #[property("code" = NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH)]
+  #[property("code" = self.code())]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+}
+
+impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
+      FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
+      FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
+      FinalizeResolutionErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
+    }
+  }
 }
 
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
   "[{}] Cannot find {} '{}'{}{}",
-  get_code(self),
+  self.code(),
   typ,
   specifier,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
   suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
 )]
-#[property("code" = NodeJsErrorCode::ERR_MODULE_NOT_FOUND)]
+#[property("code" = self.code())]
 pub struct ModuleNotFoundError {
   pub specifier: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
@@ -543,25 +679,37 @@ pub struct ModuleNotFoundError {
   pub suggested_ext: Option<&'static str>,
 }
 
+impl NodeJsErrorCoded for ModuleNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
   "[{}] Directory import '{}' is not supported resolving ES modules{}{}",
-  get_code(self),
+  self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
   suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
 )]
-#[property("code" = NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT)]
+#[property("code" = self.code())]
 pub struct UnsupportedDirImportError {
   pub dir_url: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
   pub suggested_file_name: Option<&'static str>,
 }
 
+impl NodeJsErrorCoded for UnsupportedDirImportError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+  }
+}
+
 #[derive(Debug, JsError)]
 #[class(generic)]
-#[property("code" = NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET)]
+#[property("code" = self.code())]
 pub struct InvalidPackageTargetError {
   pub pkg_json_path: PathBuf,
   pub sub_path: String,
@@ -578,7 +726,7 @@ impl std::fmt::Display for InvalidPackageTargetError {
       && !self.target.is_empty()
       && !self.target.starts_with("./");
     f.write_char('[')?;
-    f.write_str(&get_code(self))?;
+    f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
     if self.sub_path == "." {
@@ -611,9 +759,15 @@ impl std::fmt::Display for InvalidPackageTargetError {
   }
 }
 
+impl NodeJsErrorCoded for InvalidPackageTargetError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+  }
+}
+
 #[derive(Debug, JsError)]
 #[class(generic)]
-#[property("code" = NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED)]
+#[property("code" = self.code())]
 pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
   pub subpath: String,
@@ -621,12 +775,18 @@ pub struct PackagePathNotExportedError {
   pub resolution_kind: NodeResolutionKind,
 }
 
+impl NodeJsErrorCoded for PackagePathNotExportedError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+  }
+}
+
 impl std::error::Error for PackagePathNotExportedError {}
 
 impl std::fmt::Display for PackagePathNotExportedError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_char('[')?;
-    f.write_str(&get_code(self))?;
+    f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
     let types_msg = match self.resolution_kind {
@@ -661,13 +821,19 @@ impl std::fmt::Display for PackagePathNotExportedError {
 #[class(type)]
 #[error(
   "[{}] Only file and data URLs are supported by the default ESM loader.{} Received protocol '{}'",
-  get_code(self),
+  self.code(),
   if cfg!(windows) && url_scheme.len() == 2 { " On Windows, absolute path must be valid file:// URLS."} else { "" },
   url_scheme
 )]
-#[property("code" = NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME)]
+#[property("code" = self.code())]
 pub struct UnsupportedEsmUrlSchemeError {
   pub url_scheme: String,
+}
+
+impl NodeJsErrorCoded for UnsupportedEsmUrlSchemeError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -696,18 +862,16 @@ pub enum ResolveBinaryCommandsError {
 #[derive(Error, Debug, Clone, deno_error::JsError)]
 #[class("NotFound")]
 #[error("No such built-in module: node:{module_name}")]
-#[property("code" = NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE)]
+#[property("code" = self.code())]
 pub struct UnknownBuiltInNodeModuleError {
   /// Name of the invalid module.
   pub module_name: String,
 }
 
-pub fn get_code(e: &dyn JsErrorClass) -> String {
-  e.get_additional_properties()
-    .iter()
-    .find_map(|(k, v)| k.eq("code").then_some(v))
-    .unwrap()
-    .to_string()
+impl NodeJsErrorCoded for UnknownBuiltInNodeModuleError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+  }
 }
 
 #[cfg(test)]

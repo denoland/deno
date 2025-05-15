@@ -37,6 +37,7 @@ use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::resolve_specifier_into_node_modules;
 use node_resolver::NodeResolutionKind;
@@ -1062,9 +1063,7 @@ fn resolve_graph_specifier_types(
           );
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
-          Err(err) => match NodeJsErrorCode::from_str(
-            &node_resolver::errors::get_code(&err),
-          ) {
+          Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
               let reqs = npm
                 .npm_resolver
@@ -1183,14 +1182,11 @@ fn resolve_non_graph_specifier_types(
     );
     let maybe_url = match res_result {
       Ok(url_or_path) => Some(url_or_path.into_url()?),
-      Err(err) => {
-        match NodeJsErrorCode::from_str(&node_resolver::errors::get_code(&err))
-        {
-          NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-          | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
-          _ => return Err(err.into()),
-        }
-      }
+      Err(err) => match err.code() {
+        NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+        | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+        _ => return Err(err.into()),
+      },
     };
     Ok(Some(into_specifier_and_media_type(maybe_url)))
   } else {

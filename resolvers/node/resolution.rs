@@ -30,6 +30,7 @@ use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
+use crate::errors::NodeJsErrorCoded;
 use crate::errors::NodeResolveError;
 use crate::errors::NodeResolveRelativeJoinError;
 use crate::errors::PackageExportsResolveError;
@@ -972,35 +973,33 @@ impl<
               resolution_kind,
             ) {
               Ok((url, _)) => Ok(url),
-              Err(err) => {
-                match NodeJsErrorCode::from_str(&errors::get_code(&err)) {
-                  NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
-                  | NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
-                  | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
-                  | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
-                  | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-                  | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-                  | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-                  | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
-                  | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
-                  | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
-                  | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => Err(
-                    PackageTargetResolveErrorKind::PackageResolve(err).into(),
-                  ),
-                  NodeJsErrorCode::ERR_MODULE_NOT_FOUND => Err(
-                    PackageTargetResolveErrorKind::NotFound(
-                      PackageTargetNotFoundError {
-                        pkg_json_path: package_json_path.to_path_buf(),
-                        target: export_target.to_string(),
-                        maybe_referrer: maybe_referrer.map(|r| r.display()),
-                        resolution_mode,
-                        resolution_kind,
-                      },
-                    )
-                    .into(),
-                  ),
+              Err(err) => match err.code() {
+                NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+                | NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+                | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+                | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+                | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+                | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+                | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+                | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+                | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+                | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+                | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
+                  Err(PackageTargetResolveErrorKind::PackageResolve(err).into())
                 }
-              }
+                NodeJsErrorCode::ERR_MODULE_NOT_FOUND => Err(
+                  PackageTargetResolveErrorKind::NotFound(
+                    PackageTargetNotFoundError {
+                      pkg_json_path: package_json_path.to_path_buf(),
+                      target: export_target.to_string(),
+                      maybe_referrer: maybe_referrer.map(|r| r.display()),
+                      resolution_mode,
+                      resolution_kind,
+                    },
+                  )
+                  .into(),
+                ),
+              },
             };
 
             return match result {
@@ -1131,8 +1130,7 @@ impl<
       Ok(maybe_resolved) => Ok(maybe_resolved),
       Err(err) => {
         if resolution_kind.is_types()
-          && errors::get_code(&err)
-            == NodeJsErrorCode::ERR_TYPES_NOT_FOUND.as_str()
+          && err.code() == NodeJsErrorCode::ERR_TYPES_NOT_FOUND
           && conditions != TYPES_ONLY_CONDITIONS
         {
           // try resolving with just "types" conditions for when someone misconfigures
@@ -1213,9 +1211,7 @@ impl<
             continue;
           }
           Err(e) => {
-            if errors::get_code(&e)
-              == NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET.as_str()
-            {
+            if e.code() == NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET {
               last_error = Some(e);
               continue;
             } else {
