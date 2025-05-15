@@ -118,7 +118,7 @@ pub enum PrepareModuleLoadError {
   Check(#[from] CheckError),
   #[class(inherit)]
   #[error(transparent)]
-  AtomicWriteFileWithRetries(#[from] crate::args::LockfileWriteError),
+  LockfileWrite(#[from] deno_resolver::lockfile::LockfileWriteError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),

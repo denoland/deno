@@ -28,6 +28,7 @@ use deno_npm_cache::NpmCacheHttpClientResponse;
 use deno_npm_installer::BinEntries;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
+use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_runtime::colors;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageName;
@@ -40,22 +41,15 @@ use deno_task_shell::KillSignal;
 use indexmap::IndexMap;
 use thiserror::Error;
 
-pub use self::managed::CliManagedNpmResolverCreateOptions;
-pub use self::managed::CliNpmResolverManagedSnapshotOption;
-pub use self::managed::NpmResolutionInitializer;
-use super::lifecycle_scripts::is_broken_default_install_script;
-use super::lifecycle_scripts::LifecycleScriptsExecutor;
-use super::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use super::lifecycle_scripts::PackageWithScript;
-use super::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
-use crate::npm::managed::DefaultTarballUrl;
 use crate::sys::CliSys;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+pub type CliNpmInstaller =
+  deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmTarballCache =
   deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;

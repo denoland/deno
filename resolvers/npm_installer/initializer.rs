@@ -7,7 +7,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_resolver::lockfile::CliLockfile;
+use deno_resolver::lockfile::LockfileCell;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use parking_lot::Mutex;
@@ -16,14 +16,14 @@ use thiserror::Error;
 use super::WorkspaceNpmPatchPackages;
 
 #[derive(Debug, Clone)]
-pub enum CliNpmResolverManagedSnapshotOption<TSys: LockfileSys> {
-  ResolveFromLockfile(Arc<CliLockfile<TSys>>),
+pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
+  ResolveFromLockfile(Arc<LockfileCell<TSys>>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
 #[derive(Debug)]
 enum SyncState<TSys: LockfileSys> {
-  Pending(Option<CliNpmResolverManagedSnapshotOption<TSys>>),
+  Pending(Option<NpmResolverManagedSnapshotOption<TSys>>),
   Err(ResolveSnapshotError),
   Success,
 }
@@ -40,7 +40,7 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
     patch_packages: Arc<WorkspaceNpmPatchPackages>,
-    snapshot_option: CliNpmResolverManagedSnapshotOption<TSys>,
+    snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
       npm_resolution,
@@ -121,12 +121,12 @@ pub struct ResolveSnapshotError {
 }
 
 fn resolve_snapshot<TSys: LockfileSys>(
-  snapshot: CliNpmResolverManagedSnapshotOption<TSys>,
+  snapshot: NpmResolverManagedSnapshotOption<TSys>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
-    CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
+    NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), patch_packages)
           .map_err(|source| ResolveSnapshotError {
@@ -138,7 +138,7 @@ fn resolve_snapshot<TSys: LockfileSys>(
         Ok(None)
       }
     }
-    CliNpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
+    NpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
   }
 }
 
@@ -150,7 +150,7 @@ pub enum SnapshotFromLockfileError {
 }
 
 fn snapshot_from_lockfile<TSys: LockfileSys>(
-  lockfile: Arc<CliLockfile<TSys>>,
+  lockfile: Arc<LockfileCell<TSys>>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(

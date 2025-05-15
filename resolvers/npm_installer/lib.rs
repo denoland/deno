@@ -10,7 +10,7 @@ use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
-use deno_resolver::lockfile::CliLockfile;
+use deno_resolver::lockfile::LockfileCell;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_semver::package::PackageReq;
@@ -20,8 +20,8 @@ mod extra_info;
 mod flag;
 mod fs;
 mod global;
-mod initializer;
-mod lifecycle_scripts;
+pub mod initializer;
+pub mod lifecycle_scripts;
 mod local;
 pub mod package_json;
 pub mod process_state;
@@ -41,6 +41,7 @@ use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
+pub use self::local::LocalSetupCache;
 use self::package_json::NpmInstallDepsProvider;
 use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
@@ -72,7 +73,7 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
-pub trait Reporter: std::fmt::Debug + Send + Sync + 'static {
+pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
   type Guard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard;
@@ -80,7 +81,7 @@ pub trait Reporter: std::fmt::Debug + Send + Sync + 'static {
   fn clear_guard(&self) -> Self::Guard;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LogReporter;
 
 impl Reporter for LogReporter {
@@ -126,7 +127,7 @@ pub struct NpmInstaller<
   npm_resolution_initializer: Arc<NpmResolutionInitializer<TSys>>,
   npm_resolution_installer:
     Arc<NpmResolutionInstaller<TNpmCacheHttpClient, TSys>>,
-  maybe_lockfile: Option<Arc<CliLockfile<TSys>>>,
+  maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
   cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
@@ -148,10 +149,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     npm_resolution_installer: Arc<
       NpmResolutionInstaller<TNpmCacheHttpClient, TSys>,
     >,
-    reporter: &Arc<TReporter>,
+    reporter: &TReporter,
     sys: TSys,
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
-    maybe_lockfile: Option<Arc<CliLockfile<TSys>>>,
+    maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,

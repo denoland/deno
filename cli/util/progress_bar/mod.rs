@@ -266,6 +266,22 @@ pub struct ProgressBar {
   inner: ProgressBarInner,
 }
 
+impl deno_npm_installer::Reporter for ProgressBar {
+  type Guard = UpdateGuard;
+
+  fn on_blocking(&self, message: &str) -> Self::Guard {
+    self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
+  }
+
+  fn on_initializing(&self, message: &str) -> Self::Guard {
+    self.update_with_prompt(ProgressMessagePrompt::Initialize, message)
+  }
+
+  fn clear_guard(&self) -> Self::Guard {
+    self.clear_guard()
+  }
+}
+
 impl ProgressBar {
   /// Checks if progress bars are supported
   pub fn are_supported() -> bool {

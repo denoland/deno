@@ -24,6 +24,7 @@ use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
+use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
@@ -38,8 +39,7 @@ use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -231,7 +231,7 @@ struct RunSingleOptions<'a> {
 
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
-  npm_installer: Option<&'a NpmInstaller>,
+  npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<OsString, OsString>,

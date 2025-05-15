@@ -21,7 +21,7 @@ use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
 #[derive(Debug)]
-pub struct CliLockfileReadFromPathOptions {
+pub struct LockfileReadFromPathOptions {
   pub file_path: PathBuf,
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
@@ -73,7 +73,7 @@ pub enum LockfileWriteError {
 }
 
 #[derive(Debug)]
-pub struct CliLockfile<TSys: LockfileSys> {
+pub struct LockfileCell<TSys: LockfileSys> {
   sys: TSys,
   lockfile: Mutex<Lockfile>,
   pub filename: PathBuf,
@@ -81,7 +81,7 @@ pub struct CliLockfile<TSys: LockfileSys> {
   skip_write: bool,
 }
 
-impl<TSys: LockfileSys> CliLockfile<TSys> {
+impl<TSys: LockfileSys> LockfileCell<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
   pub fn lock(&self) -> Guard<Lockfile> {
     Guard {
@@ -179,7 +179,7 @@ impl<TSys: LockfileSys> CliLockfile<TSys> {
     });
     let lockfile = Self::read_from_path(
       sys,
-      CliLockfileReadFromPathOptions {
+      LockfileReadFromPathOptions {
         file_path,
         frozen,
         skip_write: flags.skip_write,
@@ -296,9 +296,9 @@ impl<TSys: LockfileSys> CliLockfile<TSys> {
 
   pub async fn read_from_path(
     sys: TSys,
-    opts: CliLockfileReadFromPathOptions,
+    opts: LockfileReadFromPathOptions,
     api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
-  ) -> Result<CliLockfile<TSys>, AnyError> {
+  ) -> Result<LockfileCell<TSys>, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
       Ok(text) => {
         Lockfile::new(
@@ -320,7 +320,7 @@ impl<TSys: LockfileSys> CliLockfile<TSys> {
         });
       }
     };
-    Ok(CliLockfile {
+    Ok(LockfileCell {
       sys,
       filename: lockfile.filename.clone(),
       lockfile: Mutex::new(lockfile),

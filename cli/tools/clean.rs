@@ -27,6 +27,7 @@ use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -530,8 +531,10 @@ fn clean_node_modules(
   };
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
-  let mut setup_cache =
-    crate::npm::installer::SetupCache::load(base.join(".setup-cache.bin"));
+  let mut setup_cache = deno_npm_installer::LocalSetupCache::load(
+    &CliSys::default(),
+    base.join(".setup-cache.bin"),
+  );
 
   for entry in entries {
     let entry = entry?;

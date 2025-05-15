@@ -82,7 +82,7 @@ pub struct LocalNpmPackageInstaller<
   npm_cache: Arc<NpmCache<TSys>>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
-  reporter: Arc<TReporter>,
+  reporter: TReporter,
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -124,7 +124,7 @@ impl<
     npm_cache: Arc<NpmCache<TSys>>,
     npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-    reporter: Arc<TReporter>,
+    reporter: TReporter,
     resolution: Arc<NpmResolutionCell>,
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -181,14 +181,14 @@ impl<
 
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       deno_local_registry_dir.join(".deno.lock"),
-      self.reporter.as_ref(),
+      &self.reporter,
       // similar message used by cargo build
       "waiting for file lock on node_modules directory",
     )
     .await;
 
     // load this after we get the directory lock
-    let mut setup_cache = SetupCache::load(
+    let mut setup_cache = LocalSetupCache::load(
       self.sys.clone(),
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
@@ -1069,14 +1069,14 @@ struct SetupCacheData {
 /// cache what we've setup on the last run and only update what is necessary.
 /// Obviously this could lead to issues if the cache gets out of date with the
 /// file system, such as if the user manually deletes a symlink.
-pub struct SetupCache<TSys: NpmCacheSys> {
+pub struct LocalSetupCache<TSys: NpmCacheSys> {
   file_path: PathBuf,
   previous: Option<SetupCacheData>,
   current: SetupCacheData,
   sys: TSys,
 }
 
-impl<TSys: NpmCacheSys> SetupCache<TSys> {
+impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   pub fn load(sys: TSys, file_path: PathBuf) -> Self {
     let previous = sys
       .fs_read(&file_path)
@@ -1337,7 +1337,7 @@ mod test {
     let temp_dir = TempDir::new();
     let cache_bin_path = temp_dir.path().join("cache.bin").to_path_buf();
     let sys = sys_traits::impls::RealSys::default();
-    let mut cache = SetupCache::load(sys.clone(), cache_bin_path.clone());
+    let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());
     assert!(cache.insert_deno_symlink("package-a", "package-a@1.0.0"));
     assert!(cache.insert_root_symlink("package-a", "package-a@1.0.0"));
     assert!(cache
@@ -1345,7 +1345,7 @@ mod test {
       .insert("package-b", "package-b@1.0.0"));
     assert!(cache.save());
 
-    let mut cache = SetupCache::load(sys.clone(), cache_bin_path.clone());
+    let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());
     assert!(!cache.insert_deno_symlink("package-a", "package-a@1.0.0"));
     assert!(!cache.insert_root_symlink("package-a", "package-a@1.0.0"));
     assert!(!cache
@@ -1355,7 +1355,7 @@ mod test {
     assert!(cache.insert_root_symlink("package-b", "package-b@0.2.0"));
     assert!(cache.save());
 
-    let mut cache = SetupCache::load(sys, cache_bin_path);
+    let mut cache = LocalSetupCache::load(sys, cache_bin_path);
     cache.remove_dep("package-a");
     assert!(cache
       .with_dep("package-a")

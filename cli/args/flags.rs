@@ -35,6 +35,7 @@ use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
