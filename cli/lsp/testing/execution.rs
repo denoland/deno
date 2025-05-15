@@ -103,26 +103,25 @@ fn as_queue_and_filters(
   (queue, filters)
 }
 
-fn failure_to_test_message(
-  test_uri: lsp::Uri,
-  failure: &TestFailure,
-) -> lsp_custom::TestMessage {
+fn failure_to_test_message(failure: &TestFailure) -> lsp_custom::TestMessage {
   let message = lsp::MarkupContent {
     kind: lsp::MarkupKind::PlainText,
     value: failure
       .format(&TestFailureFormatOptions::default())
       .to_string(),
   };
-  let location = failure.error_location().map(|v| {
+  let location = failure.error_location().and_then(|v| {
     let pos = lsp::Position {
       line: v.line_number,
       character: v.column_number,
     };
-    lsp::Location {
-      // TODO: Or is there a good way of converting the v.file_name to a URI?
-      uri: test_uri,
+    // Does not have to match the test URI
+    // since one can write `Deno.test(importedFunction)`
+    let uri = uri_parse_unencoded(&v.file_name).ok()?;
+    Some(lsp::Location {
+      uri,
       range: lsp::Range::new(pos, pos),
-    }
+    })
   });
   lsp_custom::TestMessage {
     message,
@@ -680,11 +679,9 @@ impl LspTestReporter {
       }
       test::TestResult::Failed(failure) => {
         let desc = self.tests.get(&desc.id).unwrap();
-        let test = desc.as_test_identifier(&self.tests);
-        let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
-          test,
-          messages: vec![failure_to_test_message(uri, failure)],
+          test: desc.as_test_identifier(&self.tests),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -787,11 +784,9 @@ impl LspTestReporter {
         })
       }
       test::TestStepResult::Failed(failure) => {
-        let test = desc.as_test_identifier(&self.tests);
-        let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
-          test,
-          messages: vec![failure_to_test_message(uri, failure)],
+          test: desc.as_test_identifier(&self.tests),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
