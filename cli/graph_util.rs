@@ -159,7 +159,6 @@ pub fn graph_walk_errors<'a>(
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
   fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
-    //dbg!(err);
     match err {
       ResolutionError::InvalidSpecifier { .. } => false,
       ResolutionError::ResolverError { error, .. } => match error.as_ref() {
@@ -1024,10 +1023,7 @@ impl ModuleGraphBuilder {
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
         allow_unknown_media_types,
-        ignore_graph_errors: match self.cli_options.sub_command() {
-          DenoSubcommand::Check { .. } => true,
-          _ => false,
-        },
+        ignore_graph_errors: matches!(self.cli_options.sub_command(), DenoSubcommand::Check { .. }),
       },
     )
   }
