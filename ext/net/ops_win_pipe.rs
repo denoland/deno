@@ -87,7 +87,8 @@ where
       .map_err(NetError::Permission)?
   };
 
-  let opts = named_pipe::ServerOptions::new()
+  let mut opts = named_pipe::ServerOptions::new();
+  opts
     .pipe_mode(args.pipe_mode.into())
     .access_inbound(args.inbound)
     .access_outbound(args.outbound);
@@ -130,7 +131,10 @@ where
     }
   };
 
-  let opts = named_pipe::ClientOptions::new().write();
+  let mut opts = named_pipe::ClientOptions::new();
+  opts
+      .read(args.read)
+      .write(args.write);
   let pipe = NamedPipe::new_client(path.as_ref(), &opts)?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
