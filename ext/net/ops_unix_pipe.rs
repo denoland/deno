@@ -1,13 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::io;
 use std::path::Path;
-use std::rc::Rc;
 
 use deno_core::op2;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use serde::Deserialize;
@@ -117,36 +114,4 @@ where
   let pipe = NamedPipe::new_sender(path)?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
-}
-
-#[op2(async, stack_trace)]
-#[number]
-pub async fn op_pipe_write(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] zero_copy: JsBuffer,
-) -> Result<usize, NetError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<NamedPipe>(rid)
-    .map_err(|_| NetError::SocketClosedNotConnected)?;
-
-  Ok(resource.write(&zero_copy).await?)
-}
-
-#[op2(async, stack_trace)]
-#[number]
-pub async fn op_pipe_read(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] mut zero_copy: JsBuffer,
-) -> Result<usize, NetError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<NamedPipe>(rid)
-    .map_err(|_| NetError::SocketClosedNotConnected)?;
-
-  Ok(resource.read(&mut zero_copy).await?)
 }

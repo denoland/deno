@@ -135,35 +135,3 @@ where
   let rid = state.resource_table.add(pipe);
   Ok(rid)
 }
-
-#[op2(async, stack_trace)]
-#[number]
-pub async fn op_pipe_write(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] zero_copy: JsBuffer,
-) -> Result<usize, NetError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<NamedPipe>(rid)
-    .map_err(|_| NetError::SocketClosedNotConnected)?;
-
-  Ok(resource.write(&zero_copy).await?)
-}
-
-#[op2(async, stack_trace)]
-#[number]
-pub async fn op_pipe_read(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] mut zero_copy: JsBuffer,
-) -> Result<usize, NetError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<NamedPipe>(rid)
-    .map_err(|_| NetError::SocketClosedNotConnected)?;
-
-  Ok(resource.read(&mut zero_copy).await?)
-}

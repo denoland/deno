@@ -5,15 +5,12 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   internalRidSymbol,
 } = core;
-import {
-  op_pipe_connect,
-  op_pipe_listen,
-  op_pipe_read,
-  op_pipe_write,
-} from "ext:core/ops";
+import { op_pipe_connect, op_pipe_listen } from "ext:core/ops";
 const {
   Error,
   ObjectDefineProperty,
+  SymbolDispose,
+  SafeSet,
 } = primordials;
 
 enum PipeMode {
@@ -42,8 +39,17 @@ interface UnixListenOptions extends Options {
   create?: boolean;
 }
 
+async function write(rid, data) {
+  return await core.write(rid, data);
+}
+
 class Pipe {
   #rid = 0;
+  #unref = false;
+  #pendingReadPromises = new SafeSet();
+
+  #readable;
+  #writable;
 
   constructor(rid: number) {
     ObjectDefineProperty(this, internalRidSymbol, {
@@ -55,12 +61,73 @@ class Pipe {
     this.#rid = rid;
   }
 
-  async write(buffer) {
-    return await op_pipe_write(this.#rid, buffer);
+  write(buffer) {
+    return write(this.#rid, buffer);
   }
 
   async read(buffer) {
-    return await op_pipe_read(this.#rid, buffer);
+    if (buffer.length === 0) {
+      return 0;
+    }
+    const promise = core.read(this.#rid, buffer);
+    if (this.#unref) core.unrefOpPromise(promise);
+    SetPrototypeAdd(this.#pendingReadPromises, promise);
+    let nread;
+    try {
+      nread = await promise;
+    } catch (e) {
+      throw e;
+    } finally {
+      SetPrototypeDelete(this.#pendingReadPromises, promise);
+    }
+    return nread === 0 ? null : nread;
+  }
+
+  close() {
+    core.close(this.#rid);
+  }
+  get readable() {
+    if (this.#readable === undefined) {
+      this.#readable = readableStreamForRidUnrefable(this.#rid);
+      if (this.#unref) {
+        readableStreamForRidUnrefableUnref(this.#readable);
+      }
+    }
+    return this.#readable;
+  }
+
+  get writable() {
+    if (this.#writable === undefined) {
+      this.#writable = writableStreamForRid(this.#rid);
+    }
+    return this.#writable;
+  }
+
+  ref() {
+    this.#unref = false;
+    if (this.#readable) {
+      readableStreamForRidUnrefableRef(this.#readable);
+    }
+
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.refOpPromise(promise),
+    );
+  }
+
+  unref() {
+    this.#unref = true;
+    if (this.#readable) {
+      readableStreamForRidUnrefableUnref(this.#readable);
+    }
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.unrefOpPromise(promise),
+    );
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 

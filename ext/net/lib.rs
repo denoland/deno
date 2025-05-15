@@ -233,8 +233,6 @@ deno_core::extension!(deno_net,
 
     ops_pipe::op_pipe_listen<P>,
     ops_pipe::op_pipe_connect<P>,
-    ops_pipe::op_pipe_write,
-    ops_pipe::op_pipe_read,
   ],
   esm = [ "01_net.js", "02_tls.js", "04_pipe.ts" ],
   lazy_loaded_esm = [ "03_quic.js" ],
