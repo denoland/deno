@@ -460,6 +460,10 @@ fn symlink_bin_entry<'a>(
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
+  fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+    pathdiff::diff_paths(to, from)
+  }
+
   let found = make_executable_if_exists(&original).map_err(|source| {
     BinEntriesError::SetUpBin {
       name: bin_name.to_string(),
@@ -478,8 +482,7 @@ fn symlink_bin_entry<'a>(
   }
 
   let original_relative =
-    crate::util::path::relative_path(bin_node_modules_dir_path, &original)
-      .unwrap_or(original);
+    relative_path(bin_node_modules_dir_path, &original).unwrap_or(original);
 
   if let Err(err) = symlink(&original_relative, &link) {
     if err.kind() == io::ErrorKind::AlreadyExists {

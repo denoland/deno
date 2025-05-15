@@ -44,6 +44,7 @@ use sys_traits::FsDirEntry;
 use crate::bin_entries::EntrySetupOutcome;
 use crate::flag::LaxSingleProcessFsFlag;
 use crate::fs::clone_dir_recursive;
+use crate::fs::symlink_dir;
 use crate::fs::CloneDirRecursiveSys;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
@@ -1251,8 +1252,6 @@ fn junction_or_symlink_dir(
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), SymlinkPackageDirError> {
-  use crate::fs::symlink_dir;
-
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
