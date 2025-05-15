@@ -23,19 +23,19 @@ pub struct NamedPipe {
 }
 
 enum Inner {
-  Server(named_pipe::NamedPipeServer),
+  Server((bool, named_pipe::NamedPipeServer)),
   Client(named_pipe::NamedPipeClient),
 }
 
 impl NamedPipe {
-  pub async fn new_server(
+  pub fn new_server(
     addr: impl AsRef<OsStr>,
     options: &named_pipe::ServerOptions,
   ) -> io::Result<NamedPipe> {
     let server = options.create(addr)?;
     // todo: should we connect here
     Ok(NamedPipe {
-      inner: AsyncRefCell::new(Inner::Server(server)),
+      inner: AsyncRefCell::new(Inner::Server((false, server))),
       cancel: Default::default(),
     })
   }
@@ -55,7 +55,13 @@ impl NamedPipe {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
-      Inner::Server(server) => server.write(buf).try_or_cancel(cancel).await,
+      Inner::Server((mut connected, server)) => {
+        if !connected {
+          server.connect().await?;
+          connected = true;
+        }
+        server.write(buf).try_or_cancel(cancel).await
+      },
       Inner::Client(client) => client.write(buf).try_or_cancel(cancel).await,
     }
   }
@@ -64,7 +70,13 @@ impl NamedPipe {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
-      Inner::Server(server) => server.read(buf).try_or_cancel(cancel).await,
+      Inner::Server((mut connected, server)) => {
+        if !connected {
+          server.connect().await?;
+          connected = true;
+        }
+        server.read(buf).try_or_cancel(cancel).await
+      },
       Inner::Client(client) => client.read(buf).try_or_cancel(cancel).await,
     }
   }
