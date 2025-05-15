@@ -173,7 +173,9 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => Rc::from("unix"),
       #[cfg(unix)]
-      NetworkStreamAddress::Vsock(addr) => Rc::from(addr.cid().to_string()),
+      NetworkStreamAddress::Vsock(addr) => {
+        Rc::from(format!("vsock:{}", addr.cid()))
+      }
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
