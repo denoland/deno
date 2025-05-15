@@ -7,7 +7,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_resolver::lockfile::LockfileCell;
+use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use parking_lot::Mutex;
@@ -17,7 +17,7 @@ use super::WorkspaceNpmPatchPackages;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
-  ResolveFromLockfile(Arc<LockfileCell<TSys>>),
+  ResolveFromLockfile(Arc<LockfileLock<TSys>>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
@@ -150,7 +150,7 @@ pub enum SnapshotFromLockfileError {
 }
 
 fn snapshot_from_lockfile<TSys: LockfileSys>(
-  lockfile: Arc<LockfileCell<TSys>>,
+  lockfile: Arc<LockfileLock<TSys>>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(

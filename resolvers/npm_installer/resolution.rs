@@ -18,7 +18,7 @@ use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::RegistryInfoProvider;
 use deno_resolver::display::DisplayTreeNode;
-use deno_resolver::lockfile::LockfileCell;
+use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
@@ -52,7 +52,7 @@ pub struct NpmResolutionInstaller<
 > {
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
   resolution: Arc<NpmResolutionCell>,
-  maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
+  maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   patch_packages: Arc<WorkspaceNpmPatchPackages>,
   update_queue: TaskQueue,
 }
@@ -67,7 +67,7 @@ impl<
       RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
     >,
     resolution: Arc<NpmResolutionCell>,
-    maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
+    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {

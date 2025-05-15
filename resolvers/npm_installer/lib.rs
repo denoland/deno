@@ -10,7 +10,7 @@ use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
-use deno_resolver::lockfile::LockfileCell;
+use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_semver::package::PackageReq;
@@ -127,7 +127,7 @@ pub struct NpmInstaller<
   npm_resolution_initializer: Arc<NpmResolutionInitializer<TSys>>,
   npm_resolution_installer:
     Arc<NpmResolutionInstaller<TNpmCacheHttpClient, TSys>>,
-  maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
+  maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
   cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
@@ -152,7 +152,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     reporter: &TReporter,
     sys: TSys,
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
-    maybe_lockfile: Option<Arc<LockfileCell<TSys>>>,
+    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,

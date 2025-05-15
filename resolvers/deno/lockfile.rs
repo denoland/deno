@@ -75,7 +75,7 @@ pub enum LockfileWriteError {
 }
 
 #[derive(Debug)]
-pub struct LockfileCell<TSys: LockfileSys> {
+pub struct LockfileLock<TSys: LockfileSys> {
   sys: TSys,
   lockfile: Mutex<Lockfile>,
   pub filename: PathBuf,
@@ -83,7 +83,7 @@ pub struct LockfileCell<TSys: LockfileSys> {
   skip_write: bool,
 }
 
-impl<TSys: LockfileSys> LockfileCell<TSys> {
+impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
   pub fn lock(&self) -> Guard<Lockfile> {
     Guard {
@@ -300,7 +300,7 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
     sys: TSys,
     opts: LockfileReadFromPathOptions,
     api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
-  ) -> Result<LockfileCell<TSys>, AnyError> {
+  ) -> Result<LockfileLock<TSys>, AnyError> {
     let lockfile = match sys.fs_read_to_string(&opts.file_path) {
       Ok(text) => {
         Lockfile::new(
@@ -322,7 +322,7 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
         });
       }
     };
-    Ok(LockfileCell {
+    Ok(LockfileLock {
       sys,
       filename: lockfile.filename.clone(),
       lockfile: Mutex::new(lockfile),

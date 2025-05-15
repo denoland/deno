@@ -61,7 +61,7 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub type CliLockfile = deno_resolver::lockfile::LockfileCell<CliSys>;
+pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
