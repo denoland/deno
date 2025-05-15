@@ -1212,24 +1212,15 @@ impl CliFactory {
       .await
   }
 
-  pub async fn create_cli_main_worker_factory_with_roots(
+  pub async fn create_module_loader_factory(
     &self,
-    roots: LibWorkerFactoryRoots,
-  ) -> Result<CliMainWorkerFactory, AnyError> {
+  ) -> Result<CliModuleLoaderFactory, AnyError> {
     let cli_options = self.cli_options()?;
-    let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
-    let npm_resolver = self.npm_resolver().await?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
-    let maybe_file_watcher_communicator = if cli_options.has_hmr() {
-      Some(self.watcher_communicator.clone().unwrap())
-    } else {
-      None
-    };
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
-    let pkg_json_resolver = self.pkg_json_resolver()?;
     let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
@@ -1278,6 +1269,25 @@ impl CliFactory {
       self.sys(),
       maybe_eszip_loader,
     );
+
+    Ok(module_loader_factory)
+  }
+
+  pub async fn create_cli_main_worker_factory_with_roots(
+    &self,
+    roots: LibWorkerFactoryRoots,
+  ) -> Result<CliMainWorkerFactory, AnyError> {
+    let cli_options = self.cli_options()?;
+    let fs = self.fs();
+    let node_resolver = self.node_resolver().await?;
+    let npm_resolver = self.npm_resolver().await?;
+    let maybe_file_watcher_communicator = if cli_options.has_hmr() {
+      Some(self.watcher_communicator.clone().unwrap())
+    } else {
+      None
+    };
+    let pkg_json_resolver = self.pkg_json_resolver()?;
+    let module_loader_factory = self.create_module_loader_factory().await?;
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
