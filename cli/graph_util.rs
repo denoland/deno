@@ -1023,7 +1023,10 @@ impl ModuleGraphBuilder {
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
         allow_unknown_media_types,
-        ignore_graph_errors: matches!(self.cli_options.sub_command(), DenoSubcommand::Check { .. }),
+        ignore_graph_errors: matches!(
+          self.cli_options.sub_command(),
+          DenoSubcommand::Check { .. }
+        ),
       },
     )
   }
