@@ -1777,6 +1777,7 @@ mod tests {
           reports_deprecated: None,
           reports_unnecessary: None,
           other: Default::default(),
+          missing_specifier: None,
         }]),
         ambient_modules: vec![],
         stats: Stats(vec![("a".to_string(), 12)])
