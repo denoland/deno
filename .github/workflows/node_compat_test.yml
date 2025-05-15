@@ -42,7 +42,7 @@ jobs:
         with:
           project_id: denoland
       - name: Run tests
-        run: deno -A --config tests/config/deno.json tests/node_compat/run_all_test_unmodified.ts
+        run: deno -A tools/node_compat_tests.js
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
