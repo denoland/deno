@@ -128,11 +128,6 @@ pub fn relative_specifier(
   Some(to_percent_decoded_str(&text))
 }
 
-#[cfg_attr(windows, allow(dead_code))]
-pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
-}
-
 /// Slightly different behaviour than the default matching
 /// where an exact path needs to be matched to be opted-in
 /// rather than just a partial directory match.
