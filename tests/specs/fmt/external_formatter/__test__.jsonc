@@ -14,6 +14,21 @@
       "args": "fmt --unstable-sql -",
       "input": "badly_formatted.in",
       "output": "well_formatted_unstable_sql.out"
+    },
+    "syntax_error_in_html": {
+      "args": "fmt syntax_error_in_html.js",
+      "output": "syntax_error_in_html.out",
+      "exitCode": 1
+    },
+    "syntax_error_in_css": {
+      "args": "fmt syntax_error_in_css.js",
+      "output": "syntax_error_in_css.out",
+      "exitCode": 1
+    },
+    "syntax_error_but_fmt_ignored": {
+      "args": "fmt syntax_error_but_fmt_ignored.js",
+      "output": "Checked 1 file\n",
+      "exitCode": 0
     }
   }
 }
