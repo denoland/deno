@@ -532,7 +532,7 @@ fn clean_node_modules(
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
   let mut setup_cache = deno_npm_installer::LocalSetupCache::load(
-    &CliSys::default(),
+    CliSys::default(),
     base.join(".setup-cache.bin"),
   );
 

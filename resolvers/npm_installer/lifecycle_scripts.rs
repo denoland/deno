@@ -9,7 +9,6 @@ use anyhow::Error as AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_npm_cache::NpmCacheSys;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
@@ -24,7 +23,7 @@ pub struct PackageWithScript<'a> {
   pub package_folder: PathBuf,
 }
 
-pub struct LifecycleScriptsExecutorOptions<'a, TSys: NpmCacheSys> {
+pub struct LifecycleScriptsExecutorOptions<'a> {
   pub init_cwd: &'a Path,
   pub process_state: &'a str,
   pub root_node_modules_dir_path: &'a Path,
@@ -33,29 +32,27 @@ pub struct LifecycleScriptsExecutorOptions<'a, TSys: NpmCacheSys> {
   pub snapshot: &'a NpmResolutionSnapshot,
   pub system_packages: &'a [NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
-  pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider<TSys>,
+  pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider,
 }
 
 #[derive(Debug)]
 pub struct NullLifecycleScriptsExecutor;
 
 #[async_trait::async_trait(?Send)]
-impl<TSys: NpmCacheSys> LifecycleScriptsExecutor<TSys>
-  for NullLifecycleScriptsExecutor
-{
+impl LifecycleScriptsExecutor for NullLifecycleScriptsExecutor {
   async fn execute(
     &self,
-    _options: LifecycleScriptsExecutorOptions<'_, TSys>,
+    _options: LifecycleScriptsExecutorOptions<'_>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait LifecycleScriptsExecutor<TSys: NpmCacheSys>: Sync + Send {
+pub trait LifecycleScriptsExecutor: Sync + Send {
   async fn execute(
     &self,
-    options: LifecycleScriptsExecutorOptions<'_, TSys>,
+    options: LifecycleScriptsExecutorOptions<'_>,
   ) -> Result<(), AnyError>;
 }
 

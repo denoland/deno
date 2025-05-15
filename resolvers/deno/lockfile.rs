@@ -30,7 +30,9 @@ pub struct LockfileReadFromPathOptions {
 
 #[sys_traits::auto_impl]
 pub trait LockfileSys:
-  std::fmt::Debug + deno_path_util::fs::AtomicWriteFileWithRetriesSys
+  deno_path_util::fs::AtomicWriteFileWithRetriesSys
+  + sys_traits::FsRead
+  + std::fmt::Debug
 {
 }
 
@@ -299,7 +301,7 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
     opts: LockfileReadFromPathOptions,
     api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
   ) -> Result<LockfileCell<TSys>, AnyError> {
-    let lockfile = match std::fs::read_to_string(&opts.file_path) {
+    let lockfile = match sys.fs_read_to_string(&opts.file_path) {
       Ok(text) => {
         Lockfile::new(
           deno_lockfile::NewLockfileOptions {
@@ -335,8 +337,10 @@ impl<TSys: LockfileSys> LockfileCell<TSys> {
     }
     let lockfile = self.lockfile.lock();
     if lockfile.has_content_changed {
-      let contents =
-        std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
+      let contents = self
+        .sys
+        .fs_read_to_string(&lockfile.filename)
+        .unwrap_or_default();
       let new_contents = lockfile.as_json_string();
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end

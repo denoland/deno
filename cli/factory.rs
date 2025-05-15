@@ -673,7 +673,7 @@ impl CliFactory {
             Some(managed_npm_resolver) => {
               Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
                 managed_npm_resolver.clone(),
-              )) as Arc<dyn LifecycleScriptsExecutor<CliSys>>
+              )) as Arc<dyn LifecycleScriptsExecutor>
             }
             None => Arc::new(NullLifecycleScriptsExecutor),
           },

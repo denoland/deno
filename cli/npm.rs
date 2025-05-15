@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -377,10 +376,10 @@ pub struct DenoTaskLifeCycleScriptsExecutor {
 }
 
 #[async_trait::async_trait(?Send)]
-impl LifecycleScriptsExecutor<CliSys> for DenoTaskLifeCycleScriptsExecutor {
+impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
   async fn execute(
     &self,
-    options: LifecycleScriptsExecutorOptions<'_, CliSys>,
+    options: LifecycleScriptsExecutorOptions<'_>,
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
     let mut bin_entries = BinEntries::new();
@@ -550,7 +549,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   // custom commands available to the task runner
   async fn resolve_baseline_custom_commands<'a>(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
     bin_entries: &mut BinEntries<'a>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
@@ -593,7 +592,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     P: IntoIterator<Item = &'a NpmResolutionPackage>,
   >(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
     bin_entries: &mut BinEntries<'a>,
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
@@ -645,7 +644,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   // note that this will overwrite any existing custom commands.
   async fn resolve_custom_commands_from_deps(
     &self,
-    extra_info_provider: &CachedNpmPackageExtraInfoProvider<CliSys>,
+    extra_info_provider: &CachedNpmPackageExtraInfoProvider,
     baseline: crate::task_runner::TaskCustomCommands,
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,

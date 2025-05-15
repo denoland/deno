@@ -78,10 +78,10 @@ pub struct LocalNpmPackageInstaller<
   TReporter: Reporter,
   TSys: LocalNpmInstallSys,
 > {
-  lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor<TSys>>,
+  lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
   npm_cache: Arc<NpmCache<TSys>>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-  npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
+  npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
   reporter: TReporter,
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
@@ -120,9 +120,9 @@ impl<
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor<TSys>>,
+    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
-    npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
+    npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     reporter: TReporter,
     resolution: Arc<NpmResolutionCell>,
@@ -147,7 +147,7 @@ impl<
     }
   }
 
-  async fn sync_resolution_with_fs<'a>(
+  async fn sync_resolution_with_fs(
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
@@ -1336,7 +1336,7 @@ mod test {
   fn test_setup_cache() {
     let temp_dir = TempDir::new();
     let cache_bin_path = temp_dir.path().join("cache.bin").to_path_buf();
-    let sys = sys_traits::impls::RealSys::default();
+    let sys = sys_traits::impls::RealSys;
     let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());
     assert!(cache.insert_deno_symlink("package-a", "package-a@1.0.0"));
     assert!(cache.insert_root_symlink("package-a", "package-a@1.0.0"));

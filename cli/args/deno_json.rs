@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::SourceMapOption;
@@ -17,9 +16,6 @@ use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url::Url;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::OnceCell;
 
 use crate::sys::CliSys;

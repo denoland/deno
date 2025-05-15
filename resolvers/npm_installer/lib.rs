@@ -97,9 +97,7 @@ impl Reporter for LogReporter {
     log::info!("{} {}", deno_terminal::colors::green("Initialize"), message);
   }
 
-  fn clear_guard(&self) -> Self::ClearGuard {
-    ()
-  }
+  fn clear_guard(&self) -> Self::ClearGuard {}
 }
 
 /// Part of the resolution that interacts with the file system.
@@ -140,7 +138,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new<TReporter: Reporter>(
-    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor<TSys>>,
+    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     npm_registry_info_provider: Arc<
@@ -166,7 +164,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           lifecycle_scripts_executor,
           npm_cache.clone(),
           Arc::new(NpmPackageExtraInfoProvider::new(
-            npm_cache,
             npm_registry_info_provider,
             workspace_patch_packages,
           )),

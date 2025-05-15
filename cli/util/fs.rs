@@ -4,8 +4,6 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -14,16 +12,9 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsDirEntry;
-use sys_traits::FsSymlinkDir;
 
 use crate::sys::CliSys;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::progress_bar::ProgressMessagePrompt;
 
 /// Creates a std::fs::File handling if the parent does not exist.
 pub fn create_file(file_path: &Path) -> std::io::Result<std::fs::File> {
@@ -173,13 +164,10 @@ pub fn specifier_from_file_path(
 
 #[cfg(test)]
 mod tests {
-  use deno_core::futures;
-  use deno_core::parking_lot::Mutex;
   use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
-  use tokio::sync::Notify;
 
   use super::*;
 

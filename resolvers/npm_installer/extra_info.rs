@@ -7,19 +7,17 @@ use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_npm_cache::NpmCache;
-use deno_npm_cache::NpmCacheSys;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;
 
-pub struct CachedNpmPackageExtraInfoProvider<TSys: NpmCacheSys> {
-  inner: Arc<NpmPackageExtraInfoProvider<TSys>>,
+pub struct CachedNpmPackageExtraInfoProvider {
+  inner: Arc<NpmPackageExtraInfoProvider>,
   cache: RwLock<rustc_hash::FxHashMap<PackageNv, NpmPackageExtraInfo>>,
 }
 
-impl<TSys: NpmCacheSys> CachedNpmPackageExtraInfoProvider<TSys> {
-  pub fn new(inner: Arc<NpmPackageExtraInfoProvider<TSys>>) -> Self {
+impl CachedNpmPackageExtraInfoProvider {
+  pub fn new(inner: Arc<NpmPackageExtraInfoProvider>) -> Self {
     Self {
       inner,
       cache: Default::default(),
@@ -65,33 +63,30 @@ impl ExpectedExtraInfo {
   }
 }
 
-pub struct NpmPackageExtraInfoProvider<TSys: NpmCacheSys> {
-  npm_cache: Arc<NpmCache<TSys>>,
+pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
-impl<TSys: NpmCacheSys> std::fmt::Debug for NpmPackageExtraInfoProvider<TSys> {
+impl std::fmt::Debug for NpmPackageExtraInfoProvider {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageExtraInfoProvider").finish()
   }
 }
 
-impl<TSys: NpmCacheSys> NpmPackageExtraInfoProvider<TSys> {
+impl NpmPackageExtraInfoProvider {
   pub fn new(
-    npm_cache: Arc<NpmCache<TSys>>,
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
     workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
-      npm_cache,
       npm_registry_info_provider,
       workspace_patch_packages,
     }
   }
 }
 
-impl<TSys: NpmCacheSys> NpmPackageExtraInfoProvider<TSys> {
+impl NpmPackageExtraInfoProvider {
   pub async fn get_package_extra_info(
     &self,
     package_nv: &PackageNv,

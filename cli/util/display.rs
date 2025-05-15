@@ -4,7 +4,6 @@ use std::io::Write;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_runtime::colors;
 
 /// A function that converts a float to a string the represents a human
 /// readable version of that number.
