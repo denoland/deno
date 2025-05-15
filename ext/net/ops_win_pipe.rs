@@ -95,7 +95,7 @@ where
   if args.max_instances.is_some() {
     opts.max_instances(args.max_instances.unwrap());
   }
-  let pipe = NamedPipe::new_server(path.as_ref(), opts)?;
+  let pipe = NamedPipe::new_server(path.as_ref(), &opts)?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
 }
