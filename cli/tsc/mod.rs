@@ -1751,7 +1751,8 @@ mod tests {
           "code": 5023
         }
       ],
-      "stats": [["a", 12]]
+      "stats": [["a", 12]],
+      "ambientModules": []
     }))
     .unwrap();
     op_respond_inner(&mut state, args);
