@@ -90,8 +90,11 @@ use crate::node::CliCjsModuleExportAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
+use crate::npm::installer::DenoTaskLifeCycleScriptsExecutor;
+use crate::npm::installer::LifecycleScriptsExecutor;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
+use crate::npm::installer::NullLifecycleScriptsExecutor;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
@@ -640,12 +643,27 @@ impl CliFactory {
       .get_or_try_init_async(async move {
         let cli_options = self.cli_options()?;
         let workspace_factory = self.workspace_factory()?;
+        let npm_cache = self.npm_cache()?;
+        let registry_info_provider = self.npm_registry_info_provider()?;
+        let registry_info_provider =
+          Arc::new(registry_info_provider.as_npm_registry_api());
+        let workspace_npm_patch_packages =
+          self.workspace_npm_patch_packages()?;
+        let npm_resolver = self.npm_resolver().await?.clone();
         Ok(Arc::new(NpmInstaller::new(
-          self.npm_cache()?.clone(),
+          match npm_resolver.as_managed() {
+            Some(managed_npm_resolver) => {
+              Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
+                managed_npm_resolver.clone(),
+              )) as Arc<dyn LifecycleScriptsExecutor>
+            }
+            None => Arc::new(NullLifecycleScriptsExecutor),
+          },
+          npm_cache.clone(),
           Arc::new(NpmInstallDepsProvider::from_workspace(
             cli_options.workspace(),
           )),
-          Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
+          registry_info_provider,
           self.npm_resolution()?.clone(),
           self.npm_resolution_initializer().await?.clone(),
           self.npm_resolution_installer().await?.clone(),
@@ -658,7 +676,7 @@ impl CliFactory {
             .map(|p| p.to_path_buf()),
           cli_options.lifecycle_scripts_config(),
           cli_options.npm_system_info(),
-          self.workspace_npm_patch_packages()?.clone(),
+          workspace_npm_patch_packages.clone(),
         )))
       })
       .await
@@ -973,7 +991,6 @@ impl CliFactory {
             cli_options.clone(),
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.sys(),
             self.tsconfig_resolver()?.clone(),
@@ -1034,7 +1051,6 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(ModuleGraphCreator::new(
             cli_options.clone(),
-            self.npm_installer_if_managed().await?.cloned(),
             self.module_graph_builder().await?.clone(),
             self.type_checker().await?.clone(),
           )))

@@ -17,12 +17,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
-use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
@@ -39,12 +39,14 @@ use sys_traits::FsDirEntry;
 use sys_traits::FsReadDir;
 
 use super::common::bin_entries;
+use super::common::lifecycle_scripts::LifecycleScriptsExecutor;
+use super::common::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use super::common::CachedNpmPackageExtraInfoProvider;
 use super::common::NpmPackageExtraInfoProvider;
 use super::common::NpmPackageFsInstaller;
 use super::CliNpmCache;
 use super::CliNpmTarballCache;
 use super::PackageCaching;
-use super::WorkspaceNpmPatchPackages;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -59,8 +61,10 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 pub struct LocalNpmPackageInstaller {
-  cache: Arc<CliNpmCache>,
+  lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
+  npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+  npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolutionCell>,
   sys: CliSys,
@@ -68,15 +72,12 @@ pub struct LocalNpmPackageInstaller {
   lifecycle_scripts: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
-  npm_registry_info_provider:
-    Arc<dyn deno_npm::registry::NpmRegistryApi + Send + Sync>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
 impl std::fmt::Debug for LocalNpmPackageInstaller {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("LocalNpmPackageInstaller")
-      .field("cache", &self.cache)
+      .field("npm_cache", &self.npm_cache)
       .field("npm_install_deps_provider", &self.npm_install_deps_provider)
       .field("progress_bar", &self.progress_bar)
       .field("resolution", &self.resolution)
@@ -92,7 +93,9 @@ impl std::fmt::Debug for LocalNpmPackageInstaller {
 impl LocalNpmPackageInstaller {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cache: Arc<CliNpmCache>,
+    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
+    npm_cache: Arc<CliNpmCache>,
+    npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolutionCell>,
@@ -101,14 +104,12 @@ impl LocalNpmPackageInstaller {
     node_modules_folder: PathBuf,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
-    npm_registry_info_provider: Arc<
-      dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
-    >,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
-      cache,
+      lifecycle_scripts_executor,
+      npm_cache,
       npm_install_deps_provider,
+      npm_package_extra_info_provider,
       progress_bar,
       resolution,
       tarball_cache,
@@ -116,8 +117,6 @@ impl LocalNpmPackageInstaller {
       lifecycle_scripts,
       root_node_modules_path: node_modules_folder,
       system_info,
-      npm_registry_info_provider,
-      workspace_patch_packages,
     }
   }
 }
@@ -134,35 +133,20 @@ impl NpmPackageFsInstaller for LocalNpmPackageInstaller {
     };
     sync_resolution_with_fs(
       &snapshot,
-      &self.cache,
+      &self.npm_cache,
+      self.lifecycle_scripts_executor.as_ref(),
       &self.npm_install_deps_provider,
-      &self.npm_registry_info_provider,
+      &self.npm_package_extra_info_provider,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
       &self.sys,
       &self.system_info,
       &self.lifecycle_scripts,
-      &self.workspace_patch_packages,
     )
     .await
     .map_err(JsErrorBox::from_err)
   }
-}
-
-/// `node_modules/.deno/<package>/node_modules/<package_name>`
-///
-/// Where the actual package is stored.
-fn local_node_modules_package_contents_path(
-  local_registry_dir: &Path,
-  package: &NpmResolutionPackage,
-) -> PathBuf {
-  local_registry_dir
-    .join(get_package_folder_id_folder_name(
-      &package.get_package_cache_folder_id(),
-    ))
-    .join("node_modules")
-    .join(&package.id.nv.name)
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -193,11 +177,9 @@ pub enum SyncResolutionWithFsError {
   #[class(inherit)]
   #[error(transparent)]
   BinEntries(#[from] bin_entries::BinEntriesError),
-  #[class(inherit)]
+  #[class(generic)]
   #[error(transparent)]
-  LifecycleScripts(
-    #[from] super::common::lifecycle_scripts::LifecycleScriptsError,
-  ),
+  LifecycleScripts(AnyError),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -211,15 +193,15 @@ pub enum SyncResolutionWithFsError {
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<CliNpmCache>,
+  lifecycle_scripts_executor: &dyn LifecycleScriptsExecutor,
   npm_install_deps_provider: &NpmInstallDepsProvider,
-  npm_registry_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
+  npm_package_extra_info_provider: &Arc<NpmPackageExtraInfoProvider>,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<CliNpmTarballCache>,
   root_node_modules_dir_path: &Path,
   sys: &CliSys,
   system_info: &NpmSystemInfo,
   lifecycle_scripts_config: &LifecycleScriptsConfig,
-  workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
 ) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -227,7 +209,7 @@ async fn sync_resolution_with_fs(
 
   // don't set up node_modules (and more importantly try to acquire the file lock)
   // if we're running as part of a lifecycle script
-  if super::common::lifecycle_scripts::is_running_lifecycle_script() {
+  if super::common::lifecycle_scripts::is_running_lifecycle_script(sys) {
     return Ok(());
   }
 
@@ -289,10 +271,8 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  let extra_info_provider = Arc::new(super::common::ExtraInfoProvider::new(
-    cache.clone(),
-    npm_registry_info_provider.clone(),
-    workspace_patch_packages.clone(),
+  let extra_info_provider = Arc::new(CachedNpmPackageExtraInfoProvider::new(
+    npm_package_extra_info_provider.clone(),
   ));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
@@ -865,15 +845,33 @@ async fn sync_resolution_with_fs(
       },
     ),
   );
-  lifecycle_scripts
-    .finish(
-      snapshot,
-      &package_partitions.packages,
-      root_node_modules_dir_path,
-      progress_bar,
-      extra_info_provider,
-    )
-    .await?;
+  lifecycle_scripts.warn_not_run_scripts()?;
+
+  let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+  if !packages_with_scripts.is_empty() {
+    let process_state = deno_lib::npm::npm_process_state(
+      snapshot.as_valid_serialized(),
+      Some(root_node_modules_dir_path),
+    );
+
+    lifecycle_scripts_executor
+      .execute(LifecycleScriptsExecutorOptions {
+        init_cwd: &lifecycle_scripts_config.initial_cwd,
+        process_state: process_state.as_str(),
+        root_node_modules_dir_path,
+        progress_bar,
+        on_ran_pkg_scripts: &|pkg| {
+          std::fs::File::create(ran_scripts_file(&deno_local_registry_dir, pkg))
+            .map(|_| ())
+        },
+        snapshot,
+        system_packages: &package_partitions.packages,
+        packages_with_scripts,
+        extra_info_provider: &extra_info_provider,
+      })
+      .await
+      .map_err(SyncResolutionWithFsError::LifecycleScripts)?
+  }
 
   setup_cache.save();
   drop(single_process_lock);
@@ -931,17 +929,20 @@ fn local_node_modules_package_folder(
   ))
 }
 
+/// `node_modules/.deno/<package>/.scripts-run`
+fn ran_scripts_file(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  local_node_modules_package_folder(local_registry_dir, package)
+    .join(".scripts-run")
+}
+
 struct LocalLifecycleScripts<'a> {
   deno_local_registry_dir: &'a Path,
 }
 
 impl LocalLifecycleScripts<'_> {
-  /// `node_modules/.deno/<package>/.scripts-run`
-  fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_node_modules_package_folder(self.deno_local_registry_dir, package)
-      .join(".scripts-run")
-  }
-
   /// `node_modules/.deno/<package>/.scripts-warned`
   fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
     local_node_modules_package_folder(self.deno_local_registry_dir, package)
@@ -952,21 +953,6 @@ impl LocalLifecycleScripts<'_> {
 impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
   for LocalLifecycleScripts<'_>
 {
-  fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_node_modules_package_contents_path(
-      self.deno_local_registry_dir,
-      package,
-    )
-  }
-
-  fn did_run_scripts(
-    &self,
-    package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), std::io::Error> {
-    _ = std::fs::File::create(self.ran_scripts_file(package))?;
-    Ok(())
-  }
-
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
@@ -1010,7 +996,7 @@ impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
   }
 
   fn has_run(&self, package: &NpmResolutionPackage) -> bool {
-    self.ran_scripts_file(package).exists()
+    ran_scripts_file(self.deno_local_registry_dir, package).exists()
   }
 }
 

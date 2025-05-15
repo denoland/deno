@@ -637,7 +637,9 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(
       startup_snapshot,
-      deno_lib::worker::create_isolate_create_params(),
+      deno_lib::worker::create_isolate_create_params(
+        &crate::sys::CliSys::default(),
+      ),
       Some(roots.shared_array_buffer_store.clone()),
       Some(roots.compiled_wasm_module_store.clone()),
       vec![],

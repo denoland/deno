@@ -94,9 +94,13 @@ pub async fn run_script(
       main_module.clone(),
       unconfigured_runtime,
     )
-    .await?;
+    .await
+    .inspect_err(|e| deno_telemetry::report_event("boot_failure", e))?;
 
-  let exit_code = worker.run().await?;
+  let exit_code = worker
+    .run()
+    .await
+    .inspect_err(|e| deno_telemetry::report_event("uncaught_exception", e))?;
   Ok(exit_code)
 }
 

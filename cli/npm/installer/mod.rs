@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use common::DenoTaskLifeCycleScriptsExecutor;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
@@ -15,6 +16,9 @@ use deno_semver::package::PackageReq;
 pub use local::SetupCache;
 use rustc_hash::FxHashSet;
 
+pub use self::common::lifecycle_scripts::LifecycleScriptsExecutor;
+pub use self::common::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use self::common::NpmPackageExtraInfoProvider;
 pub use self::common::NpmPackageFsInstaller;
 use self::global::GlobalNpmPackageInstaller;
 use self::local::LocalNpmPackageInstaller;
@@ -57,6 +61,7 @@ pub struct NpmInstaller {
 impl NpmInstaller {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     npm_registry_info_provider: Arc<
@@ -77,7 +82,13 @@ impl NpmInstaller {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
-          npm_cache,
+          lifecycle_scripts_executor,
+          npm_cache.clone(),
+          Arc::new(NpmPackageExtraInfoProvider::new(
+            npm_cache,
+            npm_registry_info_provider,
+            workspace_patch_packages,
+          )),
           npm_install_deps_provider.clone(),
           progress_bar.clone(),
           npm_resolution.clone(),
@@ -86,8 +97,6 @@ impl NpmInstaller {
           node_modules_folder,
           lifecycle_scripts,
           system_info,
-          npm_registry_info_provider,
-          workspace_patch_packages,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -206,8 +215,16 @@ impl NpmInstaller {
     &self,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
+
+    // don't inject this if it's already been added
+    if self
+      .npm_resolution
+      .any_top_level_package(|id| id.nv.name == "@types/node")
+    {
+      return Ok(());
+    }
+
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    // add and ensure this isn't added to the lockfile
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
