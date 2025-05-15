@@ -498,9 +498,9 @@ impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
   }
 }
 
-impl NodeJsErrorCoded for PackageResolveError {
+impl NodeJsErrorCoded for PackageResolveErrorKind {
   fn code(&self) -> NodeJsErrorCode {
-    match self.as_kind() {
+    match self {
       PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
       PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
       PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
@@ -535,7 +535,7 @@ pub enum PackageResolveErrorKind {
   SubpathResolve(#[from] PackageSubpathResolveError),
   #[class(inherit)]
   #[error(transparent)]
-  #[property("code" = NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH)]
+  #[property("code" = self.code())]
   UrlToFilePath(#[from] UrlToFilePathError),
 }
 
