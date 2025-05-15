@@ -2347,8 +2347,6 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.33.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9cf5aab0fbd2e68c022fef8981a92c4e4b0fcec341c08af1ebb3651f03cd86b"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2406,6 +2404,7 @@ dependencies = [
  "capacity_builder",
  "deno_config",
  "deno_error",
+ "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
  "deno_package_json",
@@ -2500,9 +2499,9 @@ dependencies = [
 
 [[package]]
 name = "deno_path_util"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c238a664a0a6f1ce0ff2b73c6854811526d00f442a12f878cb8555b23fe13aa3"
+checksum = "b8850326ea9cb786aafd938f3de9866432904c0bae3aa0139a7a4e570b0174f6"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2572,6 +2571,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
+ "deno_lockfile",
  "deno_media_type",
  "deno_npm",
  "deno_package_json",
@@ -2579,6 +2579,7 @@ dependencies = [
  "deno_semver",
  "deno_terminal 0.2.2",
  "deno_unsync",
+ "dissimilar",
  "futures",
  "import_map",
  "indexmap 2.8.0",
@@ -2791,8 +2792,6 @@ dependencies = [
 [[package]]
 name = "deno_unsync"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d774fd83f26b24f0805a6ab8b26834a0d06ceac0db517b769b1e4633c96a2057"
 dependencies = [
  "futures",
  "parking_lot",
@@ -8388,6 +8387,8 @@ dependencies = [
 [[package]]
 name = "sys_traits"
 version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce4475783d109dc026244ec6fda72b81868f502db08d27ae1b39419f67f40d71"
 dependencies = [
  "filetime",
  "getrandom",
@@ -8402,6 +8403,8 @@ dependencies = [
 [[package]]
 name = "sys_traits_macros"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "181f22127402abcf8ee5c83ccd5b408933fec36a6095cf82cda545634692657e"
 dependencies = [
  "proc-macro2",
  "quote",

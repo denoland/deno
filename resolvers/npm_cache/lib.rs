@@ -83,7 +83,7 @@ pub struct NpmCacheHttpClientBytesResponse {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait NpmCacheHttpClient: Send + Sync + 'static {
+pub trait NpmCacheHttpClient: std::fmt::Debug + Send + Sync + 'static {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
@@ -142,6 +142,7 @@ impl NpmCacheSetting {
   }
 }
 
+#[sys_traits::auto_impl]
 pub trait NpmCacheSys:
   FsCanonicalize
   + FsCreateDirAll
@@ -158,27 +159,8 @@ pub trait NpmCacheSys:
   + Send
   + Sync
   + Clone
+  + std::fmt::Debug
   + 'static
-{
-}
-
-impl<T> NpmCacheSys for T where
-  T: FsCanonicalize
-    + FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsReadDir
-    + FsRemoveDirAll
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + Clone
-    + 'static
 {
 }
 

@@ -28,7 +28,6 @@ pub struct LifecycleScriptsExecutorOptions<'a, TSys: NpmCacheSys> {
   pub init_cwd: &'a Path,
   pub process_state: &'a str,
   pub root_node_modules_dir_path: &'a Path,
-  pub progress_bar: &'a ProgressBar,
   pub on_ran_pkg_scripts:
     &'a dyn Fn(&NpmResolutionPackage) -> std::io::Result<()>,
   pub snapshot: &'a NpmResolutionSnapshot,

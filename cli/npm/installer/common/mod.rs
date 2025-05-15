@@ -17,4 +17,3 @@ use crate::npm::CliNpmCache;
 use crate::npm::WorkspaceNpmPatchPackages;
 
 mod deno_task_executor;
-pub mod lifecycle_scripts;

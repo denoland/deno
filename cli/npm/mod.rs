@@ -71,6 +71,31 @@ impl NpmPackageInfoApiAdapter {
   }
 }
 
+#[async_trait::async_trait(?Send)]
+impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
+  async fn get_npm_package_info(
+    &self,
+    values: &[PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    let package_infos =
+      get_infos(&*self.api, &self.workspace_patch_packages, values).await;
+
+    match package_infos {
+      Ok(package_infos) => Ok(package_infos),
+      Err(err) => {
+        if self.api.mark_force_reload() {
+          get_infos(&*self.api, &self.workspace_patch_packages, values).await
+        } else {
+          Err(err)
+        }
+      }
+    }
+  }
+}
+
 async fn get_infos(
   info_provider: &(dyn NpmRegistryApi + Send + Sync),
   workspace_patch_packages: &WorkspaceNpmPatchPackages,
@@ -125,31 +150,6 @@ async fn get_infos(
     .collect::<FuturesOrdered<_>>();
   let package_infos = futs.try_collect::<Vec<_>>().await?;
   Ok(package_infos)
-}
-
-#[async_trait::async_trait(?Send)]
-impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
-  async fn get_npm_package_info(
-    &self,
-    values: &[PackageNv],
-  ) -> Result<
-    Vec<deno_lockfile::Lockfile5NpmInfo>,
-    Box<dyn std::error::Error + Send + Sync>,
-  > {
-    let package_infos =
-      get_infos(&*self.api, &self.workspace_patch_packages, values).await;
-
-    match package_infos {
-      Ok(package_infos) => Ok(package_infos),
-      Err(err) => {
-        if self.api.mark_force_reload() {
-          get_infos(&*self.api, &self.workspace_patch_packages, values).await
-        } else {
-          Err(err)
-        }
-      }
-    }
-  }
 }
 
 #[derive(Debug)]

@@ -227,6 +227,7 @@ pub struct WorkspaceFactoryOptions<
 pub type WorkspaceFactoryRc<TSys> =
   crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
 
+#[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
   EnvCacheDir
   + EnvHomeDir
@@ -248,31 +249,6 @@ pub trait WorkspaceFactorySys:
   + MaybeSync
   + Clone
   + 'static
-{
-}
-
-impl<
-    T: EnvCacheDir
-      + EnvHomeDir
-      + EnvVar
-      + EnvCurrentDir
-      + FsCanonicalize
-      + FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + SystemRandom
-      + SystemTimeNow
-      + ThreadSleep
-      + std::fmt::Debug
-      + MaybeSend
-      + MaybeSync
-      + Clone
-      + 'static,
-  > WorkspaceFactorySys for T
 {
 }
 

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::Reporter;
+
 struct LaxSingleProcessFsFlagInner {
   file_path: PathBuf,
   fs_file: std::fs::File,
@@ -38,7 +40,11 @@ pub struct LaxSingleProcessFsFlag(
 );
 
 impl LaxSingleProcessFsFlag {
-  pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
+  pub async fn lock(
+    file_path: PathBuf,
+    reporter: &impl Reporter,
+    long_wait_message: &str,
+  ) -> Self {
     log::debug!("Acquiring file lock at {}", file_path.display());
     use fs3::FileExt;
     let last_updated_path = file_path.with_extension("lock.poll");
@@ -99,12 +105,8 @@ impl LaxSingleProcessFsFlag {
               if pb_update_guard.is_none()
                 && start_instant.elapsed().as_millis() > 1_000
               {
-                let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
-                let guard = pb.update_with_prompt(
-                  ProgressMessagePrompt::Blocking,
-                  long_wait_message,
-                );
-                pb_update_guard = Some((guard, pb));
+                let guard = reporter.on_blocking(long_wait_message);
+                pb_update_guard = Some(guard);
               }
 
               // sleep for a little bit
@@ -169,6 +171,7 @@ mod test {
   use tokio::sync::Notify;
 
   use super::*;
+  use crate::LogReporter;
 
   #[tokio::test]
   async fn lax_fs_lock() {
@@ -186,9 +189,12 @@ mod test {
       let signal4 = signal4.clone();
       let temp_dir = temp_dir.clone();
       async move {
-        let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
-            .await;
+        let flag = LaxSingleProcessFsFlag::lock(
+          lock_path.to_path_buf(),
+          &LogReporter,
+          "waiting",
+        )
+        .await;
         signal1.notify_one();
         signal2.notified().await;
         tokio::time::sleep(Duration::from_millis(10)).await; // give the other thread time to acquire the lock
@@ -205,9 +211,12 @@ mod test {
       async move {
         signal1.notified().await;
         signal2.notify_one();
-        let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
-            .await;
+        let flag = LaxSingleProcessFsFlag::lock(
+          lock_path.to_path_buf(),
+          &LogReporter,
+          "waiting",
+        )
+        .await;
         temp_dir.write("file.txt", "update2");
         signal5.notify_one();
         drop(flag);
@@ -237,9 +246,12 @@ mod test {
       let output_path = output_path.clone();
       let expected_order = expected_order.clone();
       tasks.push(tokio::spawn(async move {
-        let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
-            .await;
+        let flag = LaxSingleProcessFsFlag::lock(
+          lock_path.to_path_buf(),
+          &LogReporter,
+          "waiting",
+        )
+        .await;
         expected_order.lock().push(i.to_string());
         // be extremely racy
         let mut output = std::fs::read_to_string(&output_path).unwrap();

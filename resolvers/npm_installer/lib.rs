@@ -1,31 +1,49 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
-use deno_npm::registry::NpmRegistryApi;
-use deno_npm::NpmPackageExtraInfo;
-use deno_npm::NpmResolutionPackage;
+use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCache;
-use deno_npm_cache::NpmCacheSys;
+use deno_npm_cache::NpmCacheHttpClient;
+use deno_resolver::lockfile::CliLockfile;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
 mod bin_entries;
+mod extra_info;
 mod flag;
 mod fs;
 mod global;
 mod lifecycle_scripts;
 mod local;
 pub mod package_json;
+pub mod process_state;
+pub mod resolution;
 
 pub use bin_entries::BinEntries;
 pub use bin_entries::BinEntriesError;
-use parking_lot::RwLock;
+use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
+use rustc_hash::FxHashSet;
+
+pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
+pub use self::extra_info::ExpectedExtraInfo;
+pub use self::extra_info::NpmPackageExtraInfoProvider;
+use self::global::GlobalNpmPackageInstaller;
+use self::lifecycle_scripts::LifecycleScriptsExecutor;
+use self::local::LocalNpmInstallSys;
+use self::local::LocalNpmPackageInstaller;
+use self::package_json::NpmInstallDepsProvider;
+use self::package_json::PackageJsonDepValueParseWithLocationError;
+use self::resolution::AddPkgReqsResult;
+use self::resolution::NpmResolutionInstaller;
+use self::resolution::NpmResolutionInstallerSys;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageCaching<'a> {
@@ -52,6 +70,33 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
+pub trait Reporter: std::fmt::Debug + Send + Sync {
+  type Guard;
+
+  fn on_blocking(&self, message: &str) -> Self::Guard;
+  fn on_initializing(&self, message: &str) -> Self::Guard;
+  fn clear_guard(&self) -> Self::Guard;
+}
+
+#[derive(Debug)]
+pub struct LogReporter;
+
+impl Reporter for LogReporter {
+  type Guard = ();
+
+  fn on_blocking(&self, message: &str) -> Self::Guard {
+    log::info!("{} {}", deno_terminal::colors::cyan("Blocking"), message);
+  }
+
+  fn on_initializing(&self, message: &str) -> Self::Guard {
+    log::info!("{} {}", deno_terminal::colors::green("Initialize"), message);
+  }
+
+  fn clear_guard(&self) -> Self::Guard {
+    ()
+  }
+}
+
 /// Part of the resolution that interacts with the file system.
 #[async_trait::async_trait(?Send)]
 pub(crate) trait NpmPackageFsInstaller:
@@ -63,156 +108,287 @@ pub(crate) trait NpmPackageFsInstaller:
   ) -> Result<(), JsErrorBox>;
 }
 
-pub struct CachedNpmPackageExtraInfoProvider<TSys: NpmCacheSys> {
-  inner: Arc<NpmPackageExtraInfoProvider<TSys>>,
-  cache: RwLock<rustc_hash::FxHashMap<PackageNv, NpmPackageExtraInfo>>,
+#[sys_traits::auto_impl]
+pub trait NpmInstallerSys:
+  NpmResolutionInstallerSys + LocalNpmInstallSys
+{
 }
 
-impl<TSys: NpmCacheSys> CachedNpmPackageExtraInfoProvider<TSys> {
-  pub fn new(inner: Arc<NpmPackageExtraInfoProvider<TSys>>) -> Self {
-    Self {
-      inner,
-      cache: Default::default(),
-    }
-  }
-
-  pub async fn get_package_extra_info(
-    &self,
-    package_nv: &PackageNv,
-    package_path: &Path,
-    expected: ExpectedExtraInfo,
-  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    if let Some(extra_info) = self.cache.read().get(package_nv) {
-      return Ok(extra_info.clone());
-    }
-
-    let extra_info = self
-      .inner
-      .get_package_extra_info(package_nv, package_path, expected)
-      .await?;
-    self
-      .cache
-      .write()
-      .insert(package_nv.clone(), extra_info.clone());
-    Ok(extra_info)
-  }
+#[derive(Debug)]
+pub struct NpmInstaller<
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TSys: NpmInstallerSys,
+> {
+  fs_installer: Arc<dyn NpmPackageFsInstaller>,
+  npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+  npm_resolution_initializer: Arc<NpmResolutionInitializer>,
+  npm_resolution_installer:
+    Arc<NpmResolutionInstaller<TNpmCacheHttpClient, TSys>>,
+  maybe_lockfile: Option<Arc<CliLockfile<TSys>>>,
+  npm_resolution: Arc<NpmResolutionCell>,
+  top_level_install_flag: AtomicFlag,
+  cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExpectedExtraInfo {
-  pub deprecated: bool,
-  pub bin: bool,
-  pub scripts: bool,
-}
-
-impl ExpectedExtraInfo {
-  pub fn from_package(package: &NpmResolutionPackage) -> Self {
-    Self {
-      deprecated: package.is_deprecated,
-      bin: package.has_bin,
-      scripts: package.has_scripts,
-    }
-  }
-}
-
-pub struct NpmPackageExtraInfoProvider<TSys: NpmCacheSys> {
-  npm_cache: Arc<NpmCache<TSys>>,
-  npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
-}
-
-impl<TSys: NpmCacheSys> std::fmt::Debug for NpmPackageExtraInfoProvider<TSys> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("NpmPackageExtraInfoProvider").finish()
-  }
-}
-
-impl<TSys: NpmCacheSys> NpmPackageExtraInfoProvider<TSys> {
-  pub fn new(
+impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
+  NpmInstaller<TNpmCacheHttpClient, TSys>
+{
+  #[allow(clippy::too_many_arguments)]
+  pub fn new<TReporter: Reporter>(
+    lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor<TSys>>,
     npm_cache: Arc<NpmCache<TSys>>,
-    npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+    npm_registry_info_provider: Arc<
+      dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
+    >,
+    npm_resolution: Arc<NpmResolutionCell>,
+    npm_resolution_initializer: Arc<NpmResolutionInitializer>,
+    npm_resolution_installer: Arc<
+      NpmResolutionInstaller<TNpmCacheHttpClient, TSys>,
+    >,
+    reporter: &Arc<TReporter>,
+    sys: TSys,
+    tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
+    maybe_lockfile: Option<Arc<CliLockfile<TSys>>>,
+    maybe_node_modules_path: Option<PathBuf>,
+    lifecycle_scripts: LifecycleScriptsConfig,
+    system_info: NpmSystemInfo,
     workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
+    let fs_installer: Arc<dyn NpmPackageFsInstaller> =
+      match maybe_node_modules_path {
+        Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
+          lifecycle_scripts_executor,
+          npm_cache.clone(),
+          Arc::new(NpmPackageExtraInfoProvider::new(
+            npm_cache,
+            npm_registry_info_provider,
+            workspace_patch_packages,
+          )),
+          npm_install_deps_provider.clone(),
+          reporter.clone(),
+          npm_resolution.clone(),
+          sys,
+          tarball_cache,
+          node_modules_folder,
+          lifecycle_scripts,
+          system_info,
+        )),
+        None => Arc::new(GlobalNpmPackageInstaller::new(
+          npm_cache,
+          tarball_cache,
+          npm_resolution.clone(),
+          lifecycle_scripts,
+          system_info,
+        )),
+      };
     Self {
-      npm_cache,
-      npm_registry_info_provider,
-      workspace_patch_packages,
+      fs_installer,
+      npm_install_deps_provider,
+      npm_resolution,
+      npm_resolution_initializer,
+      npm_resolution_installer,
+      maybe_lockfile,
+      top_level_install_flag: Default::default(),
+      cached_reqs: Default::default(),
     }
   }
-}
 
-impl<TSys: NpmCacheSys> NpmPackageExtraInfoProvider<TSys> {
-  pub async fn get_package_extra_info(
+  /// Adds package requirements to the resolver and ensures everything is setup.
+  /// This includes setting up the `node_modules` directory, if applicable.
+  pub async fn add_and_cache_package_reqs(
     &self,
-    package_nv: &PackageNv,
-    package_path: &Path,
-    expected: ExpectedExtraInfo,
-  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    if expected.deprecated {
-      // we need the registry version info to get the deprecated string, since it's not in the
-      // package's package.json
-      self.fetch_from_registry(package_nv).await
-    } else {
-      match self.fetch_from_package_json(package_path).await {
-        Ok(extra_info) => {
-          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-          // still not sure how that happens
-          if (expected.bin && extra_info.bin.is_none())
-            || (expected.scripts && extra_info.scripts.is_empty())
-          {
-            self.fetch_from_registry(package_nv).await
-          } else {
-            Ok(extra_info)
+    packages: &[PackageReq],
+  ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self
+      .add_package_reqs_raw(
+        packages,
+        Some(PackageCaching::Only(packages.into())),
+      )
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs_no_cache(
+    &self,
+    packages: &[PackageReq],
+  ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self
+      .add_package_reqs_raw(packages, None)
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    self
+      .add_package_reqs_raw(packages, Some(caching))
+      .await
+      .dependencies_result
+  }
+
+  pub async fn add_package_reqs_raw(
+    &self,
+    packages: &[PackageReq],
+    caching: Option<PackageCaching<'_>>,
+  ) -> AddPkgReqsResult {
+    if packages.is_empty() {
+      return AddPkgReqsResult {
+        dependencies_result: Ok(()),
+        results: vec![],
+      };
+    }
+
+    #[cfg(debug_assertions)]
+    self.npm_resolution_initializer.debug_assert_initialized();
+
+    let mut result = self
+      .npm_resolution_installer
+      .add_package_reqs(packages)
+      .await;
+
+    if result.dependencies_result.is_ok() {
+      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+        result.dependencies_result = lockfile.error_if_changed();
+      }
+    }
+    if result.dependencies_result.is_ok() {
+      if let Some(caching) = caching {
+        // the async mutex is unfortunate, but needed to handle the edge case where two workers
+        // try to cache the same package at the same time. we need to hold the lock while we cache
+        // and since that crosses an await point, we need the async mutex.
+        //
+        // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+        // while caching typically takes micro or milli seconds.
+        let mut cached_reqs = self.cached_reqs.lock().await;
+        let uncached = {
+          packages
+            .iter()
+            .filter(|req| !cached_reqs.contains(req))
+            .collect::<Vec<_>>()
+        };
+
+        if !uncached.is_empty() {
+          result.dependencies_result = self.cache_packages(caching).await;
+          if result.dependencies_result.is_ok() {
+            for req in uncached {
+              cached_reqs.insert(req.clone());
+            }
           }
-        }
-        Err(err) => {
-          log::debug!(
-            "failed to get extra info for {} from package.json at {}: {}",
-            package_nv,
-            package_path.join("package.json").display(),
-            err
-          );
-          self.fetch_from_registry(package_nv).await
         }
       }
     }
+
+    result
   }
 
-  async fn fetch_from_registry(
+  pub async fn inject_synthetic_types_node_package(
     &self,
-    package_nv: &PackageNv,
-  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    let package_info = self
-      .npm_registry_info_provider
-      .package_info(&package_nv.name)
-      .await
-      .map_err(JsErrorBox::from_err)?;
-    let version_info = package_info
-      .version_info(package_nv, &self.workspace_patch_packages.0)
-      .map_err(JsErrorBox::from_err)?;
-    Ok(NpmPackageExtraInfo {
-      deprecated: version_info.deprecated.clone(),
-      bin: version_info.bin.clone(),
-      scripts: version_info.scripts.clone(),
-    })
+  ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+
+    // don't inject this if it's already been added
+    if self
+      .npm_resolution
+      .any_top_level_package(|id| id.nv.name == "@types/node")
+    {
+      return Ok(());
+    }
+
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
+    self
+      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
+      .await?;
+
+    Ok(())
   }
 
-  async fn fetch_from_package_json(
+  pub async fn cache_package_info(
     &self,
-    package_path: &Path,
-  ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    let package_json_path = package_path.join("package.json");
-    let extra_info: NpmPackageExtraInfo =
-      deno_unsync::spawn_blocking(move || {
-        let package_json = std::fs::read_to_string(&package_json_path)
-          .map_err(JsErrorBox::from_err)?;
-        let extra_info: NpmPackageExtraInfo =
-          serde_json::from_str(&package_json).map_err(JsErrorBox::from_err)?;
-
-        Ok::<_, JsErrorBox>(extra_info)
-      })
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    self
+      .npm_resolution_installer
+      .cache_package_info(package_name)
       .await
-      .map_err(JsErrorBox::from_err)??;
-    Ok(extra_info)
+  }
+
+  pub async fn cache_packages(
+    &self,
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self.fs_installer.cache_packages(caching).await
+  }
+
+  pub fn ensure_no_pkg_json_dep_errors(
+    &self,
+  ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
+    for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
+      match err.source.as_kind() {
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_) => {
+          return Err(Box::new(err.clone()));
+        }
+        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
+          ..
+        } => {
+          // only warn for this one
+          log::warn!(
+            "{} {}\n    at {}",
+            colors::yellow("Warning"),
+            err.source,
+            err.location,
+          )
+        }
+      }
+    }
+    Ok(())
+  }
+
+  /// Ensures that the top level `package.json` dependencies are installed.
+  /// This may set up the `node_modules` directory.
+  ///
+  /// Returns `true` if the top level packages are already installed. A
+  /// return value of `false` means that new packages were added to the NPM resolution.
+  pub async fn ensure_top_level_package_json_install(
+    &self,
+  ) -> Result<bool, JsErrorBox> {
+    if !self.top_level_install_flag.raise() {
+      return Ok(true); // already did this
+    }
+
+    self.npm_resolution_initializer.ensure_initialized().await?;
+
+    let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
+    if pkg_json_remote_pkgs.is_empty() {
+      return Ok(true);
+    }
+
+    // check if something needs resolving before bothering to load all
+    // the package information (which is slow)
+    if pkg_json_remote_pkgs.iter().all(|pkg| {
+      self
+        .npm_resolution
+        .resolve_pkg_id_from_pkg_req(&pkg.req)
+        .is_ok()
+    }) {
+      log::debug!(
+        "All package.json deps resolvable. Skipping top level install."
+      );
+      return Ok(true); // everything is already resolvable
+    }
+
+    let pkg_reqs = pkg_json_remote_pkgs
+      .iter()
+      .map(|pkg| pkg.req.clone())
+      .collect::<Vec<_>>();
+    self.add_package_reqs_no_cache(&pkg_reqs).await?;
+
+    Ok(false)
   }
 }

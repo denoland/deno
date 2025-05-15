@@ -307,9 +307,7 @@ pub enum CreateCustomWorkerError {
   NpmPackageReq(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
-  AtomicWriteFileWithRetries(
-    #[from] crate::args::AtomicWriteFileWithRetriesError,
-  ),
+  AtomicWriteFileWithRetries(#[from] crate::args::LockfileWriteError),
 }
 
 pub struct CliMainWorkerFactory {

@@ -39,7 +39,6 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsCopy;
 use sys_traits::FsDirEntry;
 
 use crate::bin_entries::EntrySetupOutcome;
@@ -53,6 +52,7 @@ use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::package_json::NpmInstallDepsProvider;
+use crate::process_state::NpmProcessState;
 use crate::BinEntries;
 use crate::CachedNpmPackageExtraInfoProvider;
 use crate::ExpectedExtraInfo;
@@ -60,6 +60,7 @@ use crate::LifecycleScriptsConfig;
 use crate::NpmPackageExtraInfoProvider;
 use crate::NpmPackageFsInstaller;
 use crate::PackageCaching;
+use crate::Reporter;
 
 #[sys_traits::auto_impl]
 pub trait LocalNpmInstallSys:
@@ -74,13 +75,14 @@ pub trait LocalNpmInstallSys:
 /// and resolves packages from it.
 pub struct LocalNpmPackageInstaller<
   THttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
   TSys: LocalNpmInstallSys,
 > {
   lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor<TSys>>,
   npm_cache: Arc<NpmCache<TSys>>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
-  progress_bar: ProgressBar,
+  reporter: Arc<TReporter>,
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -89,14 +91,17 @@ pub struct LocalNpmPackageInstaller<
   system_info: NpmSystemInfo,
 }
 
-impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys> std::fmt::Debug
-  for LocalNpmPackageInstaller<THttpClient, TSys>
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TReporter: Reporter,
+    TSys: LocalNpmInstallSys,
+  > std::fmt::Debug for LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("LocalNpmPackageInstaller")
       .field("npm_cache", &self.npm_cache)
       .field("npm_install_deps_provider", &self.npm_install_deps_provider)
-      .field("progress_bar", &self.progress_bar)
+      .field("reporter", &self.reporter)
       .field("resolution", &self.resolution)
       .field("sys", &self.sys)
       .field("tarball_cache", &self.tarball_cache)
@@ -107,8 +112,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys> std::fmt::Debug
   }
 }
 
-impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
-  LocalNpmPackageInstaller<THttpClient, TSys>
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TReporter: Reporter,
+    TSys: LocalNpmInstallSys,
+  > LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -116,7 +124,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
     npm_cache: Arc<NpmCache<TSys>>,
     npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider<TSys>>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-    progress_bar: ProgressBar,
+    reporter: Arc<TReporter>,
     resolution: Arc<NpmResolutionCell>,
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -129,7 +137,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
       npm_cache,
       npm_install_deps_provider,
       npm_package_extra_info_provider,
-      progress_bar,
+      reporter,
       resolution,
       tarball_cache,
       sys,
@@ -173,6 +181,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
 
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       deno_local_registry_dir.join(".deno.lock"),
+      self.reporter.as_ref(),
       // similar message used by cargo build
       "waiting for file lock on node_modules directory",
     )
@@ -184,7 +193,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
-    let pb_clear_guard = progress_bar.clear_guard(); // prevent flickering
+    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
 
     // 1. Write all the packages out the .deno directory.
     //
@@ -292,10 +301,8 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
                 .ensure_package(&package.id.nv, dist)
                 .await
                 .map_err(JsErrorBox::from_err)?;
-              let pb_guard = progress_bar.update_with_prompt(
-                ProgressMessagePrompt::Initialize,
-                &package.id.nv.to_string(),
-              );
+              let pb_guard =
+                self.reporter.on_initializing(&package.id.nv.to_string());
               let sub_node_modules = folder_path.join("node_modules");
               let package_path = join_package_name(
                 Cow::Owned(sub_node_modules),
@@ -810,10 +817,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
 
     let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
-      let process_state = npm_process_state(
+      let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
-        Some(&self.root_node_modules_path),
-      );
+        &self.root_node_modules_path,
+      )
+      .as_serialized();
 
       self
         .lifecycle_scripts_executor
@@ -821,7 +829,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
-          progress_bar,
           on_ran_pkg_scripts: &|pkg| {
             std::fs::File::create(ran_scripts_file(
               &deno_local_registry_dir,
@@ -847,8 +854,12 @@ impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
 }
 
 #[async_trait(?Send)]
-impl<THttpClient: NpmCacheHttpClient, TSys: LocalNpmInstallSys>
-  NpmPackageFsInstaller for LocalNpmPackageInstaller<THttpClient, TSys>
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TReporter: Reporter,
+    TSys: LocalNpmInstallSys,
+  > NpmPackageFsInstaller
+  for LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   async fn cache_packages<'a>(
     &self,
@@ -1225,8 +1236,7 @@ fn symlink_package_dir(
   }
   #[cfg(not(windows))]
   {
-    symlink_dir(&crate::sys::CliSys::default(), &old_path_relative, new_path)
-      .map_err(Into::into)
+    symlink_dir(sys, &old_path_relative, new_path).map_err(Into::into)
   }
 }
 

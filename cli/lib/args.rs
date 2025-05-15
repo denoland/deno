@@ -153,19 +153,6 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
-/// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NpmProcessState {
-  pub kind: NpmProcessStateKind,
-  pub local_node_modules_path: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NpmProcessStateKind {
-  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
-  Byonm,
-}
-
 pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
   LazyLock::new(|| {
     /// Allows for passing either a file descriptor or file path.
