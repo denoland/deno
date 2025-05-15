@@ -65,6 +65,7 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
+use crate::npm::installer::NullLifecycleScriptsExecutor;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
@@ -304,7 +305,7 @@ impl LspScopedResolver {
 
   pub fn as_maybe_managed_npm_resolver(
     &self,
-  ) -> Option<&CliManagedNpmResolver> {
+  ) -> Option<&Arc<CliManagedNpmResolver>> {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
@@ -866,6 +867,7 @@ impl<'a> ResolverFactory<'a> {
         patch_packages.clone(),
       ));
       let npm_installer = Arc::new(NpmInstaller::new(
+        Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
         Arc::new(registry_info_provider.as_npm_registry_api()),

@@ -234,7 +234,7 @@ declare namespace Deno {
      * @category Errors */
     export class AlreadyExists extends Error {}
     /**
-     * Raised when an operation to returns data that is invalid for the
+     * Raised when an operation returns data that is invalid for the
      * operation being performed.
      *
      * @category Errors */
@@ -248,7 +248,7 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system reports an `EINTR` error. In
      * many cases, this underlying IO error will be handled internally within
-     * Deno, or result in an @{link BadResource} error instead.
+     * Deno, or result in an {@link BadResource} error instead.
      *
      * @category Errors */
     export class Interrupted extends Error {}
