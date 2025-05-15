@@ -95,6 +95,7 @@ pub async fn bundle(
   let flags = EsbuildFlagsBuilder::default()
     .outfile(output_path)
     .bundle(true)
+    .minify(bundle_flags.minify)
     .external(bundle_flags.external)
     .format(match bundle_flags.format {
       BundleFormat::Esm => esbuild_rs::Format::Esm,

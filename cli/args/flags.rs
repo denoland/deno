@@ -465,6 +465,7 @@ pub struct BundleFlags {
   pub output_path: Option<String>,
   pub external: Vec<String>,
   pub format: BundleFormat,
+  pub minify: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -1932,6 +1933,12 @@ fn bundle_subcommand() -> Command {
           .long("format")
           .value_parser(clap::builder::ValueParser::new(format_parser))
           .default_value("esm"),
+      )
+      .arg(
+        Arg::new("minify")
+          .long("minify")
+          .help("Minify the output")
+          .action(ArgAction::SetTrue),
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
@@ -4729,6 +4736,7 @@ fn bundle_parse(
       .map(|f| f.collect::<Vec<_>>())
       .unwrap_or_default(),
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
+    minify: matches.get_flag("minify"),
   });
   Ok(())
 }

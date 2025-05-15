@@ -42,3 +42,5 @@ Untitled*.ipynb
 
 # playwright browser binary cache
 /.ms-playwright
+
+**/.claude/settings.local.json
