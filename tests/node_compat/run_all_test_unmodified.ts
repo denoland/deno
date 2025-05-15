@@ -209,20 +209,27 @@ function collectNonCategorizedItems(categories: Record<string, string[]>) {
 
 function truncateTestOutput(output: string): string {
   output = stripAnsiCode(output);
-  if (IS_CI && output.length > 2000) {
+  if (output.length > 2000) {
     return output.slice(0, 2000) + " ...";
   }
   return output;
 }
 
-const RESULT_KIND = {
-  PASS: 0,
-  FAIL: 1,
-  SKIP: 2,
-};
+enum NodeTestFileResult {
+  PASS = "pass",
+  FAIL = "fail",
+  SKIP = "skip",
+}
+
+interface NodeTestFileReport {
+  result: NodeTestFileResult;
+  error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
+}
+
+type TestReports = Record<string, NodeTestFileReport>;
 
 export type SingleResult = [
-  pass: number,
+  pass: boolean,
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
 ];
 type ErrorExit = {
@@ -259,7 +266,10 @@ function getV8Flags(source: string): string[] {
  *
  * @param testPath Relative path to the test file
  */
-async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
+async function runSingle(
+  testPath: string,
+  retry = 0,
+): Promise<NodeTestFileReport> {
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
@@ -282,13 +292,18 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
-      return [RESULT_KIND.PASS];
+      return { result: NodeTestFileResult.PASS };
     } else {
       const output = usesNodeTest ? result.stdout : result.stderr;
-      return [RESULT_KIND.FAIL, {
-        code: result.code,
-        stderr: truncateTestOutput(new TextDecoder().decode(output)),
-      }];
+      const outputText = new TextDecoder().decode(output);
+      const stderr = IS_CI ? truncateTestOutput(outputText) : outputText;
+      return {
+        result: NodeTestFileResult.FAIL,
+        error: {
+          code: result.code,
+          stderr,
+        },
+      };
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
@@ -297,21 +312,71 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       } catch {
         // ignore
       }
-      return [RESULT_KIND.FAIL, { timeout: TIMEOUT }];
+      return { result: NodeTestFileResult.FAIL, error: { timeout: TIMEOUT } };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, retry + 1);
     } else {
-      return [RESULT_KIND.FAIL, { message: (e as Error).message }];
+      return {
+        result: NodeTestFileResult.FAIL,
+        error: { message: (e as Error).message },
+      };
     }
   }
+}
+
+function transformReportsIntoResults(
+  reports: TestReports,
+) {
+  const results = {} as Record<string, SingleResult>;
+
+  for (const [key, value] of Object.entries(reports)) {
+    if (value.result === NodeTestFileResult.SKIP) {
+      throw new Error("Can't transform 'SKIP' result into `SingleResult`");
+    }
+    let result: SingleResult = [true];
+    if (value.result === NodeTestFileResult.FAIL) {
+      result = [false, value.error];
+    }
+    results[key] = result;
+  }
+
+  return results;
+}
+
+async function writeTestReport(
+  reports: TestReports,
+  total: number,
+  pass: number,
+) {
+  // First transform the results - before we added `NodeTestFileReport` we used `SingleResult`.
+  // For now we opt to keep that format, as migrating existing results is cumbersome.
+  const results = transformReportsIntoResults(reports);
+
+  await Deno.writeTextFile(
+    "tests/node_compat/report.json",
+    JSON.stringify(
+      {
+        date: new Date().toISOString().slice(0, 10),
+        denoVersion: Deno.version.deno,
+        os: Deno.build.os,
+        arch: Deno.build.arch,
+        nodeVersion,
+        runId: Deno.env.get("GITHUB_RUN_ID") ?? null,
+        total,
+        pass,
+        results,
+      } satisfies TestReport,
+    ),
+  );
 }
 
 async function main() {
   const filterIdx = Deno.args.indexOf("--filter");
   let filterTerm = undefined;
 
-  if (filterIdx > -1) {
+  // Filtering can only be done locally, we want to avoid having CI run only a subset of tests.
+  if (!IS_CI && filterIdx > -1) {
     filterTerm = Deno.args[filterIdx + 1];
   }
 
@@ -332,20 +397,23 @@ async function main() {
   console.log("Running", tests.length, "tests");
   const categoryList = Object.entries(categories)
     .sort(([c0], [c1]) => c0.localeCompare(c1));
-  const results = {} as Record<string, SingleResult>;
+  const reports = {} as TestReports;
   let i = 0;
+
   async function run(testPath: string) {
     const num = String(++i).padStart(4, " ");
     const result = await runSingle(testPath);
-    results[testPath] = result;
-    if (result[0] === RESULT_KIND.PASS) {
+    reports[testPath] = result;
+    if (result.result === NodeTestFileResult.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);
-    } else if (result[0] === RESULT_KIND.FAIL) {
+    } else if (result.result === NodeTestFileResult.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
     } else {
+      // Don't print message for "skip" for now, as it's too noisy
       // console.log(`${num} %cSKIP`, "color: yellow", testPath);
     }
   }
+
   let [sequential, parallel] = partition(
     tests,
     (test) => getGroupRelUrl(test) === "sequential",
@@ -358,14 +426,14 @@ async function main() {
         return true;
       }
 
-      results[term] = [RESULT_KIND.SKIP];
+      reports[term] = { result: NodeTestFileResult.SKIP };
       return false;
     });
     parallel = parallel.filter((term) => {
       if (term.includes(filterTerm)) {
         return true;
       }
-      results[term] = [RESULT_KIND.SKIP];
+      reports[term] = { result: NodeTestFileResult.SKIP };
       return false;
     });
     console.log(
@@ -387,36 +455,49 @@ async function main() {
   // Reporting to stdout
   console.log(`Result by categories (${categoryList.length}):`);
   for (const [category, tests] of categoryList) {
-    if (tests.every((test) => results[test][0] === RESULT_KIND.SKIP)) {
+    if (
+      tests.every((test) => reports[test].result === NodeTestFileResult.SKIP)
+    ) {
       continue;
     }
     const s = tests.filter((test) =>
-      results[test][0] === RESULT_KIND.PASS
+      reports[test].result === NodeTestFileResult.PASS
     ).length;
     const all = filterTerm
-      ? tests.map((testPath) => results[testPath][0]).filter((result) =>
-        result !== RESULT_KIND.SKIP
+      ? tests.map((testPath) => reports[testPath].result).filter((result) =>
+        result !== NodeTestFileResult.SKIP
       ).length
       : tests.length;
     console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
     for (const testPath of tests) {
-      switch (results[testPath][0]) {
-        case RESULT_KIND.PASS: {
+      switch (reports[testPath].result) {
+        case NodeTestFileResult.PASS: {
           console.log(`    %cPASS`, "color: green", testPath);
           break;
         }
-        case RESULT_KIND.FAIL: {
+        case NodeTestFileResult.FAIL: {
+          // deno-lint-ignore no-explicit-any
+          let elements: any[] = [];
+          const error = reports[testPath].error!;
+          if (error.code) {
+            elements = ["exit code:", error.code, "\n   ", error.stderr];
+          } else if (error.timeout) {
+            elements = ["timeout out after", error.timeout, "seconds"];
+          } else {
+            elements = ["errored with:", error.message];
+          }
           console.log(`    %cFAIL`, "color: red", testPath);
-          console.log(results[testPath][1]);
+          console.log("   ", ...elements);
           break;
         }
-        case RESULT_KIND.SKIP: {
+        case NodeTestFileResult.SKIP: {
+          // Don't print message for "skip" for now, as it's too noisy
           // console.log(`    %cSKIP`, "color: yellow", testPath);
           break;
         }
         default:
           console.warn(
-            `Unknown result (${results[testPath][0]}) for ${testPath}`,
+            `Unknown result (${reports[testPath].result}) for ${testPath}`,
           );
       }
     }
@@ -425,11 +506,12 @@ async function main() {
   // Summary
   let total;
   const pass =
-    tests.filter((test) => results[test][0] === RESULT_KIND.PASS).length;
+    tests.filter((test) => reports[test].result === NodeTestFileResult.PASS)
+      .length;
   if (filterTerm) {
     total = tests.map((testPath) =>
-      results[testPath][0]
-    ).filter((result) => result !== RESULT_KIND.SKIP).length;
+      reports[testPath].result
+    ).filter((result) => result !== NodeTestFileResult.SKIP).length;
     console.log(
       `Filtered tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
     );
@@ -444,22 +526,7 @@ async function main() {
   // Store the results in a JSON file
 
   if (!filterTerm) {
-    await Deno.writeTextFile(
-      "tests/node_compat/report.json",
-      JSON.stringify(
-        {
-          date: new Date().toISOString().slice(0, 10),
-          denoVersion: Deno.version.deno,
-          os: Deno.build.os,
-          arch: Deno.build.arch,
-          nodeVersion,
-          runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
-          total,
-          pass,
-          results,
-        } satisfies TestReport,
-      ),
-    );
+    await writeTestReport(reports, total, pass);
   }
 
   Deno.exit(0);
