@@ -6,6 +6,121 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.3 / 2025.05.16
+
+- fix(check): ignore errors on ambient modules (#29135)
+- Revert "fix(fmt): upgrade markup_fmt and malva" (#29325)
+
+### 2.3.2 / 2025.05.15
+
+- feat(coverage): add dark-mode to HTML coverage report (#29267)
+- feat(ext/fetch): add support for fetch on unix sockets (#29154)
+- feat(ext/fetch): support custom DNS resolver (#27740)
+- feat(jupyter): allow to install and maintain multiple kernels (#29249)
+- feat(lsp): add description in TaskDefinition (#29244)
+- feat(otel): add events for boot failure and uncaught error (#29287)
+- feat(unstable): notify control sock on serving (#29173)
+- feat(unstable): support comments in lint plugin (#29189)
+- feat: Add support for DENO_TRUST_PROXY_HEADERS env var (#29296)
+- feat: DENO_SERVE_ADDRESS duplicate option (#29109)
+- feat: support unconfigured runtime in serve subcommand (#29172)
+- fix(cache): added support for the --env-file flag (#29160)
+- fix(check): do not add `@types/node@*` to lockfile if a `@types/node` req
+  already exists (#29270)
+- fix(check): don't assert unique normalized specifiers (#29274)
+- fix(check): write lockfile after type checking (#29265)
+- fix(cli): configure v8 isolate with cgroups-constrained memory limit (#29078)
+- fix(cli/hmr): print compile error with exception details (#27597)
+- fix(coverage): don't panic if all covered files are ignored via directive
+  (#29250)
+- fix(dts): add `Atomics.pause`, `Promise.try` and `RegExp.escape` (#29186)
+- fix(ext/canvas): `createImageBitmap` must ignore the `Blob.type` value
+  (#28741)
+- fix(ext/node): Fix dns.lookup when promisified with `options.all` (#29167)
+- fix(ext/node): Fix export loadEnvFile from `node:process` (#29237)
+- fix(ext/node): Fix fast method proto unwraps in `AsyncWrap` (#29117)
+- fix(ext/node): Support mTLS connections node compatibility (#28937)
+- fix(ext/node): TLS server unref (#29279)
+- fix(ext/node): `arrayBufferViewHasBuffer` internal util (#28827)
+- fix(ext/node): `getColorDepth` for writable stdio streams (#29176)
+- fix(ext/node): add AES CTR to supported ciphers list (#29273)
+- fix(ext/node): add assert.CallTracker (#29226)
+- fix(ext/node): align input validation of Buffer.compare (#29275)
+- fix(ext/node): allow `rejectUnauthorized: false` in `node:tls` (#29245)
+- fix(ext/node): dgram multicast group membership (#29207)
+- fix(ext/node): don't use user manipulated Response objects, use correct
+  `rawHeaders` structure (#29105)
+- fix(ext/node): export CallTracker as named export (#29271)
+- fix(ext/node): hold weak reference to sqlite database in instances (#29210)
+- fix(ext/node): implement dgram setBroadcast (#29195)
+- fix(ext/node): implement dgram setMulticastLoopback (#29241)
+- fix(ext/node): implement dgram socket setMulticastTTL (#29232)
+- fix(ext/node): support http over unix sockets (#29182)
+- fix(ext/node): use "localhost" as default tls hostname (#29231)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/async_hooks.ts`
+  (#29191)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/cli_table.ts`
+  (#29257)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/dgram.ts`
+  (#29204)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/fs/handle.ts`
+  (#29239)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/idna.ts`
+  (#29085)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/net.ts`
+  (#29297)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/normalize_encoding.mjs` (#29283)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/options.ts`
+  (#29119)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/querystring.ts`
+  (#29264)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/stream_base_commons.ts` (#29290)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/timers.mjs`
+  (#29269)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/url.ts`
+  (#29146)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/validators.mjs`
+  (#29302)
+- fix(ext/node): use primordials in ext/node/polyfills/_fs/_fs_mkdtemp.ts
+  (#29072)
+- fix(ext/os): Fix duplicate 'openbsd' cfg attribute (#28607)
+- fix(ext/process): suppress child process kill errors in onAbort handler
+  (#29193)
+- fix(flags): do not panic parsing invalid --allow-import flag (#29118)
+- fix(fmt): fail command when embedded language has syntax error (#29259)
+- fix(fmt): indent width should be ignored when formatting with use tabs set to
+  true (#29205)
+- fix(fmt): upgrade markup_fmt and malva (#29168)
+- fix(lsp): discard quick fixes importing /node_modules/ paths (#29194)
+- fix(lsp): ignore 'for await' diagnostics in jupyter cells (#29114)
+- fix(lsp): use correct resolution kind when checking for no-export-npm (#29180)
+- fix(node/test): basic support for t.skip and t.todo (#29222)
+- fix(node:http): `ServerResponse.req` not set (#29211)
+- fix(npm): add some context to errors on tarball extraction failure (#29145)
+- fix(npm): handle global cache missing version in pkg info of pkg existing in
+  npm snapshot (#29131)
+- fix(npm): respect etag for npm packument caching (#29130)
+- fix(otel): don't panic when using worker threads (#29248)
+- fix(precompile): escape string literal jsx children (#29200)
+- fix(repl): use object_id for repl internal (#29163)
+- fix(types): Change ffi native type from `Uint8Array` ->
+  `Uint8Array<ArrayBuffer>` (#29127)
+- fix(upgrade): skip version comparison when upgrading (#29112)
+- fix(vendor): strip jsr version meta module graph data (#29120)
+- fix: allow specifying otel config in `--env-file` (#29240)
+- fix: bump default @types/node version range to 22.15.14 (#28407)
+- fix: handling of contradictory global permission flags (#29213)
+- fix: inspector rewrite resource name to url (#29216)
+- fix: terminate control sock event with newline (#29184)
+- fix: update deno_core (#29166)
+- fix: use v8 instead of swc for explicit resource management (#29282)
+- perf(lsp): don't diff 10,000+ line files for formatting (#29162)
+- perf(lsp): truncate json files larger than 10mb (#29192)
+- perf(npm): deserialize cached npm packuments on blocking task (#29137)
+- perf(publish): fetch all missing package status in parallel (#27935)
+
 ### 2.3.0 / 2025.04.30
 
 - feat(add/install): --npm and --jsr flags for deno add/install (#28666)

@@ -1208,7 +1208,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>NO_PROXY</>               Comma-separated list of hosts which do not use a proxy
                           <p(245)>(module downloads, fetch)</>
   <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry.
-  <g>DENO_TRUST_PROXY_HEADERS</>  If specified, removes X-deno-client-address header when serving HTTP."#
+  <g>DENO_TRUST_PROXY_HEADERS</>  If specified, removes X-deno-client-address header when serving HTTP.
+  <g>DENO_USR2_MEMORY_TRIM</>  If specified, listen for SIGUSR2 signal to try and free memory (Linux only)."#
 );
 
 static DENO_HELP: &str = cstr!(

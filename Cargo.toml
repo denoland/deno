@@ -81,45 +81,45 @@ denokv_remote = "0.10.0"
 denokv_sqlite = { default-features = false, version = "0.10.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.198.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.136.0", path = "./ext/cache" }
-deno_canvas = { version = "0.73.0", path = "./ext/canvas" }
-deno_console = { version = "0.204.0", path = "./ext/console" }
-deno_cron = { version = "0.84.0", path = "./ext/cron" }
-deno_crypto = { version = "0.218.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.228.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.191.0", path = "./ext/ffi" }
-deno_fs = { version = "0.114.0", path = "./ext/fs" }
-deno_http = { version = "0.202.0", path = "./ext/http" }
-deno_io = { version = "0.114.0", path = "./ext/io" }
-deno_kv = { version = "0.112.0", path = "./ext/kv" }
-deno_napi = { version = "0.135.0", path = "./ext/napi" }
-deno_net = { version = "0.196.0", path = "./ext/net" }
-deno_node = { version = "0.142.0", path = "./ext/node" }
-deno_os = { version = "0.21.0", path = "./ext/os" }
-deno_process = { version = "0.19.0", path = "./ext/process" }
-deno_telemetry = { version = "0.26.0", path = "./ext/telemetry" }
-deno_tls = { version = "0.191.0", path = "./ext/tls" }
-deno_url = { version = "0.204.0", path = "./ext/url" }
-deno_web = { version = "0.235.0", path = "./ext/web" }
-deno_webgpu = { version = "0.171.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.204.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.209.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.199.0", path = "./ext/webstorage" }
-denort_helper = { version = "0.2.0", path = "./ext/rt_helper" }
+deno_broadcast_channel = { version = "0.199.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.137.0", path = "./ext/cache" }
+deno_canvas = { version = "0.74.0", path = "./ext/canvas" }
+deno_console = { version = "0.205.0", path = "./ext/console" }
+deno_cron = { version = "0.85.0", path = "./ext/cron" }
+deno_crypto = { version = "0.219.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.229.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.192.0", path = "./ext/ffi" }
+deno_fs = { version = "0.115.0", path = "./ext/fs" }
+deno_http = { version = "0.203.0", path = "./ext/http" }
+deno_io = { version = "0.115.0", path = "./ext/io" }
+deno_kv = { version = "0.113.0", path = "./ext/kv" }
+deno_napi = { version = "0.136.0", path = "./ext/napi" }
+deno_net = { version = "0.197.0", path = "./ext/net" }
+deno_node = { version = "0.143.0", path = "./ext/node" }
+deno_os = { version = "0.22.0", path = "./ext/os" }
+deno_process = { version = "0.20.0", path = "./ext/process" }
+deno_telemetry = { version = "0.27.0", path = "./ext/telemetry" }
+deno_tls = { version = "0.192.0", path = "./ext/tls" }
+deno_url = { version = "0.205.0", path = "./ext/url" }
+deno_web = { version = "0.236.0", path = "./ext/web" }
+deno_webgpu = { version = "0.172.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.205.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.210.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.200.0", path = "./ext/webstorage" }
+denort_helper = { version = "0.3.0", path = "./ext/rt_helper" }
 
 # workspace libraries
-deno_bench_util = { version = "0.198.0", path = "./bench_util" }
-deno_features = { version = "0.1.0", path = "./runtime/features" }
-deno_lib = { version = "0.20.0", path = "./cli/lib" }
-deno_npm_cache = { version = "0.23.0", path = "./resolvers/npm_cache" }
+deno_bench_util = { version = "0.199.0", path = "./bench_util" }
+deno_features = { version = "0.2.0", path = "./runtime/features" }
+deno_lib = { version = "0.22.0", path = "./cli/lib" }
+deno_npm_cache = { version = "0.24.0", path = "./resolvers/npm_cache" }
 deno_npm_installer = { version = "0.0.1", path = "./resolvers/npm_installer" }
-deno_permissions = { version = "0.63.0", path = "./runtime/permissions" }
-deno_resolver = { version = "0.35.0", path = "./resolvers/deno" }
-deno_runtime = { version = "0.212.0", path = "./runtime" }
-deno_snapshots = { version = "0.19.0", path = "./cli/snapshot" }
-napi_sym = { version = "0.134.0", path = "./ext/napi/sym" }
-node_resolver = { version = "0.42.0", path = "./resolvers/node" }
+deno_permissions = { version = "0.64.0", path = "./runtime/permissions" }
+deno_resolver = { version = "0.36.0", path = "./resolvers/deno" }
+deno_runtime = { version = "0.213.0", path = "./runtime" }
+deno_snapshots = { version = "0.20.0", path = "./cli/snapshot" }
+napi_sym = { version = "0.135.0", path = "./ext/napi/sym" }
+node_resolver = { version = "0.43.0", path = "./resolvers/node" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 # widely used libraries
@@ -298,8 +298,8 @@ env_logger = "=0.11.6"
 eszip = "=0.88.0"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
-malva = "=0.12.0"
-markup_fmt = "=0.20.0"
+malva = "=0.11.2"
+markup_fmt = "=0.19.1"
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
