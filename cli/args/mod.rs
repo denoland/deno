@@ -831,10 +831,6 @@ impl CliOptions {
     self.flags.no_remote
   }
 
-  pub fn no_npm(&self) -> bool {
-    self.flags.no_npm
-  }
-
   pub fn permissions_options(&self) -> PermissionsOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {

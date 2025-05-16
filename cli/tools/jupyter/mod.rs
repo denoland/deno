@@ -65,10 +65,6 @@ pub async fn kernel(
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   let factory = CliFactory::from_flags(flags);
-  // todo(dsherret): this should be created internally within the language service instead
-  #[allow(deprecated)]
-  let registry_provider =
-    Arc::new(factory.lockfile_npm_package_info_provider()?);
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
@@ -132,7 +128,6 @@ pub async fn kernel(
     worker,
     main_module,
     test_event_receiver,
-    registry_provider,
   )
   .await?;
   struct TestWriter(UnboundedSender<StreamContent>);

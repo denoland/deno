@@ -250,7 +250,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   lockfile: async_once_cell::OnceCell<Option<LockfileLockRc<TSys>>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
-  npmrc: Deferred<ResolvedNpmRcRc>,
+  npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
@@ -517,12 +517,18 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   }
 
   pub fn npmrc(&self) -> Result<&ResolvedNpmRcRc, NpmRcCreateError> {
+    self.npmrc_with_path().map(|(npmrc, _)| npmrc)
+  }
+
+  pub fn npmrc_with_path(
+    &self,
+  ) -> Result<&(ResolvedNpmRcRc, Option<PathBuf>), NpmRcCreateError> {
     self.npmrc.get_or_try_init(|| {
-      let (npmrc, _) = discover_npmrc_from_workspace(
+      let (npmrc, path) = discover_npmrc_from_workspace(
         &self.sys,
         &self.workspace_directory()?.workspace,
       )?;
-      Ok(new_rc(npmrc))
+      Ok((new_rc(npmrc), path))
     })
   }
 

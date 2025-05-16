@@ -39,7 +39,6 @@ use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
-use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_fs;
@@ -596,27 +595,6 @@ impl CliFactory {
 
   pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
     self.npm_installer_factory()?.npm_installer().await
-  }
-
-  // todo(dsherret): remove this method
-  #[deprecated(
-    note = "Do not use this. The language service should be creating it internally based on the current config."
-  )]
-  pub fn lockfile_npm_package_info_provider(
-    &self,
-  ) -> Result<LockfileNpmPackageInfoApiAdapter, AnyError> {
-    Ok(LockfileNpmPackageInfoApiAdapter::new(
-      Arc::new(
-        self
-          .npm_installer_factory()?
-          .registry_info_provider()?
-          .as_npm_registry_api(),
-      ),
-      self
-        .workspace_factory()?
-        .workspace_npm_patch_packages()?
-        .clone(),
-    ))
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {

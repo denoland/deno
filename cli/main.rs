@@ -198,14 +198,7 @@ async fn run_subcommand(
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      let factory = CliFactory::from_flags(flags.clone());
-      // todo(dsherret): this should be created internally within the language service
-      // instead as there's a bug here where the LS may not use the correct npmrc based
-      // on the current folder's config (right now it's also incorrectly using the process'
-      // cwd, which may or may not be the workspace's directory)
-      #[allow(deprecated)]
-      let lockfile_info_provider = factory.lockfile_npm_package_info_provider()?;
-      lsp::start(Arc::new(lockfile_info_provider)).await
+      lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {

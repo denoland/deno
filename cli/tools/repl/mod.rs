@@ -204,9 +204,6 @@ pub async fn run(
     worker,
     main_module.clone(),
     test_event_receiver,
-    // todo(dsherret): this should be created internally within the language service instead
-    #[allow(deprecated)]
-    Arc::new(factory.lockfile_npm_package_info_provider()?),
   )
   .await?;
   let rustyline_channel = rustyline_channel();
