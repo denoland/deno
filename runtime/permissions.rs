@@ -76,8 +76,9 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
   fn parse_net_descriptor(
     &self,
     text: &str,
+    unstable_subdomain_wildcards: bool,
   ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
-    NetDescriptor::parse_for_list(text)
+    NetDescriptor::parse_for_list(text, unstable_subdomain_wildcards)
   }
 
   fn parse_import_descriptor(
@@ -174,7 +175,7 @@ mod test {
     assert!(parser.parse_read_descriptor("").is_err());
     assert!(parser.parse_write_descriptor("").is_err());
     assert!(parser.parse_env_descriptor("").is_err());
-    assert!(parser.parse_net_descriptor("").is_err());
+    assert!(parser.parse_net_descriptor("", true).is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
     assert!(parser.parse_path_query("").is_err());
     assert!(parser.parse_net_query("").is_err());

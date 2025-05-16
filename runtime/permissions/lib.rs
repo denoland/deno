@@ -1019,8 +1019,9 @@ impl NetDescriptor {
 
   pub fn parse_for_list(
     hostname: &str,
+    unstable_subdomain_wildcards: bool,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(hostname, true)
+    Self::parse_inner(hostname, unstable_subdomain_wildcards)
   }
 
   fn parse_inner(
@@ -1210,7 +1211,9 @@ impl ImportDescriptor {
   pub fn parse_for_list(
     specifier: &str,
   ) -> Result<Self, NetDescriptorParseError> {
-    Ok(ImportDescriptor(NetDescriptor::parse_for_list(specifier)?))
+    Ok(ImportDescriptor(NetDescriptor::parse_for_list(
+      specifier, true,
+    )?))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -2139,6 +2142,7 @@ pub struct Permissions {
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
   pub import: UnaryPermission<ImportDescriptor>,
   pub all: UnitPermission,
+  pub unstable_subdomain_wildcards: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -2160,6 +2164,7 @@ pub struct PermissionsOptions {
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
   pub prompt: bool,
+  pub unstable_subdomain_wildcards: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -2305,10 +2310,10 @@ impl Permissions {
       ),
       net: Permissions::new_unary(
         parse_maybe_vec(opts.allow_net.as_deref(), |item| {
-          parser.parse_net_descriptor(item)
+          parser.parse_net_descriptor(item, opts.unstable_subdomain_wildcards)
         })?,
         parse_maybe_vec(opts.deny_net.as_deref(), |item| {
-          parser.parse_net_descriptor(item)
+          parser.parse_net_descriptor(item, opts.unstable_subdomain_wildcards)
         })?,
         opts.prompt,
       ),
@@ -2354,6 +2359,7 @@ impl Permissions {
         opts.prompt,
       ),
       all: Permissions::new_all(opts.allow_all),
+      unstable_subdomain_wildcards: opts.unstable_subdomain_wildcards,
     })
   }
 
@@ -2369,6 +2375,7 @@ impl Permissions {
       ffi: UnaryPermission::allow_all(),
       import: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
+      unstable_subdomain_wildcards: true,
     }
   }
 
@@ -2393,6 +2400,7 @@ impl Permissions {
       ffi: Permissions::new_unary(None, None, prompt),
       import: Permissions::new_unary(None, None, prompt),
       all: Permissions::new_all(false),
+      unstable_subdomain_wildcards: true,
     }
   }
 }
@@ -2544,11 +2552,14 @@ impl PermissionsContainer {
         ))
       },
     )?;
+    let unstable_subdomain_wildcards = inner.unstable_subdomain_wildcards;
     worker_perms.net = inner.net.create_child_permissions(
       child_permissions_arg.net,
       |text| {
         Ok::<_, NetDescriptorParseError>(Some(
-          self.descriptor_parser.parse_net_descriptor(text)?,
+          self
+            .descriptor_parser
+            .parse_net_descriptor(text, unstable_subdomain_wildcards)?,
         ))
       },
     )?;
@@ -3757,6 +3768,7 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_net_descriptor(
     &self,
     text: &str,
+    unstable_subdomain_wildcards: bool,
   ) -> Result<NetDescriptor, NetDescriptorParseError>;
 
   fn parse_net_descriptor_from_url(
@@ -3877,8 +3889,9 @@ mod tests {
     fn parse_net_descriptor(
       &self,
       text: &str,
+      unstable_subdomain_wildcards: bool,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse_for_list(text)
+      NetDescriptor::parse_for_list(text, unstable_subdomain_wildcards)
     }
 
     fn parse_import_descriptor(
@@ -5137,7 +5150,7 @@ mod tests {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
           Some(HashSet::from([
-            NetDescriptor::parse_for_list("foo").unwrap()
+            NetDescriptor::parse_for_list("foo", true).unwrap()
           ])),
           None,
           false
@@ -5461,7 +5474,7 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(
-        NetDescriptor::parse_for_list(input).ok(),
+        NetDescriptor::parse_for_list(input, true).ok(),
         *expected,
         "'{input}'"
       );

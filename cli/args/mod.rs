@@ -890,7 +890,10 @@ impl CliOptions {
 
   pub fn permissions_options(&self) -> PermissionsOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
-    fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
+    fn flags_to_options(
+      flags: &PermissionFlags,
+      cli_options: &CliOptions,
+    ) -> PermissionsOptions {
       fn handle_allow<T: Default>(
         allow_all: bool,
         value: Option<T>,
@@ -921,10 +924,13 @@ impl CliOptions {
         deny_write: flags.deny_write.clone(),
         allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
         prompt: !resolve_no_prompt(flags),
+        unstable_subdomain_wildcards: cli_options
+          .unstable_subdomain_wildcards(),
       }
     }
 
-    let mut permissions_options = flags_to_options(&self.flags.permissions);
+    let mut permissions_options =
+      flags_to_options(&self.flags.permissions, self);
     self.augment_import_permissions(&mut permissions_options);
     permissions_options
   }
@@ -1048,6 +1054,11 @@ impl CliOptions {
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
+  }
+
+  pub fn unstable_subdomain_wildcards(&self) -> bool {
+    self.flags.unstable_config.subdomain_wildcards
+      || self.workspace().has_unstable("subdomain-wildcards")
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
