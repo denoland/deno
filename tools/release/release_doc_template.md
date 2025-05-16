@@ -89,19 +89,19 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 
 - [ ] Publish the release on Github
 
+## Update https://deno.com
+
 - [ ] Run
       https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
       automatically open a PR.
   - [ ] Merge the PR.
 
+## Update https://docs.deno.com
+
 - [ ] Run
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
       to automatically open a PR.
   - [ ] Merge the PR.
-
-- [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
-      has been updated to reflect Web API changes in this release. Usually done
-      ahead of time by @lucacasonato.
 
 ## Updating `deno_docker`
 
@@ -109,6 +109,13 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
+
+## Update MDN
+
+- [ ] If a new JavaScript or Web API has been added or enabled, make sure
+      https://github.com/mdn/browser-compat-data has been updated to reflect API
+      changes in this release. If in doubt message @bartlomieju and skip this
+      step.
 
 ## All done!
 
