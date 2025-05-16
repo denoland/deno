@@ -30,9 +30,12 @@ use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 use crate::workspace::WorkspaceNpmPatchPackagesRc;
 
+pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
+
+impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
+
 #[allow(clippy::disallowed_types)]
-type NpmRegistryApiRc =
-  crate::sync::MaybeArc<dyn NpmRegistryApi + MaybeSend + MaybeSync>;
+type NpmRegistryApiRc = crate::sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
   api: NpmRegistryApiRc,
