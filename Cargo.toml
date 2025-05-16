@@ -59,7 +59,7 @@ deno_core = { version = "0.347.0" }
 deno_cache_dir = "=0.20.0"
 deno_config = { version = "=0.54.2", features = ["workspace"] }
 deno_doc = "=0.173.0"
-deno_error = "=0.5.6"
+deno_error = "=0.5.7"
 deno_graph = { version = "=0.91.0", default-features = false }
 deno_lint = "=0.75.0"
 deno_lockfile = "=0.28.0"
