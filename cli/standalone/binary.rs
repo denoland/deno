@@ -396,7 +396,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .iter()
       .map(|nv| req_map[nv].clone())
       .collect::<Vec<_>>();
-    let reqs = Some(&*reqs);
     let mut vfs = VfsBuilder::new();
     for path in exclude_paths {
       vfs.add_exclude_path(path);
@@ -408,7 +407,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
           self
-            .fill_npm_vfs(&mut vfs, reqs)
+            .fill_npm_vfs(&mut vfs, &reqs)
             .context("Building npm vfs.")?;
           Some(snapshot)
         } else {
@@ -416,7 +415,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, reqs)?;
+        self.fill_npm_vfs(&mut vfs, &reqs)?;
         None
       }
     };
@@ -774,7 +773,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   fn fill_npm_vfs(
     &self,
     builder: &mut VfsBuilder,
-    reqs: Option<&[PackageReq]>,
+    reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
@@ -790,16 +789,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Ok(())
         } else {
           // we'll flatten to remove any custom registries later
-          let mut packages = if let Some(reqs) = reqs {
-            npm_resolver
-              .resolution()
-              .subset(reqs)
-              .all_system_packages(&self.npm_system_info)
-          } else {
-            npm_resolver
-              .resolution()
-              .all_system_packages(&self.npm_system_info)
-          };
+          let mut packages = npm_resolver
+            .resolution()
+            .subset(reqs)
+            .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           for package in packages {
             let folder =
