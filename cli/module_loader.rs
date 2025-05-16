@@ -273,6 +273,7 @@ struct SharedCliModuleLoaderState {
   initial_cwd: PathBuf,
   is_inspecting: bool,
   is_repl: bool,
+  translate_cjs: bool,
   cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
@@ -358,6 +359,10 @@ impl CliModuleLoaderFactory {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
         graph_kind: options.graph_kind(),
+        translate_cjs: !matches!(
+          options.sub_command(),
+          DenoSubcommand::Bundle(_)
+        ),
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
         initial_cwd: options.initial_cwd().to_path_buf(),
@@ -403,6 +408,7 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
+        translate_cjs: self.shared.translate_cjs,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -513,6 +519,7 @@ pub struct CouldNotResolveError {
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
+  translate_cjs: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
@@ -964,10 +971,14 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       Cow::Borrowed(original_source.as_ref())
     };
-    let text = self
-      .node_code_translator
-      .translate_cjs_to_esm(specifier, Some(js_source))
-      .await?;
+    let text = if self.translate_cjs {
+      self
+        .node_code_translator
+        .translate_cjs_to_esm(specifier, Some(js_source))
+        .await?
+    } else {
+      js_source
+    };
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
     Ok(ModuleCodeStringSource {

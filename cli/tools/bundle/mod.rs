@@ -520,44 +520,44 @@ impl DenoPluginHandler {
 
     self.prepare_module_load(specifier.clone()).await?;
 
-    self.load_from_graph(&specifier)
+    // self.load_from_graph(&specifier)
 
-    // let (specifier, loader) = if let Some((specifier, loader)) =
-    //   self.specifier_and_type_from_graph(&specifier)?
-    // {
-    //   (specifier, loader)
-    // } else {
-    //   log::debug!(
-    //     "{}: no specifier and type from graph for {}",
-    //     deno_terminal::colors::yellow("warn"),
-    //     specifier
-    //   );
+    let (specifier, loader) = if let Some((specifier, loader)) =
+      self.specifier_and_type_from_graph(&specifier)?
+    {
+      (specifier, loader)
+    } else {
+      log::debug!(
+        "{}: no specifier and type from graph for {}",
+        deno_terminal::colors::yellow("warn"),
+        specifier
+      );
 
-    //   let (media_type, _) =
-    //     deno_media_type::resolve_media_type_and_charset_from_content_type(
-    //       &specifier, None,
-    //     );
-    //   if media_type == deno_media_type::MediaType::Unknown {
-    //     return Ok(None);
-    //   }
-    //   (specifier, media_type_to_loader(media_type))
-    // };
-    // let loaded = self.module_loader.load(
-    //   &specifier,
-    //   None,
-    //   false,
-    //   deno_core::RequestedModuleType::None,
-    // );
+      let (media_type, _) =
+        deno_media_type::resolve_media_type_and_charset_from_content_type(
+          &specifier, None,
+        );
+      if media_type == deno_media_type::MediaType::Unknown {
+        return Ok(None);
+      }
+      (specifier, media_type_to_loader(media_type))
+    };
+    let loaded = self.module_loader.load(
+      &specifier,
+      None,
+      false,
+      deno_core::RequestedModuleType::None,
+    );
 
-    // match loaded {
-    //   deno_core::ModuleLoadResponse::Sync(module_source) => {
-    //     Ok(Some((module_source?.code.as_bytes().to_vec(), loader)))
-    //   }
-    //   deno_core::ModuleLoadResponse::Async(pin) => {
-    //     let pin = pin.await?;
-    //     Ok(Some((pin.code.as_bytes().to_vec(), loader)))
-    //   }
-    // }
+    match loaded {
+      deno_core::ModuleLoadResponse::Sync(module_source) => {
+        Ok(Some((module_source?.code.as_bytes().to_vec(), loader)))
+      }
+      deno_core::ModuleLoadResponse::Async(pin) => {
+        let pin = pin.await?;
+        Ok(Some((pin.code.as_bytes().to_vec(), loader)))
+      }
+    }
 
     // Ok(Some((code, loader)))
   }
@@ -568,9 +568,7 @@ impl DenoPluginHandler {
   ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
     let graph = self.module_graph_container.graph();
     let module = graph.get(&specifier).unwrap();
-    if module.specifier().as_str().ends_with("tsx") {
-      eprintln!("module: {:?}", module);
-    }
+
     match module {
       deno_graph::Module::Js(js_module) => Ok(Some((
         js_module.source.to_string().into_bytes(),
@@ -617,9 +615,6 @@ impl DenoPluginHandler {
   {
     let graph = self.module_graph_container.graph();
     let module = graph.get(&specifier).unwrap();
-    if module.specifier().as_str().ends_with("tsx") {
-      eprintln!("module: {:?}", module);
-    }
     let (specifier, loader) = match module {
       deno_graph::Module::Js(js_module) => (
         js_module.specifier.clone(),
