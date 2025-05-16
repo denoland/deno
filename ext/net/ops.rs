@@ -906,6 +906,7 @@ pub struct NameServer {
 
 #[op2(async, stack_trace)]
 #[serde]
+#[allow(clippy::unneeded_struct_pattern)]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: ResolveAddrArgs,

@@ -508,6 +508,8 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
 #[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::large_enum_variant)]
+#[allow(clippy::result_large_err)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
   #[serde] method: ByteString,
@@ -852,6 +854,7 @@ impl Resource for FetchResponseResource {
     "fetchResponse".into()
   }
 
+  #[allow(clippy::redundant_closure)]
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
       let mut reader =
@@ -865,12 +868,12 @@ impl Resource for FetchResponseResource {
 
         match std::mem::take(&mut *reader) {
           FetchResponseReader::Start(resp) => {
-            let stream: BytesStream =
-              Box::pin(resp.into_body().into_data_stream().map(|r| {
-                r.map_err(|err| {
-                  std::io::Error::new(std::io::ErrorKind::Other, err)
-                })
-              }));
+            let stream: BytesStream = Box::pin(
+              resp
+                .into_body()
+                .into_data_stream()
+                .map(|r| r.map_err(|err| std::io::Error::other(err))),
+            );
             *reader = FetchResponseReader::BodyReader(stream.peekable());
           }
           FetchResponseReader::BodyReader(_) => unreachable!(),
@@ -977,6 +980,7 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
 
 #[op2(stack_trace)]
 #[smi]
+#[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,

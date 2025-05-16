@@ -865,6 +865,7 @@ impl Inner {
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
+#[allow(clippy::double_ended_iterator_last)]
 impl Inner {
   fn initialize(
     &mut self,
@@ -1978,7 +1979,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -4567,7 +4567,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -4666,7 +4665,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn pre_did_change_workspace_folders(
     &mut self,
     params: DidChangeWorkspaceFoldersParams,

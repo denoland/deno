@@ -55,6 +55,7 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
 
 /// Format JavaScript/TypeScript files.
+#[allow(clippy::obfuscated_if_else)]
 pub async fn format(
   flags: Arc<Flags>,
   fmt_flags: FmtFlags,
