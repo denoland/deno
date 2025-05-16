@@ -30,8 +30,8 @@ impl AsyncId {
 }
 
 fn next_async_id(state: &mut OpState) -> i64 {
-  let async_id = state.borrow_mut::<AsyncId>().next();
-  async_id
+  
+  state.borrow_mut::<AsyncId>().next()
 }
 
 #[op2(fast)]

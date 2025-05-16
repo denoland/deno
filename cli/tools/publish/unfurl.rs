@@ -1170,8 +1170,7 @@ console.log(nonExistent);
       diagnostic_reporter,
     );
 
-    let rewritten_text =
-      deno_ast::apply_text_changes(text_info.text_str(), text_changes);
-    rewritten_text
+    
+    deno_ast::apply_text_changes(text_info.text_str(), text_changes)
   }
 }

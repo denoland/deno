@@ -273,13 +273,13 @@ fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
       .expect("metafile is required for watch mode"),
   )
   .unwrap();
-  let inputs = metafile
+  
+  metafile
     .inputs
     .keys()
     .cloned()
     .map(PathBuf::from)
-    .collect::<Vec<_>>();
-  inputs
+    .collect::<Vec<_>>()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -705,7 +705,8 @@ impl DenoPluginHandler {
     graph_permit.commit();
     Ok(())
   }
-
+  
+  #[allow(clippy::result_large_err)]
   fn bundle_resolve(
     &self,
     path: &str,
@@ -906,6 +907,7 @@ impl DenoPluginHandler {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   fn apply_transform(
     &self,
     specifier: &ModuleSpecifier,
@@ -946,6 +948,7 @@ impl DenoPluginHandler {
     Ok(code.text)
   }
 
+  #[allow(clippy::result_large_err)]
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
