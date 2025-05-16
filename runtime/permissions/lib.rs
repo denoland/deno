@@ -2596,6 +2596,8 @@ impl PermissionsContainer {
         ))
       },
     )?;
+    worker_perms.unstable_subdomain_wildcards =
+      inner.unstable_subdomain_wildcards;
 
     Ok(PermissionsContainer::new(
       self.descriptor_parser.clone(),
@@ -4031,6 +4033,7 @@ mod tests {
           "443.example.com:443",
           "*.discord.gg"
         ]),
+        unstable_subdomain_wildcards: true,
         ..Default::default()
       },
     )
@@ -5129,6 +5132,7 @@ mod tests {
       &PermissionsOptions {
         allow_env: Some(vec![]),
         allow_net: Some(svec!["*.foo", "bar"]),
+        unstable_subdomain_wildcards: true,
         ..Default::default()
       },
     )
