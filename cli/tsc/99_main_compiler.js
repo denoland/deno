@@ -171,8 +171,10 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
 
   performanceProgram({ program });
 
+  const checker = program.getProgram().getTypeChecker();
   ops.op_respond({
     diagnostics: fromTypeScriptDiagnostics(diagnostics),
+    ambientModules: checker.getAmbientModules().map((symbol) => symbol.name),
     stats: performanceEnd(),
   });
   debug("<<< exec stop");

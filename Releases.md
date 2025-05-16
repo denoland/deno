@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.3 / 2025.05.16
+
+- fix(check): ignore errors on ambient modules (#29135)
+- Revert "fix(fmt): upgrade markup_fmt and malva" (#29325)
+
 ### 2.3.2 / 2025.05.15
 
 - feat(coverage): add dark-mode to HTML coverage report (#29267)
