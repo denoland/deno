@@ -195,11 +195,6 @@ pub struct DocHtmlFlag {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeployFlags {
-  pub args: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,

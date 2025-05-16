@@ -2,7 +2,6 @@
 
 use crate::args::jsr_api_url;
 use crate::args::DenoSubcommand;
-use crate::args::DeployFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::factory::CliFactory;
