@@ -23,7 +23,6 @@ use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
-use deno_semver::package::PackageNv;
 use futures::future::FutureExt;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -36,17 +35,6 @@ use sys_traits::EnvCacheDir;
 use sys_traits::EnvCurrentDir;
 use sys_traits::EnvHomeDir;
 use sys_traits::EnvVar;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::SystemTimeNow;
-use sys_traits::ThreadSleep;
 use thiserror::Error;
 use url::Url;
 
@@ -243,27 +231,13 @@ pub struct WorkspaceFactoryOptions<TSys: WorkspaceFactorySys> {
 pub type WorkspaceFactoryRc<TSys> =
   crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
 
-type LockfileNpmPackageInfoProviderBox = Box<
-  dyn deno_lockfile::NpmPackageInfoProvider
-    + crate::sync::MaybeSync
-    + crate::sync::MaybeSend,
->;
-
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
   DenoDirPathProviderSys
   + crate::lockfile::LockfileSys
-  + FsCanonicalize
-  + FsOpen
-  + FsReadDir
-  + FsRemoveFile
-  + SystemRandom
-  + SystemTimeNow
-  + std::fmt::Debug
-  + MaybeSend
-  + MaybeSync
-  + Clone
-  + 'static
+  + crate::npm::NpmResolverSys
+  + deno_cache_dir::GlobalHttpCacheSys
+  + deno_cache_dir::LocalHttpCacheSys
 {
 }
 
@@ -274,8 +248,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
   jsr_url: Deferred<Url>,
   lockfile: async_once_cell::OnceCell<Option<LockfileLockRc<TSys>>>,
-  lockfile_npm_package_info_provider:
-    Deferred<LockfileNpmPackageInfoProviderBox>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
@@ -310,7 +282,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       http_cache: Default::default(),
       jsr_url: Default::default(),
       lockfile: Default::default(),
-      lockfile_npm_package_info_provider: Default::default(),
       node_modules_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
@@ -321,13 +292,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       initial_cwd,
       options,
     }
-  }
-
-  pub fn set_lockfile_npm_package_info_provider(
-    &self,
-    value: LockfileNpmPackageInfoProviderBox,
-  ) {
-    let _ignore = self.lockfile_npm_package_info_provider.set(value);
   }
 
   pub fn set_workspace_directory(
@@ -498,32 +462,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
-  pub fn lockfile_npm_package_info_provider(
-    &self,
-  ) -> &LockfileNpmPackageInfoProviderBox {
-    struct ErrorProvider;
-
-    #[async_trait::async_trait(?Send)]
-    impl deno_lockfile::NpmPackageInfoProvider for ErrorProvider {
-      async fn get_npm_package_info(
-        &self,
-        _values: &[PackageNv],
-      ) -> Result<
-        Vec<deno_lockfile::Lockfile5NpmInfo>,
-        Box<dyn std::error::Error + Send + Sync>,
-      > {
-        Err(anyhow::anyhow!("Reading lockfile versions < 5 is not supported. Recreate the lockfile with the latest Deno.").into())
-      }
-    }
-
-    self
-      .lockfile_npm_package_info_provider
-      .get_or_init(|| Box::new(ErrorProvider))
-  }
-
   pub async fn maybe_lockfile(
     &self,
-    lockfile_npm_package_info_provider: &dyn NpmPackageInfoProvider,
+    npm_package_info_provider: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<Option<&LockfileLockRc<TSys>>, anyhow::Error> {
     self
       .lockfile
@@ -551,7 +492,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           },
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
-          lockfile_npm_package_info_provider,
+          npm_package_info_provider,
         )
         .await?
         .map(crate::sync::new_rc);
@@ -675,7 +616,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .get_or_try_init(|| {
         let workspace_dir = self.workspace_directory()?;
         let npm_packages = new_rc(WorkspaceNpmPatchPackages::from_workspace(
-          &workspace_dir.workspace.as_ref(),
+          workspace_dir.workspace.as_ref(),
         ));
         if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
           bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")

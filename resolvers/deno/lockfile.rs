@@ -178,20 +178,6 @@ pub struct LockfileFlags {
   pub no_npm: bool,
 }
 
-impl Default for LockfileFlags {
-  fn default() -> Self {
-    // explicit implementation to ensure it's set right
-    Self {
-      no_lock: false,
-      frozen_lockfile: None,
-      lock: None,
-      skip_write: false,
-      no_config: false,
-      no_npm: false,
-    }
-  }
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LockfileWriteError {
   #[class(inherit)]

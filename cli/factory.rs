@@ -395,47 +395,9 @@ impl CliFactory {
   pub async fn maybe_lockfile(
     &self,
   ) -> Result<Option<&Arc<CliLockfile>>, AnyError> {
-    self
-      .services
-      .lockfile
-      .get_or_try_init_async(async move {
-        let workspace_factory = self.workspace_factory()?;
-        let workspace_directory = workspace_factory.workspace_directory()?;
-        let maybe_external_import_map =
-          self.workspace_external_import_map_loader()?.get_or_load()?;
-        let adapter = self.lockfile_npm_package_info_provider()?;
-
-        let maybe_lock_file = CliLockfile::discover(
-          self.sys(),
-          deno_resolver::lockfile::LockfileFlags {
-            no_lock: self.flags.no_lock
-              || matches!(
-                self.flags.subcommand,
-                DenoSubcommand::Install(InstallFlags::Global(..))
-                  | DenoSubcommand::Uninstall(_)
-              ),
-            frozen_lockfile: self.flags.frozen_lockfile,
-            lock: self
-              .flags
-              .lock
-              .as_ref()
-              .map(|p| workspace_factory.initial_cwd().join(p)),
-            skip_write: self.flags.internal.lockfile_skip_write,
-            no_config: self.flags.config_flag
-              == crate::args::ConfigFlag::Disabled,
-            no_npm: self.flags.no_npm,
-          },
-          &workspace_directory.workspace,
-          maybe_external_import_map.as_ref().map(|v| &v.value),
-          &adapter,
-        )
-        .await?
-        .map(Arc::new);
-
-        Ok(maybe_lock_file)
-      })
-      .await
-      .map(|c| c.as_ref())
+    let workspace_factory = self.workspace_factory()?;
+    let package_info_provider = self.lockfile_npm_package_info_provider()?;
+    workspace_factory.maybe_lockfile(&package_info_provider)
   }
 
   pub fn cli_options(&self) -> Result<&Arc<CliOptions>, AnyError> {
