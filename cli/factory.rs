@@ -554,11 +554,10 @@ impl CliFactory {
   pub async fn npm_installer_if_managed(
     &self,
   ) -> Result<Option<&Arc<CliNpmInstaller>>, AnyError> {
-    if self.resolver_factory()?.use_byonm()? || self.cli_options()?.no_npm() {
-      Ok(None)
-    } else {
-      Ok(Some(self.npm_installer().await?))
-    }
+    self
+      .npm_installer_factory()?
+      .npm_installer_if_managed()
+      .await
   }
 
   pub fn npm_installer_factory(
