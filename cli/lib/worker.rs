@@ -557,6 +557,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -573,6 +574,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -694,6 +696,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -797,26 +800,31 @@ impl LibMainWorker {
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_process_exit_event()
   }

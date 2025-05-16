@@ -914,7 +914,7 @@ impl Inner {
           let mut root_url = uri_to_url(&root_uri);
           let name = root_url
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|mut s| s.next_back())
             .unwrap_or_default()
             .to_string();
           if !root_url.path().ends_with('/') {
@@ -1976,7 +1976,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -4566,7 +4565,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -4665,7 +4663,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn pre_did_change_workspace_folders(
     &mut self,
     params: DidChangeWorkspaceFoldersParams,
