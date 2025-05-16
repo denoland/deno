@@ -3234,6 +3234,16 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
 }
 
 #[test]
+fn node_process_stdin_pause() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/node_process_stdin_pause.js"])
+    .with_pty(|mut console| {
+      console.expect("Ok\r\n");
+    });
+}
+
+#[test]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
