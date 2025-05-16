@@ -195,6 +195,11 @@ pub struct DocHtmlFlag {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeployFlags {
+  pub args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
@@ -474,6 +479,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
+  Deploy,
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1426,6 +1432,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m)?,
+      "deploy" => deploy_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -1682,6 +1689,7 @@ pub fn clap_root() -> Command {
         .subcommand(compile_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
+        .subcommand(deploy_subcommand())
         .subcommand(doc_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
@@ -2202,6 +2210,16 @@ Generate html reports from lcov:
           .value_hint(ValueHint::AnyPath),
       )
   })
+}
+
+fn deploy_subcommand() -> Command {
+  Command::new("deploy").arg(
+    Arg::new("args")
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .trailing_var_arg(true)
+      .allow_hyphen_values(true),
+  )
 }
 
 fn doc_subcommand() -> Command {
@@ -4846,6 +4864,16 @@ fn coverage_parse(
     exclude,
     r#type,
   });
+  Ok(())
+}
+
+fn deploy_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.permissions.allow_all = true;
+  flags.argv = matches.remove_many("args").map(|args| args.collect()).unwrap_or_default();
+  flags.subcommand = DenoSubcommand::Deploy;
   Ok(())
 }
 

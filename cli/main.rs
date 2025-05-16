@@ -128,6 +128,9 @@ async fn run_subcommand(
       }
     }),
     DenoSubcommand::Bundle => exit_with_message("⚠️ `deno bundle` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
+    DenoSubcommand::Deploy => {
+      spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
+    }
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
