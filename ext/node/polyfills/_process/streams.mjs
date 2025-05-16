@@ -20,6 +20,7 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
@@ -47,7 +48,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       cb(err);
       this._undestroy();
       if (!this._writableState.emitClose) {
-        nextTick(() => this.emit("close"));
+        //  nextTick(() => this.emit("close"));
       }
     },
   });
@@ -229,6 +230,25 @@ export const initStdin = (warmup = false) => {
 
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
+
+  if (stdin._handle?.readStop) {
+    stdin._handle.reading = false;
+    stdin._readableState.reading = false;
+    stdin._handle.readStop();
+  }
+
+  function onpause() {
+    if (!stdin._handle) {
+      return;
+    }
+
+    if (stdin._handle.reading && !stdin.readableFlowing) {
+      stdin._readableState.reading = false;
+      stdin._handle.reading = false;
+      stdin._handle.readStop();
+    }
+  }
+  stdin.on("pause", () => nextTick(onpause));
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
