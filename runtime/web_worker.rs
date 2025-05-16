@@ -65,6 +65,10 @@ use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
+#[cfg(target_os = "linux")]
+use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
+#[cfg(target_os = "linux")]
+use crate::worker::SIGUSR2_RX;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 
@@ -400,12 +404,17 @@ pub struct WebWorker {
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for WebWorker {
   fn drop(&mut self) {
     // clean up the package.json thread local cache
     node_resolver::PackageJsonThreadLocalCache::clear();
+
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
   }
 }
 
@@ -701,6 +710,7 @@ impl WebWorker {
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
+        memory_trim_handle: None,
       },
       external_handle,
       options.bootstrap,
@@ -772,6 +782,49 @@ impl WebWorker {
       self.has_message_event_listener_fn =
         Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
+  }
+
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -964,6 +1017,8 @@ pub async fn run_web_worker(
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
+  worker.setup_memory_trim_handler();
+
   let name = worker.name.to_string();
   let internal_handle = worker.internal_handle.clone();
 
