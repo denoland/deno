@@ -125,3 +125,12 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 
 Deno v$VERSION has been released.
 ```
+
+## Downgrading
+
+In case something went wrong:
+
+1. Update https://dl.deno.land/release-latest.txt to the previous release.
+1. Revert the PR to the [dotcom repo](https://github.com/denoland/dotcom/) in
+   order to prevent the [`setup-deno`](https://github.com/denoland/setup-deno)
+   GH action from pulling it in.
