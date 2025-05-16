@@ -14,6 +14,7 @@ use deno_resolver::factory::WorkspaceFactory;
 use deno_resolver::factory::WorkspaceFactorySys;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
+use futures::FutureExt;
 
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
@@ -170,16 +171,19 @@ impl<
   > {
     self
       .npm_deno_graph_resolver
-      .get_or_try_init(async {
-        Ok(Arc::new(NpmDenoGraphResolver::new(
-          self.npm_installer_if_managed().await?.cloned(),
-          self
-            .resolver_factory()
-            .found_package_json_dep_flag()
-            .clone(),
-          self.options.caching_strategy,
-        )))
-      })
+      .get_or_try_init(
+        async {
+          Ok(Arc::new(NpmDenoGraphResolver::new(
+            self.npm_installer_if_managed().await?.cloned(),
+            self
+              .resolver_factory()
+              .found_package_json_dep_flag()
+              .clone(),
+            self.options.caching_strategy,
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -252,36 +256,39 @@ impl<
   ) -> Result<&Arc<NpmInstaller<TNpmCacheHttpClient, TSys>>, anyhow::Error> {
     self
       .npm_installer
-      .get_or_try_init(async move {
-        let workspace_factory = self.workspace_factory();
-        let npm_cache = self.npm_cache()?;
-        let registry_info_provider = self.registry_info_provider()?;
-        let registry_info_provider =
-          Arc::new(registry_info_provider.as_npm_registry_api());
-        let workspace_npm_patch_packages =
-          workspace_factory.workspace_npm_patch_packages()?;
-        Ok(Arc::new(NpmInstaller::new(
-          self.lifecycle_scripts_executor.clone(),
-          npm_cache.clone(),
-          Arc::new(NpmInstallDepsProvider::from_workspace(
-            &workspace_factory.workspace_directory()?.workspace,
-          )),
-          registry_info_provider,
-          self.resolver_factory.npm_resolution().clone(),
-          self.npm_resolution_initializer().await?.clone(),
-          self.npm_resolution_installer().await?.clone(),
-          &self.reporter,
-          workspace_factory.sys().clone(),
-          self.tarball_cache()?.clone(),
-          self.maybe_lockfile().await?.cloned(),
-          workspace_factory
-            .node_modules_dir_path()?
-            .map(|p| p.to_path_buf()),
-          self.options.lifecycle_scripts_config.clone(),
-          self.resolver_factory.npm_system_info().clone(),
-          workspace_npm_patch_packages.clone(),
-        )))
-      })
+      .get_or_try_init(
+        async move {
+          let workspace_factory = self.workspace_factory();
+          let npm_cache = self.npm_cache()?;
+          let registry_info_provider = self.registry_info_provider()?;
+          let registry_info_provider =
+            Arc::new(registry_info_provider.as_npm_registry_api());
+          let workspace_npm_patch_packages =
+            workspace_factory.workspace_npm_patch_packages()?;
+          Ok(Arc::new(NpmInstaller::new(
+            self.lifecycle_scripts_executor.clone(),
+            npm_cache.clone(),
+            Arc::new(NpmInstallDepsProvider::from_workspace(
+              &workspace_factory.workspace_directory()?.workspace,
+            )),
+            registry_info_provider,
+            self.resolver_factory.npm_resolution().clone(),
+            self.npm_resolution_initializer().await?.clone(),
+            self.npm_resolution_installer().await?.clone(),
+            &self.reporter,
+            workspace_factory.sys().clone(),
+            self.tarball_cache()?.clone(),
+            self.maybe_lockfile().await?.cloned(),
+            workspace_factory
+              .node_modules_dir_path()?
+              .map(|p| p.to_path_buf()),
+            self.options.lifecycle_scripts_config.clone(),
+            self.resolver_factory.npm_system_info().clone(),
+            workspace_npm_patch_packages.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 

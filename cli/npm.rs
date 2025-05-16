@@ -8,17 +8,12 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesOrdered;
-use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::DefaultTarballUrlProvider;
-use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
@@ -33,7 +28,6 @@ use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -53,8 +47,6 @@ pub type CliNpmInstallerFactory = deno_npm_installer::NpmInstallerFactory<
 >;
 pub type CliNpmInstaller =
   deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmTarballCache =
-  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
@@ -68,13 +60,6 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
   CliNpmCacheHttpClient,
   CliSys,
 >;
-pub type CliNpmResolutionInitializer =
-  deno_npm_installer::initializer::NpmResolutionInitializer<CliSys>;
-pub type CliNpmResolutionInstaller =
-  deno_npm_installer::resolution::NpmResolutionInstaller<
-    CliNpmCacheHttpClient,
-    CliSys,
-  >;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

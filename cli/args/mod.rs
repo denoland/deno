@@ -32,10 +32,8 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::has_flag_env_var;
@@ -57,7 +55,6 @@ use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
 use once_cell::sync::Lazy;
-use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::sys::CliSys;

@@ -8,10 +8,8 @@ use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -30,12 +28,9 @@ use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
-use deno_npm_installer::initializer::NpmResolverManagedSnapshotOption;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
-use deno_npm_installer::package_json::NpmInstallDepsProvider;
 use deno_npm_installer::process_state::NpmProcessStateKind;
-use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::factory::ConfigDiscoveryOption;
@@ -45,9 +40,7 @@ use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
-use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
@@ -99,17 +92,13 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
-use crate::npm::CliNpmRegistryInfoProvider;
-use crate::npm::CliNpmResolutionInitializer;
-use crate::npm::CliNpmResolutionInstaller;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmTarballCache;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
@@ -331,8 +320,7 @@ struct CliFactoryServices {
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
-  npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
-  npm_installer_factory: Deferred<Arc<CliNpmInstallerFactory>>,
+  npm_installer_factory: Deferred<CliNpmInstallerFactory>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
     Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
@@ -543,7 +531,7 @@ impl CliFactory {
   }
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
-    Ok(self.npm_installer_factory()?.npm_cache()?)
+    self.npm_installer_factory()?.npm_cache()
   }
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, AnyError> {
@@ -552,10 +540,6 @@ impl CliFactory {
 
   pub fn npmrc(&self) -> Result<&Arc<ResolvedNpmRc>, AnyError> {
     Ok(self.workspace_factory()?.npmrc()?)
-  }
-
-  pub fn npm_resolution(&self) -> Result<&Arc<NpmResolutionCell>, AnyError> {
-    Ok(self.resolver_factory()?.npm_resolution())
   }
 
   pub async fn npm_graph_resolver(
@@ -579,11 +563,11 @@ impl CliFactory {
 
   pub fn npm_installer_factory(
     &self,
-  ) -> Result<&Arc<CliNpmInstallerFactory>, AnyError> {
+  ) -> Result<&CliNpmInstallerFactory, AnyError> {
     self.services.npm_installer_factory.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let resolver_factory = self.resolver_factory()?;
-      Ok(Arc::new(CliNpmInstallerFactory::new(
+      Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
           self.http_client_provider().clone(),
@@ -607,7 +591,7 @@ impl CliFactory {
             deno_lib::args::resolve_npm_resolution_snapshot,
           ),
         },
-      )))
+      ))
     })
   }
 
@@ -615,21 +599,25 @@ impl CliFactory {
     self.npm_installer_factory()?.npm_installer().await
   }
 
-  // todo(THIS PR): remove
-  #[deprecated]
+  // todo(dsherret): remove this method
+  #[deprecated(
+    note = "Do not use this. The language service should be creating it internally based on the current config."
+  )]
   pub fn lockfile_npm_package_info_provider(
     &self,
   ) -> Result<LockfileNpmPackageInfoApiAdapter, AnyError> {
     Ok(LockfileNpmPackageInfoApiAdapter::new(
-      Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
-      self.workspace_npm_patch_packages()?.clone(),
+      Arc::new(
+        self
+          .npm_installer_factory()?
+          .registry_info_provider()?
+          .as_npm_registry_api(),
+      ),
+      self
+        .workspace_factory()?
+        .workspace_npm_patch_packages()?
+        .clone(),
     ))
-  }
-
-  pub fn workspace_npm_patch_packages(
-    &self,
-  ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
-    self.workspace_factory()?.workspace_npm_patch_packages()
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {

@@ -65,6 +65,8 @@ pub async fn kernel(
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   let factory = CliFactory::from_flags(flags);
+  // todo(dsherret): this should be created internally within the language service instead
+  #[allow(deprecated)]
   let registry_provider =
     Arc::new(factory.lockfile_npm_package_info_provider()?);
   let cli_options = factory.cli_options()?;
