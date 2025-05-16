@@ -77,14 +77,14 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
-    NetDescriptor::parse(text)
+    NetDescriptor::parse_for_list(text)
   }
 
   fn parse_import_descriptor(
     &self,
     text: &str,
   ) -> Result<ImportDescriptor, deno_permissions::NetDescriptorParseError> {
-    ImportDescriptor::parse(text)
+    ImportDescriptor::parse_for_list(text)
   }
 
   fn parse_env_descriptor(
@@ -142,6 +142,13 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
     })
   }
 
+  fn parse_net_query(
+    &self,
+    text: &str,
+  ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
+    NetDescriptor::parse_for_query(text)
+  }
+
   fn parse_run_query(
     &self,
     requested: &str,
@@ -170,6 +177,7 @@ mod test {
     assert!(parser.parse_net_descriptor("").is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
     assert!(parser.parse_path_query("").is_err());
+    assert!(parser.parse_net_query("").is_err());
     assert!(parser.parse_run_query("").is_err());
   }
 }
