@@ -5324,9 +5324,9 @@ dependencies = [
 
 [[package]]
 name = "malva"
-version = "0.12.0"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a10a4f69b1fd3c73e65e9b0446904f60019b7a746e10440d89fbb6e1659144b"
+checksum = "6a952f521471c6c8302a17fc0c64a512221a9d4ff268af4d43a02bc2be48c712"
 dependencies = [
  "aho-corasick",
  "itertools 0.14.0",
@@ -5337,9 +5337,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.20.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fbf2254c47336b12f41d91da52d985d6e5242f26e41b7cd48bf658f3446d959"
+checksum = "ff37c5cadfdf4d91c0f140d516755c055a184a4e37757ff4a071272635b9f546"
 dependencies = [
  "aho-corasick",
  "css_dataset",
