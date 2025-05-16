@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use anyhow::Error as AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
@@ -13,9 +13,9 @@ use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 
-use super::CachedNpmPackageExtraInfoProvider;
-use crate::args::LifecycleScriptsConfig;
-use crate::util::progress_bar::ProgressBar;
+use crate::CachedNpmPackageExtraInfoProvider;
+use crate::LifecycleScriptsConfig;
+use crate::PackagesAllowedScripts;
 
 pub struct PackageWithScript<'a> {
   pub package: &'a NpmResolutionPackage,
@@ -27,7 +27,6 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   pub init_cwd: &'a Path,
   pub process_state: &'a str,
   pub root_node_modules_dir_path: &'a Path,
-  pub progress_bar: &'a ProgressBar,
   pub on_ran_pkg_scripts:
     &'a dyn Fn(&NpmResolutionPackage) -> std::io::Result<()>,
   pub snapshot: &'a NpmResolutionSnapshot,
@@ -125,7 +124,6 @@ impl<'a> LifecycleScripts<'a> {
     if !self.strategy.can_run_scripts() {
       return false;
     }
-    use crate::args::PackagesAllowedScripts;
     match &self.config.allowed {
       PackagesAllowedScripts::All => true,
       // TODO: make this more correct

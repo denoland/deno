@@ -49,7 +49,6 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
-use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -922,7 +921,8 @@ impl Formatter for CheckFormatter {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
-            let diff = diff(&file_text, &formatted_text);
+            let diff =
+              deno_resolver::display::diff(&file_text, &formatted_text);
             info!("");
             info!("{} {}:", colors::bold("from"), file_path.display());
             info!("{}", diff);

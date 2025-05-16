@@ -627,15 +627,15 @@ fn lock_file_missing_top_level_package() {
   assert!(!output.status.success());
 
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(
-    stderr,
+  test_util::assertions::assert_wildcard_match(
+    &stderr,
     concat!(
-      "error: failed reading lockfile 'deno.lock'\n",
+      "error: failed reading lockfile '[WILDLINE]deno.lock'\n",
       "\n",
       "Caused by:\n",
       "    0: The lockfile is corrupt. Remove the lockfile to regenerate it.\n",
       "    1: Could not find 'cowsay@1.5.0' in the list of packages.\n"
-    )
+    ),
   );
 }
 
@@ -1141,7 +1141,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .args("run --cached-only main.ts")
       .run();
     output.assert_matches_text(concat!(
-      "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
+      "error: failed reading lockfile '[WILDLINE]deno.lock'\n",
       "\n",
       "Caused by:\n",
       "    0: Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n",

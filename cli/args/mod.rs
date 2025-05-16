@@ -3,8 +3,6 @@
 pub mod deno_json;
 mod flags;
 mod flags_net;
-mod lockfile;
-mod package_json;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -47,6 +45,7 @@ use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::LifecycleScriptsConfig;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
@@ -56,16 +55,13 @@ use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
-pub use lockfile::AtomicWriteFileWithRetriesError;
-pub use lockfile::CliLockfile;
-pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
-pub use package_json::NpmInstallDepsProvider;
-pub use package_json::PackageJsonDepValueParseWithLocationError;
 use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::sys::CliSys;
+
+pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));

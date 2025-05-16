@@ -35,6 +35,7 @@ use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -621,25 +622,6 @@ impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
   }
-}
-
-// Info needed to run NPM lifecycle scripts
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct LifecycleScriptsConfig {
-  pub allowed: PackagesAllowedScripts,
-  pub initial_cwd: PathBuf,
-  pub root_dir: PathBuf,
-  /// Part of an explicit `deno install`
-  pub explicit_install: bool,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-/// The set of npm packages that are allowed to run lifecycle scripts.
-pub enum PackagesAllowedScripts {
-  All,
-  Some(Vec<String>),
-  #[default]
-  None,
 }
 
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
