@@ -15,18 +15,20 @@ path = "lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+async-once-cell.workspace = true
 async-trait.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
+deno_graph.workspace = true
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["sync"] }
+deno_resolver = { workspace = true, features = ["graph", "sync"] }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true

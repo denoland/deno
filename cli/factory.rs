@@ -19,7 +19,6 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::args::get_root_cert_store;
-use deno_lib::args::resolve_npm_resolution_snapshot;
 use deno_lib::args::CaData;
 use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::loader::NpmModuleLoader;
@@ -36,6 +35,8 @@ use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::package_json::NpmInstallDepsProvider;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_npm_installer::NpmInstallerFactory;
+use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::DenoDirPathProviderOptions;
@@ -99,6 +100,7 @@ use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmInstaller;
+use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolutionInitializer;
 use crate::npm::CliNpmResolutionInstaller;
@@ -329,14 +331,8 @@ struct CliFactoryServices {
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
-  npm_cache: Deferred<Arc<CliNpmCache>>,
-  npm_cache_http_client: Deferred<Arc<CliNpmCacheHttpClient>>,
   npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
-  npm_installer: Deferred<Arc<CliNpmInstaller>>,
-  npm_registry_info_provider: Deferred<Arc<CliNpmRegistryInfoProvider>>,
-  npm_resolution_initializer: Deferred<Arc<CliNpmResolutionInitializer>>,
-  npm_resolution_installer: Deferred<Arc<CliNpmResolutionInstaller>>,
-  npm_tarball_cache: Deferred<Arc<CliNpmTarballCache>>,
+  npm_installer_factory: Deferred<Arc<CliNpmInstallerFactory>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
     Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
@@ -395,9 +391,7 @@ impl CliFactory {
   pub async fn maybe_lockfile(
     &self,
   ) -> Result<Option<&Arc<CliLockfile>>, AnyError> {
-    let workspace_factory = self.workspace_factory()?;
-    let package_info_provider = self.lockfile_npm_package_info_provider()?;
-    workspace_factory.maybe_lockfile(&package_info_provider)
+    self.npm_installer_factory()?.maybe_lockfile().await
   }
 
   pub fn cli_options(&self) -> Result<&Arc<CliOptions>, AnyError> {
@@ -549,28 +543,11 @@ impl CliFactory {
   }
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
-    self.services.npm_cache.get_or_try_init(|| {
-      let cache_setting = self.cli_options()?.cache_setting();
-      Ok(Arc::new(CliNpmCache::new(
-        self.npm_cache_dir()?.clone(),
-        self.sys(),
-        NpmCacheSetting::from_cache_setting(&cache_setting),
-        self.npmrc()?.clone(),
-      )))
-    })
+    Ok(self.npm_installer_factory()?.npm_cache()?)
   }
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, AnyError> {
     Ok(self.workspace_factory()?.npm_cache_dir()?)
-  }
-
-  pub fn npm_cache_http_client(&self) -> &Arc<CliNpmCacheHttpClient> {
-    self.services.npm_cache_http_client.get_or_init(|| {
-      Arc::new(CliNpmCacheHttpClient::new(
-        self.http_client_provider().clone(),
-        self.text_only_progress_bar().clone(),
-      ))
-    })
   }
 
   pub fn npmrc(&self) -> Result<&Arc<ResolvedNpmRc>, AnyError> {
@@ -585,22 +562,8 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<CliNpmGraphResolver>, AnyError> {
     self
-      .services
-      .npm_graph_resolver
-      .get_or_try_init_async(
-        async move {
-          let cli_options = self.cli_options()?;
-          Ok(Arc::new(CliNpmGraphResolver::new(
-            self.npm_installer_if_managed().await?.cloned(),
-            self
-              .resolver_factory()?
-              .found_package_json_dep_flag()
-              .clone(),
-            cli_options.default_npm_caching_strategy(),
-          )))
-        }
-        .boxed_local(),
-      )
+      .npm_installer_factory()?
+      .npm_deno_graph_resolver()
       .await
   }
 
@@ -614,67 +577,46 @@ impl CliFactory {
     }
   }
 
-  pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
-    self
-      .services
-      .npm_installer
-      .get_or_try_init_async(async move {
-        let cli_options = self.cli_options()?;
-        let workspace_factory = self.workspace_factory()?;
-        let npm_cache = self.npm_cache()?;
-        let registry_info_provider = self.npm_registry_info_provider()?;
-        let registry_info_provider =
-          Arc::new(registry_info_provider.as_npm_registry_api());
-        let workspace_npm_patch_packages =
-          self.workspace_npm_patch_packages()?;
-        let npm_resolver = self.npm_resolver().await?.clone();
-        Ok(Arc::new(CliNpmInstaller::new(
-          match npm_resolver.as_managed() {
-            Some(managed_npm_resolver) => {
-              Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
-                managed_npm_resolver.clone(),
-              )) as Arc<dyn LifecycleScriptsExecutor>
-            }
-            None => Arc::new(NullLifecycleScriptsExecutor),
-          },
-          npm_cache.clone(),
-          Arc::new(NpmInstallDepsProvider::from_workspace(
-            cli_options.workspace(),
-          )),
-          registry_info_provider,
-          self.npm_resolution()?.clone(),
-          self.npm_resolution_initializer().await?.clone(),
-          self.npm_resolution_installer().await?.clone(),
-          self.text_only_progress_bar(),
-          self.sys(),
-          self.npm_tarball_cache()?.clone(),
-          self.maybe_lockfile().await?.cloned(),
-          workspace_factory
-            .node_modules_dir_path()?
-            .map(|p| p.to_path_buf()),
-          cli_options.lifecycle_scripts_config(),
-          cli_options.npm_system_info(),
-          workspace_npm_patch_packages.clone(),
-        )))
-      })
-      .await
-  }
-
-  pub fn npm_registry_info_provider(
+  pub fn npm_installer_factory(
     &self,
-  ) -> Result<&Arc<CliNpmRegistryInfoProvider>, AnyError> {
-    self
-      .services
-      .npm_registry_info_provider
-      .get_or_try_init(|| {
-        Ok(Arc::new(CliNpmRegistryInfoProvider::new(
-          self.npm_cache()?.clone(),
-          self.npm_cache_http_client().clone(),
-          self.npmrc()?.clone(),
-        )))
-      })
+  ) -> Result<&Arc<CliNpmInstallerFactory>, AnyError> {
+    self.services.npm_installer_factory.get_or_try_init(|| {
+      let cli_options = self.cli_options()?;
+      let resolver_factory = self.resolver_factory()?;
+      Ok(Arc::new(CliNpmInstallerFactory::new(
+        resolver_factory.clone(),
+        Arc::new(CliNpmCacheHttpClient::new(
+          self.http_client_provider().clone(),
+          self.text_only_progress_bar().clone(),
+        )),
+        match resolver_factory.npm_resolver()?.as_managed() {
+          Some(managed_npm_resolver) => Arc::new(
+            DenoTaskLifeCycleScriptsExecutor::new(managed_npm_resolver.clone()),
+          )
+            as Arc<dyn LifecycleScriptsExecutor>,
+          None => Arc::new(NullLifecycleScriptsExecutor),
+        },
+        self.text_only_progress_bar().clone(),
+        NpmInstallerFactoryOptions {
+          cache_setting: NpmCacheSetting::from_cache_setting(
+            &cli_options.cache_setting(),
+          ),
+          caching_strategy: cli_options.default_npm_caching_strategy(),
+          lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
+          resolve_npm_resolution_snapshot: Box::new(
+            deno_lib::args::resolve_npm_resolution_snapshot,
+          ),
+        },
+      )))
+    })
   }
 
+  pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
+    self.npm_installer_factory()?.npm_installer().await
+  }
+
+  // todo(THIS PR): remove
+  #[deprecated]
   pub fn lockfile_npm_package_info_provider(
     &self,
   ) -> Result<LockfileNpmPackageInfoApiAdapter, AnyError> {
@@ -682,51 +624,6 @@ impl CliFactory {
       Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
       self.workspace_npm_patch_packages()?.clone(),
     ))
-  }
-
-  pub async fn npm_resolution_initializer(
-    &self,
-  ) -> Result<&Arc<CliNpmResolutionInitializer>, AnyError> {
-    self
-      .services
-      .npm_resolution_initializer
-      .get_or_try_init_async(async move {
-        Ok(Arc::new(CliNpmResolutionInitializer::new(
-          self.npm_resolution()?.clone(),
-          self.workspace_npm_patch_packages()?.clone(),
-          match resolve_npm_resolution_snapshot()? {
-            Some(snapshot) => {
-              NpmResolverManagedSnapshotOption::Specified(Some(snapshot))
-            }
-            None => match self.maybe_lockfile().await? {
-              Some(lockfile) => {
-                NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
-              }
-              None => NpmResolverManagedSnapshotOption::Specified(None),
-            },
-          },
-        )))
-      })
-      .await
-  }
-
-  pub async fn npm_resolution_installer(
-    &self,
-  ) -> Result<&Arc<CliNpmResolutionInstaller>, AnyError> {
-    self
-      .services
-      .npm_resolution_installer
-      .get_or_try_init_async(async move {
-        Ok(Arc::new(CliNpmResolutionInstaller::new(
-          self.npm_registry_info_provider()?.clone(),
-          self.npm_resolution()?.clone(),
-          self.maybe_lockfile().await?.cloned(),
-          self.workspace_npm_patch_packages()?.clone(),
-        )))
-      })
-      .await
   }
 
   pub fn workspace_npm_patch_packages(
@@ -738,19 +635,6 @@ impl CliFactory {
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.npm_resolver()
-  }
-
-  pub fn npm_tarball_cache(
-    &self,
-  ) -> Result<&Arc<CliNpmTarballCache>, AnyError> {
-    self.services.npm_tarball_cache.get_or_try_init(|| {
-      Ok(Arc::new(CliNpmTarballCache::new(
-        self.npm_cache()?.clone(),
-        self.npm_cache_http_client().clone(),
-        self.sys(),
-        self.npmrc()?.clone(),
-      )))
-    })
   }
 
   pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
@@ -860,15 +744,10 @@ impl CliFactory {
   }
 
   async fn initialize_npm_resolution_if_managed(&self) -> Result<(), AnyError> {
-    let npm_resolver = self.resolver_factory()?.npm_resolver()?;
-    if npm_resolver.is_managed() {
-      self
-        .npm_resolution_initializer()
-        .await?
-        .ensure_initialized()
-        .await?;
-    }
-    Ok(())
+    self
+      .npm_installer_factory()?
+      .initialize_npm_resolution_if_managed()
+      .await
   }
 
   pub async fn cjs_module_export_analyzer(

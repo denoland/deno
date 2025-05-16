@@ -2399,12 +2399,14 @@ name = "deno_npm_installer"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "async-once-cell",
  "async-trait",
  "bincode",
  "boxed_error",
  "capacity_builder",
  "deno_config",
  "deno_error",
+ "deno_graph",
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",

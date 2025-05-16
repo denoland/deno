@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -165,7 +166,7 @@ pub async fn cache_top_level_deps(
           graph_kind: graph.graph_kind(),
           is_dynamic: false,
           roots: roots.clone(),
-          npm_caching: crate::graph_util::NpmCachingStrategy::Manual,
+          npm_caching: NpmCachingStrategy::Manual,
         },
       )
       .await?;

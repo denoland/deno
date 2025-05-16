@@ -46,6 +46,11 @@ use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+pub type CliNpmInstallerFactory = deno_npm_installer::NpmInstallerFactory<
+  CliNpmCacheHttpClient,
+  ProgressBar,
+  CliSys,
+>;
 pub type CliNpmInstaller =
   deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmTarballCache =
@@ -59,6 +64,10 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
+  CliNpmCacheHttpClient,
+  CliSys,
+>;
 pub type CliNpmResolutionInitializer =
   deno_npm_installer::initializer::NpmResolutionInitializer<CliSys>;
 pub type CliNpmResolutionInstaller =

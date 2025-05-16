@@ -159,6 +159,7 @@ pub enum NpmResolverCreateOptions<TSys: NpmResolverSys> {
   Byonm(ByonmNpmResolverCreateOptions<TSys>),
 }
 
+#[sys_traits::auto_impl]
 pub trait NpmResolverSys:
   managed::ManagedNpmResolverSys
   + byonm::ByonmNpmResolverSys

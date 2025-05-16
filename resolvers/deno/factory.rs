@@ -896,6 +896,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
+  pub fn workspace_factory(&self) -> &WorkspaceFactoryRc<TSys> {
+    &self.workspace_factory
+  }
+
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&WorkspaceResolverRc<TSys>, anyhow::Error> {
@@ -972,6 +976,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           .workspace
           .has_unstable("bare-node-builtins"),
     )
+  }
+
+  pub fn npm_system_info(&self) -> &NpmSystemInfo {
+    &self.options.npm_system_info
   }
 
   pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {
