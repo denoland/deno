@@ -37,7 +37,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "import">} */
 const permissionNames = [
   "read",
   "write",
@@ -46,6 +46,7 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
+  "import",
 ];
 
 /**
