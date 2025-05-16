@@ -964,7 +964,7 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+    self.matches_allow(other)
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
