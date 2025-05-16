@@ -4293,7 +4293,7 @@ fn unstable_coverage_arg() -> Arg {
     .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
   <p(245)>This option can also be set via the DENO_UNSTABLE_COVERAGE_DIR environment variable."))
     .value_hint(ValueHint::AnyPath)
-  }
+}
 
 fn permit_no_files_arg() -> Arg {
   Arg::new("permit-no-files")
