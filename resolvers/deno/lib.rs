@@ -47,6 +47,7 @@ pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
 pub mod graph;
+pub mod import_map;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;

@@ -2420,6 +2420,7 @@ dependencies = [
  "futures",
  "junction",
  "log",
+ "once_cell",
  "parking_lot",
  "pathdiff",
  "rustc-hash 2.1.1",

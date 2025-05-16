@@ -15,7 +15,13 @@ path = "lib.rs"
 
 [features]
 graph = ["deno_graph", "node_resolver/graph"]
-sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
+sync = [
+  "dashmap",
+  "deno_package_json/sync",
+  "node_resolver/sync",
+  "deno_config/sync",
+  "deno_cache_dir/sync",
+]
 
 [dependencies]
 anyhow.workspace = true

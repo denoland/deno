@@ -33,6 +33,7 @@ deno_unsync.workspace = true
 fs3.workspace = true
 futures.workspace = true
 log.workspace = true
+once_cell.workspace = true
 parking_lot.workspace = true
 pathdiff.workspace = true
 rustc-hash.workspace = true

@@ -17,6 +17,7 @@ use deno_semver::package::PackageReq;
 
 mod bin_entries;
 mod extra_info;
+mod factory;
 mod flag;
 mod fs;
 mod global;

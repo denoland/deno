@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::bail;
 use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::DenoDirResolutionError;
@@ -13,6 +14,7 @@ use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
+use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverError;
@@ -21,6 +23,7 @@ use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
+use deno_semver::package::PackageNv;
 use futures::future::FutureExt;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -50,6 +53,10 @@ use url::Url;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
+use crate::import_map::WorkspaceExternalImportMapLoader;
+use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::lockfile::LockfileLock;
+use crate::lockfile::LockfileLockRc;
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
@@ -70,6 +77,8 @@ use crate::sync::MaybeSync;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
+use crate::workspace::WorkspaceNpmPatchPackages;
+use crate::workspace::WorkspaceNpmPatchPackagesRc;
 use crate::workspace::WorkspaceResolver;
 use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
@@ -85,7 +94,9 @@ type Deferred<T> = once_cell::sync::OnceCell<T>;
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
 
 #[allow(clippy::disallowed_types)]
-type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
+pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -168,20 +179,22 @@ pub struct DenoDirPathProviderOptions {
 pub type DenoDirPathProviderRc<TSys> =
   crate::sync::MaybeArc<DenoDirPathProvider<TSys>>;
 
+#[sys_traits::auto_impl]
+pub trait DenoDirPathProviderSys:
+  EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir
+{
+}
+
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
 #[derive(Debug)]
-pub struct DenoDirPathProvider<
-  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
-> {
+pub struct DenoDirPathProvider<TSys: DenoDirPathProviderSys> {
   sys: TSys,
   options: DenoDirPathProviderOptions,
   deno_dir: Deferred<PathBuf>,
 }
 
-impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
-  DenoDirPathProvider<TSys>
-{
+impl<TSys: DenoDirPathProviderSys> DenoDirPathProvider<TSys> {
   pub fn new(sys: TSys, options: DenoDirPathProviderOptions) -> Self {
     Self {
       sys,
@@ -207,14 +220,17 @@ pub struct NpmProcessStateOptions {
 }
 
 #[derive(Debug, Default)]
-pub struct WorkspaceFactoryOptions<
-  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir + FsCanonicalize,
-> {
+pub struct WorkspaceFactoryOptions<TSys: WorkspaceFactorySys> {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
   pub deno_dir_path_provider: Option<DenoDirPathProviderRc<TSys>>,
   pub is_package_manager_subcommand: bool,
+  pub frozen_lockfile: Option<bool>,
+  pub lock_arg: Option<String>,
+  /// Whether to skip writing to the lockfile.
+  pub lockfile_skip_write: bool,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub no_lock: bool,
   pub no_npm: bool,
   /// The process sate if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
@@ -227,23 +243,22 @@ pub struct WorkspaceFactoryOptions<
 pub type WorkspaceFactoryRc<TSys> =
   crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
 
+type LockfileNpmPackageInfoProviderBox = Box<
+  dyn deno_lockfile::NpmPackageInfoProvider
+    + crate::sync::MaybeSync
+    + crate::sync::MaybeSend,
+>;
+
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
-  EnvCacheDir
-  + EnvHomeDir
-  + EnvVar
-  + EnvCurrentDir
+  DenoDirPathProviderSys
+  + crate::lockfile::LockfileSys
   + FsCanonicalize
-  + FsCreateDirAll
-  + FsMetadata
   + FsOpen
-  + FsRead
   + FsReadDir
   + FsRemoveFile
-  + FsRename
   + SystemRandom
   + SystemTimeNow
-  + ThreadSleep
   + std::fmt::Debug
   + MaybeSend
   + MaybeSync
@@ -258,11 +273,17 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
   jsr_url: Deferred<Url>,
+  lockfile: async_once_cell::OnceCell<Option<LockfileLockRc<TSys>>>,
+  lockfile_npm_package_info_provider:
+    Deferred<LockfileNpmPackageInfoProviderBox>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
+  workspace_external_import_map_loader:
+    Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
+  workspace_npm_patch_packages: Deferred<WorkspaceNpmPatchPackagesRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
 }
@@ -288,14 +309,25 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       global_http_cache: Default::default(),
       http_cache: Default::default(),
       jsr_url: Default::default(),
+      lockfile: Default::default(),
+      lockfile_npm_package_info_provider: Default::default(),
       node_modules_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
+      workspace_external_import_map_loader: Default::default(),
+      workspace_npm_patch_packages: Default::default(),
       initial_cwd,
       options,
     }
+  }
+
+  pub fn set_lockfile_npm_package_info_provider(
+    &self,
+    value: LockfileNpmPackageInfoProviderBox,
+  ) {
+    let _ignore = self.lockfile_npm_package_info_provider.set(value);
   }
 
   pub fn set_workspace_directory(
@@ -466,6 +498,70 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
+  pub fn lockfile_npm_package_info_provider(
+    &self,
+  ) -> &LockfileNpmPackageInfoProviderBox {
+    struct ErrorProvider;
+
+    #[async_trait::async_trait(?Send)]
+    impl deno_lockfile::NpmPackageInfoProvider for ErrorProvider {
+      async fn get_npm_package_info(
+        &self,
+        _values: &[PackageNv],
+      ) -> Result<
+        Vec<deno_lockfile::Lockfile5NpmInfo>,
+        Box<dyn std::error::Error + Send + Sync>,
+      > {
+        Err(anyhow::anyhow!("Reading lockfile versions < 5 is not supported. Recreate the lockfile with the latest Deno.").into())
+      }
+    }
+
+    self
+      .lockfile_npm_package_info_provider
+      .get_or_init(|| Box::new(ErrorProvider))
+  }
+
+  pub async fn maybe_lockfile(
+    &self,
+    lockfile_npm_package_info_provider: &dyn NpmPackageInfoProvider,
+  ) -> Result<Option<&LockfileLockRc<TSys>>, anyhow::Error> {
+    self
+      .lockfile
+      .get_or_try_init(async move {
+        let workspace_directory = self.workspace_directory()?;
+        let maybe_external_import_map =
+          self.workspace_external_import_map_loader()?.get_or_load()?;
+
+        let maybe_lock_file = LockfileLock::discover(
+          self.sys().clone(),
+          crate::lockfile::LockfileFlags {
+            no_lock: self.options.no_lock,
+            frozen_lockfile: self.options.frozen_lockfile,
+            lock: self
+              .options
+              .lock_arg
+              .as_ref()
+              .map(|p| self.initial_cwd.join(p)),
+            skip_write: self.options.lockfile_skip_write,
+            no_config: matches!(
+              self.options.config_discovery,
+              ConfigDiscoveryOption::Disabled
+            ),
+            no_npm: self.options.no_npm,
+          },
+          &workspace_directory.workspace,
+          maybe_external_import_map.as_ref().map(|v| &v.value),
+          lockfile_npm_package_info_provider,
+        )
+        .await?
+        .map(crate::sync::new_rc);
+
+        Ok(maybe_lock_file)
+      })
+      .await
+      .map(|c| c.as_ref())
+  }
+
   pub fn npm_cache_dir(
     &self,
   ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
@@ -555,6 +651,38 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       };
       Ok(new_rc(dir))
     })
+  }
+
+  pub fn workspace_external_import_map_loader(
+    &self,
+  ) -> Result<&WorkspaceExternalImportMapLoaderRc<TSys>, WorkspaceDiscoverError>
+  {
+    self
+      .workspace_external_import_map_loader
+      .get_or_try_init(|| {
+        Ok(new_rc(WorkspaceExternalImportMapLoader::new(
+          self.sys().clone(),
+          self.workspace_directory()?.workspace.clone(),
+        )))
+      })
+  }
+
+  pub fn workspace_npm_patch_packages(
+    &self,
+  ) -> Result<&WorkspaceNpmPatchPackagesRc, anyhow::Error> {
+    self
+      .workspace_npm_patch_packages
+      .get_or_try_init(|| {
+        let workspace_dir = self.workspace_directory()?;
+        let npm_packages = new_rc(WorkspaceNpmPatchPackages::from_workspace(
+          &workspace_dir.workspace.as_ref(),
+        ));
+        if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
+          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+        } else {
+          Ok(npm_packages)
+        }
+      })
   }
 
   fn has_flag_env_var(&self, name: &str) -> bool {

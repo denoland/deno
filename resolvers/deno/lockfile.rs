@@ -10,15 +10,129 @@ use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::DefaultTarballUrlProvider;
+use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use futures::stream::FuturesOrdered;
+use futures::TryStreamExt;
 use indexmap::IndexMap;
 use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
+
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+use crate::workspace::WorkspaceNpmPatchPackagesRc;
+
+#[allow(clippy::disallowed_types)]
+type NpmRegistryApiRc =
+  crate::sync::MaybeArc<dyn NpmRegistryApi + MaybeSend + MaybeSync>;
+
+pub struct LockfileNpmPackageInfoApiAdapter {
+  api: NpmRegistryApiRc,
+  workspace_patch_packages: WorkspaceNpmPatchPackagesRc,
+}
+
+impl LockfileNpmPackageInfoApiAdapter {
+  pub fn new(
+    api: NpmRegistryApiRc,
+    workspace_patch_packages: WorkspaceNpmPatchPackagesRc,
+  ) -> Self {
+    Self {
+      api,
+      workspace_patch_packages,
+    }
+  }
+
+  async fn get_infos(
+    &self,
+    values: &[PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    let futs = values
+      .iter()
+      .map(|v| async move {
+        let info = self.api.package_info(v.name.as_str()).await?;
+        let version_info =
+          info.version_info(v, &self.workspace_patch_packages.0)?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+          deno_lockfile::Lockfile5NpmInfo {
+            tarball_url: version_info.dist.as_ref().and_then(|d| {
+              let tarball_url_provider = NpmRegistryDefaultTarballUrlProvider;
+              if d.tarball == tarball_url_provider.default_tarball_url(v) {
+                None
+              } else {
+                Some(d.tarball.clone())
+              }
+            }),
+            optional_dependencies: version_info
+              .optional_dependencies
+              .iter()
+              .map(|(k, v)| (k.to_string(), v.to_string()))
+              .collect::<std::collections::BTreeMap<_, _>>(),
+            cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
+            os: version_info.os.iter().map(|s| s.to_string()).collect(),
+            deprecated: version_info.deprecated.is_some(),
+            bin: version_info.bin.is_some(),
+            scripts: version_info.scripts.contains_key("preinstall")
+              || version_info.scripts.contains_key("install")
+              || version_info.scripts.contains_key("postinstall"),
+            optional_peers: version_info
+              .peer_dependencies_meta
+              .iter()
+              .filter_map(|(k, v)| {
+                if v.optional {
+                  version_info
+                    .peer_dependencies
+                    .get(k)
+                    .map(|v| (k.to_string(), v.to_string()))
+                } else {
+                  None
+                }
+              })
+              .collect::<std::collections::BTreeMap<_, _>>(),
+          },
+        )
+      })
+      .collect::<FuturesOrdered<_>>();
+    let package_infos = futs.try_collect::<Vec<_>>().await?;
+    Ok(package_infos)
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_lockfile::NpmPackageInfoProvider
+  for LockfileNpmPackageInfoApiAdapter
+{
+  async fn get_npm_package_info(
+    &self,
+    values: &[PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    let package_infos = self.get_infos(values).await;
+
+    match package_infos {
+      Ok(package_infos) => Ok(package_infos),
+      Err(err) => {
+        if self.api.mark_force_reload() {
+          self.get_infos(values).await
+        } else {
+          Err(err)
+        }
+      }
+    }
+  }
+}
 
 #[derive(Debug)]
 pub struct LockfileReadFromPathOptions {
@@ -54,7 +168,7 @@ impl<T> std::ops::DerefMut for Guard<'_, T> {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LockfileFlags {
   pub no_lock: bool,
   pub frozen_lockfile: Option<bool>,
@@ -62,6 +176,20 @@ pub struct LockfileFlags {
   pub skip_write: bool,
   pub no_config: bool,
   pub no_npm: bool,
+}
+
+impl Default for LockfileFlags {
+  fn default() -> Self {
+    // explicit implementation to ensure it's set right
+    Self {
+      no_lock: false,
+      frozen_lockfile: None,
+      lock: None,
+      skip_write: false,
+      no_config: false,
+      no_npm: false,
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -73,6 +201,9 @@ pub enum LockfileWriteError {
   #[error("Failed writing lockfile")]
   Io(#[source] std::io::Error),
 }
+
+#[allow(clippy::disallowed_types)]
+pub type LockfileLockRc<TSys> = crate::sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
 pub struct LockfileLock<TSys: LockfileSys> {
@@ -133,7 +264,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     flags: LockfileFlags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
-    api: &(dyn NpmPackageInfoProvider + Send + Sync),
+    api: &dyn NpmPackageInfoProvider,
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -299,7 +430,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   pub async fn read_from_path(
     sys: TSys,
     opts: LockfileReadFromPathOptions,
-    api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
+    api: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<LockfileLock<TSys>, AnyError> {
     let lockfile = match sys.fs_read_to_string(&opts.file_path) {
       Ok(text) => {

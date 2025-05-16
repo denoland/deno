@@ -42,6 +42,8 @@ use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
+use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
+use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
@@ -69,7 +71,6 @@ use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallFlags;
-use crate::args::WorkspaceExternalImportMapLoader;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -189,7 +190,8 @@ struct CliSpecifiedImportMapProvider {
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
   eszip_module_loader_provider: Arc<EszipModuleLoaderProvider>,
-  workspace_external_import_map_loader: Arc<WorkspaceExternalImportMapLoader>,
+  workspace_external_import_map_loader:
+    Arc<WorkspaceExternalImportMapLoader<CliSys>>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -345,10 +347,6 @@ struct CliFactoryServices {
   tsconfig_resolver: Deferred<Arc<TsConfigResolver>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
-  workspace_external_import_map_loader:
-    Deferred<Arc<WorkspaceExternalImportMapLoader>>,
-  workspace_npm_patch_packages: Deferred<Arc<WorkspaceNpmPatchPackages>>,
-  lockfile: Deferred<Option<Arc<CliLockfile>>>,
 }
 
 #[derive(Debug, Default)]
@@ -717,8 +715,8 @@ impl CliFactory {
 
   pub fn lockfile_npm_package_info_provider(
     &self,
-  ) -> Result<crate::npm::NpmPackageInfoApiAdapter, AnyError> {
-    Ok(crate::npm::NpmPackageInfoApiAdapter::new(
+  ) -> Result<LockfileNpmPackageInfoApiAdapter, AnyError> {
+    Ok(LockfileNpmPackageInfoApiAdapter::new(
       Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
       self.workspace_npm_patch_packages()?.clone(),
     ))
@@ -772,20 +770,7 @@ impl CliFactory {
   pub fn workspace_npm_patch_packages(
     &self,
   ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
-    self
-      .services
-      .workspace_npm_patch_packages
-      .get_or_try_init(|| {
-        let cli_options = self.cli_options()?;
-        let npm_packages = Arc::new(WorkspaceNpmPatchPackages::from_workspace(
-          cli_options.workspace().as_ref(),
-        ));
-        if !npm_packages.0.is_empty() && !matches!(self.workspace_factory()?.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
-          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
-        } else {
-          Ok(npm_packages)
-        }
-      })
+    self.workspace_factory()?.workspace_npm_patch_packages()
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
@@ -1194,16 +1179,12 @@ impl CliFactory {
 
   fn workspace_external_import_map_loader(
     &self,
-  ) -> Result<&Arc<WorkspaceExternalImportMapLoader>, AnyError> {
-    self
-      .services
-      .workspace_external_import_map_loader
-      .get_or_try_init(|| {
-        Ok(Arc::new(WorkspaceExternalImportMapLoader::new(
-          self.sys(),
-          self.workspace_directory()?.workspace.clone(),
-        )))
-      })
+  ) -> Result<&Arc<WorkspaceExternalImportMapLoader<CliSys>>, AnyError> {
+    Ok(
+      self
+        .workspace_factory()?
+        .workspace_external_import_map_loader()?,
+    )
   }
 
   pub async fn create_cli_main_worker_factory(
@@ -1493,9 +1474,17 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Clean(_)
     ),
+    no_lock: flags.no_lock
+      || matches!(
+        flags.subcommand,
+        DenoSubcommand::Install(InstallFlags::Global(..))
+          | DenoSubcommand::Uninstall(_)
+      ),
+    frozen_lockfile: flags.frozen_lockfile,
+    lock_arg: flags.lock.clone(),
+    lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
-
     npm_process_state: NPM_PROCESS_STATE.as_ref().map(|s| {
       NpmProcessStateOptions {
         node_modules_dir: s
