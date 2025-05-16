@@ -379,7 +379,6 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    eprintln!("create_main_worker");
     self
       .create_custom_worker(
         mode,
@@ -419,7 +418,6 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    eprintln!("create_custom_worker");
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
@@ -477,7 +475,9 @@ impl CliMainWorkerFactory {
       stdio,
       unconfigured_runtime,
     )?;
-    macro_rules! test_file {
+
+    if self.needs_test_modules {
+      macro_rules! test_file {
         ($($file:literal),*) => {
           $(worker.js_runtime().lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
@@ -486,9 +486,6 @@ impl CliMainWorkerFactory {
         }
       }
 
-    test_file!("40_bundle.js");
-
-    if self.needs_test_modules {
       test_file!(
         "40_test_common.js",
         "40_test.js",
@@ -500,12 +497,10 @@ impl CliMainWorkerFactory {
       );
     }
 
-    let main_worker = CliMainWorker {
+    Ok(CliMainWorker {
       worker,
       shared: self.shared.clone(),
-    };
-
-    Ok(main_worker)
+    })
   }
 }
 

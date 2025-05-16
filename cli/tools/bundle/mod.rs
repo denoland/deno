@@ -98,21 +98,28 @@ pub async fn bundle(
 
   bundle_flags.external.push("*.node".into());
 
-  let output_path = bundle_flags
-    .output_path
-    .unwrap_or_else(|| "./dist/bundled.js".to_string());
-  let flags = EsbuildFlagsBuilder::default()
-    .outfile(output_path)
+  let mut builder = EsbuildFlagsBuilder::default();
+  builder
     .bundle(true)
     .minify(bundle_flags.minify)
-    .external(bundle_flags.external)
+    .splitting(bundle_flags.code_splitting)
+    .external(bundle_flags.external.clone())
     .format(match bundle_flags.format {
       BundleFormat::Esm => esbuild_rs::Format::Esm,
       BundleFormat::Cjs => esbuild_rs::Format::Cjs,
       BundleFormat::Iife => esbuild_rs::Format::Iife,
-    })
-    .build()
-    .unwrap();
+    });
+  if let Some(outdir) = bundle_flags.output_dir {
+    builder.outdir(outdir);
+  } else {
+    builder.outfile(
+      bundle_flags
+        .output_path
+        .unwrap_or_else(|| "./dist/bundled.js".to_string()),
+    );
+  }
+  let flags = builder.build().unwrap();
+
   let entries = bundle_flags
     .entrypoints
     .into_iter()
@@ -151,32 +158,28 @@ pub async fn bundle(
     .unwrap();
 
   if response.errors.len() > 0 {
-    eprintln!(
-      "{}",
-      response
-        .errors
-        .iter()
-        .map(|e| e.text.clone())
-        .collect::<Vec<_>>()
-        .join("\n")
-    );
+    for error in &response.errors {
+      eprintln!(
+        "{}: {}",
+        deno_terminal::colors::red("error"),
+        format_message(error)
+      );
+    }
   }
 
   if response.warnings.len() > 0 {
-    eprintln!(
-      "{}",
-      response
-        .warnings
-        .iter()
-        .map(|e| e.text.clone())
-        .collect::<Vec<_>>()
-        .join("\n")
-    );
+    for warning in &response.warnings {
+      eprintln!(
+        "{}: {}",
+        deno_terminal::colors::yellow("warn"),
+        format_message(warning)
+      );
+    }
   }
 
   if let Some(stdout) = response.write_to_stdout {
     println!("{}", String::from_utf8_lossy(&stdout));
-  } else {
+  } else if response.errors.len() == 0 {
     log::info!(
       "{}",
       deno_terminal::colors::green(format!(
@@ -190,6 +193,20 @@ pub async fn bundle(
   // let plugin
 }
 
+fn format_message(message: &esbuild_rs::protocol::Message) -> String {
+  format!(
+    "{}{}",
+    message.text,
+    if let Some(location) = &message.location {
+      format!(
+        "\n  at {} {}:{}",
+        location.file, location.line, location.column
+      )
+    } else {
+      String::new()
+    }
+  )
+}
 #[derive(Debug, thiserror::Error, JsError)]
 #[class(generic)]
 enum BundleError {
@@ -219,6 +236,7 @@ enum BundleError {
   PackageReqReferenceParse(
     #[from] deno_semver::package::PackageReqReferenceParseError,
   ),
+  #[allow(dead_code)]
   #[error("Http cache error")]
   HttpCache,
 }
@@ -285,6 +303,13 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
       Ok(None)
     }
   }
+
+  async fn on_start(
+    &self,
+    _args: esbuild_rs::OnStartArgs,
+  ) -> Result<Option<esbuild_rs::OnStartResult>, AnyError> {
+    Ok(None)
+  }
 }
 
 fn import_kind_to_resolution_mode(
@@ -303,6 +328,7 @@ fn import_kind_to_resolution_mode(
 }
 
 impl DenoPluginHandler {
+  #[allow(dead_code)]
   fn get_final_path(
     &self,
     specifier: &ModuleSpecifier,
@@ -474,7 +500,7 @@ impl DenoPluginHandler {
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
     // eprintln!("about to prepare module load");
-    let prepared = self
+    let _prepared = self
       .module_load_preparer
       .prepare_module_load(
         graph,
@@ -488,7 +514,7 @@ impl DenoPluginHandler {
         },
       )
       .await
-      .inspect_err(|e| {
+      .inspect_err(|_e| {
         // eprintln!(
         //   "{}: error preparing module load: {:?}",
         //   deno_terminal::colors::red("ERROR"),
@@ -505,9 +531,6 @@ impl DenoPluginHandler {
     specifier: &str,
     resolve_dir: &str,
   ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
-    let module_load_preparer = self.module_load_preparer.clone();
-    let module_graph_container = self.module_graph_container.clone();
-
     log::debug!(
       "{}: {:?} {:?}",
       deno_terminal::colors::magenta("bundle_load"),
@@ -562,6 +585,7 @@ impl DenoPluginHandler {
     // Ok(Some((code, loader)))
   }
 
+  #[allow(dead_code)]
   fn load_from_graph(
     &self,
     specifier: &ModuleSpecifier,
@@ -578,7 +602,7 @@ impl DenoPluginHandler {
         json_module.source.to_string().into_bytes(),
         esbuild_rs::BuiltinLoader::Json,
       ))),
-      deno_graph::Module::Wasm(wasm_module) => todo!(),
+      deno_graph::Module::Wasm(_) => todo!(),
       deno_graph::Module::Npm(module) => {
         let package_folder = self
           .npm_resolver
@@ -603,8 +627,8 @@ impl DenoPluginHandler {
         let contents = std::fs::read(path)?;
         Ok(Some((contents, media_type_to_loader(media_type))))
       }
-      deno_graph::Module::Node(built_in_node_module) => Ok(None),
-      deno_graph::Module::External(external_module) => Ok(None),
+      deno_graph::Module::Node(_) => Ok(None),
+      deno_graph::Module::External(_) => Ok(None),
     }
   }
 
@@ -624,7 +648,7 @@ impl DenoPluginHandler {
         json_module.specifier.clone(),
         esbuild_rs::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(wasm_module) => todo!(),
+      deno_graph::Module::Wasm(_) => todo!(),
       deno_graph::Module::Npm(module) => {
         let package_folder = self
           .npm_resolver
@@ -641,18 +665,16 @@ impl DenoPluginHandler {
             NodeResolutionKind::Execution,
           )?;
         let url = path.clone().into_url()?;
-        let path = path.into_path()?;
         let (media_type, _charset) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
             &url, None,
           );
-        let contents = std::fs::read(path)?;
         (url, media_type_to_loader(media_type))
       }
-      deno_graph::Module::Node(built_in_node_module) => {
+      deno_graph::Module::Node(_) => {
         return Ok(None);
       }
-      deno_graph::Module::External(external_module) => {
+      deno_graph::Module::External(_) => {
         return Ok(None);
       }
     };

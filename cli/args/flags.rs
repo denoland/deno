@@ -463,9 +463,11 @@ pub struct CleanFlags {
 pub struct BundleFlags {
   pub entrypoints: Vec<String>,
   pub output_path: Option<String>,
+  pub output_dir: Option<String>,
   pub external: Vec<String>,
   pub format: BundleFormat,
   pub minify: bool,
+  pub code_splitting: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -1922,6 +1924,14 @@ fn bundle_subcommand() -> Command {
           .value_hint(ValueHint::FilePath),
       )
       .arg(
+        Arg::new("outdir")
+          .long("outdir")
+          .help("Output directory for bundled files")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
         Arg::new("external")
           .long("external")
           .action(ArgAction::Append)
@@ -1938,6 +1948,12 @@ fn bundle_subcommand() -> Command {
         Arg::new("minify")
           .long("minify")
           .help("Minify the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("code-splitting")
+          .long("code-splitting")
+          .help("Enable code splitting")
           .action(ArgAction::SetTrue),
       )
       .arg(frozen_lockfile_arg())
@@ -4727,16 +4743,19 @@ fn bundle_parse(
 ) -> clap::error::Result<()> {
   let file = matches.remove_many::<String>("file").unwrap();
   let output = matches.remove_one::<String>("output");
+  let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
     output_path: output,
+    output_dir: outdir,
     external: matches
       .remove_many::<String>("external")
       .map(|f| f.collect::<Vec<_>>())
       .unwrap_or_default(),
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
     minify: matches.get_flag("minify"),
+    code_splitting: matches.get_flag("code-splitting"),
   });
   Ok(())
 }
