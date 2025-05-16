@@ -467,6 +467,12 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(dep_name);
     }
 
+    if let Some(bare_package_specifier) =
+      scoped_resolver.jsr_lookup_bare_specifier_for_workspace_file(specifier)
+    {
+      return Some(bare_package_specifier);
+    }
+
     // check if the import map has this specifier
     if let Some(import_map) = self.maybe_import_map {
       if let Some(result) = import_map_lookup(import_map, specifier, referrer) {

@@ -338,6 +338,16 @@ impl LspScopedResolver {
     self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
   }
 
+  pub fn jsr_lookup_bare_specifier_for_workspace_file(
+    &self,
+    specifier: &Url,
+  ) -> Option<String> {
+    self
+      .jsr_resolver
+      .as_ref()?
+      .lookup_bare_specifier_for_workspace_file(specifier)
+  }
+
   pub fn jsr_lookup_export_for_path(
     &self,
     nv: &PackageNv,
