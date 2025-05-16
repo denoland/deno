@@ -43,7 +43,7 @@ function formatDiff(diff: number) {
   if (diff > 0) {
     return `+${diffStr}% 🟩`;
   } else {
-    return `-${diffStr}% 🟥`;
+    return `${diffStr}% 🟥`;
   }
 }
 
