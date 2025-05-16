@@ -950,7 +950,7 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
     return Ok(TaskNameFilter::Exact(input));
   }
 
-  let mut regex_str = regex::escape(&input);
+  let mut regex_str = regex::escape(input);
   regex_str = regex_str.replace("\\*", ".*");
   regex_str = format!("^{}", regex_str);
   let re = Regex::new(&regex_str)?;
