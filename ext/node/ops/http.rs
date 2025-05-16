@@ -609,6 +609,8 @@ impl Resource for NodeHttpResponseResource {
     "fetchResponse".into()
   }
 
+  #[allow(clippy::redundant_closure)]
+  #[allow(clippy::io_other_error)]
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
       let mut reader =

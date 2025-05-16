@@ -55,6 +55,7 @@ pub struct StandaloneData {
 /// binary by skipping over the trailer width at the end of the file,
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
+#[allow(clippy::owned_cow)]
 pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<StandaloneData, AnyError> {

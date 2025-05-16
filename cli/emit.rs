@@ -153,6 +153,7 @@ impl Emitter {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn emit_parsed_source_sync(
     &self,
     specifier: &ModuleSpecifier,
@@ -356,6 +357,7 @@ impl EmitParsedSourceHelper<'_> {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn transpile(
     parsed_source_cache: &ParsedSourceCache,
     specifier: &ModuleSpecifier,

@@ -132,6 +132,7 @@ pub async fn lint(
   Ok(())
 }
 
+#[allow(clippy::obfuscated_if_else)]
 async fn lint_with_watch_inner(
   flags: Arc<Flags>,
   lint_flags: LintFlags,

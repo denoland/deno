@@ -30,6 +30,7 @@ pub enum NativeType {
 impl TryFrom<NativeType> for libffi::middle::Type {
   type Error = JsErrorBox;
 
+  #[allow(clippy::len_zero)]
   fn try_from(native_type: NativeType) -> Result<Self, Self::Error> {
     Ok(match native_type {
       NativeType::Void => libffi::middle::Type::void(),

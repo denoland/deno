@@ -274,6 +274,7 @@ impl CliMainWorker {
     Ok(Some(coverage_collector))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
