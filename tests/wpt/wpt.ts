@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json --cert tests/wpt/runner/certs/cacert.pem
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json --unsafely-ignore-certificate-errors
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
