@@ -776,13 +776,10 @@ const ci = {
           },
         },
         {
-          name: "Upload PR artifact (linux)",
+          name: "Upload PR artifact",
           if: [
             "matrix.job == 'test' &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
+            "matrix.profile == 'release'",
           ].join("\n"),
           uses: "actions/upload-artifact@v4",
           with: {
