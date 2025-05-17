@@ -2660,7 +2660,7 @@
       "Document interface: operation createCDATASection(DOMString)",
       "Document interface: operation createComment(DOMString)",
       "Document interface: operation createProcessingInstruction(DOMString, DOMString)",
-      "Document interface: operation importNode(Node, optional boolean)",
+      "Document interface: operation importNode(Node, optional (boolean or ImportNodeOptions))",
       "Document interface: operation adoptNode(Node)",
       "Document interface: operation createAttribute(DOMString)",
       "Document interface: operation createAttributeNS(DOMString?, DOMString)",
@@ -2674,6 +2674,7 @@
       "Document interface: attribute onfullscreenchange",
       "Document interface: attribute onfullscreenerror",
       "Document interface: operation getElementById(DOMString)",
+      "Document interface: attribute customElementRegistry",
       "Document interface: attribute fullscreenElement",
       "Document interface: attribute children",
       "Document interface: attribute firstElementChild",
@@ -2747,6 +2748,7 @@
       "ShadowRoot interface: attribute serializable",
       "ShadowRoot interface: attribute host",
       "ShadowRoot interface: attribute onslotchange",
+      "ShadowRoot interface: attribute customElementRegistry",
       "ShadowRoot interface: attribute fullscreenElement",
       "Element interface: existence and properties of interface object",
       "Element interface object length",
@@ -2781,6 +2783,7 @@
       "Element interface: operation removeAttributeNode(Attr)",
       "Element interface: operation attachShadow(ShadowRootInit)",
       "Element interface: attribute shadowRoot",
+      "Element interface: attribute customElementRegistry",
       "Element interface: operation closest(DOMString)",
       "Element interface: operation matches(DOMString)",
       "Element interface: operation webkitMatchesSelector(DOMString)",
@@ -15020,7 +15023,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": false
+        "same-origin.html": [
+          "non-parsable URL"
+        ]
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,
