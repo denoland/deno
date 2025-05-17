@@ -220,8 +220,8 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
   ops = [
-    op_read_cancel_handle,
-    op_read_cancel,
+    op_read_with_cancel_handle,
+    op_read_create_cancel_handle,
   ],
   esm = [ "12_io.js" ],
   options = {
@@ -1022,14 +1022,14 @@ impl Resource for ReadCancelResource {
 
 #[op2(fast)]
 #[smi]
-pub fn op_read_cancel_handle(state: &mut OpState) -> u32 {
+pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
   state
     .resource_table
     .add(ReadCancelResource(CancelHandle::new_rc()))
 }
 
 #[op2(async)]
-pub async fn op_read_cancel(
+pub async fn op_read_with_cancel_handle(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
   #[smi] cancel_handle: u32,

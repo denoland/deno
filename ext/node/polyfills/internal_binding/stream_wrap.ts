@@ -44,7 +44,7 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { _readCancel } from "ext:deno_io/12_io.js";
+import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -336,9 +336,9 @@ export class LibuvStreamWrap extends HandleWrap {
     }
 
     try {
-      if (this[kStreamBaseField]![_readCancel]) {
+      if (this[kStreamBaseField]![_readWithCancelHandle]) {
         const { cancelHandle, nread: p } = this[kStreamBaseField]!
-          [_readCancel](buf);
+          [_readWithCancelHandle](buf);
         if (cancelHandle) {
           this.cancelHandle = cancelHandle;
         }

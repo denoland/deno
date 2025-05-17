@@ -6,8 +6,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  op_read_cancel,
-  op_read_cancel_handle,
+  op_read_create_cancel_handle,
+  op_read_with_cancel_handle,
   op_set_raw,
 } from "ext:core/ops";
 const {
@@ -116,7 +116,7 @@ const STDERR_RID = 2;
 const REF = Symbol("REF");
 const UNREF = Symbol("UNREF");
 
-const _readCancel = Symbol("readCancel");
+const _readWithCancelHandle = Symbol("_readWithCancelHandle");
 
 class Stdin {
   #rid = STDIN_RID;
@@ -141,10 +141,10 @@ class Stdin {
     return nread === 0 ? null : nread;
   }
 
-  [_readCancel](p) {
-    const handle = op_read_cancel_handle();
+  [_readWithCancelHandle](p) {
+    const handle = op_read_create_cancel_handle();
     if (p.length === 0) return { cancelHandle: handle, nread: 0 };
-    this.#opPromise = op_read_cancel(this.#rid, handle, p);
+    this.#opPromise = op_read_with_cancel_handle(this.#rid, handle, p);
     if (!this.#ref) {
       core.unrefOpPromise(this.#opPromise);
     }
@@ -271,7 +271,7 @@ const stdout = new Stdout();
 const stderr = new Stderr();
 
 export {
-  _readCancel,
+  _readWithCancelHandle,
   read,
   readAll,
   readAllSync,
