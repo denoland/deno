@@ -24,6 +24,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::display::DisplayTreeNode;
 use deno_resolver::DenoResolveErrorKind;
 use deno_semver::npm::NpmPackageNvReference;
@@ -143,7 +144,7 @@ pub async fn info(
         GraphKind::All,
         vec![specifier],
         &mut loader,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?;
 

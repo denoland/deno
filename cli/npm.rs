@@ -8,17 +8,12 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesOrdered;
-use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::DefaultTarballUrlProvider;
-use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
@@ -33,7 +28,6 @@ use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -46,10 +40,13 @@ use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+pub type CliNpmInstallerFactory = deno_npm_installer::NpmInstallerFactory<
+  CliNpmCacheHttpClient,
+  ProgressBar,
+  CliSys,
+>;
 pub type CliNpmInstaller =
   deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmTarballCache =
-  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
@@ -59,112 +56,10 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
-pub type CliNpmResolutionInitializer =
-  deno_npm_installer::initializer::NpmResolutionInitializer<CliSys>;
-pub type CliNpmResolutionInstaller =
-  deno_npm_installer::resolution::NpmResolutionInstaller<
-    CliNpmCacheHttpClient,
-    CliSys,
-  >;
-
-pub struct NpmPackageInfoApiAdapter {
-  api: Arc<dyn NpmRegistryApi + Send + Sync>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
-}
-
-impl NpmPackageInfoApiAdapter {
-  pub fn new(
-    api: Arc<dyn NpmRegistryApi + Send + Sync>,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
-  ) -> Self {
-    Self {
-      api,
-      workspace_patch_packages,
-    }
-  }
-}
-
-#[async_trait::async_trait(?Send)]
-impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
-  async fn get_npm_package_info(
-    &self,
-    values: &[PackageNv],
-  ) -> Result<
-    Vec<deno_lockfile::Lockfile5NpmInfo>,
-    Box<dyn std::error::Error + Send + Sync>,
-  > {
-    let package_infos =
-      get_infos(&*self.api, &self.workspace_patch_packages, values).await;
-
-    match package_infos {
-      Ok(package_infos) => Ok(package_infos),
-      Err(err) => {
-        if self.api.mark_force_reload() {
-          get_infos(&*self.api, &self.workspace_patch_packages, values).await
-        } else {
-          Err(err)
-        }
-      }
-    }
-  }
-}
-
-async fn get_infos(
-  info_provider: &(dyn NpmRegistryApi + Send + Sync),
-  workspace_patch_packages: &WorkspaceNpmPatchPackages,
-  values: &[PackageNv],
-) -> Result<
-  Vec<deno_lockfile::Lockfile5NpmInfo>,
-  Box<dyn std::error::Error + Send + Sync>,
-> {
-  let futs = values
-    .iter()
-    .map(|v| async move {
-      let info = info_provider.package_info(v.name.as_str()).await?;
-      let version_info = info.version_info(v, &workspace_patch_packages.0)?;
-      Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
-        deno_lockfile::Lockfile5NpmInfo {
-          tarball_url: version_info.dist.as_ref().and_then(|d| {
-            let tarball_url_provider = NpmRegistryDefaultTarballUrlProvider;
-            if d.tarball == tarball_url_provider.default_tarball_url(v) {
-              None
-            } else {
-              Some(d.tarball.clone())
-            }
-          }),
-          optional_dependencies: version_info
-            .optional_dependencies
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect::<std::collections::BTreeMap<_, _>>(),
-          cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
-          os: version_info.os.iter().map(|s| s.to_string()).collect(),
-          deprecated: version_info.deprecated.is_some(),
-          bin: version_info.bin.is_some(),
-          scripts: version_info.scripts.contains_key("preinstall")
-            || version_info.scripts.contains_key("install")
-            || version_info.scripts.contains_key("postinstall"),
-          optional_peers: version_info
-            .peer_dependencies_meta
-            .iter()
-            .filter_map(|(k, v)| {
-              if v.optional {
-                version_info
-                  .peer_dependencies
-                  .get(k)
-                  .map(|v| (k.to_string(), v.to_string()))
-              } else {
-                None
-              }
-            })
-            .collect::<std::collections::BTreeMap<_, _>>(),
-        },
-      )
-    })
-    .collect::<FuturesOrdered<_>>();
-  let package_infos = futs.try_collect::<Vec<_>>().await?;
-  Ok(package_infos)
-}
+pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
+  CliNpmCacheHttpClient,
+  CliSys,
+>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
