@@ -6,6 +6,8 @@
 use std::env;
 use std::future::Future;
 use std::net::IpAddr;
+#[cfg(not(windows))]
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
@@ -24,6 +26,8 @@ use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
 use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
+#[cfg(not(windows))]
+use tokio::net::UnixStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_socks::tcp::Socks5Stream;
@@ -54,7 +58,7 @@ pub(crate) struct Intercept {
 }
 
 #[derive(Clone)]
-enum Target {
+pub(crate) enum Target {
   Http {
     dst: Uri,
     auth: Option<HeaderValue>,
@@ -66,6 +70,10 @@ enum Target {
   Socks {
     dst: Uri,
     auth: Option<(String, String)>,
+  },
+  #[cfg(not(windows))]
+  Unix {
+    path: PathBuf,
   },
 }
 
@@ -133,12 +141,11 @@ fn parse_env_var(name: &str, filter: Filter) -> Option<Intercept> {
 }
 
 impl Intercept {
-  pub(crate) fn all(s: &str) -> Option<Self> {
-    let target = Target::parse(s)?;
-    Some(Intercept {
+  pub(crate) fn all(target: Target) -> Self {
+    Intercept {
       filter: Filter::All,
       target,
-    })
+    }
   }
 
   pub(crate) fn set_auth(&mut self, user: &str, pass: &str) {
@@ -151,6 +158,10 @@ impl Intercept {
       }
       Target::Socks { ref mut auth, .. } => {
         *auth = Some((user.into(), pass.into()));
+      }
+      #[cfg(not(windows))]
+      Target::Unix { .. } => {
+        // Auth not supported for Unix sockets
       }
     }
   }
@@ -165,7 +176,7 @@ impl std::fmt::Debug for Intercept {
 }
 
 impl Target {
-  fn parse(val: &str) -> Option<Self> {
+  pub(crate) fn parse(val: &str) -> Option<Self> {
     let uri = val.parse::<Uri>().ok()?;
 
     let mut builder = Uri::builder();
@@ -228,6 +239,11 @@ impl Target {
     };
 
     Some(target)
+  }
+
+  #[cfg(not(windows))]
+  pub(crate) fn new_unix(path: PathBuf) -> Self {
+    Target::Unix { path }
   }
 }
 
@@ -429,6 +445,9 @@ pub enum Proxied<T> {
   Socks(TokioIo<TcpStream>),
   /// Tunneled through SOCKS and TLS
   SocksTls(TokioIo<TlsStream<TokioIo<TokioIo<TcpStream>>>>),
+  /// Forwarded via Unix socket
+  #[cfg(not(windows))]
+  Unix(TokioIo<UnixStream>),
 }
 
 impl<C> Service<Uri> for ProxyConnector<C>
@@ -468,7 +487,7 @@ where
           let connecting = connector.call(proxy_dst);
           let tls = TlsConnector::from(self.tls.clone());
           Box::pin(async move {
-            let mut io = connecting.await.map_err(Into::<BoxError>::into)?;
+            let mut io = connecting.await?;
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
@@ -523,6 +542,14 @@ where
             } else {
               Ok(Proxied::Socks(io))
             }
+          })
+        }
+        #[cfg(not(windows))]
+        Target::Unix { path } => {
+          let path = path.clone();
+          Box::pin(async move {
+            let io = UnixStream::connect(&path).await?;
+            Ok(Proxied::Unix(TokioIo::new(io)))
           })
         }
       };
@@ -634,6 +661,8 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref mut p) => Pin::new(p).poll_read(cx, buf),
     }
   }
 }
@@ -653,6 +682,8 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref mut p) => Pin::new(p).poll_write(cx, buf),
     }
   }
 
@@ -666,6 +697,8 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref mut p) => Pin::new(p).poll_flush(cx),
     }
   }
 
@@ -679,6 +712,8 @@ where
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref mut p) => Pin::new(p).poll_shutdown(cx),
     }
   }
 
@@ -689,6 +724,8 @@ where
       Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
       Proxied::Socks(ref p) => p.is_write_vectored(),
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref p) => p.is_write_vectored(),
     }
   }
 
@@ -709,6 +746,8 @@ where
       }
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      #[cfg(not(windows))]
+      Proxied::Unix(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
     }
   }
 }
@@ -738,6 +777,8 @@ where
           tunneled_tls.0.connected()
         }
       }
+      #[cfg(not(windows))]
+      Proxied::Unix(_) => Connected::new(),
     }
   }
 }

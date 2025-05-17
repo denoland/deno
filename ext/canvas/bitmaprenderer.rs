@@ -22,7 +22,11 @@ pub struct ImageBitmapRenderingContext {
   alpha: bool,
 }
 
-impl GarbageCollected for ImageBitmapRenderingContext {}
+impl GarbageCollected for ImageBitmapRenderingContext {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ImageBitmapRenderingContext"
+  }
+}
 
 #[op2]
 impl ImageBitmapRenderingContext {

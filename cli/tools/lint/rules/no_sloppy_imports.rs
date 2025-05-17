@@ -92,8 +92,6 @@ impl LintRule for NoSloppyImportsRule {
       file_system: &deno_graph::source::NullFileSystem,
       jsr_url_provider: &CliJsrUrlProvider,
       maybe_resolver: Some(&resolver),
-      // don't bother resolving npm specifiers
-      maybe_npm_resolver: None,
     });
 
     for (referrer, (specifier, sloppy_reason)) in
@@ -174,7 +172,7 @@ struct SloppyImportCaptureResolver<'a> {
   >,
 }
 
-impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
+impl deno_graph::source::Resolver for SloppyImportCaptureResolver<'_> {
   fn resolve(
     &self,
     specifier_text: &str,

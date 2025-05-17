@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -12,7 +12,7 @@ const rsaPublicKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_public.pem", import.meta.url),
 );
 
-const input = new TextEncoder().encode("hello world");
+const input = Buffer.from("hello world", "utf-8");
 
 function zeros(length: number): Uint8Array {
   return new Uint8Array(length);
@@ -26,6 +26,8 @@ Deno.test({
       Buffer.from(rsaPrivateKey),
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(encrypted));
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -49,10 +51,12 @@ Deno.test({
   name: "rsa private encrypt and private decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
+    assert(Buffer.isBuffer(encrypted));
     const decrypted = crypto.privateDecrypt(
       rsaPrivateKey,
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -61,6 +65,7 @@ Deno.test({
   name: "rsa public decrypt fail",
   fn() {
     const encrypted = crypto.publicEncrypt(rsaPublicKey, input);
+    assert(Buffer.isBuffer(encrypted));
     assertThrows(() =>
       crypto.publicDecrypt(rsaPublicKey, Buffer.from(encrypted))
     );
@@ -379,6 +384,7 @@ Deno.test({
   name: "getCiphers",
   fn() {
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
+    assertEquals(crypto.getCiphers().includes("aes-256-ctr"), true);
 
     const getZeroKey = (cipher: string) => zeros(+cipher.match(/\d+/)![0] / 8);
     const getZeroIv = (cipher: string) => {
@@ -445,5 +451,27 @@ Deno.test({
         decipher.final();
       });
     }
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid final block len",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.from(
+      "84dcdd964968734fdf0de4a2cba471c2e0a753930b841c014b1e77f456b5797b",
+      "hex",
+    );
+    const iv = Buffer.alloc(16, 0);
+
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    decipher.update(Buffer.alloc(12));
+    assertThrows(
+      () => {
+        decipher.final();
+      },
+      RangeError,
+      "Wrong final block length",
+    );
   },
 });

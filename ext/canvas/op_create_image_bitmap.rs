@@ -546,7 +546,11 @@ pub struct ImageBitmap {
   pub data: RefCell<DynamicImage>,
 }
 
-impl GarbageCollected for ImageBitmap {}
+impl GarbageCollected for ImageBitmap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ImageBitmap"
+  }
+}
 
 impl WebIdlInterfaceConverter for ImageBitmap {
   const NAME: &'static str = "ImageBitmap";

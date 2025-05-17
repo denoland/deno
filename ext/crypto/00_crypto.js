@@ -4,7 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -884,18 +884,6 @@ class SubtleCrypto {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
 
-        if (
-          (key[_algorithm].namedCurve === "P-256" &&
-            hashAlgorithm !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" &&
-            hashAlgorithm !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "ECDSA",
@@ -1314,17 +1302,6 @@ class SubtleCrypto {
         }
         // 2.
         const hash = normalizedAlgorithm.hash.name;
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" && hash !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" && hash !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         // 3-8.
         return await op_crypto_verify_key({
           key: keyData,

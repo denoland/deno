@@ -31,6 +31,7 @@ use tokio::sync::oneshot;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::LintFlags;
+use crate::args::PermissionFlags;
 use crate::factory::CliFactory;
 use crate::ops::lint::LintPluginContainer;
 use crate::tools::lint::serialize_ast_to_buffer;
@@ -136,6 +137,10 @@ async fn create_plugin_runner_inner(
 ) -> Result<PluginHost, AnyError> {
   let flags = Flags {
     subcommand: DenoSubcommand::Lint(LintFlags::default()),
+    permissions: PermissionFlags {
+      no_prompt: true,
+      ..Default::default()
+    },
     ..Default::default()
   };
   let flags = Arc::new(flags);
@@ -159,8 +164,9 @@ async fn create_plugin_runner_inner(
       WorkerExecutionMode::Run,
       main_module.clone(),
       permissions,
-      vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
+      vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),
+      None,
     )
     .await?;
 

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::ffi::OsStr;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
@@ -15,6 +16,7 @@ use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -166,14 +168,45 @@ pub enum NpmProcessStateKind {
 
 pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
   LazyLock::new(|| {
+    /// Allows for passing either a file descriptor or file path.
+    enum FdOrPath {
+      Fd(usize),
+      Path(PathBuf),
+    }
+
+    impl FdOrPath {
+      pub fn parse(value: &OsStr) -> Option<Self> {
+        if value.is_empty() {
+          return None;
+        }
+
+        match value.to_string_lossy().parse::<usize>() {
+          Ok(value) => Some(FdOrPath::Fd(value)),
+          Err(_) => Some(FdOrPath::Path(PathBuf::from(value))),
+        }
+      }
+
+      pub fn open(&self) -> Option<std::fs::File> {
+        use deno_runtime::deno_io::FromRawIoHandle;
+        match self {
+          // SAFETY: Assume valid file descriptor
+          FdOrPath::Fd(fd) => unsafe {
+            Some(std::fs::File::from_raw_io_handle(*fd as _))
+          },
+          FdOrPath::Path(path) => {
+            // todo(dsherret): use sys_traits here
+            #[allow(clippy::disallowed_methods)]
+            std::fs::OpenOptions::new().read(true).open(path).ok()
+          }
+        }
+      }
+    }
+
     use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-    let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
+    let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
     std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
-    let fd = fd.parse::<usize>().ok()?;
-    let mut file = {
-      use deno_runtime::deno_io::FromRawIoHandle;
-      unsafe { std::fs::File::from_raw_io_handle(fd as _) }
-    };
+    let fd_or_path = FdOrPath::parse(&fd_or_path)?;
+    let mut file = fd_or_path.open()?;
     let mut buf = Vec::new();
     // seek to beginning. after the file is written the position will be inherited by this subprocess,
     // and also this file might have been read before
@@ -181,7 +214,14 @@ pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
     file
       .read_to_end(&mut buf)
       .inspect_err(|e| {
-        log::error!("failed to read npm process state from fd {fd}: {e}");
+        log::error!(
+          "failed to read npm process state from {}: {}",
+          match fd_or_path {
+            FdOrPath::Fd(fd) => format!("fd {}", fd),
+            FdOrPath::Path(path) => path.display().to_string(),
+          },
+          e
+        );
       })
       .ok()?;
     let state: NpmProcessState = serde_json::from_slice(&buf)
@@ -214,7 +254,35 @@ pub struct UnstableConfig {
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
+  pub lazy_dynamic_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
+}
+
+impl UnstableConfig {
+  pub fn fill_with_env(&mut self) {
+    fn maybe_set(value: &mut bool, var_name: &str) {
+      if !*value && has_flag_env_var(var_name) {
+        *value = true;
+      }
+    }
+
+    maybe_set(
+      &mut self.bare_node_builtins,
+      UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
+    );
+    maybe_set(
+      &mut self.lazy_dynamic_imports,
+      UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
+    );
+    maybe_set(
+      &mut self.npm_lazy_caching,
+      UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
+    );
+    maybe_set(
+      &mut self.sloppy_imports,
+      UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
+    );
+  }
 }

@@ -35,17 +35,6 @@ export function once(callback) {
   };
 }
 
-export function createDeferredPromise() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
-}
-
 // In addition to being accessible through util.promisify.custom,
 // this symbol is registered globally and can be accessed in any environment as
 // Symbol.for('nodejs.util.promisify.custom').
@@ -175,7 +164,6 @@ promisify.custom = kCustomPromisifiedSymbol;
 
 export default {
   convertToValidSignal,
-  createDeferredPromise,
   customInspectSymbol,
   customPromisifyArgs,
   kEmptyObject,

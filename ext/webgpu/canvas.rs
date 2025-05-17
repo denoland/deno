@@ -1,6 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::device::GPUDevice;
+use crate::error::GPUError;
+use crate::texture::GPUTexture;
+use crate::texture::GPUTextureFormat;
+use crate::Instance;
 use deno_canvas::canvas::CanvasContext;
 use deno_canvas::image::DynamicImage;
 use deno_canvas::image::GenericImageView;
@@ -12,11 +17,6 @@ use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::Extent3d;
-use crate::device::GPUDevice;
-use crate::error::GPUError;
-use crate::texture::GPUTexture;
-use crate::texture::GPUTextureFormat;
-use crate::Instance;
 
 struct BackingTexture {
   texture: v8::Global<v8::Object>,
@@ -39,7 +39,11 @@ struct GPUCanvasContext {
   backing_buffer: RefCell<Option<BackingBuffer>>,
 }
 
-impl GarbageCollected for GPUCanvasContext {}
+impl GarbageCollected for GPUCanvasContext {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCanvasContext"
+  }
+}
 
 #[op2]
 impl GPUCanvasContext {
@@ -115,7 +119,9 @@ impl GPUCanvasContext {
         &texture_descriptor.size,
       )?;
 
-      self.backing_buffer.replace(Some(BackingBuffer { buffer, padding }));
+      self
+        .backing_buffer
+        .replace(Some(BackingBuffer { buffer, padding }));
 
       let texture = GPUTexture {
         instance: device.instance.clone(),
@@ -180,7 +186,8 @@ impl GPUCanvasContext {
 
   pub fn copy_image_contents_to_canvas_data(&self) {
     let configuration = self.configuration.borrow();
-    let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref() else {
+    let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
+    else {
       self.bitmap.replace_with(|image| {
         let (width, height) = image.dimensions();
         let image = deno_canvas::image::RgbaImage::new(width, height);
@@ -449,7 +456,6 @@ pub fn copy_texture_to_vec(
 
   Ok(data)
 }
-
 
 pub const CONTEXT_ID: &str = "webgpu";
 

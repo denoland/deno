@@ -65,7 +65,11 @@ pub type Instance = Arc<wgpu_core::global::Global>;
 deno_core::extension!(
   deno_webgpu,
   deps = [deno_webidl, deno_web],
-  ops = [op_create_gpu],
+  ops = [
+    op_create_gpu,
+    device::op_webgpu_device_start_capture,
+    device::op_webgpu_device_stop_capture,
+  ],
   objects = [
     GPU,
     adapter::GPUAdapter,
@@ -124,7 +128,11 @@ struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 
-impl GarbageCollected for GPU {}
+impl GarbageCollected for GPU {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPU"
+  }
+}
 
 #[op2]
 impl GPU {

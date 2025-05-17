@@ -13,7 +13,6 @@
 delete Object.prototype.__proto__;
 
 import {
-  AssertionError,
   debug,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
@@ -25,15 +24,6 @@ import { serverMainLoop } from "./98_lsp.js";
 /** @type {DenoCore} */
 const core = globalThis.Deno.core;
 const ops = core.ops;
-
-// The map from the normalized specifier to the original.
-// TypeScript normalizes the specifier in its internal processing,
-// but the original specifier is needed when looking up the source from the runtime.
-// This map stores that relationship, and the original can be restored by the
-// normalized specifier.
-// See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
-/** @type {Map<string, string>} */
-const normalizedToOriginalMap = new Map();
 
 /** @type {Array<[string, number]>} */
 const stats = [];
@@ -89,27 +79,6 @@ function performanceEnd() {
  * @property {boolean} localOnly
  */
 
-/**
- * Checks the normalized version of the root name and stores it in
- * `normalizedToOriginalMap`. If the normalized specifier is already
- * registered for the different root name, it throws an AssertionError.
- *
- * @param {string} rootName
- */
-function checkNormalizedPath(rootName) {
-  const normalized = ts.normalizePath(rootName);
-  const originalRootName = normalizedToOriginalMap.get(normalized);
-  if (typeof originalRootName === "undefined") {
-    normalizedToOriginalMap.set(normalized, rootName);
-  } else if (originalRootName !== rootName) {
-    // The different root names are normalizd to the same path.
-    // This will cause problem when looking up the source for each.
-    throw new AssertionError(
-      `The different names for the same normalized specifier are specified: normalized=${normalized}, rootNames=${originalRootName},${rootName}`,
-    );
-  }
-}
-
 /** @param {Record<string, unknown>} config */
 function normalizeConfig(config) {
   // the typescript compiler doesn't know about the precompile
@@ -134,8 +103,6 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
 
   debug(">>> exec start", { rootNames });
   debug(config);
-
-  rootNames.forEach(checkNormalizedPath);
 
   const { options, errors: configFileParsingDiagnostics } = ts
     .convertCompilerOptionsFromJson(config, "");
@@ -204,8 +171,10 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
 
   performanceProgram({ program });
 
+  const checker = program.getProgram().getTypeChecker();
   ops.op_respond({
     diagnostics: fromTypeScriptDiagnostics(diagnostics),
+    ambientModules: checker.getAmbientModules().map((symbol) => symbol.name),
     stats: performanceEnd(),
   });
   debug("<<< exec stop");

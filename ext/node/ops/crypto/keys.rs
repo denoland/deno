@@ -62,7 +62,11 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
-impl GarbageCollected for KeyObjectHandle {}
+impl GarbageCollected for KeyObjectHandle {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandle"
+  }
+}
 
 #[derive(Clone)]
 pub enum AsymmetricPrivateKey {
@@ -340,7 +344,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>> for RsaPssParameters<'a> {
 
   fn try_from(
     any: rsa::pkcs8::der::asn1::AnyRef<'a>,
-  ) -> rsa::pkcs8::der::Result<RsaPssParameters> {
+  ) -> rsa::pkcs8::der::Result<RsaPssParameters<'a>> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder
         .context_specific::<rsa::pkcs8::AlgorithmIdentifierRef>(
@@ -1916,7 +1920,11 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
-impl GarbageCollected for KeyObjectHandlePair {}
+impl GarbageCollected for KeyObjectHandlePair {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"KeyObjectHandlePair"
+  }
+}
 
 impl KeyObjectHandlePair {
   pub fn new(

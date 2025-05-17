@@ -3,11 +3,11 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Rc;
+use std::rc::Weak;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
-use libsqlite3_sys as ffi;
+use rusqlite::ffi;
 use serde::Deserialize;
 
 use super::SqliteError;
@@ -23,11 +23,15 @@ pub struct Session {
   pub(crate) inner: *mut ffi::sqlite3_session,
   pub(crate) freed: Cell<bool>,
 
-  // Hold a strong reference to the database.
-  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // Hold a weak reference to the database.
+  pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {}
+impl GarbageCollected for Session {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Session"
+  }
+}
 
 impl Drop for Session {
   fn drop(&mut self) {
@@ -38,7 +42,11 @@ impl Drop for Session {
 impl Session {
   fn delete(&self) -> Result<(), SqliteError> {
     if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::SessionClosed.to_string(),
+        None,
+      );
     }
 
     self.freed.set(true);
@@ -57,8 +65,20 @@ impl Session {
   // Closes the session.
   #[fast]
   fn close(&self) -> Result<(), SqliteError> {
-    if self.db.borrow().is_none() {
-      return Err(SqliteError::AlreadyClosed);
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<()>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      );
     }
 
     self.delete()
@@ -70,11 +90,27 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
-      return Err(SqliteError::AlreadyClosed);
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<Box<[u8]>>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      );
     }
     if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::SessionClosed.to_string(),
+        None,
+      );
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_changeset)
@@ -85,11 +121,27 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
-      return Err(SqliteError::AlreadyClosed);
+    let db_rc = self.db.upgrade().ok_or_else(|| {
+      SqliteError::create_enhanced_error::<Box<[u8]>>(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      )
+      .unwrap_err()
+    })?;
+    if db_rc.borrow().is_none() {
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::AlreadyClosed.to_string(),
+        None,
+      );
     }
     if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISUSE,
+        &SqliteError::SessionClosed.to_string(),
+        None,
+      );
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_patchset)
@@ -111,7 +163,11 @@ fn session_buffer_op(
   // by sqlite3 and will be freed later.
   let r = unsafe { f(s, &mut n_buffer, &mut p_buffer) };
   if r != ffi::SQLITE_OK {
-    return Err(SqliteError::SessionChangesetFailed);
+    return SqliteError::create_enhanced_error(
+      r,
+      &SqliteError::SessionChangesetFailed.to_string(),
+      None,
+    );
   }
 
   if n_buffer == 0 {

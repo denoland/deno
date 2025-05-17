@@ -1,13 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-
 pub mod bitmaprenderer;
 pub mod canvas;
 mod image_ops;
 mod op_create_image_bitmap;
-
 pub use image;
 use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
@@ -60,7 +57,3 @@ deno_core::extension!(
   },
 
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_canvas.d.ts")
-}

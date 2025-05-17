@@ -1,7 +1,3 @@
-use std::cell::OnceCell;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
@@ -13,6 +9,10 @@ use deno_error::JsErrorBox;
 use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
+use std::cell::OnceCell;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::op_create_image_bitmap::ImageBitmap;
 
@@ -35,7 +35,11 @@ pub struct OffscreenCanvas {
   active_context: OnceCell<(String, Box<dyn CanvasContext>)>,
 }
 
-impl GarbageCollected for OffscreenCanvas {}
+impl GarbageCollected for OffscreenCanvas {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OffscreenCanvas"
+  }
+}
 
 #[op2]
 impl OffscreenCanvas {
@@ -112,7 +116,6 @@ impl OffscreenCanvas {
 
       let _ = self.active_context.set((
         name.clone(),
-        
         create_context(
           this,
           self.data.clone(),

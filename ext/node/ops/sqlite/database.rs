@@ -15,12 +15,17 @@ use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
+use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
+use crate::ops::sqlite::SqliteResultExt;
+const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
+const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,10 +35,16 @@ struct DatabaseSyncOptions {
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
   read_only: bool,
+  #[serde(default = "false_fn")]
+  allow_extension: bool,
 }
 
 fn true_fn() -> bool {
   true
+}
+
+fn false_fn() -> bool {
+  false
 }
 
 impl Default for DatabaseSyncOptions {
@@ -42,6 +53,7 @@ impl Default for DatabaseSyncOptions {
       open: true,
       enable_foreign_key_constraints: true,
       read_only: false,
+      allow_extension: false,
     }
   }
 }
@@ -55,37 +67,114 @@ struct ApplyChangesetOptions<'a> {
 
 pub struct DatabaseSync {
   conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
   options: DatabaseSyncOptions,
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {}
+impl GarbageCollected for DatabaseSync {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DatabaseSync"
+  }
+}
+
+fn set_db_config(
+  conn: &rusqlite::Connection,
+  config: i32,
+  value: bool,
+) -> bool {
+  // SAFETY: call to sqlite3_db_config is safe because the connection
+  // handle is valid and the parameters are correct.
+  unsafe {
+    let mut set = 0;
+    let r = libsqlite3_sys::sqlite3_db_config(
+      conn.handle(),
+      config,
+      value as i32,
+      &mut set,
+    );
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      panic!("Failed to set db config");
+    }
+
+    set == value as i32
+  }
+}
 
 fn open_db(
   state: &mut OpState,
   readonly: bool,
   location: &str,
+  allow_extension: bool,
 ) -> Result<rusqlite::Connection, SqliteError> {
+  let perms = state.borrow::<PermissionsContainer>();
   if location == ":memory:" {
-    return Ok(rusqlite::Connection::open_in_memory()?);
+    let conn = rusqlite::Connection::open_in_memory()?;
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+
+    if allow_extension {
+      perms.check_ffi_all()?;
+    } else {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+        false
+      ));
+    }
+
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    return Ok(conn);
   }
 
-  state
-    .borrow::<PermissionsContainer>()
-    .check_read_with_api_name(location, Some("node:sqlite"))?;
+  perms.check_read_with_api_name(location, Some("node:sqlite"))?;
 
   if readonly {
-    return Ok(rusqlite::Connection::open_with_flags(
+    let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
+    )?;
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+
+    if allow_extension {
+      perms.check_ffi_all()?;
+    } else {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+        false
+      ));
+    }
+
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    return Ok(conn);
   }
 
-  state
-    .borrow::<PermissionsContainer>()
-    .check_write_with_api_name(location, Some("node:sqlite"))?;
+  perms.check_write_with_api_name(location, Some("node:sqlite"))?;
 
-  Ok(rusqlite::Connection::open(location)?)
+  let conn = rusqlite::Connection::open(location)?;
+
+  if allow_extension {
+    perms.check_ffi_all()?;
+  } else {
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
+  }
+
+  conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+
+  Ok(conn)
 }
 
 // Represents a single connection to a SQLite database.
@@ -107,10 +196,12 @@ impl DatabaseSync {
     let options = options.unwrap_or_default();
 
     let db = if options.open {
-      let db = open_db(state, options.read_only, &location)?;
+      let db =
+        open_db(state, options.read_only, &location, options.allow_extension)?;
 
       if options.enable_foreign_key_constraints {
-        db.execute("PRAGMA foreign_keys = ON", [])?;
+        db.execute("PRAGMA foreign_keys = ON", [])
+          .with_enhanced_errors(&db)?;
       }
       Some(db)
     } else {
@@ -119,6 +210,7 @@ impl DatabaseSync {
 
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
+      statements: Rc::new(RefCell::new(Vec::new())),
       location,
       options,
     })
@@ -135,9 +227,15 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(state, self.options.read_only, &self.location)?;
+    let db = open_db(
+      state,
+      self.options.read_only,
+      &self.location,
+      self.options.allow_extension,
+    )?;
     if self.options.enable_foreign_key_constraints {
-      db.execute("PRAGMA foreign_keys = ON", [])?;
+      db.execute("PRAGMA foreign_keys = ON", [])
+        .with_enhanced_errors(&db)?;
     }
 
     *self.conn.borrow_mut() = Some(db);
@@ -153,7 +251,18 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyClosed);
     }
 
-    *self.conn.borrow_mut() = None;
+    // Finalize all prepared statements
+    for stmt in self.statements.borrow_mut().drain(..) {
+      if !stmt.is_null() {
+        // SAFETY: `stmt` is a valid statement handle.
+        unsafe {
+          libsqlite3_sys::sqlite3_finalize(stmt);
+        }
+      }
+    }
+
+    let _ = self.conn.borrow_mut().take();
+
     Ok(())
   }
 
@@ -166,7 +275,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    db.execute_batch(sql)?;
+    db.execute_batch(sql).with_enhanced_errors(db)?;
 
     Ok(())
   }
@@ -201,10 +310,15 @@ impl DatabaseSync {
       return Err(SqliteError::PrepareFailed);
     }
 
+    self.statements.borrow_mut().push(raw_stmt);
+
     Ok(StatementSync {
       inner: raw_stmt,
-      db: self.conn.clone(),
+      db: Rc::downgrade(&self.conn),
+      statements: Rc::clone(&self.statements),
       use_big_ints: Cell::new(false),
+      allow_bare_named_params: Cell::new(true),
+      is_iter_finished: false,
     })
   }
 
@@ -321,6 +435,80 @@ impl DatabaseSync {
     }
   }
 
+  // Loads a SQLite extension.
+  //
+  // This is a wrapper around `sqlite3_load_extension`. It requires FFI permission
+  // to be granted and allowExtension must be set to true when opening the database.
+  fn load_extension(
+    &self,
+    state: &mut OpState,
+    #[string] path: &str,
+    #[string] entry_point: Option<String>,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    if !self.options.allow_extension {
+      return Err(SqliteError::create_error(
+        "Cannot load SQLite extensions when allowExtension is not enabled",
+        "ERR_LOAD_SQLITE_EXTENSION",
+      ));
+    }
+
+    state.borrow::<PermissionsContainer>().check_ffi_all()?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+
+    let path_cstring = std::ffi::CString::new(path.as_bytes())?;
+    let entry_point_cstring =
+      entry_point.map(|ep| std::ffi::CString::new(ep).unwrap_or_default());
+
+    let entry_point_ptr = match &entry_point_cstring {
+      Some(cstr) => cstr.as_ptr(),
+      None => std::ptr::null(),
+    };
+
+    let mut err_msg: *mut c_char = std::ptr::null_mut();
+
+    // SAFETY: Using sqlite3_load_extension with proper error handling
+    let result = unsafe {
+      let res = libsqlite3_sys::sqlite3_load_extension(
+        raw_handle,
+        path_cstring.as_ptr(),
+        entry_point_ptr,
+        &mut err_msg,
+      );
+
+      if res != libsqlite3_sys::SQLITE_OK {
+        let error_message = if !err_msg.is_null() {
+          let c_str = std::ffi::CStr::from_ptr(err_msg);
+          let message = c_str.to_string_lossy().into_owned();
+          libsqlite3_sys::sqlite3_free(err_msg as *mut _);
+          message
+        } else {
+          format!("Failed to load extension with error code: {}", res)
+        };
+
+        return Err(SqliteError::create_error(
+          &error_message,
+          "ERR_LOAD_SQLITE_EXTENSION",
+        ));
+      }
+
+      res
+    };
+
+    if result == libsqlite3_sys::SQLITE_OK {
+      Ok(())
+    } else {
+      Err(SqliteError::create_error(
+        "Unknown error loading SQLite extension",
+        "ERR_LOAD_SQLITE_EXTENSION",
+      ))
+    }
+  }
+
   // Creates and attaches a session to the database.
   //
   // This method is a wrapper around `sqlite3session_create()` and
@@ -375,7 +563,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: self.conn.clone(),
+      db: Rc::downgrade(&self.conn),
     })
   }
 }

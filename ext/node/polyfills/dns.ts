@@ -93,24 +93,30 @@ import {
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
   err: number | null,
   addresses: string[],
+  netPermToken: object | undefined,
 ) {
   if (err) {
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
   }
 
-  this.callback(null, addresses[0], this.family || isIP(addresses[0]));
+  this.callback(
+    null,
+    addresses[0],
+    this.family || isIP(addresses[0]),
+    netPermToken,
+  );
 }
 
 function onlookupall(
   this: GetAddrInfoReqWrap,
   err: number | null,
   addresses: string[],
+  netPermToken: object | undefined,
 ) {
   if (err) {
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
@@ -127,7 +133,11 @@ function onlookupall(
     };
   }
 
-  this.callback(null, parsedAddresses);
+  if (this.callback.length > 1) {
+    this.callback(null, parsedAddresses, undefined, netPermToken);
+  } else {
+    this.callback(null, parsedAddresses);
+  }
 }
 
 type LookupCallback = (
@@ -189,6 +199,7 @@ export function lookup(
   let family = 0;
   let all = false;
   let verbatim = getDefaultVerbatim();
+  let port = undefined;
 
   // Parse arguments
   if (hostname) {
@@ -230,6 +241,11 @@ export function lookup(
       validateBoolean(options.verbatim, "options.verbatim");
       verbatim = options.verbatim;
     }
+
+    if (options?.port != null) {
+      validateNumber(options.port, "options.port");
+      port = options.port;
+    }
   }
 
   if (!hostname) {
@@ -263,6 +279,7 @@ export function lookup(
   req.family = family;
   req.hostname = hostname;
   req.oncomplete = all ? onlookupall : onlookup;
+  req.port = port;
 
   const err = getaddrinfo(
     req,
@@ -331,11 +348,6 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
     req.callback = callback as ResolveCallback;
     req.hostname = name;
     req.oncomplete = onresolve;
-
-    if (options && (options as ResolveOptions).ttl) {
-      notImplemented("dns.resolve* with ttl option");
-    }
-
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
     const err = this._handle[bindingName](req, domainToASCII(name));

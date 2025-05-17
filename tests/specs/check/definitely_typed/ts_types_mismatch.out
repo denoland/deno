@@ -1,0 +1,7 @@
+Check [WILDCARD]ts_types.ts
+TS2322 [ERROR]: Type 'string' is not assignable to type 'boolean'.
+const _res: boolean = foo(1, 2);
+      ~~~~
+    at [WILDCARD]ts_types.ts:4:7
+
+error: Type checking failed.

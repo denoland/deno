@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -30,6 +29,7 @@ use super::definitions::TestModule;
 use super::lsp_custom;
 use super::server::TestServerTests;
 use crate::args::flags_from_vec;
+use crate::args::parallelism_count;
 use crate::args::DenoSubcommand;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
@@ -235,16 +235,16 @@ impl TestRun {
     )?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
-      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .check_specifiers(
+        &self.queue.iter().cloned().collect::<Vec<_>>(),
+        Default::default(),
+      )
       .await?;
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
         (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
+          parallelism_count(test_flags.parallel).into(),
           test_flags.fail_fast,
         )
       } else {

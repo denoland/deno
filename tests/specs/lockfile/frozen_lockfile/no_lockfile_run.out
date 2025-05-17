@@ -3,14 +3,15 @@ error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun 
 changes:
  1 | -
  1 | +{
- 2 | +  "version": "4",
+ 2 | +  "version": "5",
  3 | +  "specifiers": {
  4 | +    "npm:@denotest/add@1": "1.0.0"
  5 | +  },
  6 | +  "npm": {
  7 | +    "@denotest/add@1.0.0": {
- 8 | +      "integrity": "[WILDCARD]"
- 9 | +    }
-10 | +  }
-11 | +}
-12 | +
+ 8 | +      "integrity": "[WILDCARD]",
+ 9 | +      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+10 | +    }
+11 | +  }
+12 | +}
+13 | +

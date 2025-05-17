@@ -66,7 +66,11 @@ impl WebIdlInterfaceConverter for GPUTexture {
   const NAME: &'static str = "GPUTexture";
 }
 
-impl GarbageCollected for GPUTexture {}
+impl GarbageCollected for GPUTexture {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUTexture"
+  }
+}
 
 #[op2]
 impl GPUTexture {
@@ -249,7 +253,11 @@ impl WebIdlInterfaceConverter for GPUTextureView {
   const NAME: &'static str = "GPUTextureView";
 }
 
-impl GarbageCollected for GPUTextureView {}
+impl GarbageCollected for GPUTextureView {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUTextureView"
+  }
+}
 // TODO(@crowlKats): weakref in texture for view
 
 #[op2]

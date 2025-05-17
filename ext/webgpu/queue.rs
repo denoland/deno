@@ -30,7 +30,11 @@ impl Drop for GPUQueue {
   }
 }
 
-impl GarbageCollected for GPUQueue {}
+impl GarbageCollected for GPUQueue {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUQueue"
+  }
+}
 
 #[op2]
 impl GPUQueue {

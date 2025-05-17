@@ -45,7 +45,11 @@ pub struct GPUCanvasContext {
   pub canvas: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for GPUCanvasContext {}
+impl GarbageCollected for GPUCanvasContext {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCanvasContext"
+  }
+}
 
 #[op2]
 impl GPUCanvasContext {
@@ -165,6 +169,9 @@ impl GPUCanvasContext {
     };
 
     config.device.instance.surface_present(self.surface_id)?;
+
+    // next `get_current_texture` call would get a new texture
+    *self.texture.borrow_mut() = None;
 
     Ok(())
   }

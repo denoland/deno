@@ -52,10 +52,6 @@ deno_core::extension!(deno_webstorage,
   },
 );
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
-}
-
 struct LocalStorage(Connection);
 struct SessionStorage(Connection);
 
@@ -124,7 +120,11 @@ struct Storage {
   persistent: bool,
 }
 
-impl GarbageCollected for Storage {}
+impl GarbageCollected for Storage {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Storage"
+  }
+}
 
 #[op2]
 impl Storage {

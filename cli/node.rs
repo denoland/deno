@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_ast::ModuleExportsAndReExports;
 use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::ParsedSourceStore;
@@ -12,6 +13,8 @@ use deno_runtime::deno_fs;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
+use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use serde::Deserialize;
@@ -24,6 +27,13 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 
+pub type CliCjsModuleExportAnalyzer = CjsModuleExportAnalyzer<
+  CliCjsCodeAnalyzer,
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
@@ -42,11 +52,11 @@ pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 pub enum CliCjsAnalysis {
   /// The module was found to be an ES module.
   Esm,
+  /// The module was found to be an ES module and
+  /// it was analyzed for imports and exports.
+  EsmAnalysis(ModuleExportsAndReExports),
   /// The module was CJS.
-  Cjs {
-    exports: Vec<String>,
-    reexports: Vec<String>,
-  },
+  Cjs(ModuleExportsAndReExports),
 }
 
 pub struct CliCjsCodeAnalyzer {
@@ -75,7 +85,9 @@ impl CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
+    esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CliCjsAnalysis, JsErrorBox> {
+    let source = source.strip_prefix('\u{FEFF}').unwrap_or(source); // strip BOM
     let source_hash = CacheDBHash::from_hashable(source);
     if let Some(analysis) =
       self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
@@ -85,17 +97,16 @@ impl CliCjsCodeAnalyzer {
 
     let media_type = MediaType::from_specifier(specifier);
     if media_type == MediaType::Json {
-      return Ok(CliCjsAnalysis::Cjs {
-        exports: vec![],
-        reexports: vec![],
-      });
+      return Ok(CliCjsAnalysis::Cjs(Default::default()));
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
     let is_maybe_cjs = cjs_tracker
       .is_maybe_cjs(specifier, media_type)
       .map_err(JsErrorBox::from_err)?;
-    let analysis = if is_maybe_cjs {
+    let analysis = if is_maybe_cjs
+      || esm_analysis_mode == EsmAnalysisMode::SourceImportsAndExports
+    {
       let maybe_parsed_source = self
         .parsed_source_cache
         .as_ref()
@@ -118,22 +129,27 @@ impl CliCjsCodeAnalyzer {
               })
             })
             .map_err(JsErrorBox::from_err)?;
-          let is_script = parsed_source.compute_is_script();
-          let is_cjs = cjs_tracker
-            .is_cjs_with_known_is_script(
-              parsed_source.specifier(),
-              media_type,
-              is_script,
-            )
-            .map_err(JsErrorBox::from_err)?;
+          let is_script = is_maybe_cjs && parsed_source.compute_is_script();
+          let is_cjs = is_maybe_cjs
+            && cjs_tracker
+              .is_cjs_with_known_is_script(
+                parsed_source.specifier(),
+                media_type,
+                is_script,
+              )
+              .map_err(JsErrorBox::from_err)?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
-            Ok(CliCjsAnalysis::Cjs {
-              exports: analysis.exports,
-              reexports: analysis.reexports,
-            })
+            Ok(CliCjsAnalysis::Cjs(analysis))
           } else {
-            Ok(CliCjsAnalysis::Esm)
+            match esm_analysis_mode {
+              EsmAnalysisMode::SourceOnly => Ok(CliCjsAnalysis::Esm),
+              EsmAnalysisMode::SourceImportsAndExports => {
+                Ok(CliCjsAnalysis::EsmAnalysis(
+                  parsed_source.analyze_es_runtime_exports(),
+                ))
+              }
+            }
           }
         }
       })
@@ -157,6 +173,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
+    esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
@@ -180,13 +197,22 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
         }
       }
     };
-    let analysis = self.inner_cjs_analysis(specifier, &source).await?;
+    let analysis = self
+      .inner_cjs_analysis(specifier, &source, esm_analysis_mode)
+      .await?;
     match analysis {
-      CliCjsAnalysis::Esm => Ok(ExtNodeCjsAnalysis::Esm(source)),
-      CliCjsAnalysis::Cjs { exports, reexports } => {
+      CliCjsAnalysis::Esm => Ok(ExtNodeCjsAnalysis::Esm(source, None)),
+      CliCjsAnalysis::EsmAnalysis(analysis) => Ok(ExtNodeCjsAnalysis::Esm(
+        source,
+        Some(CjsAnalysisExports {
+          exports: analysis.exports,
+          reexports: analysis.reexports,
+        }),
+      )),
+      CliCjsAnalysis::Cjs(analysis) => {
         Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-          exports,
-          reexports,
+          exports: analysis.exports,
+          reexports: analysis.reexports,
         }))
       }
     }

@@ -14,7 +14,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 
-use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsInstaller;
 use super::PackageCaching;
 use crate::args::LifecycleScriptsConfig;
@@ -23,13 +22,24 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug)]
 pub struct GlobalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
+}
+
+impl std::fmt::Debug for GlobalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("GlobalNpmPackageInstaller")
+      .field("cache", &self.cache)
+      .field("tarball_cache", &self.tarball_cache)
+      .field("resolution", &self.resolution)
+      .field("lifecycle_scripts", &self.lifecycle_scripts)
+      .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl GlobalNpmPackageInstaller {
@@ -80,11 +90,25 @@ impl NpmPackageFsInstaller for GlobalNpmPackageInstaller {
     let mut lifecycle_scripts =
       super::common::lifecycle_scripts::LifecycleScripts::new(
         &self.lifecycle_scripts,
-        GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.root_dir),
+        GlobalLifecycleScripts::new(
+          self.cache.as_ref(),
+          &self.lifecycle_scripts.root_dir,
+        ),
       );
+
+    // For the global cache, we don't run scripts so we just care that there _are_
+    // scripts. Kind of hacky, but avoids fetching the "extra" info from the registry.
+    let extra = deno_npm::NpmPackageExtraInfo {
+      deprecated: None,
+      bin: None,
+      scripts: [("postinstall".into(), "".into())].into_iter().collect(),
+    };
+
     for package in &package_partitions.packages {
-      let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
+      if package.has_scripts {
+        let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
+        lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
+      }
     }
 
     lifecycle_scripts
@@ -101,11 +125,11 @@ async fn cache_packages(
 ) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
+    if let Some(dist) = &package.dist {
+      futures_unordered.push(async move {
+        tarball_cache.ensure_package(&package.id.nv, dist).await
+      });
+    }
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error
@@ -115,36 +139,31 @@ async fn cache_packages(
 }
 
 struct GlobalLifecycleScripts<'a> {
-  installer: &'a GlobalNpmPackageInstaller,
+  cache: &'a CliNpmCache,
   path_hash: u64,
 }
 
 impl<'a> GlobalLifecycleScripts<'a> {
-  fn new(installer: &'a GlobalNpmPackageInstaller, root_dir: &Path) -> Self {
+  fn new(cache: &'a CliNpmCache, root_dir: &Path) -> Self {
     let mut hasher = FastInsecureHasher::new_without_deno_version();
     hasher.write(root_dir.to_string_lossy().as_bytes());
     let path_hash = hasher.finish();
-    Self {
-      installer,
-      path_hash,
-    }
+    Self { cache, path_hash }
   }
 
   fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
     self
-      .package_path(package)
+      .cache
+      .package_folder_for_nv(&package.id.nv)
       .join(format!(".scripts-warned-{}", self.path_hash))
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for GlobalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for GlobalLifecycleScripts<'_>
 {
   fn can_run_scripts(&self) -> bool {
     false
-  }
-  fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
-    self.installer.cache.package_folder_for_nv(&package.id.nv)
   }
 
   fn warn_on_scripts_not_run(
@@ -170,13 +189,6 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
     for (package, _) in packages {
       std::fs::write(self.warned_scripts_file(package), "")?;
     }
-    Ok(())
-  }
-
-  fn did_run_scripts(
-    &self,
-    _package: &NpmResolutionPackage,
-  ) -> Result<(), std::io::Error> {
     Ok(())
   }
 

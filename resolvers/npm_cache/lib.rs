@@ -10,21 +10,20 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
-use http::HeaderName;
-use http::HeaderValue;
-use http::StatusCode;
 use parking_lot::Mutex;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsReadDir;
+use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::SystemRandom;
@@ -34,22 +33,29 @@ use url::Url;
 mod fs_util;
 mod registry_info;
 mod remote;
+mod rt;
 mod tarball;
 mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
+pub use fs_util::hard_link_file;
+pub use fs_util::HardLinkDirRecursiveError;
+pub use fs_util::HardLinkFileError;
 // todo(#27198): make both of these private and get the rest of the code
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
 pub use registry_info::RegistryInfoProvider;
-pub use remote::maybe_auth_header_for_npm_registry;
+pub use registry_info::SerializedCachedPackageInfo;
+pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
+
+use self::rt::spawn_blocking;
 
 #[derive(Debug, deno_error::JsError)]
 #[class(generic)]
 pub struct DownloadError {
-  pub status_code: Option<StatusCode>,
+  pub status_code: Option<u16>,
   pub error: JsErrorBox,
 }
 
@@ -65,13 +71,25 @@ impl std::fmt::Display for DownloadError {
   }
 }
 
+pub enum NpmCacheHttpClientResponse {
+  NotFound,
+  NotModified,
+  Bytes(NpmCacheHttpClientBytesResponse),
+}
+
+pub struct NpmCacheHttpClientBytesResponse {
+  pub bytes: Vec<u8>,
+  pub etag: Option<String>,
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait NpmCacheHttpClient: Send + Sync + 'static {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
-    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<Option<Vec<u8>>, DownloadError>;
+    maybe_auth: Option<String>,
+    maybe_etag: Option<String>,
+  ) -> Result<NpmCacheHttpClientResponse, DownloadError>;
 }
 
 /// Indicates how cached source files should be handled.
@@ -124,19 +142,49 @@ impl NpmCacheSetting {
   }
 }
 
-/// Stores a single copy of npm packages in a cache.
-#[derive(Debug)]
-pub struct NpmCache<
-  TSys: FsCreateDirAll
+pub trait NpmCacheSys:
+  FsCanonicalize
+  + FsCreateDirAll
+  + FsHardLink
+  + FsMetadata
+  + FsOpen
+  + FsRead
+  + FsReadDir
+  + FsRemoveDirAll
+  + FsRemoveFile
+  + FsRename
+  + ThreadSleep
+  + SystemRandom
+  + Send
+  + Sync
+  + Clone
+  + 'static
+{
+}
+
+impl<T> NpmCacheSys for T where
+  T: FsCanonicalize
+    + FsCreateDirAll
     + FsHardLink
     + FsMetadata
     + FsOpen
+    + FsRead
     + FsReadDir
+    + FsRemoveDirAll
     + FsRemoveFile
     + FsRename
     + ThreadSleep
-    + SystemRandom,
-> {
+    + SystemRandom
+    + Send
+    + Sync
+    + Clone
+    + 'static
+{
+}
+
+/// Stores a single copy of npm packages in a cache.
+#[derive(Debug)]
+pub struct NpmCache<TSys: NpmCacheSys> {
   cache_dir: Arc<NpmCacheDir>,
   sys: TSys,
   cache_setting: NpmCacheSetting,
@@ -144,18 +192,7 @@ pub struct NpmCache<
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom,
-  > NpmCache<TSys>
-{
+impl<TSys: NpmCacheSys> NpmCache<TSys> {
   pub fn new(
     cache_dir: Arc<NpmCacheDir>,
     sys: TSys,
@@ -213,10 +250,10 @@ impl<
       registry_url,
     );
 
-    if package_folder.exists()
+    if self.sys.fs_exists_no_err(&package_folder)
       // if this file exists, then the package didn't successfully initialize
       // the first time, or another process is currently extracting the zip file
-      && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && !self.sys.fs_exists_no_err(package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME))
       && self.cache_setting.should_use_for_npm_package(&folder_id.nv.name)
     {
       return Ok(());
@@ -231,7 +268,7 @@ impl<
 
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
-    with_folder_sync_lock(&folder_id.nv, &package_folder, || {
+    with_folder_sync_lock(&self.sys, &folder_id.nv, &package_folder, || {
       hard_link_dir_recursive(
         &self.sys,
         &original_package_folder,
@@ -293,24 +330,27 @@ impl<
       })
   }
 
-  pub fn load_package_info(
+  pub async fn load_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, serde_json::Error> {
+  ) -> Result<Option<SerializedCachedPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
-    let file_text = match std::fs::read_to_string(file_cache_path) {
+    let file_bytes = match self.sys.fs_read(&file_cache_path) {
       Ok(file_text) => file_text,
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(serde_json::Error::io(err)),
     };
-    serde_json::from_str(&file_text)
+
+    spawn_blocking(move || serde_json::from_slice(&file_bytes))
+      .await
+      .unwrap()
   }
 
   pub fn save_package_info(
     &self,
     name: &str,
-    package_info: &NpmPackageInfo,
+    package_info: &SerializedCachedPackageInfo,
   ) -> Result<(), JsErrorBox> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text =
@@ -364,17 +404,18 @@ pub enum WithFolderSyncLockError {
   },
 }
 
-// todo(dsherret): use `sys` here instead of `std::fs`.
 fn with_folder_sync_lock(
+  sys: &(impl FsCreateDirAll + FsOpen + FsRemoveDirAll + FsRemoveFile),
   package: &PackageNv,
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), JsErrorBox>,
 ) -> Result<(), WithFolderSyncLockError> {
   fn inner(
+    sys: &(impl FsCreateDirAll + FsOpen + FsRemoveFile),
     output_folder: &Path,
     action: impl FnOnce() -> Result<(), JsErrorBox>,
   ) -> Result<(), WithFolderSyncLockError> {
-    std::fs::create_dir_all(output_folder).map_err(|source| {
+    sys.fs_create_dir_all(output_folder).map_err(|source| {
       WithFolderSyncLockError::CreateDir {
         path: output_folder.to_path_buf(),
         source,
@@ -390,16 +431,15 @@ fn with_folder_sync_lock(
     // then wait until the other process finishes with a timeout), but
     // for now this is good enough.
     let sync_lock_path = output_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME);
-    match std::fs::OpenOptions::new()
-      .write(true)
-      .create(true)
-      .truncate(false)
-      .open(&sync_lock_path)
-    {
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.write = true;
+    open_options.create = true;
+    open_options.truncate = false;
+    match sys.fs_open(&sync_lock_path, &open_options) {
       Ok(_) => {
         action()?;
         // extraction succeeded, so only now delete this file
-        let _ignore = std::fs::remove_file(&sync_lock_path);
+        let _ignore = sys.fs_remove_file(&sync_lock_path);
         Ok(())
       }
       Err(err) => Err(WithFolderSyncLockError::CreateLockFile {
@@ -409,10 +449,10 @@ fn with_folder_sync_lock(
     }
   }
 
-  match inner(output_folder, action) {
+  match inner(sys, output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = std::fs::remove_dir_all(output_folder) {
+      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
             package: Box::new(package.clone()),

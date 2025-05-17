@@ -22,6 +22,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::OnceCell;
 
+use crate::sys::CliSys;
 use crate::util::collections::FolderScopedMap;
 
 pub fn import_map_deps(
@@ -185,9 +186,10 @@ impl TsConfigFolderInfo {
     };
 
     cell.get_or_try_init(|| {
-      let tsconfig_result = self
-        .dir
-        .to_resolved_ts_config(TsConfigType::Check { lib })?;
+      let tsconfig_result = self.dir.to_resolved_ts_config(
+        &CliSys::default(),
+        TsConfigType::Check { lib },
+      )?;
       check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
       Ok(Arc::new(tsconfig_result.ts_config))
     })
@@ -197,8 +199,9 @@ impl TsConfigFolderInfo {
     &self,
   ) -> Result<&Arc<TsConfig>, CompilerOptionsParseError> {
     self.memoized.emit_tsconfig.get_or_try_init(|| {
-      let tsconfig_result =
-        self.dir.to_resolved_ts_config(TsConfigType::Emit)?;
+      let tsconfig_result = self
+        .dir
+        .to_resolved_ts_config(&CliSys::default(), TsConfigType::Emit)?;
       check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
       Ok(Arc::new(tsconfig_result.ts_config))
     })

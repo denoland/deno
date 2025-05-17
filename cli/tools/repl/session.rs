@@ -5,9 +5,9 @@ use std::sync::Arc;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -45,6 +45,7 @@ use tokio::sync::Mutex;
 use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
+use crate::cdp::RemoteObjectId;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::installer::NpmInstaller;
@@ -82,67 +83,54 @@ fn comment_source_to_position_range(
   }
 }
 
-/// We store functions used in the repl on this object because
-/// the user might modify the `Deno` global or delete it outright.
-pub static REPL_INTERNALS_NAME: Lazy<String> = Lazy::new(|| {
-  let now = std::time::SystemTime::now();
-  let seconds = now
-    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-    .unwrap()
-    .as_secs();
-  // use a changing variable name to make it hard to depend on this
-  format!("__DENO_REPL_INTERNALS_{seconds}__")
-});
-
 fn get_prelude() -> String {
-  format!(
-    r#"
-Object.defineProperty(globalThis, "{0}", {{
-  enumerable: false,
-  writable: false,
-  value: {{
-    lastEvalResult: undefined,
-    lastThrownError: undefined,
-    inspectArgs: Deno[Deno.internal].inspectArgs,
-    noColor: Deno.noColor,
-    get closed() {{
-      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-    }}
-  }},
-}});
-Object.defineProperty(globalThis, "_", {{
-  configurable: true,
-  get: () => {0}.lastEvalResult,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
-   console.log("Last evaluation result is no longer saved to _.");
-  }},
-}});
+  r#"(() => {
+  const repl_internal = {
+      lastEvalResult: undefined,
+      lastThrownError: undefined,
+      inspectArgs: Deno[Deno.internal].inspectArgs,
+      noColor: Deno.noColor,
+      get closed() {
+        try {
+          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+        } catch {
+          return false;
+        }
+      }
+    }
+  Object.defineProperty(globalThis, "_", {
+    configurable: true,
+    get: () => repl_internal.lastEvalResult,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
+     console.log("Last evaluation result is no longer saved to _.");
+    },
+  });
 
-Object.defineProperty(globalThis, "_error", {{
-  configurable: true,
-  get: () => {0}.lastThrownError,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_error", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
+  Object.defineProperty(globalThis, "_error", {
+    configurable: true,
+    get: () => repl_internal.lastThrownError,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_error", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
 
-   console.log("Last thrown error is no longer saved to _error.");
-  }},
-}});
+     console.log("Last thrown error is no longer saved to _error.");
+    },
+  });
 
-globalThis.clear = console.clear.bind(console);
-"#,
-    *REPL_INTERNALS_NAME
-  )
+  globalThis.clear = console.clear.bind(console);
+
+  return repl_internal
+})()"#.to_string()
 }
 
 pub enum EvaluationOutput {
@@ -183,6 +171,7 @@ struct ReplJsxState {
 }
 
 pub struct ReplSession {
+  internal_object_id: Option<RemoteObjectId>,
   npm_installer: Option<Arc<NpmInstaller>>,
   resolver: Arc<CliResolver>,
   pub worker: MainWorker,
@@ -200,6 +189,7 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,
@@ -208,8 +198,12 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<
+      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
+    >,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker
@@ -265,6 +259,7 @@ impl ReplSession {
       .transpile
       .use_ts_decorators;
     let mut repl_session = ReplSession {
+      internal_object_id: None,
       npm_installer,
       resolver,
       worker,
@@ -294,7 +289,8 @@ impl ReplSession {
     };
 
     // inject prelude
-    repl_session.evaluate_expression(&get_prelude()).await?;
+    let evaluated = repl_session.evaluate_expression(&get_prelude()).await?;
+    repl_session.internal_object_id = evaluated.result.object_id;
 
     Ok(repl_session)
   }
@@ -307,13 +303,16 @@ impl ReplSession {
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
-    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
-    let closed = self
-      .evaluate_expression(&expression)
+    let result = self
+      .call_function_on_repl_internal_obj(
+        r#"function () { return this.closed; }"#.to_string(),
+        &[],
+      )
       .await?
-      .result
+      .result;
+    let closed = result
       .value
-      .unwrap()
+      .ok_or_else(|| anyhow!(result.description.unwrap()))?
       .as_bool()
       .unwrap();
 
@@ -497,18 +496,17 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{ {}.lastThrownError = object; }}"#,
-            *REPL_INTERNALS_NAME
-          ),
-          object_id: None,
+          function_declaration:
+            r#"function (object) { this.lastThrownError = object; }"#
+              .to_string(),
+          object_id: self.internal_object_id.clone(),
           arguments: Some(vec![error.into()]),
           silent: None,
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          execution_context_id: Some(self.context_id),
+          execution_context_id: None,
           object_group: None,
           throw_on_side_effect: None,
         }),
@@ -525,18 +523,15 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{ {}.lastEvalResult = object; }}"#,
-            *REPL_INTERNALS_NAME
-          ),
-          object_id: None,
+          function_declaration: r#"function (object) { this.lastEvalResult = object; }"#.to_string(),
+          object_id: self.internal_object_id.clone(),
           arguments: Some(vec![evaluate_result.into()]),
           silent: None,
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          execution_context_id: Some(self.context_id),
+          execution_context_id: None,
           object_group: None,
           throw_on_side_effect: None,
         }),
@@ -580,6 +575,41 @@ impl ReplSession {
     Ok(response)
   }
 
+  pub async fn call_function_on_repl_internal_obj(
+    &mut self,
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
+    let inspect_response = self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration,
+          object_id: self.internal_object_id.clone(),
+          arguments,
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: None,
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
+
+    let response: cdp::CallFunctionOnResponse =
+      serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
   pub async fn get_eval_value(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
@@ -588,24 +618,26 @@ impl ReplSession {
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let response = self
-      .call_function_on_args(
-        format!(
-          r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-          *REPL_INTERNALS_NAME
-        ),
+      .call_function_on_repl_internal_obj(
+        r#"function (object) {
+          try {
+            return this.inspectArgs(["%o", object], { colors: !this.noColor });
+          } catch (err) {
+            return this.inspectArgs(["%o", err]);
+          }
+        }"#
+          .to_string(),
         &[evaluate_result.clone()],
       )
       .await?;
-    let value = response.result.value.unwrap();
-    let s = value.as_str().unwrap();
+    let s = response
+      .result
+      .value
+      .map(|v| v.as_str().unwrap().to_string())
+      .or(response.result.description)
+      .ok_or_else(|| anyhow!("failed to evaluate expression"))?;
 
-    Ok(s.to_string())
+    Ok(s)
   }
 
   async fn evaluate_ts_expression(
