@@ -144,11 +144,6 @@ export class LibuvStreamWrap extends HandleWrap {
       this.#read();
     }
 
-    if (this.cancelHandle) {
-      this.#reading = true;
-      this.#read();
-    }
-
     return 0;
   }
 
