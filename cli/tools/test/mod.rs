@@ -1402,15 +1402,15 @@ pub async fn report_tests(
     );
   }
 
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
