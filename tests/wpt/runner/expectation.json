@@ -2532,11 +2532,6 @@
       "scrolling": {
         "iframe-chains.html": false,
         "input-text-scroll-event-when-using-arrow-keys.html": false,
-        "overscroll-deltas.html": false,
-        "overscroll-event-fired-to-document.html": false,
-        "overscroll-event-fired-to-element-with-overscroll-behavior.html": false,
-        "overscroll-event-fired-to-scrolled-element.html": false,
-        "overscroll-event-fired-to-window.html": false,
         "scrollend-event-fired-after-sequence-of-scrolls.tentative.html": false,
         "scrollend-event-fired-after-snap.html": false,
         "scrollend-event-fired-for-mandatory-snap-point-after-load.html": false,
@@ -11713,7 +11708,6 @@
       "1xx-response.any.html": true,
       "1xx-response.any.worker.html": true,
       "dangling-markup": {
-        "dangling-markup-mitigation-allowed-apis.tentative.https.html": false,
         "dangling-markup-mitigation-data-url.tentative.sub.html": false,
         "dangling-markup-mitigation.tentative.html": [
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;b\">",
@@ -11918,12 +11912,6 @@
       "anchor.tentative.https.window.html?include=from-public": false,
       "anchor.tentative.https.window.html?include=from-treat-as-public": false,
       "anchor.tentative.window.html": false,
-      "fenced-frame-no-preflight-required.tentative.https.window.html": false,
-      "fenced-frame-subresource-fetch.tentative.https.window.html?include=baseline": false,
-      "fenced-frame-subresource-fetch.tentative.https.window.html?include=from-local": false,
-      "fenced-frame-subresource-fetch.tentative.https.window.html?include=from-private": false,
-      "fenced-frame-subresource-fetch.tentative.https.window.html?include=from-public": false,
-      "fenced-frame.tentative.https.window.html": false,
       "fetch-from-treat-as-public.tentative.https.window.html": false,
       "fetch.tentative.https.window.html?include=baseline": false,
       "fetch.tentative.https.window.html?include=from-local": false,
