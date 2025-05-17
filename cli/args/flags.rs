@@ -8943,6 +8943,28 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "-g",
+      "--root",
+      "/user/foo/bar",
+      "cowsay",
+      "file_server"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: vec!["cowsay".to_string(), "file_server".to_string()],
+            root: Some("/user/foo/bar".to_string()),
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
