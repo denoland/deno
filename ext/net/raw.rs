@@ -256,6 +256,7 @@ macro_rules! network_stream {
 }
 
 #[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 network_stream!(
   [
     Tcp,
@@ -281,7 +282,6 @@ network_stream!(
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
   ],
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
   [
     Vsock,
     vsock,
@@ -289,6 +289,35 @@ network_stream!(
     tokio_vsock::VsockListener,
     tokio_vsock::VsockAddr,
     crate::io::VsockStreamResource
+  ]
+);
+
+#[cfg(unix)]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+network_stream!(
+  [
+    Tcp,
+    tcp,
+    tokio::net::TcpStream,
+    crate::tcp::TcpListener,
+    std::net::SocketAddr,
+    TcpStreamResource
+  ],
+  [
+    Tls,
+    tls,
+    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsListener,
+    std::net::SocketAddr,
+    TlsStreamResource
+  ],
+  [
+    Unix,
+    unix,
+    tokio::net::UnixStream,
+    tokio::net::UnixListener,
+    tokio::net::unix::SocketAddr,
+    crate::io::UnixStreamResource
   ]
 );
 
