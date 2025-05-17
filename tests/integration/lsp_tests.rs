@@ -14470,7 +14470,7 @@ fn lsp_testing_api_failure() {
           {
             "message": {
               "kind": "plaintext",
-              "value": format!("Error: Some message.\n        throw new Error(\"Some message.\");\n\u{1b}[0m\u{1b}[31m              ^\u{1b}[0m\n    at \u{1b}[0m\u{1b}[36m{}\u{1b}[0m:\u{1b}[0m\u{1b}[33m3\u{1b}[0m:\u{1b}[0m\u{1b}[33m15\u{1b}[0m", file.uri().as_str()),
+              "value": format!("Error: Some message.\n        throw new Error(\"Some message.\");\n\u{1b}[0m\u{1b}[31m              ^\u{1b}[0m\n    at \u{1b}[0m\u{1b}[36m{}\u{1b}[0m:\u{1b}[0m\u{1b}[33m3\u{1b}[0m:\u{1b}[0m\u{1b}[33m15\u{1b}[0m", file.url()),
             },
             "location": {
               "uri": file.uri(),
