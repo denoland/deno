@@ -766,6 +766,14 @@ function discoverTestsToRun(
           if (url.pathname.includes("request-upload")) {
             continue;
           }
+          // We don't support shadow realm, service worker, or shared worker.
+          if (
+            url.pathname.includes("shadowrealm") ||
+            url.pathname.includes("serviceworker") ||
+            url.pathname.includes("sharedworker")
+          ) {
+            continue;
+          }
           const finalPath = url.pathname + url.search;
 
           const split = finalPath.split("/");
