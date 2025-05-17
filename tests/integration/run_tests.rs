@@ -3234,6 +3234,17 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
 }
 
 #[test]
+fn node_process_stdin_pause() {
+  util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run/node_process_stdin_pause.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+}
+
+#[test]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
