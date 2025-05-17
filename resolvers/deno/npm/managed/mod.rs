@@ -87,9 +87,7 @@ pub enum ResolvePkgIdFromSpecifierError {
   NotFound(#[from] PackageCacheFolderIdNotFoundError),
 }
 
-pub struct ManagedNpmResolverCreateOptions<
-  TSys: FsCanonicalize + FsMetadata + Clone,
-> {
+pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
   pub npm_cache_dir: NpmCacheDirRc,
   pub sys: TSys,
   pub maybe_node_modules_path: Option<PathBuf>,
@@ -98,20 +96,23 @@ pub struct ManagedNpmResolverCreateOptions<
   pub npm_resolution: NpmResolutionCellRc,
 }
 
+#[sys_traits::auto_impl]
+pub trait ManagedNpmResolverSys: FsCanonicalize + FsMetadata + Clone {}
+
 #[allow(clippy::disallowed_types)]
 pub type ManagedNpmResolverRc<TSys> =
   crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct ManagedNpmResolver<TSys: FsCanonicalize + FsMetadata> {
+pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {
   fs_resolver: NpmPackageFsResolver<TSys>,
   npm_cache_dir: NpmCacheDirRc,
   resolution: NpmResolutionCellRc,
   sys: TSys,
 }
 
-impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
-  pub fn new<TCreateSys: FsCanonicalize + FsMetadata + Clone>(
+impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
+  pub fn new<TCreateSys: ManagedNpmResolverSys>(
     options: ManagedNpmResolverCreateOptions<TCreateSys>,
   ) -> ManagedNpmResolver<TCreateSys> {
     let fs_resolver = match options.maybe_node_modules_path {
@@ -237,7 +238,7 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
   }
 }
 
-impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
+impl<TSys: ManagedNpmResolverSys> NpmPackageFolderResolver
   for ManagedNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(

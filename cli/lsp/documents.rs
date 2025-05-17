@@ -2039,26 +2039,6 @@ mod tests {
   use super::*;
   use crate::lsp::cache::LspCache;
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all(".deno_dir");
@@ -2206,7 +2186,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 
@@ -2249,7 +2228,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 

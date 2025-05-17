@@ -204,7 +204,6 @@ pub async fn run(
     worker,
     main_module.clone(),
     test_event_receiver,
-    Arc::new(factory.lockfile_npm_package_info_provider()?),
   )
   .await?;
   let rustyline_channel = rustyline_channel();

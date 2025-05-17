@@ -1678,6 +1678,10 @@ impl ScopedJsxImportSourceConfig {
   }
 }
 
+#[allow(clippy::disallowed_types)] // ok, because definition
+pub type WorkspaceNpmPatchPackagesRc =
+  crate::sync::MaybeArc<WorkspaceNpmPatchPackages>;
+
 #[derive(Debug, Default)]
 pub struct WorkspaceNpmPatchPackages(
   pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,

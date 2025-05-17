@@ -132,8 +132,6 @@ pub struct LoadPackageInfoError {
 #[error("{0}")]
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
-// todo(#27198): refactor to store this only in the http cache
-
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
@@ -142,7 +140,6 @@ pub struct RegistryInfoProvider<
   THttpClient: NpmCacheHttpClient,
   TSys: NpmCacheSys,
 > {
-  // todo(#27198): remove this
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,

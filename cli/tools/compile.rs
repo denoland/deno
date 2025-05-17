@@ -15,6 +15,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -64,7 +65,7 @@ pub async fn compile(
       .create_graph(
         GraphKind::CodeOnly,
         module_roots,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?
   } else {
@@ -196,7 +197,7 @@ pub async fn compile_eszip(
       .create_graph(
         GraphKind::CodeOnly,
         module_roots,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?
   } else {

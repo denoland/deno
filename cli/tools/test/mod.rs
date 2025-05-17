@@ -50,6 +50,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -1770,11 +1771,7 @@ pub async fn run_tests_with_watch(
           &cli_options.permissions_options(),
         )?;
         let graph = module_graph_creator
-          .create_graph(
-            graph_kind,
-            test_modules,
-            crate::graph_util::NpmCachingStrategy::Eager,
-          )
+          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
         let test_modules = &graph.roots;

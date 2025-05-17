@@ -1678,9 +1678,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "869a62459ded73382e018c7c58a07df170ba5f5befb67e18ee10494e769efe2a"
+checksum = "8976e7d563536051895564bdc7041e7f7f771a64bede15ca92fbcffc4e7a4676"
 dependencies = [
  "async-trait",
  "base32",
@@ -1701,7 +1701,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sys_traits",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "url",
 ]
 
@@ -2401,12 +2401,14 @@ name = "deno_npm_installer"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "async-once-cell",
  "async-trait",
  "bincode",
  "boxed_error",
  "capacity_builder",
  "deno_config",
  "deno_error",
+ "deno_graph",
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
@@ -2420,6 +2422,7 @@ dependencies = [
  "futures",
  "junction",
  "log",
+ "once_cell",
  "parking_lot",
  "pathdiff",
  "rustc-hash 2.1.1",

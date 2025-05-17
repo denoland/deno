@@ -47,12 +47,16 @@ pub enum HardLinkDirRecursiveError {
   HardLinkFile(#[from] HardLinkFileError),
 }
 
+#[sys_traits::auto_impl]
+pub trait HardLinkDirRecursiveSys:
+  HardLinkFileSys + FsCreateDirAll + FsReadDir
+{
+}
+
 /// Hardlinks the files in one directory to another directory.
 ///
 /// Note: Does not handle symlinks.
-pub fn hard_link_dir_recursive<
-  TSys: FsCreateDirAll + FsHardLink + FsReadDir + FsRemoveFile + ThreadSleep,
->(
+pub fn hard_link_dir_recursive<TSys: HardLinkDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
@@ -114,8 +118,11 @@ pub enum HardLinkFileError {
   },
 }
 
+#[sys_traits::auto_impl]
+pub trait HardLinkFileSys: FsHardLink + FsRemoveFile + ThreadSleep {}
+
 /// Hardlinks a file from one location to another.
-pub fn hard_link_file<TSys: FsHardLink + FsRemoveFile + ThreadSleep>(
+pub fn hard_link_file<TSys: HardLinkFileSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,

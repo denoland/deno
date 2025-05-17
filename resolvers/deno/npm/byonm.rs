@@ -53,22 +53,24 @@ pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
 }
 
+#[sys_traits::auto_impl]
+pub trait ByonmNpmResolverSys:
+  FsCanonicalize + FsRead + FsMetadata + FsReadDir
+{
+}
+
 #[allow(clippy::disallowed_types)]
 pub type ByonmNpmResolverRc<TSys> =
   crate::sync::MaybeArc<ByonmNpmResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct ByonmNpmResolver<
-  TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir,
-> {
+pub struct ByonmNpmResolver<TSys: ByonmNpmResolverSys> {
   sys: NodeResolutionSys<TSys>,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
 }
 
-impl<TSys: Clone + FsCanonicalize + FsRead + FsMetadata + FsReadDir> Clone
-  for ByonmNpmResolver<TSys>
-{
+impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
   fn clone(&self) -> Self {
     Self {
       sys: self.sys.clone(),
@@ -78,9 +80,7 @@ impl<TSys: Clone + FsCanonicalize + FsRead + FsMetadata + FsReadDir> Clone
   }
 }
 
-impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
-  ByonmNpmResolver<TSys>
-{
+impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
   pub fn new(options: ByonmNpmResolverCreateOptions<TSys>) -> Self {
     Self {
       root_node_modules_dir: options.root_node_modules_dir,

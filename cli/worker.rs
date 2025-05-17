@@ -12,6 +12,7 @@ use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
@@ -21,7 +22,6 @@ use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
-use crate::args::NpmCachingStrategy;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;

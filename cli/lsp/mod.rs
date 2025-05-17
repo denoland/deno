@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
-
 use deno_core::error::AnyError;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
@@ -40,19 +38,12 @@ mod trace;
 mod tsc;
 mod urls;
 
-pub async fn start(
-  registry_provider: Arc<
-    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-  >,
-) -> Result<(), AnyError> {
+pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
   let builder = LspService::build(|client| {
-    language_server::LanguageServer::new(
-      client::Client::from_tower(client),
-      registry_provider,
-    )
+    language_server::LanguageServer::new(client::Client::from_tower(client))
   })
   .custom_method(
     lsp_custom::PERFORMANCE_REQUEST,
