@@ -5777,26 +5777,6 @@ mod tests {
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   async fn setup(
     ts_config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
@@ -5815,7 +5795,6 @@ mod tests {
           temp_dir.url().join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
     let resolver =
