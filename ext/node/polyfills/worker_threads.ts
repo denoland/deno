@@ -176,6 +176,7 @@ class NodeWorker extends EventEmitter {
     this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
+    process.nextTick(() => process.emit("worker", this));
   }
 
   [privateWorkerRef](ref) {

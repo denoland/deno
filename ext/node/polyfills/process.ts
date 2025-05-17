@@ -89,7 +89,6 @@ const { NumberMAX_SAFE_INTEGER } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
-  "worker",
 ];
 
 export const argv: string[] = ["", ""];
