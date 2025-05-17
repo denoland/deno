@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1172 tests out of 3993 have been ported from Node 23.9.0 (29.35% ported, 71.17% remaining).
+1173 tests out of 3993 have been ported from Node 23.9.0 (29.38% ported, 71.15% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2522,7 +2522,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-worker-esm-missing-main.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esm-missing-main.js)
 - [parallel/test-worker-esmodule.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esmodule.js)
 - [parallel/test-worker-eval-typescript.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-eval-typescript.js)
-- [parallel/test-worker-event.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-event.js)
 - [parallel/test-worker-execargv-invalid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv-invalid.js)
 - [parallel/test-worker-execargv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv.js)
 - [parallel/test-worker-exit-code.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-exit-code.js)
