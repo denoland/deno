@@ -3,45 +3,37 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use deno_config::deno_json::ConfigFile;
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_config::workspace::Workspace;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::MutexGuard;
-use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
-
-use crate::args::deno_json::import_map_deps;
-use crate::args::DenoSubcommand;
-use crate::args::InstallFlags;
-use crate::cache;
-use crate::sys::CliSys;
-use crate::Flags;
+use node_resolver::PackageJson;
+use parking_lot::Mutex;
+use parking_lot::MutexGuard;
 
 #[derive(Debug)]
-pub struct CliLockfileReadFromPathOptions {
+pub struct LockfileReadFromPathOptions {
   pub file_path: PathBuf,
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
   pub skip_write: bool,
 }
 
-#[derive(Debug)]
-pub struct CliLockfile {
-  sys: CliSys,
-  lockfile: Mutex<Lockfile>,
-  pub filename: PathBuf,
-  frozen: bool,
-  skip_write: bool,
+#[sys_traits::auto_impl]
+pub trait LockfileSys:
+  deno_path_util::fs::AtomicWriteFileWithRetriesSys
+  + sys_traits::FsRead
+  + std::fmt::Debug
+{
 }
 
 pub struct Guard<'a, T> {
@@ -62,8 +54,18 @@ impl<T> std::ops::DerefMut for Guard<'_, T> {
   }
 }
 
+#[derive(Debug)]
+pub struct LockfileFlags {
+  pub no_lock: bool,
+  pub frozen_lockfile: Option<bool>,
+  pub lock: Option<PathBuf>,
+  pub skip_write: bool,
+  pub no_config: bool,
+  pub no_npm: bool,
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum AtomicWriteFileWithRetriesError {
+pub enum LockfileWriteError {
   #[class(inherit)]
   #[error(transparent)]
   Changed(JsErrorBox),
@@ -72,7 +74,16 @@ pub enum AtomicWriteFileWithRetriesError {
   Io(#[source] std::io::Error),
 }
 
-impl CliLockfile {
+#[derive(Debug)]
+pub struct LockfileLock<TSys: LockfileSys> {
+  sys: TSys,
+  lockfile: Mutex<Lockfile>,
+  pub filename: PathBuf,
+  frozen: bool,
+  skip_write: bool,
+}
+
+impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
   pub fn lock(&self) -> Guard<Lockfile> {
     Guard {
@@ -91,40 +102,39 @@ impl CliLockfile {
     self.lockfile.lock().overwrite
   }
 
-  pub fn write_if_changed(
-    &self,
-  ) -> Result<(), AtomicWriteFileWithRetriesError> {
+  pub fn write_if_changed(&self) -> Result<(), LockfileWriteError> {
     if self.skip_write {
       return Ok(());
     }
 
     self
       .error_if_changed()
-      .map_err(AtomicWriteFileWithRetriesError::Changed)?;
+      .map_err(LockfileWriteError::Changed)?;
     let mut lockfile = self.lockfile.lock();
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
     };
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
+    const CACHE_PERM: u32 = 0o644;
     atomic_write_file_with_retries(
       &self.sys,
       &lockfile.filename,
       &bytes,
-      cache::CACHE_PERM,
+      CACHE_PERM,
     )
-    .map_err(AtomicWriteFileWithRetriesError::Io)?;
+    .map_err(LockfileWriteError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }
 
   pub async fn discover(
-    sys: &CliSys,
-    flags: &Flags,
+    sys: TSys,
+    flags: LockfileFlags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
     api: &(dyn NpmPackageInfoProvider + Send + Sync),
-  ) -> Result<Option<CliLockfile>, AnyError> {
+  ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -150,24 +160,12 @@ impl CliLockfile {
         })
         .collect()
     }
-    fn deno_json_deps(
-      maybe_deno_json: Option<&ConfigFile>,
-    ) -> HashSet<JsrDepPackageReq> {
-      maybe_deno_json
-        .map(crate::args::deno_json::deno_json_deps)
-        .unwrap_or_default()
-    }
-    if flags.no_lock
-      || matches!(
-        flags.subcommand,
-        DenoSubcommand::Install(InstallFlags::Global(..))
-          | DenoSubcommand::Uninstall(_)
-      )
-    {
+
+    if flags.no_lock {
       return Ok(None);
     }
     let file_path = match flags.lock {
-      Some(ref lock) => PathBuf::from(lock),
+      Some(path) => path,
       None => match workspace.resolve_lockfile_path()? {
         Some(path) => path,
         None => return Ok(None),
@@ -183,10 +181,10 @@ impl CliLockfile {
     });
     let lockfile = Self::read_from_path(
       sys,
-      CliLockfileReadFromPathOptions {
+      LockfileReadFromPathOptions {
         file_path,
         frozen,
-        skip_write: flags.internal.lockfile_skip_write,
+        skip_write: flags.skip_write,
       },
       api,
     )
@@ -198,7 +196,11 @@ impl CliLockfile {
         dependencies: if let Some(map) = maybe_external_import_map {
           import_map_deps(map)
         } else {
-          deno_json_deps(root_folder.deno_json.as_deref())
+          root_folder
+            .deno_json
+            .as_deref()
+            .map(deno_json_deps)
+            .unwrap_or_default()
         },
       },
       members: workspace
@@ -220,7 +222,11 @@ impl CliLockfile {
             {
               let config = WorkspaceMemberConfig {
                 package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
-                dependencies: deno_json_deps(folder.deno_json.as_deref()),
+                dependencies: folder
+                  .deno_json
+                  .as_deref()
+                  .map(deno_json_deps)
+                  .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
                 && config.dependencies.is_empty()
@@ -284,18 +290,18 @@ impl CliLockfile {
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
-      no_config: flags.config_flag == super::ConfigFlag::Disabled,
+      no_config: flags.no_config,
       config,
     });
     Ok(Some(lockfile))
   }
 
   pub async fn read_from_path(
-    sys: &CliSys,
-    opts: CliLockfileReadFromPathOptions,
+    sys: TSys,
+    opts: LockfileReadFromPathOptions,
     api: &(dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync),
-  ) -> Result<CliLockfile, AnyError> {
-    let lockfile = match std::fs::read_to_string(&opts.file_path) {
+  ) -> Result<LockfileLock<TSys>, AnyError> {
+    let lockfile = match sys.fs_read_to_string(&opts.file_path) {
       Ok(text) => {
         Lockfile::new(
           deno_lockfile::NewLockfileOptions {
@@ -316,8 +322,8 @@ impl CliLockfile {
         });
       }
     };
-    Ok(CliLockfile {
-      sys: sys.clone(),
+    Ok(LockfileLock {
+      sys,
       filename: lockfile.filename.clone(),
       lockfile: Mutex::new(lockfile),
       frozen: opts.frozen,
@@ -331,15 +337,111 @@ impl CliLockfile {
     }
     let lockfile = self.lockfile.lock();
     if lockfile.has_content_changed {
-      let contents =
-        std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
+      let contents = self
+        .sys
+        .fs_read_to_string(&lockfile.filename)
+        .unwrap_or_default();
       let new_contents = lockfile.as_json_string();
-      let diff = crate::util::diff::diff(&contents, &new_contents);
+      let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
       Err(JsErrorBox::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
     } else {
       Ok(())
     }
+  }
+}
+
+fn import_map_deps(
+  import_map: &serde_json::Value,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(import_map.get("imports"))
+    .into_iter()
+    .chain(scope_values(import_map.get("scopes")));
+  values_to_set(values)
+}
+
+fn deno_json_deps(
+  config: &deno_config::deno_json::ConfigFile,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(config.json.imports.as_ref())
+    .into_iter()
+    .chain(scope_values(config.json.scopes.as_ref()));
+  let mut set = values_to_set(values);
+
+  if let Some(serde_json::Value::Object(compiler_options)) =
+    &config.json.compiler_options
+  {
+    // add jsxImportSource
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSource")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add jsxImportSourceTypes
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSourceTypes")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add the dependencies in the types array
+    if let Some(serde_json::Value::Array(types)) = compiler_options.get("types")
+    {
+      for value in types {
+        if let serde_json::Value::String(value) = value {
+          if let Some(dep_req) = value_to_dep_req(value) {
+            set.insert(dep_req);
+          }
+        }
+      }
+    }
+  }
+
+  set
+}
+
+fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  let mut items = Vec::with_capacity(obj.len());
+  for value in obj.values() {
+    if let serde_json::Value::String(value) = value {
+      items.push(value);
+    }
+  }
+  items
+}
+
+fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  obj.values().flat_map(|v| imports_values(Some(v))).collect()
+}
+
+fn values_to_set<'a>(
+  values: impl Iterator<Item = &'a String>,
+) -> HashSet<JsrDepPackageReq> {
+  let mut entries = HashSet::new();
+  for value in values {
+    if let Some(dep_req) = value_to_dep_req(value) {
+      entries.insert(dep_req);
+    }
+  }
+  entries
+}
+
+fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
+  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
+  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
+  } else {
+    None
   }
 }

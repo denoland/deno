@@ -70,6 +70,7 @@ use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
+use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
 pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
@@ -457,19 +458,8 @@ impl DeferredDiagnostics {
           ambient.regex = None;
           continue;
         }
-        let mut regex_string = String::with_capacity(value.len() * 8);
-        regex_string.push('(');
-        let last = value.len() - 1;
-        for (idx, part) in value.into_iter().enumerate() {
-          let trimmed = part.trim_matches('"');
-          let escaped = regex::escape(trimmed);
-          let regex = escaped.replace("\\*", ".*");
-          regex_string.push_str(&regex);
-          if idx != last {
-            regex_string.push('|');
-          }
-        }
-        regex_string.push_str(")$");
+        let mut regex_string = ambient_modules_to_regex_string(&value);
+        regex_string.push('$');
         if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
         }) {

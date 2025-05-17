@@ -3,31 +3,13 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use deno_core::parking_lot::RwLock;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
+use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_semver::package::PackageNv;
-pub use deno_task_executor::DenoTaskLifeCycleScriptsExecutor;
-
-use super::PackageCaching;
-use crate::npm::CliNpmCache;
-use crate::npm::WorkspaceNpmPatchPackages;
-
-pub mod bin_entries;
-mod deno_task_executor;
-pub mod lifecycle_scripts;
-
-/// Part of the resolution that interacts with the file system.
-#[async_trait(?Send)]
-pub trait NpmPackageFsInstaller: std::fmt::Debug + Send + Sync {
-  async fn cache_packages<'a>(
-    &self,
-    caching: PackageCaching<'a>,
-  ) -> Result<(), JsErrorBox>;
-}
+use parking_lot::RwLock;
 
 pub struct CachedNpmPackageExtraInfoProvider {
   inner: Arc<NpmPackageExtraInfoProvider>,
@@ -64,34 +46,6 @@ impl CachedNpmPackageExtraInfoProvider {
   }
 }
 
-pub struct NpmPackageExtraInfoProvider {
-  npm_cache: Arc<CliNpmCache>,
-  npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
-}
-
-impl std::fmt::Debug for NpmPackageExtraInfoProvider {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("NpmPackageExtraInfoProvider")
-      .field("npm_cache", &self.npm_cache)
-      .finish()
-  }
-}
-
-impl NpmPackageExtraInfoProvider {
-  pub fn new(
-    npm_cache: Arc<CliNpmCache>,
-    npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
-  ) -> Self {
-    Self {
-      npm_cache,
-      npm_registry_info_provider,
-      workspace_patch_packages,
-    }
-  }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExpectedExtraInfo {
   pub deprecated: bool,
@@ -105,6 +59,29 @@ impl ExpectedExtraInfo {
       deprecated: package.is_deprecated,
       bin: package.has_bin,
       scripts: package.has_scripts,
+    }
+  }
+}
+
+pub struct NpmPackageExtraInfoProvider {
+  npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+}
+
+impl std::fmt::Debug for NpmPackageExtraInfoProvider {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("NpmPackageExtraInfoProvider").finish()
+  }
+}
+
+impl NpmPackageExtraInfoProvider {
+  pub fn new(
+    npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  ) -> Self {
+    Self {
+      npm_registry_info_provider,
+      workspace_patch_packages,
     }
   }
 }
@@ -171,12 +148,11 @@ impl NpmPackageExtraInfoProvider {
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     let package_json_path = package_path.join("package.json");
     let extra_info: NpmPackageExtraInfo =
-      deno_core::unsync::spawn_blocking(move || {
+      deno_unsync::spawn_blocking(move || {
         let package_json = std::fs::read_to_string(&package_json_path)
           .map_err(JsErrorBox::from_err)?;
         let extra_info: NpmPackageExtraInfo =
-          deno_core::serde_json::from_str(&package_json)
-            .map_err(JsErrorBox::from_err)?;
+          serde_json::from_str(&package_json).map_err(JsErrorBox::from_err)?;
 
         Ok::<_, JsErrorBox>(extra_info)
       })

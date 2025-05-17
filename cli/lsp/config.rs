@@ -44,6 +44,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
+use deno_resolver::lockfile::LockfileReadFromPathOptions;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
 use deno_resolver::workspace::CreateResolverOptions;
 use deno_resolver::workspace::FsCacheOptions;
@@ -62,7 +63,6 @@ use super::lsp_custom;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
-use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -2144,8 +2144,8 @@ async fn resolve_lockfile_from_path(
   >,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
-    &CliSys::default(),
-    CliLockfileReadFromPathOptions {
+    CliSys::default(),
+    LockfileReadFromPathOptions {
       file_path: lockfile_path,
       frozen,
       skip_write: false,
