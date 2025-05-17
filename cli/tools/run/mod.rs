@@ -11,6 +11,7 @@ use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
@@ -242,7 +243,7 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
       if !already_done
         && matches!(
           cli_options.default_npm_caching_strategy(),
-          crate::graph_util::NpmCachingStrategy::Eager
+          NpmCachingStrategy::Eager
         )
       {
         npm_installer.cache_packages(PackageCaching::All).await?;

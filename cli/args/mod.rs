@@ -32,10 +32,8 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::has_flag_env_var;
@@ -45,6 +43,7 @@ use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
@@ -56,7 +55,6 @@ use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
 use once_cell::sync::Lazy;
-use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::sys::CliSys;
@@ -77,53 +75,6 @@ pub fn jsr_api_url() -> &'static Url {
   });
 
   &JSR_API_URL
-}
-
-#[derive(Debug, Clone)]
-pub struct ExternalImportMap {
-  pub path: PathBuf,
-  pub value: serde_json::Value,
-}
-
-#[derive(Debug)]
-pub struct WorkspaceExternalImportMapLoader {
-  sys: CliSys,
-  workspace: Arc<Workspace>,
-  maybe_external_import_map:
-    once_cell::sync::OnceCell<Option<ExternalImportMap>>,
-}
-
-impl WorkspaceExternalImportMapLoader {
-  pub fn new(sys: CliSys, workspace: Arc<Workspace>) -> Self {
-    Self {
-      sys,
-      workspace,
-      maybe_external_import_map: Default::default(),
-    }
-  }
-
-  pub fn get_or_load(&self) -> Result<Option<&ExternalImportMap>, AnyError> {
-    self
-      .maybe_external_import_map
-      .get_or_try_init(|| {
-        let Some(deno_json) = self.workspace.root_deno_json() else {
-          return Ok(None);
-        };
-        if deno_json.is_an_import_map() {
-          return Ok(None);
-        }
-        let Some(path) = deno_json.to_import_map_path()? else {
-          return Ok(None);
-        };
-        let contents =
-          self.sys.fs_read_to_string(&path).with_context(|| {
-            format!("Unable to read import map at '{}'", path.display())
-          })?;
-        let value = serde_json::from_str(&contents)?;
-        Ok(Some(ExternalImportMap { path, value }))
-      })
-      .map(|v| v.as_ref())
-  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -880,10 +831,6 @@ impl CliOptions {
     self.flags.no_remote
   }
 
-  pub fn no_npm(&self) -> bool {
-    self.flags.no_npm
-  }
-
   pub fn permissions_options(&self) -> PermissionsOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
@@ -1344,13 +1291,6 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
       _ => None,
     }
   }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum NpmCachingStrategy {
-  Eager,
-  Lazy,
-  Manual,
 }
 
 #[cfg(test)]

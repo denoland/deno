@@ -30,6 +30,7 @@ use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -260,8 +261,6 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-  registry_provider:
-    Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
@@ -298,19 +297,13 @@ impl std::fmt::Debug for Inner {
 }
 
 impl LanguageServer {
-  pub fn new(
-    client: Client,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) -> Self {
+  pub fn new(client: Client) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
       inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
-        registry_provider,
       ))),
       init_flag: Default::default(),
       performance,
@@ -347,7 +340,7 @@ impl LanguageServer {
           GraphKind::All,
           roots.clone(),
           &mut loader,
-          graph_util::NpmCachingStrategy::Eager,
+          NpmCachingStrategy::Eager,
         )
         .await?;
       graph_util::graph_valid(
@@ -534,13 +527,7 @@ impl LanguageServer {
 }
 
 impl Inner {
-  fn new(
-    client: Client,
-    performance: Arc<Performance>,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) -> Self {
+  fn new(client: Client, performance: Arc<Performance>) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
@@ -587,7 +574,6 @@ impl Inner {
       workspace_files: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
-      registry_provider,
     }
   }
 
@@ -1155,8 +1141,8 @@ impl Inner {
         &self.config.settings,
         &self.workspace_files,
         &file_fetcher,
+        &self.http_client_provider,
         self.cache.deno_dir(),
-        &self.registry_provider,
       )
       .await;
     self

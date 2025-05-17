@@ -198,8 +198,7 @@ async fn run_subcommand(
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      let factory = CliFactory::from_flags(flags.clone());
-      lsp::start(Arc::new(factory.lockfile_npm_package_info_provider()?)).await
+      lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {

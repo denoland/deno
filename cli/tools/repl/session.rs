@@ -198,12 +198,8 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) -> Result<Self, AnyError> {
-    let language_server =
-      ReplLanguageServer::new_initialized(registry_provider).await?;
+    let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session();
 
     worker

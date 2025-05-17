@@ -26,8 +26,10 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -217,6 +219,10 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
+  ops = [
+    op_read_with_cancel_handle,
+    op_read_create_cancel_handle,
+  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -1000,6 +1006,59 @@ impl crate::fs::File for StdFileResourceInner {
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
+}
+
+pub struct ReadCancelResource(Rc<CancelHandle>);
+
+impl Resource for ReadCancelResource {
+  fn name(&self) -> Cow<str> {
+    "readCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel();
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
+  state
+    .resource_table
+    .add(ReadCancelResource(CancelHandle::new_rc()))
+}
+
+#[op2(async)]
+pub async fn op_read_with_cancel_handle(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: u32,
+  #[smi] cancel_handle: u32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, JsErrorBox> {
+  let (fut, cancel_rc) = {
+    let state = state.borrow();
+    let cancel_handle = state
+      .resource_table
+      .get::<ReadCancelResource>(cancel_handle)
+      .unwrap()
+      .0
+      .clone();
+
+    (
+      FileResource::with_file(&state, rid, |file| {
+        let view = BufMutView::from(buf);
+        Ok(file.read_byob(view))
+      }),
+      cancel_handle,
+    )
+  };
+
+  fut?
+    .or_cancel(cancel_rc)
+    .await
+    .map_err(|_| JsErrorBox::generic("cancelled"))?
+    .map(|(n, _)| n as u32)
+    .map_err(JsErrorBox::from_err)
 }
 
 // override op_print to use the stdout and stderr in the resource table
