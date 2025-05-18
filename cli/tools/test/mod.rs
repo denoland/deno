@@ -400,6 +400,38 @@ impl TestFailure {
     }
   }
 
+  pub fn error_location(&self) -> Option<TestLocation> {
+    const TEST_RUNNER: &str = "ext:cli/40_test.js";
+    match self {
+      TestFailure::JsError(js_error) => js_error
+        .frames
+        .iter()
+        // The first line of user code comes above the test file.
+        // The call stack usually contains the top 10 frames, and cuts off after that.
+        // We need to explicitly check for the test runner here.
+        // - Checking for a `ext:` is not enough, since other Deno `ext:`s can appear in the call stack.
+        // - This check guarantees that the next frame is inside of the Deno.test(),
+        //   and not somewhere else.
+        .position(|v| v.file_name.as_deref() == Some(TEST_RUNNER))
+        // Go one up in the stack frame, this is where the user code was
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| {
+          let user_frame = &js_error.frames[index];
+          let file_name = user_frame.file_name.as_ref()?.to_string();
+          // Turn into zero based indices
+          let line_number = user_frame.line_number.map(|v| v - 1)? as u32;
+          let column_number =
+            user_frame.column_number.map(|v| v - 1).unwrap_or(0) as u32;
+          Some(TestLocation {
+            file_name,
+            line_number,
+            column_number,
+          })
+        }),
+      _ => None,
+    }
+  }
+
   fn format_label(&self) -> String {
     match self {
       TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
