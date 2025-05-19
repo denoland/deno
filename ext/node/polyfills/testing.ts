@@ -57,6 +57,7 @@ const skippedSymbol = Symbol("skipped");
 class NodeTestContext {
   #denoContext: Deno.TestContext;
   #afterHooks: (() => void)[] = [];
+  #beforeHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
 
@@ -117,6 +118,11 @@ class NodeTestContext {
         await hook();
       }
     };
+    const before = async () => {
+      for (const hook of new SafeIterator(this.#beforeHooks)) {
+        await hook();
+      }
+    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -126,6 +132,7 @@ class NodeTestContext {
             parentContext,
           );
           try {
+            await before();
             await prepared.fn(newNodeTextContext);
             await after();
           } catch (err) {
@@ -146,8 +153,11 @@ class NodeTestContext {
     );
   }
 
-  before(_fn, _options) {
-    notImplemented("test.TestContext.before");
+  before(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("before() requires a function");
+    }
+    ArrayPrototypePush(this.#beforeHooks, fn);
   }
 
   after(fn, _options) {
