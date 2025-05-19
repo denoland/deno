@@ -134,7 +134,7 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
-import { glob, globSync, globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
+import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 
 const {
   F_OK,
