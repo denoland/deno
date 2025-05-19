@@ -2134,7 +2134,9 @@ Deno.test("[node/https] null ca, key and cert req options", {
   const { promise, resolve } = Promise.withResolvers<void>();
   https.request("https://localhost:5545/echo.ts", {
     ca,
+    // @ts-expect-error - key can be null at runtime
     key: null,
+    // @ts-expect-error - cert can be null at runtime
     cert: null,
   }, async (res) => {
     assertEquals(res.statusCode, 200);
