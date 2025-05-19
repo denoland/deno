@@ -54,6 +54,7 @@ const skippedSymbol = Symbol("skipped");
 
 class NodeTestContext {
   #denoContext: Deno.TestContext;
+  #afterHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
 
@@ -109,6 +110,9 @@ class NodeTestContext {
     const prepared = prepareOptions(name, options, fn, {});
     // deno-lint-ignore no-this-alias
     const parentContext = this;
+    const after = async () => {
+      await Promise.all(this.#afterHooks.map((hook) => hook()));
+    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -123,6 +127,10 @@ class NodeTestContext {
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
+          } finally {
+            try {
+              await after();
+            } catch { /* pass */ }
           }
         },
         ignore: prepared.options.todo || prepared.options.skip,
@@ -138,8 +146,11 @@ class NodeTestContext {
     notImplemented("test.TestContext.before");
   }
 
-  after(_fn, _options) {
-    notImplemented("test.TestContext.after");
+  after(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("after() requires a function");
+    }
+    this.#afterHooks.push(fn);
   }
 
   beforeEach(_fn, _options) {
