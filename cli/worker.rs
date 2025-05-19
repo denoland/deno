@@ -12,6 +12,8 @@ use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -20,9 +22,7 @@ use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
-use crate::args::NpmCachingStrategy;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -307,15 +307,13 @@ pub enum CreateCustomWorkerError {
   NpmPackageReq(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
-  AtomicWriteFileWithRetries(
-    #[from] crate::args::AtomicWriteFileWithRetriesError,
-  ),
+  LockfileWrite(#[from] deno_resolver::lockfile::LockfileWriteError),
 }
 
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
@@ -330,7 +328,7 @@ impl CliMainWorkerFactory {
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
     options: CliMainWorkerOptions,

@@ -106,6 +106,15 @@ impl ResolutionMode {
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(mode: deno_graph::source::ResolutionMode) -> Self {
+    use deno_graph::source::ResolutionMode::*;
+    match mode {
+      Import => Self::Import,
+      Require => Self::Require,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -117,6 +126,15 @@ pub enum NodeResolutionKind {
 impl NodeResolutionKind {
   pub fn is_types(&self) -> bool {
     matches!(self, NodeResolutionKind::Types)
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn from_deno_graph(kind: deno_graph::source::ResolutionKind) -> Self {
+    use deno_graph::source::ResolutionKind::*;
+    match kind {
+      Execution => Self::Execution,
+      Types => Self::Types,
+    }
   }
 }
 
@@ -180,6 +198,9 @@ pub struct NodeResolverOptions {
   pub typescript_version: Option<Version>,
 }
 
+#[sys_traits::auto_impl]
+pub trait NodeResolverSys: FsCanonicalize + FsMetadata + FsRead {}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -200,7 +221,7 @@ pub struct NodeResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
@@ -216,7 +237,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeResolver<
     TInNpmPackageChecker,

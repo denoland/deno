@@ -15,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::packages::PackageSpecifiers;
 use deno_graph::ModuleGraph;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use walkdir::WalkDir;
@@ -27,6 +28,7 @@ use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
+use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -224,7 +226,7 @@ async fn clean_except(
         graph_kind: graph.graph_kind(),
         is_dynamic: false,
         roots: roots.clone(),
-        npm_caching: crate::graph_util::NpmCachingStrategy::Manual,
+        npm_caching: NpmCachingStrategy::Manual,
       },
     )
     .await?;
@@ -530,8 +532,10 @@ fn clean_node_modules(
   };
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
-  let mut setup_cache =
-    crate::npm::installer::SetupCache::load(base.join(".setup-cache.bin"));
+  let mut setup_cache = deno_npm_installer::LocalSetupCache::load(
+    CliSys::default(),
+    base.join(".setup-cache.bin"),
+  );
 
   for entry in entries {
     let entry = entry?;

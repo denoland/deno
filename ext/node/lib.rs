@@ -458,6 +458,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::util::op_node_view_has_buffer,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
@@ -578,6 +579,7 @@ deno_core::extension!(deno_node,
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
     "internal_binding/uv.ts",
+    "internal/assert/calltracker.js",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
@@ -711,7 +713,7 @@ deno_core::extension!(deno_node,
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",
     "node:path/win32" = "path/win32.ts",
-    "node:perf_hooks" = "perf_hooks.ts",
+    "node:perf_hooks" = "perf_hooks.js",
     "node:process" = "process.ts",
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
@@ -873,22 +875,13 @@ deno_core::extension!(deno_node,
   },
 );
 
+#[sys_traits::auto_impl]
 pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
   + sys_traits::BaseFsRead
   + sys_traits::EnvCurrentDir
   + Clone
-{
-}
-
-impl<
-    T: sys_traits::BaseFsCanonicalize
-      + sys_traits::BaseFsMetadata
-      + sys_traits::BaseFsRead
-      + sys_traits::EnvCurrentDir
-      + Clone,
-  > ExtNodeSys for T
 {
 }
 

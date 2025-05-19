@@ -37,7 +37,6 @@ use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
-use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -104,7 +103,6 @@ pub struct TypeChecker {
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
@@ -120,7 +118,6 @@ impl TypeChecker {
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
-    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
     tsconfig_resolver: Arc<TsConfigResolver>,
@@ -132,7 +129,6 @@ impl TypeChecker {
       cli_options,
       module_graph_builder,
       node_resolver,
-      npm_installer,
       npm_resolver,
       sys,
       tsconfig_resolver,
@@ -144,12 +140,12 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check(
+  pub fn check(
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options).await?;
+    let mut diagnostics = self.check_diagnostics(graph, options)?;
     let mut failed = false;
     for result in diagnostics.by_ref() {
       let mut diagnostics = result?;
@@ -178,7 +174,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check_diagnostics(
+  pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
@@ -210,15 +206,6 @@ impl TypeChecker {
       return Ok(DiagnosticsByFolderIterator(
         DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
       ));
-    }
-
-    // node built-in specifiers use the @types/node package to determine
-    // types, so inject that now (the caller should do this after the lockfile
-    // has been written)
-    if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
     }
 
     log::debug!("Type checking");
@@ -437,6 +424,24 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
+/// Converts the list of ambient module names to regex string
+pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
+  let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
+  regex_string.push('(');
+  let last = ambient_modules.len() - 1;
+  for (idx, part) in ambient_modules.iter().enumerate() {
+    let trimmed = part.trim_matches('"');
+    let escaped = regex::escape(trimmed);
+    let regex = escaped.replace("\\*", ".*");
+    regex_string.push_str(&regex);
+    if idx != last {
+      regex_string.push('|');
+    }
+  }
+  regex_string.push(')');
+  regex_string
+}
+
 impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::too_many_arguments)]
   fn check_diagnostics_in_folder(
@@ -546,11 +551,31 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       code_cache,
     )?;
 
+    let ambient_modules = response.ambient_modules;
+    log::debug!("Ambient Modules: {:?}", ambient_modules);
+
+    let ambient_modules_regex = if ambient_modules.is_empty() {
+      None
+    } else {
+      regex::Regex::new(&ambient_modules_to_regex_string(&ambient_modules))
+        .inspect_err(|e| {
+          log::warn!("Failed to create regex for ambient modules: {}", e);
+        })
+        .ok()
+    };
+
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
-    let mut diagnostics = missing_diagnostics;
+    let mut diagnostics = missing_diagnostics.filter(|d| {
+      if let Some(ambient_modules_regex) = &ambient_modules_regex {
+        if let Some(missing_specifier) = &d.missing_specifier {
+          return !ambient_modules_regex.is_match(missing_specifier);
+        }
+      }
+      true
+    });
     diagnostics.extend(response_diagnostics);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
@@ -1018,6 +1043,7 @@ fn get_leading_comments(file_text: &str) -> Vec<String> {
 mod test {
   use deno_ast::MediaType;
 
+  use super::ambient_modules_to_regex_string;
   use super::get_leading_comments;
   use super::has_ts_check;
 
@@ -1062,5 +1088,15 @@ mod test {
       MediaType::JavaScript,
       "// ts-check\nconsole.log(5);"
     ));
+  }
+
+  #[test]
+  fn ambient_modules_to_regex_string_test() {
+    let result = ambient_modules_to_regex_string(&[
+      "foo".to_string(),
+      "*.css".to_string(),
+      "$virtual/module".to_string(),
+    ]);
+    assert_eq!(result, r"(foo|.*\.css|\$virtual/module)");
   }
 }

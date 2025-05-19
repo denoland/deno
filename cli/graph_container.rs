@@ -42,7 +42,7 @@ pub struct MainModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
-  update_queue: Arc<crate::util::sync::TaskQueue>,
+  update_queue: Arc<deno_core::unsync::sync::TaskQueue>,
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   cli_options: Arc<CliOptions>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
@@ -154,7 +154,7 @@ impl ModuleGraphContainer for MainModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct MainModuleGraphUpdatePermit<'a> {
-  permit: crate::util::sync::TaskQueuePermit<'a>,
+  permit: deno_core::unsync::sync::TaskQueuePermit<'a>,
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   graph: ModuleGraph,
 }

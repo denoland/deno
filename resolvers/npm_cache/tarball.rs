@@ -11,25 +11,17 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::spawn_blocking;
 use crate::tarball_extract::verify_and_extract_tarball;
 use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
+use crate::NpmCacheSys;
 
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -49,22 +41,7 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct TarballCache<
-  THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsRemoveFile
-    + FsRead
-    + FsReadDir
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
-> {
+pub struct TarballCache<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> {
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   sys: TSys,
@@ -81,22 +58,8 @@ pub struct EnsurePackageError {
   source: Arc<JsErrorBox>,
 }
 
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRead
-      + FsReadDir
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > TarballCache<THttpClient, TSys>
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  TarballCache<THttpClient, TSys>
 {
   pub fn new(
     cache: Arc<NpmCache<TSys>>,
@@ -178,6 +141,7 @@ impl<
     dist: NpmPackageVersionDistInfo,
   ) -> LoadFuture {
     let tarball_cache = self.clone();
+    let sys = self.sys.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
       let package_folder =
@@ -253,8 +217,9 @@ impl<
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
-          deno_unsync::spawn_blocking(move || {
+          spawn_blocking(move || {
             verify_and_extract_tarball(
+              &sys,
               &package_nv,
               &bytes,
               &dist,

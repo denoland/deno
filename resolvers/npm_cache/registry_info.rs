@@ -17,23 +17,15 @@ use futures::FutureExt;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::spawn_blocking;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
+use crate::NpmCacheSys;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -140,29 +132,14 @@ pub struct LoadPackageInfoError {
 #[error("{0}")]
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
-// todo(#27198): refactor to store this only in the http cache
-
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
 pub struct RegistryInfoProvider<
   THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
+  TSys: NpmCacheSys,
 > {
-  // todo(#27198): remove this
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
@@ -171,22 +148,8 @@ pub struct RegistryInfoProvider<
   previously_loaded_packages: Mutex<HashSet<String>>,
 }
 
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > RegistryInfoProvider<THttpClient, TSys>
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  RegistryInfoProvider<THttpClient, TSys>
 {
   pub fn new(
     cache: Arc<NpmCache<TSys>>,
@@ -387,7 +350,7 @@ impl<
         },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
-          let future_result = deno_unsync::spawn_blocking(
+          let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
               let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
               package_info.etag = response.etag;
@@ -419,38 +382,12 @@ impl<
 
 pub struct NpmRegistryApiAdapter<
   THttpClient: NpmCacheHttpClient,
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync
-    + 'static,
+  TSys: NpmCacheSys,
 >(Arc<RegistryInfoProvider<THttpClient, TSys>>);
 
 #[async_trait(?Send)]
-impl<
-    THttpClient: NpmCacheHttpClient,
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync
-      + 'static,
-  > NpmRegistryApi for NpmRegistryApiAdapter<THttpClient, TSys>
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
+  for NpmRegistryApiAdapter<THttpClient, TSys>
 {
   async fn package_info(
     &self,

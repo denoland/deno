@@ -119,16 +119,6 @@ pub async fn parse_response<T: DeserializeOwned>(
   })
 }
 
-pub async fn get_scope(
-  client: &HttpClient,
-  registry_api_url: &Url,
-  scope: &str,
-) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-  let scope_url = format!("{}scopes/{}", registry_api_url, scope);
-  let response = client.get(scope_url.parse()?)?.send().await?;
-  Ok(response)
-}
-
 pub fn get_package_api_url(
   registry_api_url: &Url,
   scope: &str,

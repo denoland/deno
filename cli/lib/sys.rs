@@ -12,6 +12,7 @@ use sys_traits::FsRename;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 
+#[sys_traits::auto_impl]
 pub trait DenoLibSys:
   FsCanonicalize
   + FsCreateDirAll
@@ -29,26 +30,5 @@ pub trait DenoLibSys:
   + Sync
   + std::fmt::Debug
   + 'static
-{
-}
-
-impl<
-    T: FsCanonicalize
-      + FsCreateDirAll
-      + FsReadDir
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRename
-      + FsRead
-      + ThreadSleep
-      + SystemRandom
-      + ExtNodeSys
-      + Clone
-      + Send
-      + Sync
-      + std::fmt::Debug
-      + 'static,
-  > DenoLibSys for T
 {
 }

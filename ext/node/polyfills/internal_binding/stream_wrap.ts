@@ -44,6 +44,7 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -152,6 +153,10 @@ export class LibuvStreamWrap extends HandleWrap {
    */
   readStop(): number {
     this.#reading = false;
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
 
     return 0;
   }
@@ -331,7 +336,17 @@ export class LibuvStreamWrap extends HandleWrap {
     }
 
     try {
-      nread = await this[kStreamBaseField]!.read(buf);
+      if (this[kStreamBaseField]![_readWithCancelHandle]) {
+        const { cancelHandle, nread: p } = this[kStreamBaseField]!
+          [_readWithCancelHandle](buf);
+        if (cancelHandle) {
+          this.cancelHandle = cancelHandle;
+        }
+
+        nread = await p;
+      } else {
+        nread = await this[kStreamBaseField]!.read(buf);
+      }
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
@@ -340,6 +355,8 @@ export class LibuvStreamWrap extends HandleWrap {
       ) {
         return this.#read();
       }
+
+      if (e.message === "cancelled") return null;
 
       if (
         e instanceof Deno.errors.Interrupted ||

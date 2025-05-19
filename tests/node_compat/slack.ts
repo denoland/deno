@@ -18,27 +18,76 @@ const client = new WebClient(token, {
   logLevel: LogLevel.DEBUG,
 });
 
-function formatRatio(report: { pass: number; total: number } | undefined) {
+function getRatio(report: { pass: number; total: number } | undefined) {
   if (!report) {
+    return -1;
+  }
+
+  return (report.pass / report.total) * 100;
+}
+
+function formatRatio(ratio: number) {
+  if (ratio === -1) {
     return "N/A";
   }
-  const ratio = (report.pass / report.total) * 100;
   return ratio.toFixed(2) + "%";
 }
 
+function formatDiff(diff: number) {
+  if (diff === 0) {
+    return `±0% 🟨`;
+  }
+
+  const diffStr = diff.toFixed(2);
+
+  if (diff > 0) {
+    return `+${diffStr}% 🟩`;
+  } else {
+    return `${diffStr}% 🟥`;
+  }
+}
+
 function createMessage(monthSummary: MonthSummary) {
-  const daySummary = Object.values(monthSummary.reports).sort((a, b) =>
+  const sortedMonthSummary = Object.values(monthSummary.reports).sort((a, b) =>
     new Date(a.date).getTime() - new Date(b.date).getTime()
-  ).at(-1);
+  );
+
+  const daySummary = sortedMonthSummary.at(-1);
   if (!daySummary) {
     throw new Error("No summary data found");
   }
+  const prevDaySummary = sortedMonthSummary.at(-2);
   const { date, linux, windows, darwin } = daySummary;
-  const linuxRatio = formatRatio(linux);
-  const windowsRatio = formatRatio(windows);
-  const darwinRatio = formatRatio(darwin);
-  const mrkdwn =
-    `Linux *${linuxRatio}* / Windows *${windowsRatio}* / Darwin *${darwinRatio}* <https://node-test-viewer.deno.dev/results/${date}|(Full report)>`;
+  let mrkdwn = "";
+
+  const currentLinuxRatio = getRatio(linux);
+  const prevLinuxRatio = getRatio(prevDaySummary?.linux);
+  const linuxRatioDiff = prevLinuxRatio !== -1
+    ? currentLinuxRatio - prevLinuxRatio
+    : 0;
+  mrkdwn += `Linux *${formatRatio(currentLinuxRatio)}* (${
+    formatDiff(linuxRatioDiff)
+  })\n`;
+
+  const currentWindowsRatio = getRatio(windows);
+  const prevWindowsRatio = getRatio(prevDaySummary?.windows);
+  const windowsRatioDiff = prevWindowsRatio !== -1
+    ? currentWindowsRatio - prevWindowsRatio
+    : 0;
+  mrkdwn += `Windows *${formatRatio(currentWindowsRatio)}* (${
+    formatDiff(windowsRatioDiff)
+  })\n`;
+
+  const currentDarwinRatio = getRatio(darwin);
+  const prevDarwinRatio = getRatio(prevDaySummary?.darwin);
+  const darwinRatioDiff = prevDarwinRatio !== -1
+    ? currentDarwinRatio - prevDarwinRatio
+    : 0;
+  mrkdwn += `Darwin *${formatRatio(currentDarwinRatio)}* (${
+    formatDiff(darwinRatioDiff)
+  })\n`;
+
+  mrkdwn += `<https://node-test-viewer.deno.dev/results/${date}|(Full report)>`;
 
   return [
     {
