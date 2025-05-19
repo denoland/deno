@@ -1174,6 +1174,7 @@
       "test-streams-highwatermark.js",
       "test-string-decoder.js",
       "test-stringbytes-external.js",
+      "test-sqlite-transactions.js",
       "test-sync-fileread.js",
       "test-sys.js",
       "test-tick-processor-arguments.js",
