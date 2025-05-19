@@ -3310,8 +3310,7 @@ dependencies = [
 [[package]]
 name = "dprint-plugin-typescript"
 version = "0.95.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20b6b18951ebbfe42a284c62dc307a0ae836f8cb1c1aa34aff6aabc21e840d9f"
+source = "git+https://github.com/kt3k/dprint-plugin-typescript.git?branch=fix-embedded-css-allow-key-value-pair-placeholder#f6a076b1f983ce2dc198e5432885a54d008b9608"
 dependencies = [
  "anyhow",
  "capacity_builder",
