@@ -3,10 +3,8 @@
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::io;
-use std::path::Path;
 use std::rc::Rc;
 
-use deno_core::AsyncRef;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -23,19 +21,18 @@ pub struct NamedPipe {
 }
 
 enum Inner {
-  Server((bool, named_pipe::NamedPipeServer)),
+  Server(named_pipe::NamedPipeServer),
   Client(named_pipe::NamedPipeClient),
 }
 
 impl NamedPipe {
-  pub fn new_server(
+  pub async fn new_server(
     addr: impl AsRef<OsStr>,
     options: &named_pipe::ServerOptions,
   ) -> io::Result<NamedPipe> {
     let server = options.create(addr)?;
-    // todo: should we connect here
     Ok(NamedPipe {
-      inner: AsyncRefCell::new(Inner::Server((false, server))),
+      inner: AsyncRefCell::new(Inner::Server(server)),
       cancel: Default::default(),
     })
   }
@@ -51,17 +48,20 @@ impl NamedPipe {
     })
   }
 
+  pub async fn connect(&self) -> io::Result<()> {
+    match &self.inner {
+      Inner::Server(ref inner) => {
+        inner.connect().try_or_cancel(&self.cancel).await
+      }
+      Inner::Client(ref inner) => Ok(()),
+    }
+  }
+
   pub async fn write(self: Rc<Self>, buf: &[u8]) -> io::Result<usize> {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
-      Inner::Server((mut connected, server)) => {
-        if !connected {
-          server.connect().await?;
-          connected = true;
-        }
-        server.write(buf).try_or_cancel(cancel).await
-      },
+      Inner::Server(server) => server.write(buf).try_or_cancel(cancel).await,
       Inner::Client(client) => client.write(buf).try_or_cancel(cancel).await,
     }
   }
@@ -70,13 +70,7 @@ impl NamedPipe {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
-      Inner::Server((mut connected, server)) => {
-        if !connected {
-          server.connect().await?;
-          connected = true;
-        }
-        server.read(buf).try_or_cancel(cancel).await
-      },
+      Inner::Server(server) => server.read(buf).try_or_cancel(cancel).await,
       Inner::Client(client) => client.read(buf).try_or_cancel(cancel).await,
     }
   }

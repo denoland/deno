@@ -59,7 +59,7 @@ async function write(rid, data) {
 }
 
 class Pipe {
-  #rid = 0;
+  readonly #rid = 0;
   #unref = false;
   #pendingReadPromises = new SafeSet();
 
@@ -76,11 +76,11 @@ class Pipe {
     this.#rid = rid;
   }
 
-  write(buffer) {
+  write(buffer): Promise<number> {
     return write(this.#rid, buffer);
   }
 
-  async read(buffer) {
+  async read(buffer): Promise<number> {
     if (buffer.length === 0) {
       return 0;
     }
@@ -101,7 +101,7 @@ class Pipe {
   close() {
     core.close(this.#rid);
   }
-  get readable() {
+  get readable(): ReadableStream<Uint8Array> {
     if (this.#readable === undefined) {
       this.#readable = readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
@@ -111,7 +111,7 @@ class Pipe {
     return this.#readable;
   }
 
-  get writable() {
+  get writable(): WritableStream<Uint8Array> {
     if (this.#writable === undefined) {
       this.#writable = writableStreamForRid(this.#rid);
     }
@@ -146,14 +146,14 @@ class Pipe {
   }
 }
 
-function connect(opts: Options | WindowsConnectOptions) {
+async function connect(opts: Options | WindowsConnectOptions) {
   let rid: number;
   switch (opts.kind) {
     case "unix":
       rid = op_pipe_connect(opts.path, "Deno.pipe.connect");
       return new Pipe(rid);
     case "windows":
-      rid = op_pipe_connect(opts, "Deno.pipe.connect");
+      rid = await op_pipe_connect(opts, "Deno.pipe.connect");
       return new Pipe(rid);
     default:
       throw new Error(`Unsupported kind: ${opts.kind}`);
