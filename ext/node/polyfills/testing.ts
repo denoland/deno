@@ -7,7 +7,7 @@ const {
   ArrayPrototypeForEach,
   SafePromiseAll,
   TypeError,
-  SafeIterator,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   Symbol,
 } = primordials;
@@ -114,12 +114,12 @@ class NodeTestContext {
     // deno-lint-ignore no-this-alias
     const parentContext = this;
     const after = async () => {
-      for (const hook of new SafeIterator(this.#afterHooks)) {
+      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
         await hook();
       }
     };
     const before = async () => {
-      for (const hook of new SafeIterator(this.#beforeHooks)) {
+      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
         await hook();
       }
     };
