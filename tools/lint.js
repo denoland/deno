@@ -66,6 +66,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
+    ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/ffi/tests/test.js",

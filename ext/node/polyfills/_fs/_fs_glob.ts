@@ -1,6 +1,6 @@
 // translated primarily from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/internal/fs/glob.js#L258
 // with glob() and globSync() from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/fs.js#L3167
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 import {
   validateObject,
@@ -97,10 +97,9 @@ const {
   ReflectApply,
 } = primordials;
 
-// not lazy anymore
-function lazyMinimatch() {
-  return minimatch;
-}
+const lazyMinimatch = core.createLazyLoader(
+  "ext:deno_node/deps/minimatch/index.ts",
+);
 
 /**
  * @param {string} path
