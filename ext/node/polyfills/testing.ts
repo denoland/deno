@@ -6,6 +6,8 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeForEach,
   SafePromiseAll,
+  TypeError,
+  SafeIterator,
   SafePromisePrototypeFinally,
   Symbol,
 } = primordials;
@@ -111,7 +113,9 @@ class NodeTestContext {
     // deno-lint-ignore no-this-alias
     const parentContext = this;
     const after = async () => {
-      await Promise.all(this.#afterHooks.map((hook) => hook()));
+      for (const hook of new SafeIterator(this.#afterHooks)) {
+        await hook();
+      }
     };
     return PromisePrototypeThen(
       this.#denoContext.step({
@@ -123,14 +127,14 @@ class NodeTestContext {
           );
           try {
             await prepared.fn(newNodeTextContext);
+            await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
-          } finally {
             try {
               await after();
-            } catch { /* pass */ }
+            } catch { /* ignore, test is already failing */ }
           }
         },
         ignore: prepared.options.todo || prepared.options.skip,
@@ -150,7 +154,7 @@ class NodeTestContext {
     if (typeof fn !== "function") {
       throw new TypeError("after() requires a function");
     }
-    this.#afterHooks.push(fn);
+    ArrayPrototypePush(this.#afterHooks, fn);
   }
 
   beforeEach(_fn, _options) {
