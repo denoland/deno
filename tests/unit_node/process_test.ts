@@ -439,9 +439,10 @@ Deno.test({
   fn() {
     Deno.env.set("FOO", "1");
     assert("FOO" in process.env);
-    assertFalse("BAR" in process.env);
+    assertThrows(() => {
+      process.env.BAR;
+    }, Deno.errors.NotCapable);
     assert(Object.hasOwn(process.env, "FOO"));
-    assertFalse(Object.hasOwn(process.env, "BAR"));
   },
 });
 
@@ -656,6 +657,7 @@ Deno.test({
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
     assertEquals(process.stdout.columns, consoleSize?.columns);
     assertEquals(process.stdout.rows, consoleSize?.rows);
+    assert([1, 4, 8, 24].includes(process.stdout.getColorDepth()));
     assertEquals(
       `${process.stdout.getWindowSize()}`,
       `${consoleSize && [consoleSize.columns, consoleSize.rows]}`,

@@ -28,7 +28,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
-use deno_core::FeatureChecker;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -62,12 +61,16 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
+#[cfg(target_os = "linux")]
+use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
+#[cfg(target_os = "linux")]
+use crate::worker::SIGUSR2_RX;
 use crate::BootstrapOptions;
+use crate::FeatureChecker;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -401,12 +404,17 @@ pub struct WebWorker {
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for WebWorker {
   fn drop(&mut self) {
     // clean up the package.json thread local cache
     node_resolver::PackageJsonThreadLocalCache::clear();
+
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
   }
 }
 
@@ -441,17 +449,6 @@ impl WebWorker {
     >,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
-    deno_core::extension!(deno_permissions_web_worker,
-      options = {
-        permissions: PermissionsContainer,
-        enable_testing_features: bool,
-      },
-      state = |state, options| {
-        state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
-      },
-    );
-
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
 
@@ -493,18 +490,18 @@ impl WebWorker {
     // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
     // and `runtime/snapshot.rs`!
     let mut extensions = vec![
-      deno_telemetry::deno_telemetry::init_ops_and_esm(),
+      deno_telemetry::deno_telemetry::init(),
       // Web APIs
-      deno_webidl::deno_webidl::init_ops_and_esm(),
-      deno_console::deno_console::init_ops_and_esm(),
-      deno_url::deno_url::init_ops_and_esm(),
-      deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init(),
+      deno_console::deno_console::init(),
+      deno_url::deno_url::init(),
+      deno_web::deno_web::init::<PermissionsContainer>(
         services.blob_store,
         Some(options.main_module.clone()),
       ),
-      deno_webgpu::deno_webgpu::init_ops_and_esm(),
-      deno_canvas::deno_canvas::init_ops_and_esm(),
-      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
+      deno_webgpu::deno_webgpu::init(),
+      deno_canvas::deno_canvas::init(),
+      deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -515,26 +512,26 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops_and_esm(create_cache),
-      deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
+      deno_cache::deno_cache::init(create_cache),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
-      deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
+      deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_crypto::deno_crypto::init(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init(
         services.broadcast_channel,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(
+      deno_ffi::deno_ffi::init::<PermissionsContainer>(
         services.deno_rt_native_addon_loader.clone(),
       ),
-      deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
+      deno_net::deno_net::init::<PermissionsContainer>(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
+      deno_tls::deno_tls::init(),
+      deno_kv::deno_kv::init(
         MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           None,
           options.seed,
@@ -550,51 +547,40 @@ impl WebWorker {
         ),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(
+      deno_cron::deno_cron::init(LocalCronHandler::new()),
+      deno_napi::deno_napi::init::<PermissionsContainer>(
         services.deno_rt_native_addon_loader.clone(),
       ),
-      deno_http::deno_http::init_ops_and_esm(deno_http::Options {
+      deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
         ..Default::default()
       }),
-      deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        services.fs.clone(),
-      ),
-      deno_os::deno_os_worker::init_ops_and_esm(),
-      deno_process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
-      deno_node::deno_node::init_ops_and_esm::<
+      deno_io::deno_io::init(Some(options.stdio)),
+      deno_fs::deno_fs::init::<PermissionsContainer>(services.fs.clone()),
+      deno_os::deno_os::init(None),
+      deno_process::deno_process::init(services.npm_process_state_provider),
+      deno_node::deno_node::init::<
         PermissionsContainer,
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
       >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
-      ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops_and_esm(
+      ops::runtime::deno_runtime::init(options.main_module.clone()),
+      ops::worker_host::deno_worker_host::init(
         options.create_web_worker_cb,
         options.format_js_error_fn,
       ),
-      ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::tty::deno_tty::init_ops_and_esm(),
-      ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
-        if options.startup_snapshot.is_some() {
-          None
-        } else {
-          Some(Default::default())
-        },
+      ops::fs_events::deno_fs_events::init(),
+      ops::permissions::deno_permissions::init(),
+      ops::tty::deno_tty::init(),
+      ops::http::deno_http_runtime::init(),
+      ops::bootstrap::deno_bootstrap::init(
+        options.startup_snapshot.and_then(|_| Default::default()),
+        false,
       ),
-      deno_permissions_web_worker::init_ops_and_esm(
-        services.permissions,
-        enable_testing_features,
-      ),
-      runtime::init_ops_and_esm(),
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      runtime::init(),
+      ops::web_worker::deno_web_worker::init(),
     ];
 
     #[cfg(feature = "hmr")]
@@ -636,7 +622,6 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
-      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
@@ -659,11 +644,18 @@ impl WebWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
-    // Put inspector handle into the op state so we can put a breakpoint when
-    // executing a CJS entrypoint.
-    let op_state = js_runtime.op_state();
-    let inspector = js_runtime.inspector();
-    op_state.borrow_mut().put(inspector);
+    {
+      let state = js_runtime.op_state();
+      let mut state = state.borrow_mut();
+
+      state.put::<PermissionsContainer>(services.permissions);
+      state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      state.put(js_runtime.inspector());
+    }
 
     if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(
@@ -718,6 +710,7 @@ impl WebWorker {
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
+        memory_trim_handle: None,
       },
       external_handle,
       options.bootstrap,
@@ -789,6 +782,49 @@ impl WebWorker {
       self.has_message_event_listener_fn =
         Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
+  }
+
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -973,66 +1009,63 @@ fn print_worker_error(
 
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-pub fn run_web_worker(
+// TODO(bartlomieju): run following block using "select!"
+// with terminate
+pub async fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
+  worker.setup_memory_trim_handler();
+
   let name = worker.name.to_string();
+  let internal_handle = worker.internal_handle.clone();
 
-  // TODO(bartlomieju): run following block using "select!"
-  // with terminate
-
-  let fut = async move {
-    let internal_handle = worker.internal_handle.clone();
-
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code.into());
-      worker.start_polling_for_messages();
-      r
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      match worker.preload_main_module(&specifier).await {
-        Ok(id) => {
-          worker.start_polling_for_messages();
-          worker.execute_main_module(id).await
-        }
-        Err(e) => Err(e),
+  // Execute provided source code immediately
+  let result = if let Some(source_code) = maybe_source_code.take() {
+    let r = worker.execute_script(located_script_name!(), source_code.into());
+    worker.start_polling_for_messages();
+    r
+  } else {
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
+    // script instead of module
+    match worker.preload_main_module(&specifier).await {
+      Ok(id) => {
+        worker.start_polling_for_messages();
+        worker.execute_main_module(id).await
       }
-    };
-
-    // If sender is closed it means that worker has already been closed from
-    // within using "globalThis.close()"
-    if internal_handle.is_terminated() {
-      return Ok(());
+      Err(e) => Err(e),
     }
+  };
 
-    let result = if result.is_ok() {
-      worker
-        .run_event_loop(PollEventLoopOptions {
-          wait_for_inspector: true,
-          ..Default::default()
-        })
-        .await
-    } else {
-      result
-    };
+  // If sender is closed it means that worker has already been closed from
+  // within using "globalThis.close()"
+  if internal_handle.is_terminated() {
+    return Ok(());
+  }
 
-    if let Err(e) = result {
-      print_worker_error(&e, &name, format_js_error_fn.as_deref());
-      internal_handle
-        .post_event(WorkerControlEvent::TerminalError(e))
-        .expect("Failed to post message to host");
-
-      // Failure to execute script is a terminal error, bye, bye.
-      return Ok(());
-    }
-
-    debug!("Worker thread shuts down {}", &name);
+  let result = if result.is_ok() {
+    worker
+      .run_event_loop(PollEventLoopOptions {
+        wait_for_inspector: true,
+        ..Default::default()
+      })
+      .await
+  } else {
     result
   };
-  create_and_run_current_thread(fut)
+
+  if let Err(e) = result {
+    print_worker_error(&e, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(e))
+      .expect("Failed to post message to host");
+
+    // Failure to execute script is a terminal error, bye, bye.
+    return Ok(());
+  }
+
+  debug!("Worker thread shuts down {}", &name);
+  result
 }

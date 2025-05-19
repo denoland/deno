@@ -81,7 +81,11 @@ pub struct UnsafeWindowSurface {
   pub context: SameObject<GPUCanvasContext>,
 }
 
-impl GarbageCollected for UnsafeWindowSurface {}
+impl GarbageCollected for UnsafeWindowSurface {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"UnsafeWindowSurface"
+  }
+}
 
 #[op2]
 impl UnsafeWindowSurface {
@@ -156,6 +160,18 @@ impl UnsafeWindowSurface {
     };
 
     context.present().map_err(JsErrorBox::from_err)
+  }
+
+  #[fast]
+  fn resize(&self, width: u32, height: u32, scope: &mut v8::HandleScope) {
+    self.width.replace(width);
+    self.height.replace(height);
+
+    let Some(context) = self.context.try_unwrap(scope) else {
+      return;
+    };
+
+    context.resize_configure(width, height);
   }
 }
 

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.194.0"
+version = "0.197.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 hickory-proto.workspace = true

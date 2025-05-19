@@ -13,10 +13,13 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::UnknownBuiltInNodeModuleError;
+pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
+pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
@@ -26,13 +29,10 @@ use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use self::npm::NpmResolverSys;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
@@ -40,7 +40,12 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod display;
 pub mod factory;
+#[cfg(feature = "graph")]
+pub mod graph;
+pub mod import_map;
+pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
 mod sync;
@@ -100,6 +105,9 @@ pub enum DenoResolveErrorKind {
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[class(inherit)]
   #[error(transparent)]
+  UnknownBuiltInNodeModule(#[from] UnknownBuiltInNodeModuleError),
+  #[class(inherit)]
+  #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
 }
 
@@ -108,7 +116,7 @@ pub struct NodeAndNpmReqResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: NpmResolverSys,
 > {
   pub node_resolver: NodeResolverRc<
     TInNpmPackageChecker,
@@ -124,12 +132,15 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
+#[sys_traits::auto_impl]
+pub trait DenoResolverSys: NpmResolverSys {}
+
 pub struct DenoResolverOptions<
   'a,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_and_req_resolver: Option<
@@ -141,6 +152,8 @@ pub struct DenoResolverOptions<
     >,
   >,
   pub workspace_resolver: WorkspaceResolverRc<TSys>,
+  /// Whether bare node built-ins are enabled (ex. resolve "path" as "node:path").
+  pub bare_node_builtins: bool,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
@@ -149,13 +162,13 @@ pub struct DenoResolverOptions<
 }
 
 #[allow(clippy::disallowed_types)]
-pub type DenoResolverRc<
+pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
 > = crate::sync::MaybeArc<
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -163,11 +176,11 @@ pub type DenoResolverRc<
   >,
 >;
 
-/// Helper type for a DenoResolverRc that has the implementations
+/// Helper type for a RawDenoResolverRc that has the implementations
 /// used by the Deno CLI.
-pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+pub type DefaultRawDenoResolverRc<TSys> = RawDenoResolverRc<
   npm::DenoInNpmPackageChecker,
-  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
   TSys,
 >;
@@ -175,11 +188,11 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct DenoResolver<
+pub struct RawDenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: DenoResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   node_and_npm_resolver: Option<
@@ -191,6 +204,7 @@ pub struct DenoResolver<
     >,
   >,
   workspace_resolver: WorkspaceResolverRc<TSys>,
+  bare_node_builtins: bool,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
@@ -199,9 +213,9 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+    TSys: DenoResolverSys,
   >
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -220,6 +234,7 @@ impl<
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_and_npm_resolver: options.node_and_req_resolver,
       workspace_resolver: options.workspace_resolver,
+      bare_node_builtins: options.bare_node_builtins,
       is_byonm: options.is_byonm,
       maybe_vendor_specifier: options
         .maybe_vendor_dir
@@ -256,10 +271,11 @@ impl<
     }
 
     // Attempt to resolve with the workspace resolver
-    let result: Result<_, DenoResolveError> = self
-      .workspace_resolver
-      .resolve(raw_specifier, referrer, resolution_kind.into())
-      .map_err(|err| err.into());
+    let result = self.workspace_resolver.resolve(
+      raw_specifier,
+      referrer,
+      resolution_kind.into(),
+    );
     let result = match result {
       Ok(resolution) => match resolution {
         MappedResolution::Normal {
@@ -359,7 +375,7 @@ impl<
             })
         }
       },
-      Err(err) => Err(err),
+      Err(err) => Err(err.into()),
     };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
@@ -390,6 +406,24 @@ impl<
 
     match result {
       Ok(specifier) => {
+        if specifier.scheme() == "node" {
+          let module_name = specifier.path();
+          return if node_resolver.is_builtin_node_module(module_name) {
+            Ok(DenoResolution {
+              url: specifier,
+              maybe_diagnostic,
+              found_package_json_dep,
+            })
+          } else {
+            Err(
+              UnknownBuiltInNodeModuleError {
+                module_name: module_name.to_string(),
+              }
+              .into(),
+            )
+          };
+        }
+
         if let Ok(npm_req_ref) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -483,11 +517,26 @@ impl<
                   found_package_json_dep,
                 })
               }
-              NodeResolution::BuiltIn(_) => {
-                // don't resolve bare specifiers for built-in modules via node resolution
+              NodeResolution::BuiltIn(ref _module) => {
+                if self.bare_node_builtins {
+                  return Ok(DenoResolution {
+                    url: res.into_url()?,
+                    maybe_diagnostic,
+                    found_package_json_dep,
+                  });
+                }
               }
             }
           }
+        } else if self.bare_node_builtins
+          && matches!(err.as_kind(), DenoResolveErrorKind::MappedResolution(err) if err.is_unmapped_bare_specifier())
+          && node_resolver.is_builtin_node_module(raw_specifier)
+        {
+          return Ok(DenoResolution {
+            url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
+            maybe_diagnostic,
+            found_package_json_dep,
+          });
         }
 
         Err(err)

@@ -29,7 +29,7 @@ if (process.argv[2] === 'child') {
   return;
 }
 
-const cmd = `"${process.execPath}" --allow-read "${__filename}" child`;
+const cmd = `"${process.execPath}" --allow-read --allow-env "${__filename}" child`;
 
 cp.exec(cmd, {
   timeout: kTimeoutNotSupposedToExpire

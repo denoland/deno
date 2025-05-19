@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1163 tests out of 3993 have been ported from Node 23.9.0 (29.13% ported, 71.40% remaining).
+1173 tests out of 3993 have been ported from Node 23.9.0 (29.38% ported, 71.15% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -282,8 +282,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-blocklist-clone.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-backing-arraybuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-backing-arraybuffer.js)
-- [parallel/test-buffer-compare.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-compare.js)
 - [parallel/test-buffer-constructor-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-deprecation-error.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
 - [parallel/test-buffer-constructor-node-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules.js)
@@ -615,10 +613,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-create-socket-handle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-create-socket-handle.js)
 - [parallel/test-dgram-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-deprecation-error.js)
 - [parallel/test-dgram-exclusive-implicit-bind.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-exclusive-implicit-bind.js)
-- [parallel/test-dgram-membership.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-membership.js)
-- [parallel/test-dgram-multicast-loopback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-loopback.js)
 - [parallel/test-dgram-multicast-set-interface.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-set-interface.js)
-- [parallel/test-dgram-multicast-setTTL.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-multicast-setTTL.js)
 - [parallel/test-dgram-reuseport.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-reuseport.js)
 - [parallel/test-dgram-send-address-types.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-address-types.js)
 - [parallel/test-dgram-send-empty-array.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-empty-array.js)
@@ -626,7 +621,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-send-empty-packet.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-empty-packet.js)
 - [parallel/test-dgram-send-queue-info.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-send-queue-info.js)
 - [parallel/test-dgram-sendto.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-sendto.js)
-- [parallel/test-dgram-setBroadcast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-setBroadcast.js)
 - [parallel/test-dgram-setTTL.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-setTTL.js)
 - [parallel/test-dgram-udp6-link-local-address.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-udp6-link-local-address.js)
 - [parallel/test-dgram-unref-in-cluster.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dgram-unref-in-cluster.js)
@@ -2189,14 +2183,11 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-tls-connect-allow-half-open-option.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-allow-half-open-option.js)
 - [parallel/test-tls-connect-given-socket.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-given-socket.js)
 - [parallel/test-tls-connect-hints-option.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-hints-option.js)
-- [parallel/test-tls-connect-hwm-option.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-hwm-option.js)
 - [parallel/test-tls-connect-memleak.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-memleak.js)
 - [parallel/test-tls-connect-no-host.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-no-host.js)
 - [parallel/test-tls-connect-pipe.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-pipe.js)
 - [parallel/test-tls-connect-secure-context.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-secure-context.js)
-- [parallel/test-tls-connect-simple.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-simple.js)
 - [parallel/test-tls-connect-stream-writes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-stream-writes.js)
-- [parallel/test-tls-connect-timeout-option.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-connect-timeout-option.js)
 - [parallel/test-tls-delayed-attach-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-delayed-attach-error.js)
 - [parallel/test-tls-delayed-attach.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-delayed-attach.js)
 - [parallel/test-tls-destroy-stream-12.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-tls-destroy-stream-12.js)
@@ -2531,7 +2522,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-worker-esm-missing-main.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esm-missing-main.js)
 - [parallel/test-worker-esmodule.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esmodule.js)
 - [parallel/test-worker-eval-typescript.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-eval-typescript.js)
-- [parallel/test-worker-event.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-event.js)
 - [parallel/test-worker-execargv-invalid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv-invalid.js)
 - [parallel/test-worker-execargv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv.js)
 - [parallel/test-worker-exit-code.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-exit-code.js)

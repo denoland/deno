@@ -1254,6 +1254,25 @@ Deno.test("[node/http] ServerResponse header names case insensitive", async () =
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse .req", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    assertEquals(res.req, req);
+    res.end("foo");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(await res.text(), "foo");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -2040,4 +2059,89 @@ Deno.test("[node/http] 'close' event is emitted on ServerResponse object when th
   await promise;
   await new Promise((resolve) => server.close(resolve));
   assert(responseCloseEmitted);
+});
+
+Deno.test("[node/http] rawHeaders are in flattened format", async () => {
+  const getHeader = (req: IncomingMessage, name: string) => {
+    const idx = req.rawHeaders.indexOf(name);
+    if (idx < 0) {
+      throw new Error(`Header ${name} not found`);
+    }
+    return [name, req.rawHeaders[idx + 1]];
+  };
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    resolve();
+    // TODO(nathanwhit): the raw headers should not be lowercased, they should be
+    // exactly as they appeared in the request
+    assertEquals(getHeader(req, "content-type"), [
+      "content-type",
+      "text/plain",
+    ]);
+    assertEquals(getHeader(req, "set-cookie"), [
+      "set-cookie",
+      "foo=bar",
+    ]);
+    res.end();
+  });
+
+  server.listen(0, async () => {
+    const { port } = server.address() as { port: number };
+    const response = await fetch(`http://localhost:${port}`, {
+      headers: {
+        "Set-Cookie": "foo=bar",
+        "Content-Type": "text/plain",
+      },
+    });
+    await response.body?.cancel();
+  });
+
+  await promise;
+  await new Promise((resolve) => server.close(resolve));
+});
+
+Deno.test("[node/http] client http over unix socket works", {
+  ignore: Deno.build.os == "windows",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socketPath = Deno.makeTempDirSync() + "/server.sock";
+  const server = Deno.serve({
+    transport: "unix",
+    path: socketPath,
+    onListen,
+  }, (_req) => new Response("ok"));
+
+  function onListen() {
+    const options = {
+      socketPath,
+      path: "/",
+      method: "GET",
+    };
+    http.request(options, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertEquals(await text(res), "ok");
+      resolve();
+      server.shutdown();
+    }).end();
+  }
+  await promise;
+  await server.finished;
+});
+
+Deno.test("[node/https] null ca, key and cert req options", {
+  permissions: { net: ["localhost:5545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  https.request("https://localhost:5545/echo.ts", {
+    ca,
+    // @ts-expect-error - key can be null at runtime
+    key: null,
+    // @ts-expect-error - cert can be null at runtime
+    cert: null,
+  }, async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
 });
