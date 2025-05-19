@@ -900,6 +900,7 @@ pub async fn run(
         cjs_tracker.clone(),
         node_code_translator,
         sys.clone(),
+        true,
       )),
       npm_registry_permission_checker,
       npm_req_resolver,

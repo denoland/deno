@@ -588,11 +588,11 @@ impl<
 
     source.push(format!(
       r#"let mod;
-      if (import.meta.main) {{
-        mod = __internalModule._load("{0}", null, true)
-      }} else {{
+      // if (import.meta.main) {{
+      //   mod = __internalModule._load("{0}", null, true)
+      // }} else {{
         mod = require("{0}");
-      }}"#,
+      // }}"#,
       url_to_file_path(entry_specifier)
         .unwrap()
         .to_str()

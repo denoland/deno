@@ -76,6 +76,12 @@ pub async fn bundle(
     http_cache,
     module_loader,
   });
+  let roots = bundle_flags
+    .entrypoints
+    .iter()
+    .map(|e| resolve_url_or_path(e, &init_cwd).unwrap())
+    .collect::<Vec<_>>();
+  let _ = plugin_handler.prepare_module_load(&roots).await;
   let esbuild = EsbuildService::new(path, "0.25.4", plugin_handler.clone())
     .await
     .unwrap();
@@ -109,12 +115,13 @@ pub async fn bundle(
       BundleFormat::Cjs => esbuild_rs::Format::Cjs,
       BundleFormat::Iife => esbuild_rs::Format::Iife,
     });
-  if let Some(outdir) = bundle_flags.output_dir {
+  if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
   } else {
     builder.outfile(
       bundle_flags
         .output_path
+        .clone()
         .unwrap_or_else(|| "./dist/bundled.js".to_string()),
     );
   }
@@ -180,6 +187,23 @@ pub async fn bundle(
   if let Some(stdout) = response.write_to_stdout {
     println!("{}", String::from_utf8_lossy(&stdout));
   } else if response.errors.len() == 0 {
+    if bundle_flags.output_dir.is_none()
+      && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
+    {
+      // TODO(nathanwhit): MASSIVE HACK
+      let out = bundle_flags
+        .output_path
+        .clone()
+        .unwrap_or_else(|| "./dist/bundled.js".to_string());
+      let contents = std::fs::read_to_string(&out).unwrap();
+      let contents = contents.replace(
+        r#"throw Error('Dynamic require of "' + x + '" is not supported');"#,
+        r#"if (process.getBuiltinModule(x)) { return process.getBuiltinModule(x); }
+throw Error('Dynamic require of "' + x + '" is not supported');"#,
+      );
+      std::fs::write(&out, contents).unwrap();
+    }
+
     log::info!(
       "{}",
       deno_terminal::colors::green(format!(
@@ -368,6 +392,7 @@ impl DenoPluginHandler {
     importer: Option<&str>,
     resolve_dir: Option<&str>,
     kind: esbuild_rs::protocol::ImportKind,
+    // TODO: use this / store it for later usage when loading
     with: IndexMap<String, String>,
   ) -> Result<Option<String>, AnyError> {
     log::debug!(
@@ -431,7 +456,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::cyan("preparing module load"),
           result.url
         );
-        self.prepare_module_load(result.url.clone()).await?;
         log::debug!(
           "{}: {:?}",
           deno_terminal::colors::green("prepared module load"),
@@ -439,7 +463,11 @@ impl DenoPluginHandler {
         );
 
         let graph = self.module_graph_container.graph();
-        let module = graph.get(&result.url);
+        let mut module = graph.get(&result.url).cloned();
+        if module.is_none() {
+          self.prepare_module_load(&[result.url.clone()]).await?;
+          module = graph.get(&result.url).cloned();
+        }
         if let Some(module) = module {
           log::debug!(
             "{}: {} -> {}",
@@ -494,7 +522,7 @@ impl DenoPluginHandler {
 
   async fn prepare_module_load(
     &self,
-    specifier: ModuleSpecifier,
+    specifiers: &[ModuleSpecifier],
   ) -> Result<(), AnyError> {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
@@ -504,7 +532,7 @@ impl DenoPluginHandler {
       .module_load_preparer
       .prepare_module_load(
         graph,
-        &[specifier],
+        specifiers,
         PrepareModuleLoadOptions {
           is_dynamic: false,
           lib: TsTypeLib::default(),
@@ -541,48 +569,55 @@ impl DenoPluginHandler {
     let resolve_dir = Path::new(&resolve_dir);
     let specifier = deno_core::resolve_url_or_path(&specifier, resolve_dir)?;
 
-    self.prepare_module_load(specifier.clone()).await?;
+    let (code, loader) =
+      if let Some((code, loader)) = self.load_from_graph(&specifier)? {
+        (code, loader)
+      } else {
+        self.prepare_module_load(&[specifier.clone()]).await?;
+        let Some((code, loader)) = self.load_from_graph(&specifier)? else {
+          return Ok(None);
+        };
+        (code, loader)
+      };
 
-    // self.load_from_graph(&specifier)
+    // let (specifier, loader) = if let Some((specifier, loader)) =
+    //   self.specifier_and_type_from_graph(&specifier)?
+    // {
+    //   (specifier, loader)
+    // } else {
+    //   log::debug!(
+    //     "{}: no specifier and type from graph for {}",
+    //     deno_terminal::colors::yellow("warn"),
+    //     specifier
+    //   );
 
-    let (specifier, loader) = if let Some((specifier, loader)) =
-      self.specifier_and_type_from_graph(&specifier)?
-    {
-      (specifier, loader)
-    } else {
-      log::debug!(
-        "{}: no specifier and type from graph for {}",
-        deno_terminal::colors::yellow("warn"),
-        specifier
-      );
+    //   let (media_type, _) =
+    //     deno_media_type::resolve_media_type_and_charset_from_content_type(
+    //       &specifier, None,
+    //     );
+    //   if media_type == deno_media_type::MediaType::Unknown {
+    //     return Ok(None);
+    //   }
+    //   (specifier, media_type_to_loader(media_type))
+    // };
+    // let loaded = self.module_loader.load(
+    //   &specifier,
+    //   None,
+    //   false,
+    //   deno_core::RequestedModuleType::None,
+    // );
 
-      let (media_type, _) =
-        deno_media_type::resolve_media_type_and_charset_from_content_type(
-          &specifier, None,
-        );
-      if media_type == deno_media_type::MediaType::Unknown {
-        return Ok(None);
-      }
-      (specifier, media_type_to_loader(media_type))
-    };
-    let loaded = self.module_loader.load(
-      &specifier,
-      None,
-      false,
-      deno_core::RequestedModuleType::None,
-    );
+    // match loaded {
+    //   deno_core::ModuleLoadResponse::Sync(module_source) => {
+    //     Ok(Some((module_source?.code.as_bytes().to_vec(), loader)))
+    //   }
+    //   deno_core::ModuleLoadResponse::Async(pin) => {
+    //     let pin = pin.await?;
+    //     Ok(Some((pin.code.as_bytes().to_vec(), loader)))
+    //   }
+    // }
 
-    match loaded {
-      deno_core::ModuleLoadResponse::Sync(module_source) => {
-        Ok(Some((module_source?.code.as_bytes().to_vec(), loader)))
-      }
-      deno_core::ModuleLoadResponse::Async(pin) => {
-        let pin = pin.await?;
-        Ok(Some((pin.code.as_bytes().to_vec(), loader)))
-      }
-    }
-
-    // Ok(Some((code, loader)))
+    Ok(Some((code, loader)))
   }
 
   #[allow(dead_code)]
@@ -591,7 +626,9 @@ impl DenoPluginHandler {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
     let graph = self.module_graph_container.graph();
-    let module = graph.get(&specifier).unwrap();
+    let Some(module) = graph.get(&specifier) else {
+      return Ok(None);
+    };
 
     match module {
       deno_graph::Module::Js(js_module) => Ok(Some((

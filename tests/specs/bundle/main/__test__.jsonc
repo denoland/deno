@@ -1,0 +1,53 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_specifier": {
+      "steps": [
+        {
+          "args": "i -e main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A main.ts",
+          "output": "Hello, world!\n"
+        },
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "bundled in [WILDCARD]s\n"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "Hello, world!\n"
+        }
+      ]
+    },
+    "npm_specifier_with_import_map": {
+      "steps": [
+        {
+          "args": "i npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A main2.ts",
+          "output": "Hello, world!\n"
+        },
+        {
+          "args": "bundle --output=out.js main2.ts",
+          "output": "bundled in [WILDCARD]s\n"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "Hello, world!\n"
+        }
+      ]
+    }
+  }
+}

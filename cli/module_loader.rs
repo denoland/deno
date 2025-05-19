@@ -972,6 +972,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       Cow::Borrowed(original_source.as_ref())
     };
     let text = if self.translate_cjs {
+      eprintln!("translating cjs to esm");
       self
         .node_code_translator
         .translate_cjs_to_esm(specifier, Some(js_source))
