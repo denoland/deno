@@ -102,7 +102,7 @@ where
 
 #[op2(stack_trace)]
 #[smi]
-pub fn op_pipe_connect<NP>(
+pub async fn op_pipe_connect<NP>(
   state: &mut OpState,
   #[serde] args: ConnectArgs,
   #[string] api_name: &str,
@@ -132,10 +132,9 @@ where
   };
 
   let mut opts = named_pipe::ClientOptions::new();
-  opts
-      .read(args.read)
-      .write(args.write);
+  opts.read(args.read).write(args.write);
   let pipe = NamedPipe::new_client(path.as_ref(), &opts)?;
+  pipe.connect().await?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
 }
