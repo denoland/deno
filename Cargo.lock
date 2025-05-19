@@ -3546,6 +3546,7 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 [[package]]
 name = "esbuild_rs"
 version = "0.1.0"
+source = "git+https://github.com/nathanwhit/esbuild_rs#f35377d955f535fc29d3758ca55b6fbf555604c8"
 dependencies = [
  "anyhow",
  "async-trait",
