@@ -374,7 +374,13 @@ pub fn op_require_stat<
   #[string] path: String,
 ) -> Result<i32, JsErrorBox> {
   let path = PathBuf::from(path);
-  let path = ensure_read_permission::<P>(state, &path)?;
+  let path = if path.ends_with("node_modules") {
+    // skip stat permission checks for node_modules directories
+    // because they're noisy and it's fine
+    Cow::Owned(path)
+  } else {
+    ensure_read_permission::<P>(state, &path)?
+  };
   let sys = state.borrow::<TSys>();
   if let Ok(metadata) = sys.fs_metadata(&path) {
     if metadata.file_type().is_file() {
