@@ -7,7 +7,10 @@ const tempDir = Deno.makeTempDirSync();
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
   const db2 = new DatabaseSync(":memory:");
-  db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+  assertEquals(
+    db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);"),
+    undefined,
+  );
   db1.exec("INSERT INTO data (key) VALUES (1);");
 
   db2.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");

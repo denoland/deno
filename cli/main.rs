@@ -308,7 +308,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
           env::set_var(
-            "DENO_UNSTABLE_COVERAGE_DIR",
+            "DENO_COVERAGE_DIR",
             PathBuf::from(coverage_dir).canonicalize()?,
           );
         }
