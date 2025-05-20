@@ -122,6 +122,7 @@ async function dlintPreferPrimordials() {
     "ext/**/*.ts",
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
+    ":!:ext/node/polyfills/deps/**",
   ]);
 
   if (!sourceFiles.length) {

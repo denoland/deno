@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+// deno-lint-ignore-file prefer-primordials
 // translated primarily from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/internal/fs/glob.js#L258
 // with glob() and globSync() from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/fs.js#L3167
 import { core, primordials } from "ext:core/mod.js";
@@ -90,16 +92,16 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSome,
   Promise,
+  PromisePrototype,
   PromisePrototypeThen,
   SafeMap,
   SafeSet,
   StringPrototypeEndsWith,
   ReflectApply,
+  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-const lazyMinimatch = core.createLazyLoader(
-  "ext:deno_node/deps/minimatch/index.ts",
-);
+const lazyMinimatch = core.createLazyLoader("ext:deno_node/deps/minimatch.js");
 
 /**
  * @param {string} path
@@ -163,7 +165,7 @@ function createMatcher(pattern, options = kEmptyObject) {
     nocaseMagicOnly: true,
     ...options,
   };
-  return new (lazyMinimatch().Minimatch)(pattern, opts);
+  return new (lazyMinimatch().default.Minimatch)(pattern, opts);
 }
 
 class Cache {
@@ -183,7 +185,7 @@ class Cache {
   statSync(path) {
     const cached = this.#statsCache.get(path);
     // Do not return a promise from a sync function.
-    if (cached && !(cached instanceof Promise)) {
+    if (cached && !ObjectPrototypeIsPrototypeOf(PromisePrototype, cached)) {
       return cached;
     }
     const val = getDirentSync(path);
@@ -253,7 +255,7 @@ class Pattern {
   isLast(isDirectory) {
     return this.indexes.has(this.last) ||
       (this.at(-1) === "" && isDirectory && this.indexes.has(this.last - 1) &&
-        this.at(-2) === lazyMinimatch().GLOBSTAR);
+        this.at(-2) === lazyMinimatch().default.GLOBSTAR);
   }
   isFirst() {
     return this.indexes.has(0);
@@ -275,7 +277,7 @@ class Pattern {
       return false;
     }
     const pattern = this.#pattern[index];
-    if (pattern === lazyMinimatch().GLOBSTAR) {
+    if (pattern === lazyMinimatch().default.GLOBSTAR) {
       return true;
     }
     if (typeof pattern === "string") {
@@ -486,7 +488,7 @@ export class Glob {
         return;
       }
     } else if (
-      isLast && pattern.at(-1) === lazyMinimatch().GLOBSTAR &&
+      isLast && pattern.at(-1) === lazyMinimatch().default.GLOBSTAR &&
       (path !== "." || pattern.at(0) === "." || (last === 0 && stat))
     ) {
       // If pattern ends with **, add to results
@@ -533,7 +535,7 @@ export class Glob {
         const next = pattern.at(nextIndex);
         const fromSymlink = pattern.symlinks.has(index);
 
-        if (current === lazyMinimatch().GLOBSTAR) {
+        if (current === lazyMinimatch().default.GLOBSTAR) {
           if (
             entry.name[0] === "." ||
             (this.#exclude &&
@@ -725,7 +727,7 @@ export class Glob {
         return;
       }
     } else if (
-      isLast && pattern.at(-1) === lazyMinimatch().GLOBSTAR &&
+      isLast && pattern.at(-1) === lazyMinimatch().default.GLOBSTAR &&
       (path !== "." || pattern.at(0) === "." || (last === 0 && stat))
     ) {
       // If pattern ends with **, add to results
@@ -776,7 +778,7 @@ export class Glob {
         const next = pattern.at(nextIndex);
         const fromSymlink = pattern.symlinks.has(index);
 
-        if (current === lazyMinimatch().GLOBSTAR) {
+        if (current === lazyMinimatch().default.GLOBSTAR) {
           if (
             entry.name[0] === "." ||
             (this.#exclude &&
@@ -930,7 +932,7 @@ export class Glob {
 export function matchGlobPattern(path, pattern, windows = isWindows) {
   validateString(path, "path");
   validateString(pattern, "pattern");
-  return lazyMinimatch().minimatch(path, pattern, {
+  return lazyMinimatch().default.minimatch(path, pattern, {
     kEmptyObject,
     nocase: isMacOS || isWindows,
     windowsPathsNoEscape: true,
