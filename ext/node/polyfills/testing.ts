@@ -32,6 +32,7 @@ const methodsToCopy = [
   "rejects",
   "strictEqual",
   "throws",
+  "ok",
 ];
 
 /** `assert` object available via t.assert */
