@@ -348,9 +348,13 @@ jobs:
           rm ~/.curlrc || true
         if: '!(matrix.skip) && (matrix.os == ''macos'')'
       - name: Install macOS aarch64 lld
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
         if: '!(matrix.skip) && (matrix.os == ''macos'' && matrix.arch == ''aarch64'')'
       - name: Install rust-codesign
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: |-
           ./tools/install_prebuilt.js rcodesign
           echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
@@ -372,6 +376,8 @@ jobs:
         if: '!(matrix.skip)'
       - name: Install benchmark tools
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -406,7 +412,9 @@ jobs:
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
       - name: jsdoc_checker.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js

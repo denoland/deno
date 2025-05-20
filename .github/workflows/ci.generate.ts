@@ -606,6 +606,9 @@ const ci = {
         },
         {
           name: "Install macOS aarch64 lld",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js ld64.lld",
           ].join("\n"),
@@ -613,6 +616,9 @@ const ci = {
         },
         {
           name: "Install rust-codesign",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js rcodesign",
             "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
@@ -639,6 +645,9 @@ const ci = {
         {
           name: "Install benchmark tools",
           if: "matrix.job == 'bench'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             installBenchTools,
           ].join("\n"),
@@ -689,8 +698,11 @@ const ci = {
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run:
-            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
