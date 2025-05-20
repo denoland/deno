@@ -979,6 +979,8 @@
       "test-socket-write-after-fin-error.js",
       "test-source-map-enable.js",
       "test-spawn-cmd-named-pipe.js",
+      "test-sqlite-transactions.js",
+      "test-sqlite-typed-array-and-data-view.js",
       "test-stdin-from-file-spawn.js",
       "test-stdin-hang.js",
       "test-stdin-pipe-large.js",
