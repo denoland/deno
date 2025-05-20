@@ -456,6 +456,12 @@ pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
+  if std::env::var("STACK_OVERFLOW_BACKTRACE").is_ok() {
+    unsafe {
+      backtrace_on_stack_overflow::enable();
+    }
+  }
+
   setup_panic_hook();
 
   util::unix::raise_fd_limit();

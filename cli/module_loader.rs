@@ -274,6 +274,7 @@ struct SharedCliModuleLoaderState {
   is_inspecting: bool,
   is_repl: bool,
   translate_cjs: bool,
+  bundling: bool,
   cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
@@ -363,6 +364,7 @@ impl CliModuleLoaderFactory {
           options.sub_command(),
           DenoSubcommand::Bundle(_)
         ),
+        bundling: matches!(options.sub_command(), DenoSubcommand::Bundle(_)),
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
         initial_cwd: options.initial_cwd().to_path_buf(),
@@ -409,6 +411,7 @@ impl CliModuleLoaderFactory {
         lib,
         is_worker,
         translate_cjs: self.shared.translate_cjs,
+        bundling: self.shared.bundling,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -520,6 +523,7 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
   translate_cjs: bool,
+  bundling: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
@@ -971,11 +975,10 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       Cow::Borrowed(original_source.as_ref())
     };
-    let text = if self.translate_cjs {
-      eprintln!("translating cjs to esm");
+    let text = if true {
       self
         .node_code_translator
-        .translate_cjs_to_esm(specifier, Some(js_source))
+        .translate_cjs_to_esm(specifier, Some(js_source), self.bundling)
         .await?
     } else {
       js_source

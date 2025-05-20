@@ -1261,6 +1261,7 @@ impl CliFactory {
         node_code_translator.clone(),
         self.sys(),
         !matches!(cli_options.sub_command(), DenoSubcommand::Bundle(_)),
+        matches!(cli_options.sub_command(), DenoSubcommand::Bundle(_)),
       ),
       npm_registry_permission_checker,
       npm_req_resolver.clone(),

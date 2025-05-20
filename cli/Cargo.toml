@@ -185,6 +185,7 @@ weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 esbuild_rs = { version = "0.1.0", git = "https://github.com/nathanwhit/esbuild_rs" }
+backtrace-on-stack-overflow = "0.3.0"
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

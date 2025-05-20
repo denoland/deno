@@ -457,7 +457,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               };
               let source = shared
                 .node_code_translator
-                .translate_cjs_to_esm(&module_specifier, Some(source))
+                .translate_cjs_to_esm(&module_specifier, Some(source), false)
                 .await
                 .map_err(JsErrorBox::from_err)?;
               let module_source = match source {
@@ -901,6 +901,7 @@ pub async fn run(
         node_code_translator,
         sys.clone(),
         true,
+        false,
       )),
       npm_registry_permission_checker,
       npm_req_resolver,

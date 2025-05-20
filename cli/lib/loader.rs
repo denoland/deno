@@ -118,6 +118,7 @@ pub struct NpmModuleLoader<
     >,
   >,
   translate_cjs: bool,
+  bundling: bool,
 }
 
 impl<
@@ -148,12 +149,14 @@ impl<
     >,
     sys: TSys,
     translate_cjs: bool,
+    bundling: bool,
   ) -> Self {
     Self {
       cjs_tracker,
       node_code_translator,
       sys,
       translate_cjs,
+      bundling,
     }
   }
 
@@ -192,15 +195,14 @@ impl<
       ));
     }
 
-    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)?
-      && self.translate_cjs
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? && true
     {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_cow(code);
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(code))
+          .translate_cjs_to_esm(specifier, Some(code), self.bundling)
           .await?
           .into_owned()
           .into(),
