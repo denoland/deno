@@ -384,7 +384,9 @@ async function main() {
   const tests = [] as string[];
   const categories = {} as Record<string, string[]>;
   for await (
-    const test of expandGlob("tests/node_compat/runner/suite/**/test-*{.mjs,.cjs.,.js,.ts}")
+    const test of expandGlob(
+      "tests/node_compat/runner/suite/**/test-*{.mjs,.cjs.,.js,.ts}",
+    )
   ) {
     if (!test.isFile) continue;
     const relUrl = toFileUrl(test.path).href.replace(testDirUrl, "");
