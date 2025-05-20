@@ -1342,12 +1342,14 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   }
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
-    let is_global_resolver = self
+    let is_global_resolver_and_from_in_global_cache = self
       .npm_resolver
       .as_managed()
       .filter(|r| r.root_node_modules_path().is_none())
+      .map(|r| r.global_cache_root_path())
+      .filter(|global_cache_path| from.starts_with(global_cache_path))
       .is_some();
-    if is_global_resolver {
+    if is_global_resolver_and_from_in_global_cache {
       Vec::new()
     } else {
       deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
