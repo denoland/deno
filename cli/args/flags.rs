@@ -1190,7 +1190,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
                          database.
-  <g>DENO_EMIT_CACHE_MODE</>   Control is the transpiled sources should be cached.
+  <g>DENO_EMIT_CACHE_MODE</>   Control if the transpiled sources should be cached.
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
