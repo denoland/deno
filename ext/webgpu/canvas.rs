@@ -6,7 +6,7 @@ use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 use crate::Instance;
-use deno_canvas::canvas::CanvasContext;
+use deno_canvas::canvas::CanvasContextHooks;
 use deno_canvas::image::DynamicImage;
 use deno_canvas::image::GenericImageView;
 use deno_core::cppgc::Ptr;
@@ -28,7 +28,7 @@ struct BackingBuffer {
   padding: PaddedSize,
 }
 
-struct GPUCanvasContext {
+pub struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
   bitmap: Rc<RefCell<DynamicImage>>,
 
@@ -274,11 +274,7 @@ impl GPUCanvasContext {
   }
 }
 
-impl CanvasContext for GPUCanvasContext {
-  fn value(&self) -> v8::Global<v8::Value> {
-    todo!()
-  }
-
+impl CanvasContextHooks for GPUCanvasContext {
   fn resize(&self) {
     let _ = self.replace_drawing_buffer();
     if let Some(configuration) = self.configuration.borrow().as_ref() {
@@ -466,7 +462,7 @@ pub fn create<'s>(
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,
-) -> Box<dyn CanvasContext> {
+) -> Box<dyn CanvasContextHooks> {
   Box::new(GPUCanvasContext {
     canvas,
     bitmap: data,

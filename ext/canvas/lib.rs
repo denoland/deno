@@ -49,11 +49,12 @@ deno_core::extension!(
   ops = [op_create_image_bitmap],
   objects = [op_create_image_bitmap::ImageBitmap, canvas::OffscreenCanvas, bitmaprenderer::ImageBitmapRenderingContext],
   lazy_loaded_esm = ["01_image.js", "02_canvas.js"],
-    options = {
+  options = {
+    get_context: canvas::GetContext,
     contexts: HashMap<String, canvas::CreateCanvasContext>,
   },
   state = |state, options| {
+    state.put(canvas::GetContextContainer(options.get_context));
     state.put(canvas::RegisteredContexts(options.contexts));
   },
-
 );

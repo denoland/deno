@@ -12,7 +12,7 @@ use deno_error::JsErrorBox;
 use image::DynamicImage;
 use image::GenericImageView;
 
-use crate::canvas::CanvasContext;
+use crate::canvas::CanvasContextHooks;
 use crate::op_create_image_bitmap::ImageBitmap;
 
 pub struct ImageBitmapRenderingContext {
@@ -76,11 +76,7 @@ impl ImageBitmapRenderingContext {
   }
 }
 
-impl CanvasContext for ImageBitmapRenderingContext {
-  fn value(&self) -> v8::Global<v8::Value> {
-    todo!()
-  }
-
+impl CanvasContextHooks for ImageBitmapRenderingContext {
   fn resize(&self) {}
 
   fn bitmap_read_hook(&self) {}
@@ -97,7 +93,7 @@ pub fn create<'s>(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Box<dyn CanvasContext> {
+) -> Box<dyn CanvasContextHooks> {
   let settings = ImageBitmapRenderingContextSettings::convert(
     scope,
     options,

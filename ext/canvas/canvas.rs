@@ -18,6 +18,9 @@ use crate::op_create_image_bitmap::ImageBitmap;
 
 struct BlobHandle(v8::Global<v8::Function>);
 
+pub type GetContext = for<'s> fn(id: &'s str, scope: &mut v8::HandleScope<'s>, global: &v8::Local<'s, v8::Value>) -> &'s dyn CanvasContextHooks;
+pub struct GetContextContainer(pub GetContext);
+
 pub type CreateCanvasContext = for<'s> fn(
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<DynamicImage>>,
@@ -25,14 +28,14 @@ pub type CreateCanvasContext = for<'s> fn(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Box<dyn CanvasContext>;
+) -> (String, v8::Global<v8::Value>);
 
 pub struct RegisteredContexts(pub HashMap<String, CreateCanvasContext>);
 
 pub struct OffscreenCanvas {
   data: Rc<RefCell<DynamicImage>>,
 
-  active_context: OnceCell<(String, Box<dyn CanvasContext>)>,
+  active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
 
 impl GarbageCollected for OffscreenCanvas {
@@ -48,13 +51,21 @@ impl OffscreenCanvas {
     self.data.borrow().width()
   }
   #[setter]
-  fn width(&self, #[webidl(options(enforce_range = true))] value: u64) {
+  fn width<'s>(
+    &self,
+    state: &mut OpState,
+    scope: &mut v8::HandleScope<'s>,
+    #[webidl(options(enforce_range = true))] value: u64
+  ) {
     {
       self
         .data
         .replace_with(|data| data.crop_imm(0, 0, value as _, data.height()));
     }
-    if let Some((_, active_context)) = self.active_context.get() {
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context = v8::Local::new(scope, active_context);
+      let get_context = state.borrow::<GetContextContainer>();
+      let active_context = get_context.0(id, scope, &active_context);
       active_context.resize();
     }
   }
@@ -64,13 +75,21 @@ impl OffscreenCanvas {
     self.data.borrow().height()
   }
   #[setter]
-  fn height(&self, #[webidl(options(enforce_range = true))] value: u64) {
+  fn height(
+    &self,
+    state: &mut OpState,
+    scope: &mut v8::HandleScope,
+    #[webidl(options(enforce_range = true))]value: u64
+  ) {
     {
       self
         .data
         .replace_with(|data| data.crop_imm(0, 0, data.width(), value as _));
     }
-    if let Some((_, active_context)) = self.active_context.get() {
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context = v8::Local::new(scope, active_context);
+      let get_context = state.borrow::<GetContextContainer>();
+      let active_context = get_context.0(id, scope, &active_context);
       active_context.resize();
     }
   }
@@ -114,30 +133,32 @@ impl OffscreenCanvas {
           )
         })?;
 
-      let _ = self.active_context.set((
-        name.clone(),
-        create_context(
-          this,
-          self.data.clone(),
-          scope,
-          options,
-          "Failed to execute 'getContext' on 'OffscreenCanvas'",
-          "Argument 2",
-        ),
-      ));
+      let (_, context) = create_context(
+        this,
+        self.data.clone(),
+        scope,
+        options,
+        "Failed to execute 'getContext' on 'OffscreenCanvas'",
+        "Argument 2",
+      );
+      let _ = self.active_context.set((name.clone(), context));
     }
 
     let (name, context) = self.active_context.get().unwrap();
 
     if &context_id == name {
-      Ok(Some(context.value()))
+      Ok(Some(context.clone()))
     } else {
       Ok(None)
     }
   }
 
   #[cppgc]
-  fn transfer_to_image_bitmap(&self) -> Result<ImageBitmap, JsErrorBox> {
+  fn transfer_to_image_bitmap(
+    &self,
+    state: &mut OpState,
+    scope: &mut v8::HandleScope,
+  ) -> Result<ImageBitmap, JsErrorBox> {
     if self.active_context.get().is_none() {
       return Err(JsErrorBox::new(
         "DOMExceptionInvalidStateError",
@@ -145,7 +166,10 @@ impl OffscreenCanvas {
       ));
     }
 
-    let active_context = &self.active_context.get().as_ref().unwrap().1;
+    let active_context = self.active_context.get().unwrap();
+    let active_context_local = v8::Local::new(scope, &active_context.1);
+    let get_context = state.borrow::<GetContextContainer>();
+    let active_context = get_context.0(&active_context.0, scope, &active_context_local);
 
     active_context.bitmap_read_hook();
 
@@ -168,13 +192,12 @@ impl OffscreenCanvas {
     scope: &mut v8::HandleScope<'s>,
     #[webidl] options: ImageEncodeOptions,
   ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
-    self
-      .active_context
-      .get()
-      .as_ref()
-      .unwrap()
-      .1
-      .bitmap_read_hook();
+    let active_context = self.active_context.get().unwrap();
+    let active_context_local = v8::Local::new(scope, &active_context.1);
+    let get_context = state.borrow::<GetContextContainer>();
+    let active_context = get_context.0(&active_context.0, scope, &active_context_local);
+
+    active_context.bitmap_read_hook();
 
     let data = self.data.borrow();
 
@@ -230,9 +253,7 @@ impl OffscreenCanvas {
   }
 }
 
-pub trait CanvasContext: GarbageCollected {
-  fn value(&self) -> v8::Global<v8::Value>;
-
+pub trait CanvasContextHooks: GarbageCollected {
   fn resize(&self);
 
   fn bitmap_read_hook(&self);

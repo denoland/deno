@@ -1038,7 +1038,7 @@ fn common_extensions<
     deno_url::deno_url::init(),
     deno_web::deno_web::lazy_init::<PermissionsContainer>(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(std::collections::HashMap::from([
+    deno_canvas::deno_canvas::init(get_canvas_context_hooks, std::collections::HashMap::from([
       (
         String::from(deno_canvas::bitmaprenderer::CONTEXT_ID),
         deno_canvas::bitmaprenderer::create as _,
@@ -1287,5 +1287,23 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .clone()
       .unwrap()
       .get_host_defined_options(scope, name)
+  }
+}
+
+pub fn get_canvas_context_hooks<'s>(
+  id: &'s str,
+  scope: &mut v8::HandleScope<'s>,
+  local: &v8::Local<'s, v8::Value>,
+) -> &'s dyn deno_canvas::canvas::CanvasContextHooks {
+  match id {
+    deno_canvas::bitmaprenderer::CONTEXT_ID => {
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<deno_canvas::bitmaprenderer::ImageBitmapRenderingContext>(scope, local).unwrap();
+      ptr as &dyn deno_canvas::canvas::CanvasContextHooks
+    }
+    deno_webgpu::canvas::CONTEXT_ID => {
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<deno_webgpu::canvas::GPUCanvasContext>(scope, local).unwrap();
+      ptr as &dyn deno_canvas::canvas::CanvasContextHooks
+    }
+    _ => panic!(),
   }
 }
