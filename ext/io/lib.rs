@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
+use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
@@ -840,6 +841,47 @@ impl crate::fs::File for StdFileResourceInner {
       self
         .with_inner_blocking_task(move |file| {
           Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+        })
+        .await
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  fn chown_sync(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      let owner = uid.map(nix::unistd::Uid::from_raw);
+      let group = gid.map(nix::unistd::Gid::from_raw);
+      let res = nix::unistd::fchown(self.handle, owner, group);
+      if let Err(err) = res {
+        Err(io::Error::from_raw_os_error(err as i32).into())
+      } else {
+        Ok(())
+      }
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          use std::os::fd::AsFd;
+          let owner = uid.map(nix::unistd::Uid::from_raw);
+          let group = gid.map(nix::unistd::Gid::from_raw);
+          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+            .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
         })
         .await
     }

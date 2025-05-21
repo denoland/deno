@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1175 tests out of 3993 have been ported from Node 23.9.0 (29.43% ported, 71.10% remaining).
+1176 tests out of 3993 have been ported from Node 23.9.0 (29.45% ported, 71.07% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -790,7 +790,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-exists.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-exists.js)
 - [parallel/test-fs-existssync-false.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-existssync-false.js)
 - [parallel/test-fs-fchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchmod.js)
-- [parallel/test-fs-fchown.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchown.js)
 - [parallel/test-fs-filehandle-use-after-close.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle-use-after-close.js)
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)
