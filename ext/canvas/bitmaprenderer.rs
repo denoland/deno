@@ -93,7 +93,7 @@ pub fn create<'s>(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Box<dyn CanvasContextHooks> {
+) -> v8::Global<v8::Value> {
   let settings = ImageBitmapRenderingContextSettings::convert(
     scope,
     options,
@@ -103,11 +103,15 @@ pub fn create<'s>(
   )
   .unwrap();
 
-  Box::new(ImageBitmapRenderingContext {
-    alpha: settings.alpha,
-    canvas,
-    bitmap: data,
-  })
+  let obj = deno_core::cppgc::make_cppgc_object(
+    scope,
+    ImageBitmapRenderingContext {
+      alpha: settings.alpha,
+      canvas,
+      bitmap: data,
+    },
+  );
+  v8::Global::new(scope, obj.cast())
 }
 
 #[derive(WebIDL)]

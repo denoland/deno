@@ -6,6 +6,7 @@ use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 use crate::Instance;
+use deno_canvas::bitmaprenderer::ImageBitmapRenderingContext;
 use deno_canvas::canvas::CanvasContextHooks;
 use deno_canvas::image::DynamicImage;
 use deno_canvas::image::GenericImageView;
@@ -153,7 +154,7 @@ impl GPUCanvasContext {
 }
 
 impl GPUCanvasContext {
-  pub fn get_descriptor_for_configuration(
+  fn get_descriptor_for_configuration(
     &self,
     configuration: &GPUCanvasConfiguration,
   ) -> Result<TextureDescriptor<'static>, JsErrorBox> {
@@ -458,17 +459,22 @@ pub const CONTEXT_ID: &str = "webgpu";
 pub fn create<'s>(
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<DynamicImage>>,
-  _scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::HandleScope<'s>,
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,
-) -> Box<dyn CanvasContextHooks> {
-  Box::new(GPUCanvasContext {
-    canvas,
-    bitmap: data,
-    texture_descriptor: RefCell::new(None),
-    configuration: RefCell::new(None),
-    current_texture: RefCell::new(None),
-    backing_buffer: RefCell::new(None),
-  })
+) -> v8::Global<v8::Value> {
+  let obj = deno_core::cppgc::make_cppgc_object(
+    scope,
+    GPUCanvasContext {
+      canvas,
+      bitmap: data,
+      texture_descriptor: RefCell::new(None),
+      configuration: RefCell::new(None),
+      current_texture: RefCell::new(None),
+      backing_buffer: RefCell::new(None),
+    },
+  );
+
+  v8::Global::new(scope, obj.cast())
 }

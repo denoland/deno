@@ -500,16 +500,19 @@ impl WebWorker {
         Some(options.main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init(),
-      deno_canvas::deno_canvas::init(super::worker::get_canvas_context_hooks, std::collections::HashMap::from([
-        (
-          String::from(deno_canvas::bitmaprenderer::CONTEXT_ID),
-          deno_canvas::bitmaprenderer::create as _,
-        ),
-        (
-          String::from(deno_webgpu::canvas::CONTEXT_ID),
-          deno_webgpu::canvas::create as _,
-        ),
-      ])),
+      deno_canvas::deno_canvas::init(
+        super::worker::get_canvas_context_hooks,
+        std::collections::HashMap::from([
+          (
+            String::from(deno_canvas::bitmaprenderer::CONTEXT_ID),
+            deno_canvas::bitmaprenderer::create as _,
+          ),
+          (
+            String::from(deno_webgpu::canvas::CONTEXT_ID),
+            deno_webgpu::canvas::create as _,
+          ),
+        ]),
+      ),
       deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),

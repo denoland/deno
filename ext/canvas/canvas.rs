@@ -1,4 +1,3 @@
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::UnrestrictedDouble;
@@ -18,7 +17,11 @@ use crate::op_create_image_bitmap::ImageBitmap;
 
 struct BlobHandle(v8::Global<v8::Function>);
 
-pub type GetContext = for<'s> fn(id: &'s str, scope: &mut v8::HandleScope<'s>, global: &v8::Local<'s, v8::Value>) -> &'s dyn CanvasContextHooks;
+pub type GetContext = for<'s, 't> fn(
+  id: &'t str,
+  scope: &mut v8::HandleScope<'s>,
+  local: v8::Local<'t, v8::Value>,
+) -> Box<dyn CanvasContextHooks>;
 pub struct GetContextContainer(pub GetContext);
 
 pub type CreateCanvasContext = for<'s> fn(
@@ -28,7 +31,7 @@ pub type CreateCanvasContext = for<'s> fn(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> (String, v8::Global<v8::Value>);
+) -> v8::Global<v8::Value>;
 
 pub struct RegisteredContexts(pub HashMap<String, CreateCanvasContext>);
 
@@ -55,7 +58,7 @@ impl OffscreenCanvas {
     &self,
     state: &mut OpState,
     scope: &mut v8::HandleScope<'s>,
-    #[webidl(options(enforce_range = true))] value: u64
+    #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
       self
@@ -65,7 +68,7 @@ impl OffscreenCanvas {
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       let get_context = state.borrow::<GetContextContainer>();
-      let active_context = get_context.0(id, scope, &active_context);
+      let active_context = get_context.0(id, scope, active_context);
       active_context.resize();
     }
   }
@@ -79,7 +82,7 @@ impl OffscreenCanvas {
     &self,
     state: &mut OpState,
     scope: &mut v8::HandleScope,
-    #[webidl(options(enforce_range = true))]value: u64
+    #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
       self
@@ -89,7 +92,7 @@ impl OffscreenCanvas {
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       let get_context = state.borrow::<GetContextContainer>();
-      let active_context = get_context.0(id, scope, &active_context);
+      let active_context = get_context.0(id, scope, active_context);
       active_context.resize();
     }
   }
@@ -133,7 +136,7 @@ impl OffscreenCanvas {
           )
         })?;
 
-      let (_, context) = create_context(
+      let context = create_context(
         this,
         self.data.clone(),
         scope,
@@ -169,7 +172,8 @@ impl OffscreenCanvas {
     let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
     let get_context = state.borrow::<GetContextContainer>();
-    let active_context = get_context.0(&active_context.0, scope, &active_context_local);
+    let active_context =
+      get_context.0(&active_context.0, scope, active_context_local);
 
     active_context.bitmap_read_hook();
 
@@ -195,7 +199,8 @@ impl OffscreenCanvas {
     let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
     let get_context = state.borrow::<GetContextContainer>();
-    let active_context = get_context.0(&active_context.0, scope, &active_context_local);
+    let active_context =
+      get_context.0(&active_context.0, scope, active_context_local);
 
     active_context.bitmap_read_hook();
 
@@ -253,7 +258,7 @@ impl OffscreenCanvas {
   }
 }
 
-pub trait CanvasContextHooks: GarbageCollected {
+pub trait CanvasContextHooks {
   fn resize(&self);
 
   fn bitmap_read_hook(&self);
