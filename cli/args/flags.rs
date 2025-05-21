@@ -4281,8 +4281,8 @@ fn no_code_cache_arg() -> Arg {
 }
 
 fn unstable_coverage_arg() -> Arg {
-  Arg::new("unstable-coverage")
-    .long("unstable-coverage")
+  Arg::new("coverage")
+    .long("coverage")
     .value_name("DIR")
     .num_args(0..=1)
     .require_equals(true)
@@ -4291,7 +4291,7 @@ fn unstable_coverage_arg() -> Arg {
     .conflicts_with("inspect-wait")
     .conflicts_with("inspect-brk")
     .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
-  <p(245)>This option can also be set via the DENO_UNSTABLE_COVERAGE_DIR environment variable."))
+  <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
     .value_hint(ValueHint::AnyPath)
 }
 
@@ -5352,7 +5352,7 @@ fn run_parse(
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
-  let coverage_dir = matches.remove_one::<String>("unstable-coverage");
+  let coverage_dir = matches.remove_one::<String>("coverage");
 
   if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
     let script = script_arg.next().unwrap();
@@ -6640,12 +6640,7 @@ mod tests {
 
   #[test]
   fn run_coverage() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--unstable-coverage=foo",
-      "script.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--coverage=foo", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {

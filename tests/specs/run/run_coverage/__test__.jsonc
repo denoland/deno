@@ -4,7 +4,7 @@
     "run_coverage": {
       "steps": [
         {
-          "args": "run --unstable-coverage foo.ts",
+          "args": "run --coverage foo.ts",
           "output": "0\n0\n"
         },
         {
@@ -19,7 +19,7 @@
           "args": "run foo.ts",
           "output": "0\n0\n",
           "envs": {
-            "DENO_UNSTABLE_COVERAGE_DIR": "my_coverage_dir"
+            "DENO_COVERAGE_DIR": "my_coverage_dir"
           }
         },
         {
