@@ -1,5 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_runtime::WorkerExecutionMode;
+
 use crate::args::jsr_api_url;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -7,10 +13,6 @@ use crate::args::RunFlags;
 use crate::factory::CliFactory;
 use crate::registry;
 use crate::tools;
-use deno_core::error::AnyError;
-use deno_lib::worker::LibWorkerFactoryRoots;
-use deno_runtime::WorkerExecutionMode;
-use std::sync::Arc;
 
 pub async fn deploy(
   flags: Arc<Flags>,
@@ -28,7 +30,9 @@ pub async fn deploy(
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script: format!(
       "jsr:@deno/deploy@{}",
-      res.latest_version.expect("expected @deno/deploy to be published")
+      res
+        .latest_version
+        .expect("expected @deno/deploy to be published")
     ),
     watch: None,
     bare: false,

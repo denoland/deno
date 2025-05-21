@@ -4867,7 +4867,10 @@ fn deploy_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.permissions.allow_all = true;
-  flags.argv = matches.remove_many("args").map(|args| args.collect()).unwrap_or_default();
+  flags.argv = matches
+    .remove_many("args")
+    .map(|args| args.collect())
+    .unwrap_or_default();
   flags.subcommand = DenoSubcommand::Deploy;
   Ok(())
 }
