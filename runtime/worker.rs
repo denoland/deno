@@ -1302,27 +1302,27 @@ pub enum CanvasContextHooksEnum {
   WebGPU(deno_core::cppgc::Ptr<deno_webgpu::canvas::GPUCanvasContext>),
 }
 impl deno_canvas::canvas::CanvasContextHooks for CanvasContextHooksEnum {
-  fn resize(&self) {
+  fn resize(&self, scope: &mut v8::HandleScope) {
     match &self {
-      CanvasContextHooksEnum::Bitmap(c) => c.resize(),
-      CanvasContextHooksEnum::WebGPU(c) => c.resize(),
+      CanvasContextHooksEnum::Bitmap(c) => c.resize(scope),
+      CanvasContextHooksEnum::WebGPU(c) => c.resize(scope),
     }
   }
 
-  fn bitmap_read_hook(&self) {
+  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope) {
     match &self {
-      CanvasContextHooksEnum::Bitmap(c) => c.bitmap_read_hook(),
-      CanvasContextHooksEnum::WebGPU(c) => c.bitmap_read_hook(),
+      CanvasContextHooksEnum::Bitmap(c) => c.bitmap_read_hook(scope),
+      CanvasContextHooksEnum::WebGPU(c) => c.bitmap_read_hook(scope),
     }
   }
 
-  fn post_transfer_to_image_bitmap_hook(&self) {
+  fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope) {
     match &self {
       CanvasContextHooksEnum::Bitmap(c) => {
-        c.post_transfer_to_image_bitmap_hook()
+        c.post_transfer_to_image_bitmap_hook(scope)
       }
       CanvasContextHooksEnum::WebGPU(c) => {
-        c.post_transfer_to_image_bitmap_hook()
+        c.post_transfer_to_image_bitmap_hook(scope)
       }
     }
   }

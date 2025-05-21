@@ -20,7 +20,7 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
 
-use crate::surface::GPUCanvasContext;
+use crate::surface::GPUCanvasSurfaceContext;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
@@ -78,7 +78,7 @@ pub struct UnsafeWindowSurface {
   pub width: RefCell<u32>,
   pub height: RefCell<u32>,
 
-  pub context: SameObject<GPUCanvasContext>,
+  pub context: SameObject<GPUCanvasSurfaceContext>,
 }
 
 impl GarbageCollected for UnsafeWindowSurface {
@@ -143,7 +143,7 @@ impl UnsafeWindowSurface {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    self.context.get(scope, |_| GPUCanvasContext {
+    self.context.get(scope, |_| GPUCanvasSurfaceContext {
       surface_id: self.id,
       width: self.width.clone(),
       height: self.height.clone(),

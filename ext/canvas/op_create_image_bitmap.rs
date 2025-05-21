@@ -579,7 +579,7 @@ impl ImageBitmap {
   }
 
   #[buffer]
-  #[symbol("bitmapData")]
+  #[symbol("Deno_bitmapData")]
   fn getData(&self) -> Vec<u8> {
     let data = self.data.borrow();
     data.as_bytes().to_vec()

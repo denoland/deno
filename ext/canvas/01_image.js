@@ -305,7 +305,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
 }
 
 function getBitmapData(imageBitmap) {
-  return imageBitmap[SymbolFor("bitmapData")];
+  return imageBitmap[SymbolFor("Deno_bitmapData")];
 }
 
 internals.getBitmapData = getBitmapData;

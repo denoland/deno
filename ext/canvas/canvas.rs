@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use crate::op_create_image_bitmap::ImageBitmap;
 
-struct BlobHandle(v8::Global<v8::Function>);
+pub struct BlobHandle(pub v8::Global<v8::Function>);
 
 pub type GetContext = for<'s, 't> fn(
   id: &'t str,
@@ -54,10 +54,10 @@ impl OffscreenCanvas {
     self.data.borrow().width()
   }
   #[setter]
-  fn width<'s>(
+  fn width(
     &self,
     state: &mut OpState,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::HandleScope,
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
@@ -69,7 +69,7 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       let get_context = state.borrow::<GetContextContainer>();
       let active_context = get_context.0(id, scope, active_context);
-      active_context.resize();
+      active_context.resize(scope);
     }
   }
 
@@ -93,7 +93,7 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       let get_context = state.borrow::<GetContextContainer>();
       let active_context = get_context.0(id, scope, active_context);
-      active_context.resize();
+      active_context.resize(scope);
     }
   }
 
@@ -175,14 +175,14 @@ impl OffscreenCanvas {
     let active_context =
       get_context.0(&active_context.0, scope, active_context_local);
 
-    active_context.bitmap_read_hook();
+    active_context.bitmap_read_hook(scope);
 
     let data = self.data.replace_with(|image| {
       let (width, height) = image.dimensions();
       DynamicImage::new(width, height, ColorType::Rgba8)
     });
 
-    active_context.post_transfer_to_image_bitmap_hook();
+    active_context.post_transfer_to_image_bitmap_hook(scope);
 
     Ok(ImageBitmap {
       detached: Default::default(),
@@ -190,6 +190,7 @@ impl OffscreenCanvas {
     })
   }
 
+  #[reentrant]
   fn convert_to_blob<'s>(
     &self,
     state: &mut OpState,
@@ -202,7 +203,7 @@ impl OffscreenCanvas {
     let active_context =
       get_context.0(&active_context.0, scope, active_context_local);
 
-    active_context.bitmap_read_hook();
+    active_context.bitmap_read_hook(scope);
 
     let data = self.data.borrow();
 
@@ -229,7 +230,7 @@ impl OffscreenCanvas {
     }
 
     let blob_constructor = state.borrow::<BlobHandle>();
-    let blob_constructor = v8::Local::new(scope, blob_constructor.0.clone());
+    let blob_constructor = v8::Local::new(scope, &blob_constructor.0);
 
     let len = out.len();
     let bs = v8::ArrayBuffer::new_backing_store_from_vec(out);
@@ -259,11 +260,11 @@ impl OffscreenCanvas {
 }
 
 pub trait CanvasContextHooks {
-  fn resize(&self);
+  fn resize(&self, scope: &mut v8::HandleScope);
 
-  fn bitmap_read_hook(&self);
+  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope);
 
-  fn post_transfer_to_image_bitmap_hook(&self);
+  fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope);
 }
 
 #[derive(WebIDL)]
