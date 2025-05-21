@@ -12,4 +12,6 @@ function foo(a: number, b: number) {
   }
 }
 
-foo(0, 0);
+const [a = 0, b = 0] = Deno.args;
+
+foo(+a, +b);

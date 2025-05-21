@@ -3079,7 +3079,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .arg(unstable_coverage_arg())
+    .arg(coverage_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -4263,7 +4263,7 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
-fn unstable_coverage_arg() -> Arg {
+fn coverage_arg() -> Arg {
   Arg::new("coverage")
     .long("coverage")
     .value_name("DIR")

@@ -27,6 +27,10 @@
           "output": "coverage_summary.out"
         }
       ]
+    },
+    "test_child_process_coverage": {
+      "args": "test -A --coverage child_process_coverage_test.ts",
+      "output": "child_process_coverage_test.out"
     }
   }
 }
