@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
