@@ -35,6 +35,7 @@ members = [
   "resolvers/deno",
   "resolvers/node",
   "resolvers/npm_cache",
+  "resolvers/npm_installer",
   "runtime",
   "runtime/features",
   "runtime/permissions",
@@ -54,24 +55,24 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.47.0", features = ["transpiling"] }
-deno_core = { version = "0.347.0" }
+deno_core = { version = "0.348.0" }
 
-deno_cache_dir = "=0.20.0"
+deno_cache_dir = "=0.20.1"
 deno_config = { version = "=0.54.2", features = ["workspace"] }
 deno_doc = "=0.173.0"
-deno_error = "=0.5.6"
+deno_error = "=0.5.7"
 deno_graph = { version = "=0.91.0", default-features = false }
 deno_lint = "=0.75.0"
 deno_lockfile = "=0.28.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.33.3"
+deno_npm = "=0.33.4"
 deno_package_json = { version = "=0.6.0", default-features = false }
-deno_path_util = "=0.3.2"
+deno_path_util = "=0.3.3"
 deno_semver = "=0.7.1"
 deno_task_shell = "=0.23.0"
 deno_terminal = "=0.2.2"
-deno_unsync = "0.4.2"
+deno_unsync = "0.4.3"
 deno_whoami = "0.1.0"
 
 denokv_proto = "0.10.0"
@@ -110,8 +111,9 @@ denort_helper = { version = "0.3.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.199.0", path = "./bench_util" }
 deno_features = { version = "0.2.0", path = "./runtime/features" }
-deno_lib = { version = "0.21.0", path = "./cli/lib" }
+deno_lib = { version = "0.22.0", path = "./cli/lib" }
 deno_npm_cache = { version = "0.24.0", path = "./resolvers/npm_cache" }
+deno_npm_installer = { version = "0.0.1", path = "./resolvers/npm_installer" }
 deno_permissions = { version = "0.64.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.36.0", path = "./resolvers/deno" }
 deno_runtime = { version = "0.213.0", path = "./runtime" }
@@ -234,7 +236,7 @@ simd-json = "0.14.0"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
-sys_traits = "=0.1.9"
+sys_traits = "=0.1.10"
 tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
@@ -296,8 +298,8 @@ env_logger = "=0.11.6"
 eszip = "=0.88.0"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
-malva = "=0.12.0"
-markup_fmt = "=0.20.0"
+malva = "=0.11.2"
+markup_fmt = "=0.19.1"
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"

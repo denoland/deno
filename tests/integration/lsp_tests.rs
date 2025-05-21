@@ -5,6 +5,7 @@ use std::fs;
 use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use test_util::assert_starts_with;
@@ -5875,6 +5876,71 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
         },
       ],
     }),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_jsr_auto_import_completion_workspace_member() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "name": "@org/package",
+      "exports": "./mod.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write("member/mod.ts", "export const someValue = 1;\n");
+  temp_dir.write("other.ts", "import \"@org/package\";\n");
+  let file = temp_dir.source_file("file.ts", "someValue;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "someValue")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "someValue",
+        "labelDetails": { "description": "@org/package" },
+        "kind": 6,
+        "detail": "Add import from \"@org/package\"\n\nconst someValue: 1",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { someValue } from \"@org/package\";\n\n",
+          },
+        ],
+      },
+    ]),
   );
   client.shutdown();
 }
@@ -14087,7 +14153,7 @@ export function B() {
   client.shutdown();
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct TestData {
   id: String,
@@ -14382,6 +14448,125 @@ Deno.test({
     })),
   );
 
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_testing_api_failure() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      Deno.test("test a", () => {
+        throw new Error("Some message.");
+      });
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test = params.tests.into_iter().next().unwrap();
+  assert_eq!(test.label, "test a");
+  assert_eq!(
+    json!(test.range),
+    json!({
+      "start": { "line": 1,  "character": 11 },
+      "end": { "line": 1,  "character": 15 },
+    }),
+  );
+  assert_eq!(json!(&test.steps), json!(null));
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(
+    res.enqueued[0].text_document.uri.as_str(),
+    file.uri().as_str()
+  );
+  assert_eq!(res.enqueued[0].ids.len(), 1);
+  let id = res.enqueued[0].ids[0].clone();
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": id,
+        },
+      },
+    })),
+  );
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let notification = notification.unwrap();
+  let obj = notification.as_object().unwrap();
+  assert_eq!(obj.get("id"), Some(&json!(1)));
+  let message = obj.get("message").unwrap().as_object().unwrap();
+  match message.get("type").and_then(|v| v.as_str()) {
+    Some("failed") => {
+      assert_eq!(
+        message.get("test"),
+        Some(&json!({
+          "textDocument": { "uri": file.uri() },
+          "id": id,
+        })),
+      );
+      assert!(message.contains_key("duration"));
+      assert_eq!(
+        *message.get("messages").unwrap(),
+        json!([
+          {
+            "message": {
+              "kind": "plaintext",
+              "value": format!("Error: Some message.\n        throw new Error(\"Some message.\");\n\u{1b}[0m\u{1b}[31m              ^\u{1b}[0m\n    at \u{1b}[0m\u{1b}[36m{}\u{1b}[0m:\u{1b}[0m\u{1b}[33m3\u{1b}[0m:\u{1b}[0m\u{1b}[33m15\u{1b}[0m", file.url()),
+            },
+            "location": {
+              "uri": file.uri(),
+              "range": {
+                "start": { "line": 2, "character": 14 },
+                "end": { "line": 2, "character": 14 },
+              },
+            },
+          },
+        ]),
+      );
+      let notification =
+        client.read_notification_with_method::<Value>("deno/testRunProgress");
+      assert_eq!(
+        notification,
+        Some(json!({
+          "id": 1,
+          "message": {
+            "type": "end",
+          },
+        })),
+      );
+    }
+    // sometimes on windows, the messages come out of order, but it actually is
+    // working, so if we do get the end before the passed, we will simply let
+    // the test pass
+    Some("end") => (),
+    _ => panic!("unexpected message {}", json!(notification)),
+  }
   client.shutdown();
 }
 

@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+//! It would be best to move these utilities out of this
+//! crate as this is not specific to resolution, but for
+//! the time being it's fine for this to live here.
 use std::fmt::Write as _;
 
+use deno_terminal::colors;
 use dissimilar::diff as difference;
 use dissimilar::Chunk;
-
-use crate::colors;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
@@ -169,6 +171,78 @@ fn fmt_rem_text(x: &str) -> String {
 
 fn fmt_rem_text_highlight(x: &str) -> String {
   colors::white_on_red(x).to_string()
+}
+
+pub struct DisplayTreeNode {
+  pub text: String,
+  pub children: Vec<DisplayTreeNode>,
+}
+
+impl DisplayTreeNode {
+  pub fn from_text(text: String) -> Self {
+    Self {
+      text,
+      children: Default::default(),
+    }
+  }
+
+  pub fn print<TWrite: std::fmt::Write>(
+    &self,
+    writer: &mut TWrite,
+  ) -> std::fmt::Result {
+    fn print_children<TWrite: std::fmt::Write>(
+      writer: &mut TWrite,
+      prefix: &str,
+      children: &[DisplayTreeNode],
+    ) -> std::fmt::Result {
+      const SIBLING_CONNECTOR: char = '├';
+      const LAST_SIBLING_CONNECTOR: char = '└';
+      const CHILD_DEPS_CONNECTOR: char = '┬';
+      const CHILD_NO_DEPS_CONNECTOR: char = '─';
+      const VERTICAL_CONNECTOR: char = '│';
+      const EMPTY_CONNECTOR: char = ' ';
+
+      let child_len = children.len();
+      for (index, child) in children.iter().enumerate() {
+        let is_last = index + 1 == child_len;
+        let sibling_connector = if is_last {
+          LAST_SIBLING_CONNECTOR
+        } else {
+          SIBLING_CONNECTOR
+        };
+        let child_connector = if child.children.is_empty() {
+          CHILD_NO_DEPS_CONNECTOR
+        } else {
+          CHILD_DEPS_CONNECTOR
+        };
+        writeln!(
+          writer,
+          "{} {}",
+          colors::gray(format!(
+            "{prefix}{sibling_connector}─{child_connector}"
+          )),
+          child.text
+        )?;
+        let child_prefix = format!(
+          "{}{}{}",
+          prefix,
+          if is_last {
+            EMPTY_CONNECTOR
+          } else {
+            VERTICAL_CONNECTOR
+          },
+          EMPTY_CONNECTOR
+        );
+        print_children(writer, &child_prefix, &child.children)?;
+      }
+
+      Ok(())
+    }
+
+    writeln!(writer, "{}", self.text)?;
+    print_children(writer, "", &self.children)?;
+    Ok(())
+  }
 }
 
 #[cfg(test)]

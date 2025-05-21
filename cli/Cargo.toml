@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.2"
+version = "2.3.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -82,6 +82,7 @@ deno_lockfile.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
+deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true

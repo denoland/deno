@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1172 tests out of 3993 have been ported from Node 23.9.0 (29.35% ported, 71.17% remaining).
+1175 tests out of 3993 have been ported from Node 23.9.0 (29.43% ported, 71.10% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2056,8 +2056,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-sqlite-named-parameters.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-named-parameters.js)
 - [parallel/test-sqlite-session.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-session.js)
 - [parallel/test-sqlite-statement-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-statement-sync.js)
-- [parallel/test-sqlite-transactions.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-transactions.js)
-- [parallel/test-sqlite-typed-array-and-data-view.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-typed-array-and-data-view.js)
 - [parallel/test-sqlite.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite.js)
 - [parallel/test-stack-size-limit.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stack-size-limit.js)
 - [parallel/test-startup-empty-regexp-statics.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-startup-empty-regexp-statics.js)
@@ -2522,7 +2520,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-worker-esm-missing-main.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esm-missing-main.js)
 - [parallel/test-worker-esmodule.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esmodule.js)
 - [parallel/test-worker-eval-typescript.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-eval-typescript.js)
-- [parallel/test-worker-event.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-event.js)
 - [parallel/test-worker-execargv-invalid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv-invalid.js)
 - [parallel/test-worker-execargv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv.js)
 - [parallel/test-worker-exit-code.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-exit-code.js)

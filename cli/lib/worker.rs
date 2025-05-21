@@ -684,8 +684,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       unconfigured_runtime,
     };
 
-    let worker =
+    let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
+    worker.setup_memory_trim_handler();
 
     Ok(LibMainWorker {
       main_module,

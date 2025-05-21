@@ -4,25 +4,246 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
+use dashmap::DashMap;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url::Url;
+use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
+use deno_npm_cache::NpmCacheHttpClientBytesResponse;
+use deno_npm_cache::NpmCacheHttpClientResponse;
+use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
+use deno_npm_installer::BinEntries;
+use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
+use deno_npm_installer::ExpectedExtraInfo;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
 
-use super::bin_entries::BinEntries;
-use super::lifecycle_scripts::is_broken_default_install_script;
-use super::lifecycle_scripts::LifecycleScriptsExecutor;
-use super::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use super::lifecycle_scripts::PackageWithScript;
-use super::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
-use super::CachedNpmPackageExtraInfoProvider;
-use super::ExpectedExtraInfo;
+use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
 use crate::task_runner::TaskStdio;
+use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressMessagePrompt;
+
+pub type CliNpmInstallerFactory = deno_npm_installer::NpmInstallerFactory<
+  CliNpmCacheHttpClient,
+  ProgressBar,
+  CliSys,
+>;
+pub type CliNpmInstaller =
+  deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
+pub type CliNpmRegistryInfoProvider =
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
+pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
+pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
+pub type CliNpmResolverCreateOptions =
+  deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolverCreateOptions =
+  ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
+  CliNpmCacheHttpClient,
+  CliSys,
+>;
+
+#[derive(Debug)]
+pub struct CliNpmCacheHttpClient {
+  http_client_provider: Arc<HttpClientProvider>,
+  progress_bar: ProgressBar,
+}
+
+impl CliNpmCacheHttpClient {
+  pub fn new(
+    http_client_provider: Arc<HttpClientProvider>,
+    progress_bar: ProgressBar,
+  ) -> Self {
+    Self {
+      http_client_provider,
+      progress_bar,
+    }
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
+  async fn download_with_retries_on_any_tokio_runtime(
+    &self,
+    url: Url,
+    maybe_auth: Option<String>,
+    maybe_etag: Option<String>,
+  ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
+    let guard = self.progress_bar.update(url.as_str());
+    let client = self.http_client_provider.get_or_create().map_err(|err| {
+      deno_npm_cache::DownloadError {
+        status_code: None,
+        error: err,
+      }
+    })?;
+    let mut headers = http::HeaderMap::new();
+    if let Some(auth) = maybe_auth {
+      headers.append(
+        http::header::AUTHORIZATION,
+        http::header::HeaderValue::try_from(auth).unwrap(),
+      );
+    }
+    if let Some(etag) = maybe_etag {
+      headers.append(
+        http::header::IF_NONE_MATCH,
+        http::header::HeaderValue::try_from(etag).unwrap(),
+      );
+    }
+    client
+      .download_with_progress_and_retries(url, &headers, &guard)
+      .await
+      .map(|response| match response {
+        crate::http_util::HttpClientResponse::Success { headers, body } => {
+          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          })
+        }
+        crate::http_util::HttpClientResponse::NotFound => {
+          NpmCacheHttpClientResponse::NotFound
+        }
+        crate::http_util::HttpClientResponse::NotModified => {
+          NpmCacheHttpClientResponse::NotModified
+        }
+      })
+      .map_err(|err| {
+        use crate::http_util::DownloadErrorKind::*;
+        let status_code = match err.as_kind() {
+          Fetch { .. }
+          | UrlParse { .. }
+          | HttpParse { .. }
+          | Json { .. }
+          | ToStr { .. }
+          | RedirectHeaderParse { .. }
+          | TooManyRedirects
+          | UnhandledNotModified
+          | NotFound
+          | Other(_) => None,
+          BadResponse(bad_response_error) => {
+            Some(bad_response_error.status_code.as_u16())
+          }
+        };
+        deno_npm_cache::DownloadError {
+          status_code,
+          error: JsErrorBox::from_err(err),
+        }
+      })
+  }
+}
+
+#[derive(Debug)]
+pub struct NpmFetchResolver {
+  nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
+  info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
+  file_fetcher: Arc<CliFileFetcher>,
+  npmrc: Arc<ResolvedNpmRc>,
+}
+
+impl NpmFetchResolver {
+  pub fn new(
+    file_fetcher: Arc<CliFileFetcher>,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Self {
+    Self {
+      nv_by_req: Default::default(),
+      info_by_name: Default::default(),
+      file_fetcher,
+      npmrc,
+    }
+  }
+
+  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    if let Some(nv) = self.nv_by_req.get(req) {
+      return nv.value().clone();
+    }
+    let maybe_get_nv = || async {
+      let name = req.name.clone();
+      let package_info = self.package_info(&name).await?;
+      if let Some(dist_tag) = req.version_req.tag() {
+        let version = package_info.dist_tags.get(dist_tag)?.clone();
+        return Some(PackageNv { name, version });
+      }
+      // Find the first matching version of the package.
+      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+      versions.sort();
+      let version = versions
+        .into_iter()
+        .rev()
+        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
+        .cloned()?;
+      Some(PackageNv { name, version })
+    };
+    let nv = maybe_get_nv().await;
+    self.nv_by_req.insert(req.clone(), nv.clone());
+    nv
+  }
+
+  pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    if let Some(info) = self.info_by_name.get(name) {
+      return info.value().clone();
+    }
+    // todo(#27198): use RegistryInfoProvider instead
+    let fetch_package_info = || async {
+      let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
+      let registry_config = self.npmrc.get_registry_config(name);
+      // TODO(bartlomieju): this should error out, not use `.ok()`.
+      let maybe_auth_header =
+        deno_npm_cache::maybe_auth_header_value_for_npm_registry(
+          registry_config,
+        )
+        .map_err(AnyError::from)
+        .and_then(|value| match value {
+          Some(value) => Ok(Some((
+            http::header::AUTHORIZATION,
+            http::HeaderValue::try_from(value.into_bytes())?,
+          ))),
+          None => Ok(None),
+        })
+        .ok()?;
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+        .await
+        .ok()?;
+      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
+    };
+    let info = fetch_package_info().await.map(Arc::new);
+    self.info_by_name.insert(name.to_string(), info.clone());
+    info
+  }
+}
+
+pub static NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
+
+pub fn get_npm_config_user_agent() -> String {
+  format!(
+    "deno/{} npm/? deno/{} {} {}",
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.deno,
+    std::env::consts::OS,
+    std::env::consts::ARCH
+  )
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DenoTaskLifecycleScriptsError {
@@ -31,7 +252,7 @@ pub enum DenoTaskLifecycleScriptsError {
   Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  BinEntries(#[from] super::bin_entries::BinEntriesError),
+  BinEntries(#[from] deno_npm_installer::BinEntriesError),
   #[class(inherit)]
   #[error(
     "failed to create npm process state tempfile for running lifecycle scripts"
@@ -118,7 +339,10 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
           {
             continue;
           }
-          let _guard = options.progress_bar.update_with_prompt(
+          let pb = ProgressBar::new(
+            crate::util::progress_bar::ProgressBarStyle::TextOnly,
+          );
+          let _guard = pb.update_with_prompt(
             ProgressMessagePrompt::Initialize,
             &format!("{}: running '{script_name}' script", package.id.nv),
           );

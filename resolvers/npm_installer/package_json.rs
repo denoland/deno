@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -16,7 +14,9 @@ use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use serde_json;
 use thiserror::Error;
+use url::Url;
 
 #[derive(Debug)]
 pub struct InstallNpmRemotePkg {

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_lib"
-version = "0.21.0"
+version = "0.22.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,7 @@ deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_media_type.workspace = true
 deno_node = { workspace = true, features = ["sync_fs"] }
 deno_npm.workspace = true
+deno_npm_installer.workspace = true
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime.workspace = true

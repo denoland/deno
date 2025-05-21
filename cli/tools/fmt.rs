@@ -49,7 +49,6 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
-use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -618,8 +617,6 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
-      declaration_order_group_by:
-        config::DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
     },
   };
   // Wraps the text in a css block of `a { ... }`
@@ -722,7 +719,6 @@ fn format_embedded_html(
       script_formatter: None,
       ignore_comment_directive: "deno-fmt-ignore".into(),
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-      single_attr_same_line: true,
     },
   };
   let text = markup_fmt::format_text(
@@ -925,7 +921,8 @@ impl Formatter for CheckFormatter {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
-            let diff = diff(&file_text, &formatted_text);
+            let diff =
+              deno_resolver::display::diff(&file_text, &formatted_text);
             info!("");
             info!("{} {}:", colors::bold("from"), file_path.display());
             info!("{}", diff);
@@ -1477,8 +1474,6 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    declaration_order_group_by:
-      DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
   };
 
   FormatOptions {
@@ -1539,7 +1534,6 @@ fn get_resolved_markup_fmt_config(
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    single_attr_same_line: true,
   };
 
   FormatOptions {

@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -57,6 +59,38 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
+
+#[cfg(target_os = "linux")]
+pub(crate) static MEMORY_TRIM_HANDLER_ENABLED: LazyLock<bool> =
+  LazyLock::new(|| std::env::var_os("DENO_USR2_MEMORY_TRIM").is_some());
+
+#[cfg(target_os = "linux")]
+pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
+  LazyLock::new(|| {
+    let (tx, rx) = tokio::sync::watch::channel(());
+
+    tokio::spawn(async move {
+      let mut sigusr2 = tokio::signal::unix::signal(
+        tokio::signal::unix::SignalKind::user_defined2(),
+      )
+      .unwrap();
+
+      loop {
+        sigusr2.recv().await;
+
+        // SAFETY: calling into libc, nothing relevant on the Rust side.
+        unsafe {
+          libc::malloc_trim(0);
+        }
+
+        if tx.send(()).is_err() {
+          break;
+        }
+      }
+    });
+
+    rx
+  });
 
 pub fn import_meta_resolve_callback(
   loader: &dyn ModuleLoader,
@@ -125,6 +159,15 @@ pub struct MainWorker {
   dispatch_unload_event_fn_global: v8::Global<v8::Function>,
   dispatch_process_beforeexit_event_fn_global: v8::Global<v8::Function>,
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for MainWorker {
+  fn drop(&mut self) {
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
+  }
 }
 
 pub struct WorkerServiceOptions<
@@ -682,6 +725,7 @@ impl MainWorker {
       dispatch_unload_event_fn_global,
       dispatch_process_beforeexit_event_fn_global,
       dispatch_process_exit_event_fn_global,
+      memory_trim_handle: None,
     };
     (worker, options.bootstrap)
   }
@@ -708,6 +752,49 @@ impl MainWorker {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");
     }
+  }
+
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

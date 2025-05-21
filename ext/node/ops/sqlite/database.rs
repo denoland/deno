@@ -271,6 +271,7 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[undefined]
   fn exec(&self, #[string] sql: &str) -> Result<(), SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;

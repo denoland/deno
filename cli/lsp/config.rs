@@ -42,9 +42,19 @@ use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm_cache::NpmCacheSetting;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npm_installer::LifecycleScriptsConfig;
+use deno_npm_installer::NpmInstallerFactory;
+use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
-use deno_resolver::npmrc::discover_npmrc_from_workspace;
+use deno_resolver::factory::ConfigDiscoveryOption;
+use deno_resolver::factory::ResolverFactory;
+use deno_resolver::factory::ResolverFactoryOptions;
+use deno_resolver::factory::WorkspaceFactory;
+use deno_resolver::factory::WorkspaceFactoryOptions;
 use deno_resolver::workspace::CreateResolverOptions;
 use deno_resolver::workspace::FsCacheOptions;
 use deno_resolver::workspace::PackageJsonDepResolution;
@@ -55,6 +65,7 @@ use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use lsp_types::Uri;
+use node_resolver::NodeResolverOptions;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
@@ -62,18 +73,21 @@ use super::lsp_custom;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
-use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
+use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -1265,13 +1279,11 @@ impl ConfigData {
     scope: &Arc<Url>,
     settings: &Settings,
     file_fetcher: &Arc<CliFileFetcher>,
+    http_client_provider: &Arc<HttpClientProvider>,
     // sync requirement is because the lsp requires sync
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1310,7 +1322,7 @@ impl ConfigData {
           scope,
           settings,
           Some(file_fetcher),
-          lockfile_package_info_provider,
+          Some(http_client_provider),
         )
         .await
       }
@@ -1326,7 +1338,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
-          lockfile_package_info_provider,
+          Some(http_client_provider),
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1369,9 +1381,7 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
+    http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1421,23 +1431,94 @@ impl ConfigData {
       );
     }
 
-    // todo(dsherret): cache this so we don't load this so many times
-    let npmrc =
-      discover_npmrc_from_workspace(&CliSys::default(), &member_dir.workspace)
-        .inspect(|(_, path)| {
-          if let Some(path) = path {
-            lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
+    let byonm = match node_modules_dir {
+      Some(mode) => mode == NodeModulesDirMode::Manual,
+      None => member_dir.workspace.root_pkg_json().is_some(),
+    };
+    if byonm {
+      lsp_log!("  Enabled 'bring your own node_modules'.");
+    }
 
-            if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-              add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
-            }
+    // todo(dsherret): cache this so we don't load this so many times
+    // and additionally we should move this up to a higher level
+    let mut workspace_factory = WorkspaceFactory::new(
+      CliSys::default(),
+      member_dir.dir_path(),
+      WorkspaceFactoryOptions {
+        additional_config_file_names: &[],
+        config_discovery: ConfigDiscoveryOption::DiscoverCwd,
+        deno_dir_path_provider: None,
+        is_package_manager_subcommand: false,
+        frozen_lockfile: None,
+        lock_arg: None,
+        lockfile_skip_write: false,
+        node_modules_dir: Some(resolve_node_modules_dir_mode(
+          &member_dir.workspace,
+          byonm,
+        )),
+        no_lock: false,
+        no_npm: false,
+        npm_process_state: None,
+        vendor: None,
+      },
+    );
+    workspace_factory.set_workspace_directory(member_dir.clone());
+    let resolver_factory = ResolverFactory::new(
+      Arc::new(workspace_factory),
+      ResolverFactoryOptions {
+        // these default options are fine because we don't use this for
+        // anything other than resolving the lockfile at the moment
+        is_cjs_resolution_mode: Default::default(),
+        npm_system_info: Default::default(),
+        node_resolver_options: NodeResolverOptions::default(),
+        node_resolution_cache: None,
+        package_json_cache: None,
+        package_json_dep_resolution: None,
+        specified_import_map: None,
+        bare_node_builtins: false,
+        unstable_sloppy_imports: false,
+        on_mapped_resolution_diagnostic: None,
+      },
+    );
+    let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+    let npm_installer_factory = NpmInstallerFactory::new(
+      Arc::new(resolver_factory),
+      Arc::new(CliNpmCacheHttpClient::new(
+        http_client_provider
+          .cloned()
+          // will only happen in the tests
+          .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
+        pb.clone(),
+      )),
+      Arc::new(NullLifecycleScriptsExecutor),
+      pb,
+      NpmInstallerFactoryOptions {
+        cache_setting: NpmCacheSetting::Use,
+        caching_strategy: NpmCachingStrategy::Eager,
+        lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
+      },
+    );
+
+    let npmrc = npm_installer_factory
+      .workspace_factory()
+      .npmrc_with_path()
+      .inspect(|(_, path)| {
+        if let Some(path) = path {
+          lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+
+          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+            add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
           }
-        })
-        .inspect_err(|err| {
-          lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
-        })
-        .map(|(r, _)| Arc::new(r))
-        .ok();
+        }
+      })
+      .inspect_err(|err| {
+        lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
+      })
+      .ok()
+      .map(|value| value.0.clone());
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
     let fmt_config = Arc::new(
@@ -1515,31 +1596,33 @@ impl ConfigData {
       };
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
-    // todo(dsherret): add caching so we don't load this so many times
-    let lockfile = resolve_lockfile_from_workspace(
-      &member_dir,
-      lockfile_package_info_provider,
-    )
-    .await
-    .map(Arc::new);
+    // todo(dsherret): maybe add caching so we don't load this so many times
+    let lockfile = npm_installer_factory
+      .maybe_lockfile()
+      .await
+      .inspect_err(|err| {
+        lsp_warn!("Error loading lockfile: {:#}", err);
+      })
+      .ok()
+      .flatten()
+      .cloned();
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
+        lsp_log!("  Resolved lockfile: \"{}\"", specifier);
         add_watched_file(specifier, ConfigWatchedFileType::Lockfile);
       }
     }
 
-    let node_modules_dir =
-      member_dir.workspace.node_modules_dir().unwrap_or_default();
-    let byonm = match node_modules_dir {
-      Some(mode) => mode == NodeModulesDirMode::Manual,
-      None => member_dir.workspace.root_pkg_json().is_some(),
-    };
-    if byonm {
-      lsp_log!("  Enabled 'bring your own node_modules'.");
-    }
-    let node_modules_dir =
-      resolve_node_modules_dir(&member_dir.workspace, byonm);
+    let node_modules_dir = npm_installer_factory
+      .workspace_factory()
+      .node_modules_dir_path()
+      .inspect_err(|err| {
+        lsp_warn!("Failed resolving node_modules directory: {:#}", err);
+      })
+      .ok()
+      .flatten()
+      .map(|p| p.to_path_buf());
 
     // Mark the import map as a watched file
     if let Some(import_map_specifier) = member_dir
@@ -1932,10 +2015,8 @@ impl ConfigTree {
     settings: &Settings,
     workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
+    http_client_provider: &Arc<HttpClientProvider>,
     deno_dir: &DenoDir,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1965,10 +2046,10 @@ impl ConfigTree {
                 folder_url,
                 settings,
                 file_fetcher,
+                http_client_provider,
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
-                lockfile_package_info_provider,
               )
               .await,
             ),
@@ -1999,10 +2080,10 @@ impl ConfigTree {
           &scope,
           settings,
           file_fetcher,
+          http_client_provider,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          lockfile_package_info_provider,
         )
         .await,
       );
@@ -2016,10 +2097,10 @@ impl ConfigTree {
           member_scope,
           settings,
           file_fetcher,
+          http_client_provider,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          lockfile_package_info_provider,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2034,13 +2115,7 @@ impl ConfigTree {
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(
-    &mut self,
-    config_file: ConfigFile,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) {
+  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
@@ -2070,7 +2145,7 @@ impl ConfigTree {
         scope.clone(),
         &Default::default(),
         None,
-        lockfile_package_info_provider,
+        None,
       )
       .await,
     );
@@ -2079,37 +2154,10 @@ impl ConfigTree {
   }
 }
 
-async fn resolve_lockfile_from_workspace(
-  workspace: &WorkspaceDirectory,
-  lockfile_package_info_provider: &Arc<
-    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-  >,
-) -> Option<CliLockfile> {
-  let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
-    Ok(Some(value)) => value,
-    Ok(None) => return None,
-    Err(err) => {
-      lsp_warn!("Error resolving lockfile: {:#}", err);
-      return None;
-    }
-  };
-  let frozen = workspace
-    .workspace
-    .root_deno_json()
-    .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
-    .unwrap_or(false);
-  resolve_lockfile_from_path(
-    lockfile_path,
-    frozen,
-    lockfile_package_info_provider,
-  )
-  .await
-}
-
-fn resolve_node_modules_dir(
+fn resolve_node_modules_dir_mode(
   workspace: &Workspace,
   byonm: bool,
-) -> Option<PathBuf> {
+) -> NodeModulesDirMode {
   // For the language server, require an explicit opt-in via the
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
@@ -2117,7 +2165,7 @@ fn resolve_node_modules_dir(
   let node_modules_mode = workspace.node_modules_dir().ok().flatten();
   let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
-    return None;
+    return NodeModulesDirMode::None;
   }
   let enabled = byonm
     || node_modules_mode
@@ -2126,48 +2174,9 @@ fn resolve_node_modules_dir(
     || workspace.vendor_dir_path().is_some();
 
   if !enabled {
-    return None;
+    return NodeModulesDirMode::None;
   }
-  let node_modules_dir = workspace
-    .root_dir()
-    .to_file_path()
-    .ok()?
-    .join("node_modules");
-  canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
-}
-
-async fn resolve_lockfile_from_path(
-  lockfile_path: PathBuf,
-  frozen: bool,
-  lockfile_package_info_provider: &Arc<
-    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-  >,
-) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(
-    &CliSys::default(),
-    CliLockfileReadFromPathOptions {
-      file_path: lockfile_path,
-      frozen,
-      skip_write: false,
-    },
-    &**lockfile_package_info_provider,
-  )
-  .await
-  {
-    Ok(value) => {
-      if value.filename.exists() {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
-        {
-          lsp_log!("  Resolved lockfile: \"{}\"", specifier);
-        }
-      }
-      Some(value)
-    }
-    Err(err) => {
-      lsp_warn!("Error loading lockfile: {:#}", err);
-      None
-    }
-  }
+  node_modules_mode.unwrap_or(NodeModulesDirMode::None)
 }
 
 // todo(dsherret): switch to RefCell once the lsp no longer requires Sync
@@ -2477,26 +2486,6 @@ mod tests {
     );
   }
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   #[tokio::test]
   async fn config_enable_via_config_file_detection() {
     let root_uri = root_dir();
@@ -2507,7 +2496,6 @@ mod tests {
       .tree
       .inject_config_file(
         ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2565,7 +2553,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(
@@ -2591,7 +2578,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
 
@@ -2609,7 +2595,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(

@@ -3,48 +3,44 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::parking_lot::Mutex;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
+use deno_resolver::lockfile::LockfileLock;
+use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use parking_lot::Mutex;
 use thiserror::Error;
 
 use super::WorkspaceNpmPatchPackages;
-use crate::args::CliLockfile;
-use crate::sys::CliSys;
-
-pub type CliManagedNpmResolverCreateOptions =
-  ManagedNpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug, Clone)]
-pub enum CliNpmResolverManagedSnapshotOption {
-  ResolveFromLockfile(Arc<CliLockfile>),
+pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
+  ResolveFromLockfile(Arc<LockfileLock<TSys>>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
 #[derive(Debug)]
-enum SyncState {
-  Pending(Option<CliNpmResolverManagedSnapshotOption>),
+enum SyncState<TSys: LockfileSys> {
+  Pending(Option<NpmResolverManagedSnapshotOption<TSys>>),
   Err(ResolveSnapshotError),
   Success,
 }
 
 #[derive(Debug)]
-pub struct NpmResolutionInitializer {
+pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
   patch_packages: Arc<WorkspaceNpmPatchPackages>,
   queue: tokio::sync::Mutex<()>,
-  sync_state: Mutex<SyncState>,
+  sync_state: Mutex<SyncState<TSys>>,
 }
 
-impl NpmResolutionInitializer {
+impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
     patch_packages: Arc<WorkspaceNpmPatchPackages>,
-    snapshot_option: CliNpmResolverManagedSnapshotOption,
+    snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
       npm_resolution,
@@ -124,13 +120,13 @@ pub struct ResolveSnapshotError {
   source: SnapshotFromLockfileError,
 }
 
-fn resolve_snapshot(
-  snapshot: CliNpmResolverManagedSnapshotOption,
+fn resolve_snapshot<TSys: LockfileSys>(
+  snapshot: NpmResolverManagedSnapshotOption<TSys>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
-    CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
+    NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), patch_packages)
           .map_err(|source| ResolveSnapshotError {
@@ -142,7 +138,7 @@ fn resolve_snapshot(
         Ok(None)
       }
     }
-    CliNpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
+    NpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
   }
 }
 
@@ -153,38 +149,15 @@ pub enum SnapshotFromLockfileError {
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
-pub(crate) struct DefaultTarballUrl;
-
-impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
-  fn default_tarball_url(
-    &self,
-    nv: &deno_semver::package::PackageNv,
-  ) -> String {
-    let scope = nv.scope();
-    let package_name = if let Some(scope) = scope {
-      nv.name
-        .strip_prefix(scope)
-        .unwrap_or(&nv.name)
-        .trim_start_matches('/')
-    } else {
-      &nv.name
-    };
-    format!(
-      "https://registry.npmjs.org/{}/-/{}-{}.tgz",
-      nv.name, package_name, nv.version
-    )
-  }
-}
-
-fn snapshot_from_lockfile(
-  lockfile: Arc<CliLockfile>,
+fn snapshot_from_lockfile<TSys: LockfileSys>(
+  lockfile: Arc<LockfileLock<TSys>>,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       patch_packages: &patch_packages.0,
       lockfile: &lockfile.lock(),
-      default_tarball_url: &DefaultTarballUrl,
+      default_tarball_url: Default::default(),
     },
   )?;
 

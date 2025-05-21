@@ -8,6 +8,7 @@ use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
@@ -28,6 +29,12 @@ use crate::file_fetcher::TextDecodedFile;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
 
+#[derive(Debug)]
+struct WorkspacePackage {
+  dir_url: Url,
+  version_info: Arc<JsrPackageVersionInfo>,
+}
+
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
 pub struct JsrCacheResolver {
@@ -36,7 +43,7 @@ pub struct JsrCacheResolver {
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<StackString, Option<Arc<JsrPackageInfo>>>,
-  workspace_scope_by_name: HashMap<StackString, ModuleSpecifier>,
+  workspace_packages_by_name: HashMap<StackString, WorkspacePackage>,
   cache: Arc<dyn HttpCache>,
 }
 
@@ -48,12 +55,28 @@ impl JsrCacheResolver {
     let nv_by_req = DashMap::new();
     let info_by_nv = DashMap::new();
     let info_by_name = DashMap::new();
-    let mut workspace_scope_by_name = HashMap::new();
+    let mut workspace_packages_by_name = HashMap::new();
     if let Some(config_data) = config_data {
       for jsr_pkg_config in config_data.member_dir.workspace.jsr_packages() {
         let Some(exports) = &jsr_pkg_config.config_file.json.exports else {
           continue;
         };
+        let version_info = Arc::new(JsrPackageVersionInfo {
+          exports: exports.clone(),
+          module_graph_1: None,
+          module_graph_2: None,
+          manifest: Default::default(),
+        });
+        workspace_packages_by_name.insert(
+          StackString::from_str(&jsr_pkg_config.name),
+          WorkspacePackage {
+            dir_url: Url::from_directory_path(
+              jsr_pkg_config.config_file.dir_path(),
+            )
+            .unwrap(),
+            version_info: version_info.clone(),
+          },
+        );
         let Some(version) = &jsr_pkg_config.config_file.json.version else {
           continue;
         };
@@ -75,22 +98,7 @@ impl JsrCacheResolver {
             .collect(),
           })),
         );
-        info_by_nv.insert(
-          nv.clone(),
-          Some(Arc::new(JsrPackageVersionInfo {
-            exports: exports.clone(),
-            module_graph_1: None,
-            module_graph_2: None,
-            manifest: Default::default(),
-          })),
-        );
-        workspace_scope_by_name.insert(
-          nv.name.clone(),
-          ModuleSpecifier::from_directory_path(
-            jsr_pkg_config.config_file.dir_path(),
-          )
-          .unwrap(),
-        );
+        info_by_nv.insert(nv.clone(), Some(version_info));
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
@@ -117,7 +125,7 @@ impl JsrCacheResolver {
       nv_by_req,
       info_by_nv,
       info_by_name,
-      workspace_scope_by_name,
+      workspace_packages_by_name,
       cache: cache.clone(),
     }
   }
@@ -165,12 +173,40 @@ impl JsrCacheResolver {
     let nv = maybe_nv.as_ref()?;
     let info = self.package_version_info(nv)?;
     let path = info.export(&req_ref.export_name())?;
-    if let Some(workspace_scope) = self.workspace_scope_by_name.get(&nv.name) {
-      workspace_scope.join(path).ok()
+    if let Some(workspace_package) =
+      self.workspace_packages_by_name.get(&nv.name)
+    {
+      workspace_package.dir_url.join(path).ok()
     } else {
       jsr_url()
         .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
         .ok()
+    }
+  }
+
+  pub fn lookup_bare_specifier_for_workspace_file(
+    &self,
+    specifier: &Url,
+  ) -> Option<String> {
+    if specifier.scheme() != "file" {
+      return None;
+    }
+    let (name, workspace_package) = self
+      .workspace_packages_by_name
+      .iter()
+      .filter(|(_, p)| specifier.as_str().starts_with(p.dir_url.as_str()))
+      .max_by_key(|(_, p)| p.dir_url.as_str().len())?;
+    let path = specifier
+      .as_str()
+      .strip_prefix(workspace_package.dir_url.as_str())?;
+    let export = Self::lookup_export_for_version_info(
+      &workspace_package.version_info,
+      path,
+    )?;
+    if export == "." {
+      Some(name.to_string())
+    } else {
+      Some(format!("{name}/{export}"))
     }
   }
 
@@ -180,6 +216,13 @@ impl JsrCacheResolver {
     path: &str,
   ) -> Option<String> {
     let info = self.package_version_info(nv)?;
+    Self::lookup_export_for_version_info(&info, path)
+  }
+
+  fn lookup_export_for_version_info(
+    info: &JsrPackageVersionInfo,
+    path: &str,
+  ) -> Option<String> {
     let path = path.strip_prefix("./").unwrap_or(path);
     let mut sloppy_fallback = None;
     for (export, path_) in info.exports() {

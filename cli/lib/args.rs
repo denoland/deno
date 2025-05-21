@@ -10,6 +10,8 @@ use std::sync::LazyLock;
 
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm_installer::process_state::NpmProcessState;
+use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -151,19 +153,6 @@ pub fn get_root_cert_store(
   }
 
   Ok(root_cert_store)
-}
-
-/// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NpmProcessState {
-  pub kind: NpmProcessStateKind,
-  pub local_node_modules_path: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NpmProcessStateKind {
-  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
-  Byonm,
 }
 
 pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =

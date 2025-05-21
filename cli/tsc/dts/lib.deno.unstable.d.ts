@@ -38,6 +38,10 @@ declare namespace Deno {
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
+    /**
+     * This method should be invoked when the size of the window changes.
+     */
+    resize(width: number, height: number): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
