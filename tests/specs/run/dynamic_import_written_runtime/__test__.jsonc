@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run --check --allow-read --allow-write main.ts",
+    "output": "Check [WILDLINE]\n1\n"
+  }, {
+    // run again to ensure it still outputs 1
+    "args": "run --check --allow-read --allow-write main.ts",
+    "output": "Check [WILDLINE]\n1\n"
+  }]
+}

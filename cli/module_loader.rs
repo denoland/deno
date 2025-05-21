@@ -1124,6 +1124,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
+      let is_first_graph_build = graph.specifiers().next().is_none();
       module_load_preparer
         .prepare_module_load(
           graph,
@@ -1138,6 +1139,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         )
         .await
         .map_err(JsErrorBox::from_err)?;
+      if is_first_graph_build {
+        graph.prune(deno_graph::PruneMode::TypesAndNonRemoteDynamic);
+      }
       update_permit.commit();
       Ok(())
     }
