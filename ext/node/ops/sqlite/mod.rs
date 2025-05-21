@@ -5,11 +5,11 @@ mod session;
 mod statement;
 
 pub use database::DatabaseSync;
-use rusqlite::ffi as libsqlite3_sys;
 pub use session::Session;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("code" = self.code())]
 pub enum SqliteError {
   #[class(inherit)]
   #[error(transparent)]
@@ -24,8 +24,14 @@ pub enum SqliteError {
   #[error("Database is already in use")]
   InUse,
   #[class(generic)]
+  #[error("Failed to load SQLite extension: {0}")]
+  LoadExensionFailed(String),
+  #[class(generic)]
   #[error("Failed to bind parameter. {0}")]
   FailedBind(&'static str),
+  #[class(generic)]
+  #[error("Unknown named parameter '{0}'")]
+  UnknownNamedParameter(String),
   #[class(generic)]
   #[error("Unknown column type")]
   UnknownColumnType,
@@ -51,7 +57,7 @@ pub enum SqliteError {
   #[error("Session is already closed")]
   SessionClosed,
   #[class(generic)]
-  #[error("Invalid constructor")]
+  #[error("Illegal constructor")]
   InvalidConstructor,
   #[class(generic)]
   #[error("Expanded SQL text would exceed configured limits")]
@@ -59,6 +65,7 @@ pub enum SqliteError {
   #[class(range)]
   #[error("The value of column {0} is too large to be represented as a JavaScript number: {1}")]
   NumberTooLarge(i32, i64),
+  #[class(range)]
   #[class(generic)]
   #[error("Failed to apply changeset")]
   ChangesetApplyFailed,
@@ -70,117 +77,45 @@ pub enum SqliteError {
   FromUtf8Error(#[from] std::ffi::NulError),
 }
 
-pub trait SqliteResultExt<T> {
-  fn with_enhanced_errors(
-    self,
-    db: &rusqlite::Connection,
-  ) -> Result<T, SqliteError>;
+#[derive(Debug, PartialEq, Eq)]
+enum ErrorCode {
+  ERR_SQLITE_ERROR,
+  ERR_ILLEGAL_CONSTRUCTOR,
+  ERR_INVALID_STATE,
+  ERR_OUT_OF_RANGE,
+  ERR_LOAD_SQLITE_EXTENSION,
 }
 
-impl<T> SqliteResultExt<T> for Result<T, rusqlite::Error> {
-  fn with_enhanced_errors(
-    self,
-    db: &rusqlite::Connection,
-  ) -> Result<T, SqliteError> {
+impl std::fmt::Display for ErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl ErrorCode {
+  pub fn as_str(&self) -> &str {
     match self {
-      Ok(value) => Ok(value),
-      Err(error) => {
-        // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
-        let handle = unsafe { db.handle() };
-        // SAFETY: error conversion does not perform additional dereferencing beyond what is documented.
-        Err(unsafe { SqliteError::from_rusqlite_with_details(error, handle) })
-      }
+      Self::ERR_SQLITE_ERROR => "ERR_SQLITE_ERROR",
+      Self::ERR_ILLEGAL_CONSTRUCTOR => "ERR_ILLEGAL_CONSTRUCTOR",
+      Self::ERR_INVALID_STATE => "ERR_INVALID_STATE",
+      Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
+      Self::ERR_LOAD_SQLITE_EXTENSION => "ERR_LOAD_SQLITE_EXTENSION",
     }
   }
 }
 
 impl SqliteError {
-  pub const ERROR_CODE_GENERIC: i32 = 1;
-
-  pub const ERROR_STR_UNKNOWN: &str = "unknown error";
-
-  pub fn create_error(message: &str, code: &str) -> Self {
-    let encoded_message = format!("{}\n  {{\n  code: '{}'\n}}", message, code);
-
-    let custom_error = rusqlite::Error::SqliteFailure(
-      rusqlite::ffi::Error {
-        code: rusqlite::ErrorCode::Unknown,
-        extended_code: Self::ERROR_CODE_GENERIC,
-      },
-      Some(encoded_message),
-    );
-
-    SqliteError::SqliteError(custom_error)
-  }
-
-  pub fn create_enhanced_error<T>(
-    extended_code: i32,
-    message: &str,
-    db_handle: Option<*mut libsqlite3_sys::sqlite3>,
-  ) -> Result<T, Self> {
-    let rusqlite_error = rusqlite::Error::SqliteFailure(
-      rusqlite::ffi::Error {
-        code: rusqlite::ErrorCode::Unknown,
-        extended_code,
-      },
-      Some(message.to_string()),
-    );
-
-    let handle = db_handle.unwrap_or(std::ptr::null_mut());
-    // SAFETY: error conversion does not perform additional dereferencing beyond what is documented.
-    Err(unsafe {
-      SqliteError::from_rusqlite_with_details(rusqlite_error, handle)
-    })
-  }
-
-  /// Creates a `SqliteError` from a rusqlite error and a raw SQLite handle.
-  ///
-  /// # Safety
-  ///
-  /// Caller must ensure `handle` is non-null and points to a valid, initialized sqlite3 instance.
-  pub unsafe fn from_rusqlite_with_details(
-    error: rusqlite::Error,
-    handle: *mut libsqlite3_sys::sqlite3,
-  ) -> Self {
-    let message = error.to_string();
-
-    let err_code = match &error {
-      rusqlite::Error::SqliteFailure(ffi_error, _) => ffi_error.code as i32,
-      _ => {
-        if !handle.is_null() {
-          // SAFETY: We've verified that handle is not null in the previous condition.
-          unsafe { libsqlite3_sys::sqlite3_errcode(handle) }
-        } else {
-          Self::ERROR_CODE_GENERIC
-        }
-      }
-    };
-
-    // SAFETY: We're using sqlite3_errstr which returns a static string.
-    let err_str = unsafe {
-      let ptr = libsqlite3_sys::sqlite3_errstr(err_code);
-      if !ptr.is_null() {
-        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
-      } else {
-        Self::ERROR_STR_UNKNOWN.to_string()
-      }
-    };
-
-    let encoded_message = format!(
-      "{}\n  {{\n  code: 'ERR_SQLITE_ERROR',\n  errcode: {},\n  errstr: '{}'\n}}",
-      message,
-      err_code,
-      err_str
-    );
-
-    let custom_error = rusqlite::Error::SqliteFailure(
-      rusqlite::ffi::Error {
-        code: rusqlite::ErrorCode::Unknown,
-        extended_code: err_code,
-      },
-      Some(encoded_message),
-    );
-
-    SqliteError::SqliteError(custom_error)
+  fn code(&self) -> ErrorCode {
+    match self {
+      Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,
+      Self::FailedBind(_) |
+      Self::UnknownNamedParameter(_) |
+      Self::AlreadyClosed |
+      Self::AlreadyOpen
+          => ErrorCode::ERR_INVALID_STATE,
+      Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
+      Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
+      _ => ErrorCode::ERR_SQLITE_ERROR,
+    }
   }
 }

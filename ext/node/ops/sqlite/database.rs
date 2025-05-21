@@ -23,7 +23,7 @@ use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
-use crate::ops::sqlite::SqliteResultExt;
+
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
@@ -34,6 +34,7 @@ struct DatabaseSyncOptions {
   open: bool,
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
+  #[serde(default = "false_fn")]
   read_only: bool,
   #[serde(default = "false_fn")]
   allow_extension: bool,
@@ -200,8 +201,7 @@ impl DatabaseSync {
         open_db(state, options.read_only, &location, options.allow_extension)?;
 
       if options.enable_foreign_key_constraints {
-        db.execute("PRAGMA foreign_keys = ON", [])
-          .with_enhanced_errors(&db)?;
+        db.execute("PRAGMA foreign_keys = ON", [])?;
       }
       Some(db)
     } else {
@@ -222,6 +222,7 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
+  #[undefined]
   fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
@@ -234,8 +235,7 @@ impl DatabaseSync {
       self.options.allow_extension,
     )?;
     if self.options.enable_foreign_key_constraints {
-      db.execute("PRAGMA foreign_keys = ON", [])
-        .with_enhanced_errors(&db)?;
+      db.execute("PRAGMA foreign_keys = ON", [])?;
     }
 
     *self.conn.borrow_mut() = Some(db);
@@ -276,7 +276,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    db.execute_batch(sql).with_enhanced_errors(db)?;
+    db.execute_batch(sql)?;
 
     Ok(())
   }
@@ -450,9 +450,8 @@ impl DatabaseSync {
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     if !self.options.allow_extension {
-      return Err(SqliteError::create_error(
-        "Cannot load SQLite extensions when allowExtension is not enabled",
-        "ERR_LOAD_SQLITE_EXTENSION",
+      return Err(SqliteError::LoadExensionFailed(
+        "Cannot load SQLite extensions when allowExtension is not enabled".to_string(),
       ));
     }
 
@@ -491,9 +490,8 @@ impl DatabaseSync {
           format!("Failed to load extension with error code: {}", res)
         };
 
-        return Err(SqliteError::create_error(
-          &error_message,
-          "ERR_LOAD_SQLITE_EXTENSION",
+        return Err(SqliteError::LoadExensionFailed(
+          error_message,
         ));
       }
 
@@ -503,9 +501,8 @@ impl DatabaseSync {
     if result == libsqlite3_sys::SQLITE_OK {
       Ok(())
     } else {
-      Err(SqliteError::create_error(
-        "Unknown error loading SQLite extension",
-        "ERR_LOAD_SQLITE_EXTENSION",
+      Err(SqliteError::LoadExensionFailed(
+        "Unknown error loading SQLite extension".to_string(),
       ))
     }
   }
