@@ -946,7 +946,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, clearImmediate, clearInterval, clearTimeout, setImmediate, setInterval, setTimeout) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1026,12 +1026,9 @@ Module.prototype._compile = function (content, filename, format) {
   }
 
   const {
-    Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1044,12 +1041,9 @@ Module.prototype._compile = function (content, filename, format) {
     this,
     filename,
     dirname,
-    Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1133,7 +1127,7 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    nodeGlobals.Buffer,
+    buffer.Buffer,
     reportError,
   );
 };
