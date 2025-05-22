@@ -291,7 +291,9 @@ impl StatementSync {
       let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
       let (as_int, lossless) = value.i64_value();
       if !lossless {
-         return Err(SqliteError::FailedBind("BigInt value is too large to bind"))
+        return Err(SqliteError::FailedBind(
+          "BigInt value is too large to bind",
+        ));
       }
 
       // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
@@ -370,8 +372,7 @@ impl StatementSync {
               // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
               let handle = unsafe { db.handle() };
 
-              return Err(SqliteError::FailedBind("Duplicate named parameter")
-              );
+              return Err(SqliteError::FailedBind("Duplicate named parameter"));
             }
           }
         }
@@ -393,7 +394,9 @@ impl StatementSync {
             }
 
             if r == 0 {
-              return Err(SqliteError::UnknownNamedParameter(key_c.into_string().unwrap()));
+              return Err(SqliteError::UnknownNamedParameter(
+                key_c.into_string().unwrap(),
+              ));
             }
           }
 

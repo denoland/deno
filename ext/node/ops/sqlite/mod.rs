@@ -3,6 +3,7 @@
 mod database;
 mod session;
 mod statement;
+mod validators;
 
 pub use database::DatabaseSync;
 pub use session::Session;
@@ -108,11 +109,10 @@ impl SqliteError {
   fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,
-      Self::FailedBind(_) |
-      Self::UnknownNamedParameter(_) |
-      Self::AlreadyClosed |
-      Self::AlreadyOpen
-          => ErrorCode::ERR_INVALID_STATE,
+      Self::FailedBind(_)
+      | Self::UnknownNamedParameter(_)
+      | Self::AlreadyClosed
+      | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,

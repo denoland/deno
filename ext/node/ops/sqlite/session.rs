@@ -42,9 +42,7 @@ impl Drop for Session {
 impl Session {
   fn delete(&self) -> Result<(), SqliteError> {
     if self.freed.get() {
-      return Err(
-        SqliteError::SessionClosed,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     self.freed.set(true);
@@ -63,9 +61,10 @@ impl Session {
   // Closes the session.
   #[fast]
   fn close(&self) -> Result<(), SqliteError> {
-    let db_rc = self.db.upgrade().ok_or_else(|| {
-      SqliteError::AlreadyClosed
-    })?;
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
     if db_rc.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
@@ -79,9 +78,10 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self.db.upgrade().ok_or_else(|| {
-       SqliteError::AlreadyClosed
-    })?;
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
     if db_rc.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
@@ -97,11 +97,12 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self.db.upgrade().ok_or_else(|| {
-        SqliteError::AlreadyClosed
-    })?;
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
     if db_rc.borrow().is_none() {
-        return Err(SqliteError::AlreadyClosed);
+      return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
       return Err(SqliteError::SessionClosed);

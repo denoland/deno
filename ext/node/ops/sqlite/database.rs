@@ -20,6 +20,7 @@ use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
+use super::validators;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
@@ -271,6 +272,7 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[validate(validators::sql_str)]
   #[undefined]
   fn exec(&self, #[string] sql: &str) -> Result<(), SqliteError> {
     let db = self.conn.borrow();
@@ -451,7 +453,8 @@ impl DatabaseSync {
 
     if !self.options.allow_extension {
       return Err(SqliteError::LoadExensionFailed(
-        "Cannot load SQLite extensions when allowExtension is not enabled".to_string(),
+        "Cannot load SQLite extensions when allowExtension is not enabled"
+          .to_string(),
       ));
     }
 
@@ -490,9 +493,7 @@ impl DatabaseSync {
           format!("Failed to load extension with error code: {}", res)
         };
 
-        return Err(SqliteError::LoadExensionFailed(
-          error_message,
-        ));
+        return Err(SqliteError::LoadExensionFailed(error_message));
       }
 
       res
