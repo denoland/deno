@@ -2,13 +2,16 @@
 
 use std::path::PathBuf;
 
+mod image_bitmap;
 mod image_ops;
-mod op_create_image_bitmap;
+pub mod webidl;
 pub use image;
 use image::ColorType;
+use image_bitmap::op_create_image_bitmap;
+pub use image_bitmap::ImageBitmap;
+pub use image_ops::crop;
 pub use image_ops::premultiply_alpha;
-use op_create_image_bitmap::op_create_image_bitmap;
-pub use op_create_image_bitmap::ImageBitmap;
+pub use image_ops::transform_rgb_color_space;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
@@ -20,9 +23,15 @@ pub enum CanvasError {
   #[class(type)]
   #[error("Unsupported color type and bit depth: '{0:?}'")]
   UnsupportedColorType(ColorType),
+  #[class(type)]
+  #[error("Pixel ({0}, {1}) is out of bounds with the specified width: {2} and height: {3}")]
+  PixelIndexOutOfBounds(u32, u32, u32, u32),
   #[class("DOMExceptionInvalidStateError")]
   #[error("Cannot decode image '{0}'")]
   InvalidImage(image::ImageError),
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("The image source is no longer usable")]
+  ImageSourceAleadyDetached,
   #[class("DOMExceptionInvalidStateError")]
   #[error("The chunk data is not big enough with the specified width: {0} and height: {1}")]
   NotBigEnoughChunk(u32, u32),

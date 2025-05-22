@@ -6,6 +6,7 @@ use std::io::BufReader;
 use std::io::Cursor;
 
 use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use image::codecs::bmp::BmpDecoder;
@@ -24,7 +25,7 @@ use image::RgbaImage;
 
 use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
-use crate::image_ops::to_srgb_from_icc_profile;
+use crate::image_ops::transform_color_space_from_icc_profile_to_srgb;
 use crate::image_ops::unpremultiply_alpha;
 use crate::CanvasError;
 
@@ -237,7 +238,7 @@ fn apply_color_space_conversion(
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
     ColorSpaceConversion::Default => {
-      to_srgb_from_icc_profile(image, icc_profile)
+      transform_color_space_from_icc_profile_to_srgb(image, icc_profile)
     }
   }
 }
@@ -544,6 +545,10 @@ pub(super) fn op_create_image_bitmap(
 pub struct ImageBitmap {
   pub detached: OnceCell<()>,
   pub data: RefCell<DynamicImage>,
+}
+
+impl WebIdlInterfaceConverter for ImageBitmap {
+  const NAME: &'static str = "ImageBitmap";
 }
 
 impl GarbageCollected for ImageBitmap {}

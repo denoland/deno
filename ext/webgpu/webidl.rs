@@ -31,6 +31,20 @@ pub(crate) enum GPUExtent3D {
   Sequence((u32, u32, u32)),
 }
 
+impl GPUExtent3D {
+  /// The width, height and depth of this shape.
+  pub(crate) fn dimensions(&self) -> (u32, u32, u32) {
+    match self {
+      GPUExtent3D::Dict(dict) => {
+        (dict.width, dict.height, dict.depth_or_array_layers)
+      }
+      GPUExtent3D::Sequence((width, height, depth)) => {
+        (*width, *height, *depth)
+      }
+    }
+  }
+}
+
 impl<'a> WebIdlConverter<'a> for GPUExtent3D {
   type Options = ();
 
@@ -128,6 +142,16 @@ pub(crate) enum GPUOrigin2D {
 impl Default for GPUOrigin2D {
   fn default() -> Self {
     GPUOrigin2D::Sequence((0, 0))
+  }
+}
+
+impl GPUOrigin2D {
+  /// The width and height of this shape.
+  pub(crate) fn dimensions(&self) -> (u32, u32) {
+    match self {
+      GPUOrigin2D::Dict(dict) => (dict.x, dict.y),
+      GPUOrigin2D::Sequence((x, y)) => (*x, *y),
+    }
   }
 }
 
