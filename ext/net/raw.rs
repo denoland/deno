@@ -256,6 +256,7 @@ macro_rules! network_stream {
 }
 
 #[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 network_stream!(
   [
     Tcp,
@@ -291,6 +292,35 @@ network_stream!(
   ]
 );
 
+#[cfg(unix)]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+network_stream!(
+  [
+    Tcp,
+    tcp,
+    tokio::net::TcpStream,
+    crate::tcp::TcpListener,
+    std::net::SocketAddr,
+    TcpStreamResource
+  ],
+  [
+    Tls,
+    tls,
+    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsListener,
+    std::net::SocketAddr,
+    TlsStreamResource
+  ],
+  [
+    Unix,
+    unix,
+    tokio::net::UnixStream,
+    tokio::net::UnixListener,
+    tokio::net::unix::SocketAddr,
+    crate::io::UnixStreamResource
+  ]
+);
+
 #[cfg(not(unix))]
 network_stream!(
   [
@@ -315,7 +345,7 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
-  #[cfg(unix)]
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
 }
 
@@ -332,7 +362,7 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
   fn from(value: tokio_vsock::VsockAddr) -> Self {
     NetworkStreamAddress::Vsock(value)
@@ -351,7 +381,7 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
-  #[cfg(unix)]
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
   #[class("Busy")]
   #[error("Vsock socket is currently in use")]
   VsockBusy,
@@ -362,7 +392,7 @@ pub enum TakeNetworkStreamError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
-  #[cfg(unix)]
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
   #[class(generic)]
   #[error("Cannot reunite halves from different streams")]
   ReuniteVsock,
@@ -413,7 +443,7 @@ pub fn take_network_stream_resource(
     return Ok(NetworkStream::Unix(unix_stream));
   }
 
-  #[cfg(unix)]
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
   if let Ok(resource_rc) =
     resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
   {

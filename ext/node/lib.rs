@@ -172,6 +172,25 @@ pub trait NodeRequireLoader {
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
   fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
+
+  fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
+    default_resolve_require_node_module_paths(from)
+  }
+}
+
+pub fn default_resolve_require_node_module_paths(from: &Path) -> Vec<String> {
+  let mut paths = Vec::with_capacity(from.components().count());
+  let mut current_path = from;
+  let mut maybe_parent = Some(current_path);
+  while let Some(parent) = maybe_parent {
+    if !parent.ends_with("node_modules") {
+      paths.push(parent.join("node_modules").to_string_lossy().into_owned());
+    }
+    current_path = parent;
+    maybe_parent = current_path.parent();
+  }
+
+  paths
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
