@@ -42,10 +42,8 @@ impl Drop for Session {
 impl Session {
   fn delete(&self) -> Result<(), SqliteError> {
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
+      return Err(
+        SqliteError::SessionClosed,
       );
     }
 
@@ -66,19 +64,10 @@ impl Session {
   #[fast]
   fn close(&self) -> Result<(), SqliteError> {
     let db_rc = self.db.upgrade().ok_or_else(|| {
-      SqliteError::create_enhanced_error::<()>(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      )
-      .unwrap_err()
+      SqliteError::AlreadyClosed
     })?;
     if db_rc.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::AlreadyClosed);
     }
 
     self.delete()
@@ -91,26 +80,13 @@ impl Session {
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
     let db_rc = self.db.upgrade().ok_or_else(|| {
-      SqliteError::create_enhanced_error::<Box<[u8]>>(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      )
-      .unwrap_err()
+       SqliteError::AlreadyClosed
     })?;
     if db_rc.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_changeset)
@@ -122,26 +98,13 @@ impl Session {
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
     let db_rc = self.db.upgrade().ok_or_else(|| {
-      SqliteError::create_enhanced_error::<Box<[u8]>>(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      )
-      .unwrap_err()
+        SqliteError::AlreadyClosed
     })?;
     if db_rc.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+        return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_patchset)
@@ -163,11 +126,7 @@ fn session_buffer_op(
   // by sqlite3 and will be freed later.
   let r = unsafe { f(s, &mut n_buffer, &mut p_buffer) };
   if r != ffi::SQLITE_OK {
-    return SqliteError::create_enhanced_error(
-      r,
-      &SqliteError::SessionChangesetFailed.to_string(),
-      None,
-    );
+    return Err(SqliteError::SessionChangesetFailed);
   }
 
   if n_buffer == 0 {
