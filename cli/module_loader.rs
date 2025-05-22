@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
@@ -12,6 +13,8 @@ use std::str;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
+use std::time::SystemTime;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -37,6 +40,7 @@ use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -44,6 +48,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
+use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NpmModuleLoadError;
@@ -65,7 +70,10 @@ use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
+use sys_traits::SystemTimeNow;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::jsr_url;
@@ -80,6 +88,8 @@ use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::enhance_graph_error;
+use crate::graph_util::BuildGraphRequest;
+use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
@@ -206,10 +216,9 @@ impl ModuleLoadPreparer {
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        CreateGraphOptions {
+        BuildGraphWithNpmOptions {
           is_dynamic,
-          graph_kind: graph.graph_kind(),
-          roots: roots.to_vec(),
+          request: BuildGraphRequest::Roots(roots.to_vec()),
           loader: Some(&mut cache),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
@@ -244,6 +253,36 @@ impl ModuleLoadPreparer {
     }
 
     log::debug!("Prepared module load.");
+
+    Ok(())
+  }
+
+  pub async fn reload_specifiers(
+    &self,
+    graph: &mut ModuleGraph,
+    specifiers: Vec<ModuleSpecifier>,
+    is_dynamic: bool,
+    permissions: PermissionsContainer,
+  ) -> Result<(), PrepareModuleLoadError> {
+    let _pb_clear_guard = self.progress_bar.clear_guard();
+
+    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    self
+      .module_graph_builder
+      .build_graph_with_npm_resolution(
+        graph,
+        BuildGraphWithNpmOptions {
+          is_dynamic,
+          request: BuildGraphRequest::Reload(specifiers),
+          loader: Some(&mut cache),
+          npm_caching: self.options.default_npm_caching_strategy(),
+        },
+      )
+      .await?;
+
+    if let Some(lockfile) = &self.lockfile {
+      lockfile.write_if_changed()?;
+    }
 
     Ok(())
   }
@@ -406,6 +445,8 @@ impl CliModuleLoaderFactory {
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
+        start_time: self.shared.sys.sys_time_now(),
+        is_loading_dynamic_imports: deno_core::unsync::Flag::lowered(),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
@@ -519,6 +560,8 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
+  start_time: SystemTime,
+  is_loading_dynamic_imports: deno_core::unsync::Flag,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -595,22 +638,63 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
-    if let Some(code_source) = self.load_prepared_module(specifier).await? {
-      return Ok(code_source);
-    }
-    if self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
-      return self
-        .shared
-        .npm_module_loader
-        .load(specifier, maybe_referrer)
-        .await
-        .map_err(LoadCodeSourceError::NpmModuleLoad);
-    }
+    eprintln!("LOADING: {}", specifier);
+    let prepared_module_result = self.load_prepared_module(specifier).await;
+    match prepared_module_result {
+      Ok(None) => {
+        if self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+          return self
+            .shared
+            .npm_module_loader
+            .load(specifier, maybe_referrer)
+            .await
+            .map_err(LoadCodeSourceError::NpmModuleLoad);
+        }
+        Err(LoadCodeSourceError::LoadUnpreparedModule {
+          specifier: specifier.clone(),
+          maybe_referrer: maybe_referrer.cloned(),
+        })
+      }
+      result => {
+        if self.should_reload_prepared_module(specifier) {
+          {
+            let mut graph_permit =
+              self.graph_container.acquire_update_permit().await;
+            let graph = graph_permit.graph_mut();
+            self
+              .shared
+              .module_load_preparer
+              .reload_specifiers(
+                graph,
+                vec![specifier.clone()],
+                true,
+                // todo: is this correct?
+                self.permissions.clone(),
+              )
+              .await
+              .unwrap(); // todo: don't unwrap
+            graph_permit.commit();
+          }
+          return Ok(self.load_prepared_module(specifier).await?.unwrap());
+        }
 
-    Err(LoadCodeSourceError::LoadUnpreparedModule {
-      specifier: specifier.clone(),
-      maybe_referrer: maybe_referrer.cloned(),
-    })
+        return Ok(result?.unwrap());
+      }
+    }
+  }
+
+  fn should_reload_prepared_module(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.scheme() != "file"
+      || !self.is_loading_dynamic_imports.is_raised()
+    {
+      return false;
+    }
+    deno_path_util::url_to_file_path(&specifier)
+      .ok()
+      .and_then(|path| self.shared.sys.fs_symlink_metadata(&path).ok())
+      .and_then(|metadata| metadata.modified().ok())
+      .map(|mtime| mtime > self.start_time)
+      .unwrap_or(false)
   }
 
   fn resolve_referrer(
@@ -1078,6 +1162,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
+    if is_dynamic {
+      self.0.is_loading_dynamic_imports.raise();
+    }
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
@@ -1094,23 +1181,22 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let module_load_preparer = &inner.shared.module_load_preparer;
 
       if is_dynamic {
-        // When the specifier is already in the graph then it means it
-        // was previously loaded, so we can skip that and only check if
-        // this part of the graph is valid.
-        //
         // This doesn't acquire a graph update permit because that will
         // clone the graph which is a bit slow.
         let graph = graph_container.graph();
+        // When the specifier is already in the graph then it means it
+        // was previously loaded, so we can skip that and only check if
+        // this part of the graph is valid.
         if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
           log::debug!("Skipping prepare module load.");
           // roots are already validated so we can skip those
-          if !graph.roots.contains(&specifier) {
-            module_load_preparer.graph_roots_valid(
-              &graph,
-              &[specifier],
-              false,
-            )?;
-          }
+          // if !graph.roots.contains(&specifier) {
+          //   module_load_preparer.graph_roots_valid(
+          //     &graph,
+          //     &[specifier],
+          //     false,
+          //   )?;
+          // }
           return Ok(());
         }
       }
@@ -1124,7 +1210,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
-      let is_first_graph_build = graph.specifiers().next().is_none();
       module_load_preparer
         .prepare_module_load(
           graph,
@@ -1139,9 +1224,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         )
         .await
         .map_err(JsErrorBox::from_err)?;
-      if is_first_graph_build {
-        graph.prune(deno_graph::PruneMode::TypesAndNonRemoteDynamic);
-      }
+      graph.prune_types();
       update_permit.commit();
       Ok(())
     }

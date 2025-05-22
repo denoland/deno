@@ -536,7 +536,15 @@ impl ModuleGraphCreator {
 
     self
       .module_graph_builder
-      .build_graph_with_npm_resolution(&mut graph, options)
+      .build_graph_with_npm_resolution(
+        &mut graph,
+        BuildGraphWithNpmOptions {
+          request: BuildGraphRequest::Roots(options.roots),
+          is_dynamic: options.is_dynamic,
+          loader: options.loader,
+          npm_caching: options.npm_caching,
+        },
+      )
       .await?;
 
     Ok(graph)
@@ -617,6 +625,19 @@ pub enum BuildGraphWithNpmResolutionError {
   UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 
+pub enum BuildGraphRequest {
+  Roots(Vec<ModuleSpecifier>),
+  Reload(Vec<ModuleSpecifier>),
+}
+
+pub struct BuildGraphWithNpmOptions<'a> {
+  pub request: BuildGraphRequest,
+  pub is_dynamic: bool,
+  /// Specify `None` to use the default CLI loader.
+  pub loader: Option<&'a mut dyn Loader>,
+  pub npm_caching: NpmCachingStrategy,
+}
+
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   cjs_tracker: Arc<CliCjsTracker>,
@@ -682,7 +703,7 @@ impl ModuleGraphBuilder {
   pub async fn build_graph_with_npm_resolution(
     &self,
     graph: &mut ModuleGraph,
-    options: CreateGraphOptions<'_>,
+    options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
@@ -759,20 +780,6 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let maybe_imports = if options.graph_kind.include_types() {
-      // Resolve all the imports from every deno.json. We'll separate
-      // them later based on the folder we're type checking.
-      let mut imports = Vec::new();
-      for deno_json in self.cli_options.workspace().deno_jsons() {
-        let maybe_imports = deno_json.to_compiler_option_types()?;
-        imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
-          deno_graph::ReferrerImports { referrer, imports }
-        }));
-      }
-      imports
-    } else {
-      Vec::new()
-    };
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
@@ -795,10 +802,9 @@ impl ModuleGraphBuilder {
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
-        options.roots,
+        options.request,
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
-          imports: maybe_imports,
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
           is_dynamic: options.is_dynamic,
@@ -817,7 +823,7 @@ impl ModuleGraphBuilder {
       .await?;
 
     if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier && options.graph_kind.include_types() {
+      if graph.has_node_specifier && graph.graph_kind().include_types() {
         npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
@@ -828,7 +834,7 @@ impl ModuleGraphBuilder {
   async fn build_graph_with_npm_resolution_and_build_options<'a>(
     &self,
     graph: &mut ModuleGraph,
-    roots: Vec<ModuleSpecifier>,
+    request: BuildGraphRequest,
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
@@ -865,12 +871,36 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
-    if roots.iter().any(|r| r.scheme() == "npm") && self.npm_resolver.is_byonm()
-    {
-      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
+    match request {
+      BuildGraphRequest::Roots(roots) => {
+        if roots.iter().any(|r| r.scheme() == "npm")
+          && self.npm_resolver.is_byonm()
+        {
+          return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
+        }
+        let imports = if graph.graph_kind().include_types() {
+          // Resolve all the imports from every deno.json. We'll separate
+          // them later based on the folder we're type checking.
+          let mut imports = Vec::new();
+          for deno_json in self.cli_options.workspace().deno_jsons() {
+            let maybe_imports = deno_json.to_compiler_option_types()?;
+            imports.extend(maybe_imports.into_iter().map(
+              |(referrer, imports)| deno_graph::ReferrerImports {
+                referrer,
+                imports,
+              },
+            ));
+          }
+          imports
+        } else {
+          Vec::new()
+        };
+        graph.build(roots, imports, loader, options).await;
+      }
+      BuildGraphRequest::Reload(urls) => {
+        graph.reload(urls, loader, options).await
+      }
     }
-
-    graph.build(roots, loader, options).await;
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
