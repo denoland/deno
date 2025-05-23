@@ -2085,6 +2085,7 @@ dependencies = [
  "fs3",
  "libc",
  "log",
+ "nix 0.27.1",
  "once_cell",
  "os_pipe",
  "parking_lot",

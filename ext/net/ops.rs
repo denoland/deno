@@ -679,7 +679,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_vsock<NP>(
@@ -727,7 +727,7 @@ where
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
@@ -737,7 +737,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_vsock<NP>(
@@ -770,7 +770,7 @@ where
   Ok((rid, local_addr.cid(), local_addr.port()))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
@@ -780,7 +780,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async)]
 #[serde]
 pub async fn op_net_accept_vsock(
@@ -819,7 +819,7 @@ pub async fn op_net_accept_vsock(
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {

@@ -450,6 +450,7 @@ impl CliModuleLoaderFactory {
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
       emitter: self.shared.emitter.clone(),
+      npm_resolver: self.shared.npm_resolver.clone(),
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
@@ -1466,6 +1467,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<Emitter>,
+  npm_resolver: CliNpmResolver,
   sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
@@ -1535,6 +1537,21 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<bool, ClosestPkgJsonError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+
+  fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
+    let is_global_resolver_and_from_in_global_cache = self
+      .npm_resolver
+      .as_managed()
+      .filter(|r| r.root_node_modules_path().is_none())
+      .map(|r| r.global_cache_root_path())
+      .filter(|global_cache_path| from.starts_with(global_cache_path))
+      .is_some();
+    if is_global_resolver_and_from_in_global_cache {
+      Vec::new()
+    } else {
+      deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
+    }
   }
 }
 

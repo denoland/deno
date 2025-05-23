@@ -625,7 +625,9 @@ fn wait_for_start(
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockAddr;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
@@ -662,6 +664,7 @@ fn wait_for_start(
         let (rx, tx) = stream.into_split();
         (Box::new(rx), Box::new(tx))
       }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");

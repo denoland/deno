@@ -1150,6 +1150,10 @@ impl Inner {
       .send_did_refresh_deno_configuration_tree_notification(
         self.config.tree.to_did_refresh_params(),
       );
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn dispatch_cache_jsx_import_sources(&self) {
     for config_file in self.config.tree.config_files() {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()??.options;
@@ -1603,6 +1607,7 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
@@ -1630,10 +1635,12 @@ impl Inner {
       .any(|(s, _)| self.config.tree.is_watched_file(s))
     {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
+      let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
             ConfigWatchedFileType::DenoJson => {
+              changed_deno_json = true;
               lsp_custom::DenoConfigurationType::DenoJson
             }
             ConfigWatchedFileType::PackageJson => {
@@ -1654,6 +1661,11 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      // Don't cache anything if only a lockfile has changed, or it can
+      // retrigger this notification and cause an infinite loop.
+      if changed_deno_json {
+        self.dispatch_cache_jsx_import_sources();
+      }
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
@@ -4467,6 +4479,7 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
@@ -4686,6 +4699,7 @@ impl Inner {
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();

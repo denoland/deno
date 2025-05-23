@@ -2026,7 +2026,12 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_url, ws_settings) in &settings.by_workspace_folder {
+    for (folder_url, ws_settings) in
+      settings.by_workspace_folder.iter().chain([(
+        &Arc::new(Url::parse("file:///").unwrap()),
+        &Some(settings.unscoped.clone()),
+      )])
+    {
       let mut ws_settings = ws_settings.as_ref();
       if Some(folder_url) == settings.first_folder.as_ref() {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
