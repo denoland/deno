@@ -1679,6 +1679,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.20.1"
+source = "git+https://github.com/dsherret/deno_cache_dir?branch=feat_include_mtime_fetch_local#2fcd7ab5a0d2c65ed5e54a2a4014ad9ede8ba4eb"
 dependencies = [
  "async-trait",
  "base32",
