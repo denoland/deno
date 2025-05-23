@@ -20,21 +20,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { Buffer } from "node:buffer";
 import { uvException } from "ext:deno_node/internal/errors.ts";
 import { writeBuffer } from "ext:deno_node/internal_binding/node_file.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;
 
 // IPv4 Segment
 const v4Seg = "(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])";
 const v4Str = `(${v4Seg}[.]){3}${v4Seg}`;
-const IPv4Reg = new RegExp(`^${v4Str}$`);
+const IPv4Reg = new SafeRegExp(`^${v4Str}$`);
 
 // IPv6 Segment
 const v6Seg = "(?:[0-9a-fA-F]{1,4})";
-const IPv6Reg = new RegExp(
+const IPv6Reg = new SafeRegExp(
   "^(" +
     `(?:${v6Seg}:){7}(?:${v6Seg}|:)|` +
     `(?:${v6Seg}:){6}(?:${v4Str}|:${v6Seg}|:)|` +
@@ -48,11 +48,11 @@ const IPv6Reg = new RegExp(
 );
 
 export function isIPv4(ip: string) {
-  return RegExp.prototype.test.call(IPv4Reg, ip);
+  return RegExpPrototypeTest(IPv4Reg, ip);
 }
 
 export function isIPv6(ip: string) {
-  return RegExp.prototype.test.call(IPv6Reg, ip);
+  return RegExpPrototypeTest(IPv6Reg, ip);
 }
 
 export function isIP(ip: string) {

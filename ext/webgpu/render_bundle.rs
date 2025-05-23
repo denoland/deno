@@ -28,7 +28,11 @@ pub struct GPURenderBundleEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPURenderBundleEncoder {}
+impl GarbageCollected for GPURenderBundleEncoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderBundleEncoder"
+  }
+}
 
 #[op2]
 impl GPURenderBundleEncoder {
@@ -399,7 +403,11 @@ impl WebIdlInterfaceConverter for GPURenderBundle {
   const NAME: &'static str = "GPURenderBundle";
 }
 
-impl GarbageCollected for GPURenderBundle {}
+impl GarbageCollected for GPURenderBundle {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderBundle"
+  }
+}
 
 #[op2]
 impl GPURenderBundle {

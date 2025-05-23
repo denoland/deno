@@ -467,6 +467,12 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(dep_name);
     }
 
+    if let Some(bare_package_specifier) =
+      scoped_resolver.jsr_lookup_bare_specifier_for_workspace_file(specifier)
+    {
+      return Some(bare_package_specifier);
+    }
+
     // check if the import map has this specifier
     if let Some(import_map) = self.maybe_import_map {
       if let Some(result) = import_map_lookup(import_map, specifier, referrer) {
@@ -594,7 +600,16 @@ impl<'a> TsResponseImportMapper<'a> {
         resolution_mode,
         NodeResolutionKind::Types,
       )
-      .is_ok()
+      .ok()
+      .filter(|s| {
+        let specifier = self
+          .tsc_specifier_map
+          .normalize(s.as_str())
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(s));
+        !specifier.as_str().contains("/node_modules/")
+      })
+      .is_some()
   }
 }
 

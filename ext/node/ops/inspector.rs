@@ -84,7 +84,11 @@ struct JSInspectorSession {
   tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
 }
 
-impl GarbageCollected for JSInspectorSession {}
+impl GarbageCollected for JSInspectorSession {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"JSInspectorSession"
+  }
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum InspectorConnectError {

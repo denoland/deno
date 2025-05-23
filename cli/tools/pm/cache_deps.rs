@@ -8,6 +8,8 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::Version;
@@ -16,7 +18,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
-use crate::npm::installer::PackageCaching;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -165,7 +166,7 @@ pub async fn cache_top_level_deps(
           graph_kind: graph.graph_kind(),
           is_dynamic: false,
           roots: roots.clone(),
-          npm_caching: crate::graph_util::NpmCachingStrategy::Manual,
+          npm_caching: NpmCachingStrategy::Manual,
         },
       )
       .await?;

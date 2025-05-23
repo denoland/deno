@@ -1125,6 +1125,27 @@ fn op_otel_log_foreign(
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }
 
+pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
+  let Some(OtelGlobals {
+    log_processor,
+    builtin_instrumentation_scope,
+    ..
+  }) = OTEL_GLOBALS.get()
+  else {
+    return;
+  };
+
+  let mut log_record = LogRecord::default();
+
+  log_record.set_observed_timestamp(SystemTime::now());
+  log_record.set_event_name(name);
+  log_record.set_severity_number(Severity::Trace);
+  log_record.set_severity_text(Severity::Trace.name());
+  log_record.set_body(format!("{data}").into());
+
+  log_processor.emit(&mut log_record, builtin_instrumentation_scope);
+}
+
 fn owned_string<'s>(
   scope: &mut v8::HandleScope<'s>,
   string: v8::Local<'s, v8::String>,
@@ -1140,7 +1161,11 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {}
+impl deno_core::GarbageCollected for OtelTracer {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelTracer"
+  }
+}
 
 #[op2]
 impl OtelTracer {
@@ -1349,7 +1374,11 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {}
+impl deno_core::GarbageCollected for OtelSpan {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelSpan"
+  }
+}
 
 #[op2]
 impl OtelSpan {
@@ -1622,7 +1651,11 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {}
+impl deno_core::GarbageCollected for OtelMeter {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelMeter"
+  }
+}
 
 #[op2]
 impl OtelMeter {
@@ -1819,7 +1852,11 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {}
+impl GarbageCollected for Instrument {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Instrument"
+  }
+}
 
 fn create_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> InstrumentBuilder<'b, T>,

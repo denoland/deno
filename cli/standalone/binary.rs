@@ -321,7 +321,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     binary_path_suffix: &str,
   ) -> Result<Vec<u8>, AnyError> {
     let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
-    let maybe_bytes = {
+    let response = {
       let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
       let progress = progress_bars.update(&download_url);
 
@@ -330,17 +330,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .get_or_create()?
         .download_with_progress_and_retries(
           download_url.parse()?,
-          None,
+          &Default::default(),
           &progress,
         )
         .await?
     };
-    let bytes = match maybe_bytes {
-      Some(bytes) => bytes,
-      None => {
-        bail!("Download could not be found, aborting");
-      }
-    };
+    let bytes = response
+      .into_bytes()
+      .with_context(|| format!("Failed downloading '{}'", download_url))?;
 
     let create_dir_all = |dir: &Path| {
       std::fs::create_dir_all(dir)

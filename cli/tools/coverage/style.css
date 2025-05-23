@@ -8,12 +8,14 @@ html {
   height: 100%;
 }
 body {
+  color-scheme: light dark;
   font-family:
     Helvetica Neue,
     Helvetica,
     Arial;
   font-size: 14px;
-  color: #333;
+  color: light-dark(#333, #ddd);
+  background-color: light-dark(white, #111);
 }
 .small {
   font-size: 12px;
@@ -46,7 +48,7 @@ pre {
   tab-size: 2;
 }
 a {
-  color: #0074d9;
+  color: light-dark(#0074d9, #3ba3ff);
   text-decoration: none;
 }
 a:hover {
@@ -106,8 +108,7 @@ a:hover {
 }
 
 .quiet {
-  color: #7f7f7f;
-  color: rgba(0, 0, 0, 0.5);
+  color: light-dark(rgb(0 0 0 / 0.5), rgb(255 255 255 / 0.5));
 }
 .quiet a {
   opacity: 0.7;
@@ -116,8 +117,8 @@ a:hover {
 .fraction {
   font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
   font-size: 10px;
-  color: #555;
-  background: #e8e8e8;
+  color: light-dark(#555, #bbb);
+  background: light-dark(#e8e8e8, #171717);
   padding: 4px 5px;
   border-radius: 3px;
   vertical-align: middle;
@@ -125,7 +126,7 @@ a:hover {
 
 div.path a:link,
 div.path a:visited {
-  color: #333;
+  color: light-dark(#333, #ddd);
 }
 table.coverage {
   border-collapse: collapse;
@@ -165,8 +166,8 @@ table.coverage td span.cline-any {
   border-radius: 3px;
   position: relative;
   padding: 0 4px;
-  background: #333;
-  color: yellow;
+  background: light-dark(#333, #ddd);
+  color: light-dark(yellow, #cc0);
 }
 
 .skip-if-branch {
@@ -174,8 +175,8 @@ table.coverage td span.cline-any {
   margin-right: 10px;
   position: relative;
   padding: 0 4px;
-  background: #ccc;
-  color: white;
+  background: light-dark(#ccc, #333);
+  color: light-dark(white, black);
 }
 .missing-if-branch .typ,
 .skip-if-branch .typ {
@@ -186,20 +187,20 @@ table.coverage td span.cline-any {
   width: 100%;
 }
 .coverage-summary tr {
-  border-bottom: 1px solid #bbb;
+  border-bottom: 1px solid light-dark(#bbb, #444);
 }
 .keyline-all {
-  border: 1px solid #ddd;
+  border: 1px solid light-dark(#ddd, #222);
 }
 .coverage-summary td,
 .coverage-summary th {
   padding: 10px;
 }
 .coverage-summary tbody {
-  border: 1px solid #bbb;
+  border: 1px solid light-dark(#bbb, #444);
 }
 .coverage-summary td {
-  border-right: 1px solid #bbb;
+  border-right: 1px solid light-dark(#bbb, #444);
 }
 .coverage-summary td:last-child {
   border-right: none;
@@ -247,81 +248,81 @@ table.coverage td span.cline-any {
 }
 /* yellow */
 .cbranch-no {
-  background: yellow !important;
+  background: light-dark(yellow, #cc0) !important;
   color: #111;
 }
 /* dark red */
 .red.solid,
 .status-line.low,
 .low .cover-fill {
-  background: #c21f39;
+  background: light-dark(#c21f39, #a5162e);
 }
 .low .chart {
-  border: 1px solid #c21f39;
+  border: 1px solid light-dark(#c21f39, #a5162e);
 }
 .highlighted,
 .highlighted .cstat-no,
 .highlighted .fstat-no,
 .highlighted .cbranch-no {
-  background: #c21f39 !important;
+  background: light-dark(#c21f39, #a5162e) !important;
 }
 /* medium red */
 .cstat-no,
 .fstat-no,
 .cbranch-no,
 .cbranch-no {
-  background: #f6c6ce;
+  background: light-dark(#f6c6ce, #553339);
 }
 /* light red */
 .low,
 .cline-no {
-  background: #fce1e5;
+  background: light-dark(#fce1e5, #2e2023);
 }
 /* light green */
 .high,
 .cline-yes {
-  background: rgb(230, 245, 208);
+  background: light-dark(#e6f5d0, #25291f);
 }
 /* medium green */
 .cstat-yes {
-  background: rgb(161, 215, 106);
+  background: light-dark(#a1d76a, #293b18);
 }
 /* dark green */
 .status-line.high,
 .high .cover-fill {
-  background: rgb(77, 146, 33);
+  background: light-dark(#4d9221, #2a5211);
 }
 .high .chart {
-  border: 1px solid rgb(77, 146, 33);
+  border: 1px solid light-dark(#4d9221, #2a5211);
 }
 /* dark yellow (gold) */
 .status-line.medium,
 .medium .cover-fill {
-  background: #f9cd0b;
+  background: light-dark(#f9cd0b, #b09107);
 }
 .medium .chart {
-  border: 1px solid #f9cd0b;
+  border: 1px solid light-dark(#f9cd0b, #b09107);
 }
 /* light yellow */
 .medium {
-  background: #fff4c2;
+  background: light-dark(#fff4c2, #4a432a);
 }
 
 .cstat-skip {
-  background: #ddd;
-  color: #111;
+  background: light-dark(#ddd, #222);
+  color: light-dark(#111, #eee);
 }
 .fstat-skip {
-  background: #ddd;
-  color: #111 !important;
+  background: light-dark(#ddd, #222);
+  color: light-dark(#111, #eee) !important;
 }
 .cbranch-skip {
-  background: #ddd !important;
-  color: #111;
+  background: light-dark(#ddd, #222) !important;
+  color: light-dark(#111, #eee);
 }
 
 span.cline-neutral {
-  background: #eaeaea;
+  background: light-dark(#eaeaea, #141414);
 }
 
 .coverage-summary td.empty {
@@ -329,7 +330,7 @@ span.cline-neutral {
   padding-top: 4px;
   padding-bottom: 4px;
   line-height: 1;
-  color: #888;
+  color: light-dark(#888, #999);
 }
 
 .cover-fill,
@@ -341,7 +342,7 @@ span.cline-neutral {
   line-height: 0;
 }
 .cover-empty {
-  background: white;
+  background: light-dark(white, black);
 }
 .cover-full {
   border-right: none !important;
@@ -352,10 +353,10 @@ pre.prettyprint {
   margin: 0 !important;
 }
 .com {
-  color: #999 !important;
+  color: light-dark(#999, #666) !important;
 }
 .ignore-none {
-  color: #999;
+  color: light-dark(#999, #666);
   font-weight: normal;
 }
 

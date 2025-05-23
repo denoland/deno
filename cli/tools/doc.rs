@@ -22,6 +22,7 @@ use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -140,7 +141,7 @@ pub async fn doc(
         .create_graph(
           GraphKind::TypesOnly,
           module_specifiers.clone(),
-          crate::graph_util::NpmCachingStrategy::Eager,
+          NpmCachingStrategy::Eager,
         )
         .await?;
 
@@ -153,6 +154,7 @@ pub async fn doc(
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
+          ignore_graph_errors: true,
         },
       );
       for error in errors {

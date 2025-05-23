@@ -299,9 +299,14 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
+    const onAbort = () => {
+      try {
+        this.kill("SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
     signal?.[abortSignal.add](onAbort);
-
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {

@@ -20,15 +20,24 @@ use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::TarballCache;
+use deno_npm_installer::initializer::NpmResolutionInitializer;
+use deno_npm_installer::initializer::NpmResolverManagedSnapshotOption;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npm_installer::package_json::NpmInstallDepsProvider;
+use deno_npm_installer::resolution::NpmResolutionInstaller;
+use deno_npm_installer::LifecycleScriptsConfig;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -52,11 +61,7 @@ use super::cache::LspCache;
 use super::documents::DocumentModule;
 use super::jsr::JsrCacheResolver;
 use crate::args::CliLockfile;
-use crate::args::LifecycleScriptsConfig;
-use crate::args::NpmInstallDepsProvider;
 use crate::factory::Deferred;
-use crate::graph_util::to_node_resolution_kind;
-use crate::graph_util::to_node_resolution_mode;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -64,24 +69,18 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolver;
-use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::NpmResolutionInitializer;
-use crate::npm::WorkspaceNpmPatchPackages;
-use crate::resolver::CliDenoResolver;
+use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::FoundPackageJsonDepFlag;
 use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -93,7 +92,7 @@ pub struct LspScopedResolver {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_installer_reqs: Arc<Mutex<BTreeSet<PackageReq>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolver: Option<CliNpmResolver>,
@@ -252,7 +251,7 @@ impl LspScopedResolver {
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
-              CliManagedNpmResolverCreateOptions {
+              ManagedNpmResolverCreateOptions {
                 sys,
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
@@ -306,7 +305,7 @@ impl LspScopedResolver {
 
   pub fn as_maybe_managed_npm_resolver(
     &self,
-  ) -> Option<&CliManagedNpmResolver> {
+  ) -> Option<&Arc<CliManagedNpmResolver>> {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
@@ -339,6 +338,16 @@ impl LspScopedResolver {
     self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
   }
 
+  pub fn jsr_lookup_bare_specifier_for_workspace_file(
+    &self,
+    specifier: &Url,
+  ) -> Option<String> {
+    self
+      .jsr_resolver
+      .as_ref()?
+      .lookup_bare_specifier_for_workspace_file(specifier)
+  }
+
   pub fn jsr_lookup_export_for_path(
     &self,
     nv: &PackageNv,
@@ -355,6 +364,7 @@ impl LspScopedResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
+    resolution_kind: NodeResolutionKind,
     resolution_mode: ResolutionMode,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let npm_pkg_req_resolver = self.npm_pkg_req_resolver.as_ref()?;
@@ -365,7 +375,7 @@ impl LspScopedResolver {
           req_ref,
           referrer,
           resolution_mode,
-          NodeResolutionKind::Types,
+          resolution_kind,
         )
         .ok()?
         .into_url()
@@ -740,7 +750,7 @@ struct ResolverFactoryServices {
   in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<CliNpmResolver>,
   npm_resolution: Arc<NpmResolutionCell>,
@@ -842,11 +852,11 @@ impl<'a> ResolverFactory<'a> {
         patch_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
-            CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+            NpmResolverManagedSnapshotOption::ResolveFromLockfile(
               lockfile.clone(),
             )
           }
-          None => CliNpmResolverManagedSnapshotOption::Specified(None),
+          None => NpmResolverManagedSnapshotOption::Specified(None),
         },
       ));
       // Don't provide the lockfile. We don't want these resolvers
@@ -866,7 +876,8 @@ impl<'a> ResolverFactory<'a> {
         maybe_lockfile.clone(),
         patch_packages.clone(),
       ));
-      let npm_installer = Arc::new(NpmInstaller::new(
+      let npm_installer = Arc::new(CliNpmInstaller::new(
+        Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
         Arc::new(registry_info_provider.as_npm_registry_api()),
@@ -887,7 +898,7 @@ impl<'a> ResolverFactory<'a> {
         log::warn!("failed to initialize npm resolution: {}", err);
       }
 
-      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
+      CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
         maybe_node_modules_path,
@@ -899,7 +910,7 @@ impl<'a> ResolverFactory<'a> {
     self.set_npm_resolver(CliNpmResolver::new(options));
   }
 
-  pub fn set_npm_installer(&mut self, npm_installer: Arc<NpmInstaller>) {
+  pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {
     self.services.npm_installer = Some(npm_installer);
   }
 
@@ -914,49 +925,54 @@ impl<'a> ResolverFactory<'a> {
   pub fn cli_resolver(&self) -> &Arc<CliResolver> {
     self.services.cli_resolver.get_or_init(|| {
       let npm_req_resolver = self.npm_pkg_req_resolver().cloned();
-      let deno_resolver = Arc::new(CliDenoResolver::new(DenoResolverOptions {
-        in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
-        node_and_req_resolver: match (self.node_resolver(), npm_req_resolver) {
-          (Some(node_resolver), Some(npm_req_resolver)) => {
-            Some(NodeAndNpmReqResolver {
-              node_resolver: node_resolver.clone(),
-              npm_req_resolver,
-            })
-          }
-          _ => None,
-        },
-        workspace_resolver: self
-          .config_data
-          .map(|d| d.resolver.clone())
-          .unwrap_or_else(|| {
-            Arc::new(WorkspaceResolver::new_raw(
-              // this is fine because this is only used before initialization
-              Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
-              None,
-              Vec::new(),
-              Vec::new(),
-              PackageJsonDepResolution::Disabled,
-              Default::default(),
-              Default::default(),
-              Default::default(),
-              Default::default(),
-              self.sys.clone(),
-            ))
-          }),
-        bare_node_builtins: self
-          .config_data
-          .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
-        is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
-        maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
-      }));
+      let deno_resolver =
+        Arc::new(deno_resolver::RawDenoResolver::new(DenoResolverOptions {
+          in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
+          node_and_req_resolver: match (self.node_resolver(), npm_req_resolver)
+          {
+            (Some(node_resolver), Some(npm_req_resolver)) => {
+              Some(NodeAndNpmReqResolver {
+                node_resolver: node_resolver.clone(),
+                npm_req_resolver,
+              })
+            }
+            _ => None,
+          },
+          workspace_resolver: self
+            .config_data
+            .map(|d| d.resolver.clone())
+            .unwrap_or_else(|| {
+              Arc::new(WorkspaceResolver::new_raw(
+                // this is fine because this is only used before initialization
+                Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
+                None,
+                Vec::new(),
+                Vec::new(),
+                PackageJsonDepResolution::Disabled,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                self.sys.clone(),
+              ))
+            }),
+          bare_node_builtins: self
+            .config_data
+            .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
+          is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
+          maybe_vendor_dir: self
+            .config_data
+            .and_then(|d| d.vendor_dir.as_ref()),
+        }));
       Arc::new(CliResolver::new(
         deno_resolver,
         self.services.found_pkg_json_dep_flag.clone(),
+        Some(Arc::new(on_resolve_diagnostic)),
       ))
     })
   }
 
-  pub fn npm_installer(&self) -> Option<&Arc<NpmInstaller>> {
+  pub fn npm_installer(&self) -> Option<&Arc<CliNpmInstaller>> {
     self.services.npm_installer.as_ref()
   }
 
@@ -1119,9 +1135,9 @@ impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
       referrer_range.range.start,
       referrer_range
         .resolution_mode
-        .map(to_node_resolution_mode)
+        .map(node_resolver::ResolutionMode::from_deno_graph)
         .unwrap_or(self.module_resolution_mode),
-      to_node_resolution_kind(resolution_kind),
+      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
     )
   }
 }
@@ -1241,7 +1257,7 @@ impl RedirectResolver {
 }
 
 type AddNpmReqsRequest = (
-  Arc<NpmInstaller>,
+  Arc<CliNpmInstaller>,
   Vec<PackageReq>,
   std::sync::mpsc::Sender<Result<(), JsErrorBox>>,
 );
@@ -1276,7 +1292,7 @@ impl AddNpmReqsThread {
 
   pub fn add_npm_reqs(
     &self,
-    npm_installer: Arc<NpmInstaller>,
+    npm_installer: Arc<CliNpmInstaller>,
     reqs: Vec<PackageReq>,
   ) -> Result<(), JsErrorBox> {
     let request_tx = self.request_tx.as_ref().unwrap();

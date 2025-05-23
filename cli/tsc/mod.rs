@@ -281,9 +281,11 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
+    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -475,6 +477,7 @@ pub struct Response {
   pub diagnostics: Diagnostics,
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
+  pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
 }
@@ -1208,8 +1211,10 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
+  pub ambient_modules: Vec<String>,
   pub stats: Stats,
 }
 
@@ -1432,7 +1437,7 @@ pub fn exec(
   });
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions,
-    create_params: create_isolate_create_params(),
+    create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     extension_code_cache,
     ..Default::default()
@@ -1448,11 +1453,13 @@ pub fn exec(
 
   if let Some(response) = state.maybe_response {
     let diagnostics = response.diagnostics;
+    let ambient_modules = response.ambient_modules;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
     let stats = response.stats;
 
     Ok(Response {
       diagnostics,
+      ambient_modules,
       maybe_tsbuildinfo,
       stats,
     })
@@ -1538,7 +1545,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(None, None);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }
@@ -1745,7 +1752,8 @@ mod tests {
           "code": 5023
         }
       ],
-      "stats": [["a", 12]]
+      "stats": [["a", 12]],
+      "ambientModules": []
     }))
     .unwrap();
     op_respond_inner(&mut state, args);
@@ -1770,7 +1778,9 @@ mod tests {
           reports_deprecated: None,
           reports_unnecessary: None,
           other: Default::default(),
+          missing_specifier: None,
         }]),
+        ambient_modules: vec![],
         stats: Stats(vec![("a".to_string(), 12)])
       })
     );

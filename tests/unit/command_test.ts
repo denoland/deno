@@ -1093,3 +1093,21 @@ Deno.test(
     assertEquals(child.success, true);
   },
 );
+
+Deno.test(
+  { ignore: Deno.build.os === "windows" },
+  async function abortChildProcessRightWhenItExitsShouldNotThrow() {
+    const controller = new AbortController();
+    const cb = () => controller.abort();
+    Deno.addSignalListener("SIGCHLD", cb);
+    const output = await new Deno.Command("true", { signal: controller.signal })
+      .output();
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
+    assertEquals(output.stdout, new Uint8Array());
+    assertEquals(output.stderr, new Uint8Array());
+
+    Deno.removeSignalListener("SIGCHLD", cb);
+  },
+);

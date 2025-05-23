@@ -73,6 +73,7 @@ Deno.test("Writable toWeb", async () => {
   await readable
     // @ts-ignore wrong types
     .pipeThrough(new TextEncoderStream())
+    // @ts-ignore wrong types
     .pipeTo(webWritable);
 
   await finished(nodeWritable);

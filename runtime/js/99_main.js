@@ -811,7 +811,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: servePort,
       10: serveHost,
       11: serveIsMain,
-      12: serveWorkerCount,
+      12: serveWorkerCountOrIndex,
       13: otelConfig,
       15: standalone,
     } = runtimeOptions;
@@ -819,13 +819,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     denoNs.build.standalone = standalone;
 
     if (mode === executionModes.serve) {
-      if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-global-assign
-        console = new internalConsole.Console((msg, level) =>
-          core.print("[serve-worker-0 ] " + msg, level > 1)
-        );
-      } else if (serveWorkerCount !== null) {
-        const base = `serve-worker-${serveWorkerCount + 1}`;
+      const hasMultipleThreads = serveIsMain
+        ? serveWorkerCountOrIndex > 0 // count > 0
+        : true;
+      if (hasMultipleThreads) {
+        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const base = `serve-worker-${serveLogIndex}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
@@ -876,7 +875,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
+            serve({
+              servePort,
+              serveHost,
+              workerCountWhenMain: serveIsMain
+                ? serveWorkerCountOrIndex
+                : undefined,
+            });
           }
         }
       });

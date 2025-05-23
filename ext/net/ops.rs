@@ -263,6 +263,25 @@ where
   Ok(nwritten)
 }
 
+#[op2(fast)]
+pub fn op_net_validate_multicast(
+  #[string] address: String,
+  #[string] multi_interface: String,
+) -> Result<(), NetError> {
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  if !addr.is_multicast() {
+    return Err(NetError::InvalidHostname(address));
+  }
+
+  if !interface_addr.is_multicast() {
+    return Err(NetError::InvalidHostname(multi_interface));
+  }
+
+  Ok(())
+}
+
 #[op2(async)]
 pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
@@ -390,6 +409,23 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+#[op2(async)]
+pub async fn op_net_set_broadcast_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  broadcast: bool,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+  socket.set_broadcast(broadcast)?;
+
+  Ok(())
+}
+
 /// If this token is present in op_net_connect_tcp call and
 /// the hostname matches with one of the resolved IPs, then
 /// the permission check is performed against the original hostname.
@@ -399,7 +435,11 @@ pub struct NetPermToken {
   pub resolved_ips: Vec<String>,
 }
 
-impl deno_core::GarbageCollected for NetPermToken {}
+impl deno_core::GarbageCollected for NetPermToken {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"NetPermToken"
+  }
+}
 
 impl NetPermToken {
   /// Checks if the given address is included in the resolved IPs.
@@ -639,7 +679,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_vsock<NP>(
@@ -687,7 +727,7 @@ where
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
@@ -697,7 +737,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_vsock<NP>(
@@ -730,7 +770,7 @@ where
   Ok((rid, local_addr.cid(), local_addr.port()))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
@@ -740,7 +780,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async)]
 #[serde]
 pub async fn op_net_accept_vsock(
@@ -779,7 +819,7 @@ pub async fn op_net_accept_vsock(
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
