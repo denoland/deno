@@ -1,7 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use deno_core::{op2, v8, OpState};
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::OpState;
 
 pub mod bitmaprenderer;
 pub mod canvas;

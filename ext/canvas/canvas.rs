@@ -1,3 +1,8 @@
+use std::cell::OnceCell;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::UnrestrictedDouble;
@@ -8,10 +13,6 @@ use deno_error::JsErrorBox;
 use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
-use std::cell::OnceCell;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::op_create_image_bitmap::ImageBitmap;
 
@@ -193,10 +194,11 @@ impl OffscreenCanvas {
   #[reentrant]
   fn convert_to_blob<'s>(
     &self,
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     scope: &mut v8::HandleScope<'s>,
     #[webidl] options: ImageEncodeOptions,
   ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
+    let state = state.borrow();
     let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
     let get_context = state.borrow::<GetContextContainer>();
@@ -250,6 +252,8 @@ impl OffscreenCanvas {
       &[key.into()],
       &[value.into()],
     );
+
+    drop(state);
 
     Ok(
       blob_constructor

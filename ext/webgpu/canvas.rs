@@ -1,11 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::thread::scope;
-use crate::device::GPUDevice;
-use crate::error::GPUError;
-use crate::texture::GPUTexture;
-use crate::texture::GPUTextureFormat;
-use crate::Instance;
+
 use deno_canvas::bitmaprenderer::ImageBitmapRenderingContext;
 use deno_canvas::canvas::CanvasContextHooks;
 use deno_canvas::image::DynamicImage;
@@ -18,6 +14,12 @@ use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::Extent3d;
+
+use crate::device::GPUDevice;
+use crate::error::GPUError;
+use crate::texture::GPUTexture;
+use crate::texture::GPUTextureFormat;
+use crate::Instance;
 
 struct BackingBuffer {
   buffer: wgpu_core::id::BufferId,
@@ -134,8 +136,7 @@ impl GPUCanvasContext {
         usage: configuration.usage,
       };
 
-      let texture_obj =
-        deno_core::cppgc::make_cppgc_object(scope, texture);
+      let texture_obj = deno_core::cppgc::make_cppgc_object(scope, texture);
       let texture_obj = v8::Global::new(scope, texture_obj);
 
       *current_texture = Some(texture_obj.clone());
@@ -167,7 +168,8 @@ impl GPUCanvasContext {
       dimension: wgpu_types::TextureDimension::D2,
       format: configuration.format.clone().into(),
       usage: (wgpu_types::TextureUsages::from_bits(configuration.usage)
-        .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?) | wgpu_types::TextureUsages::COPY_SRC,
+        .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?)
+        | wgpu_types::TextureUsages::COPY_SRC,
       view_formats: configuration
         .view_formats
         .clone()
@@ -177,7 +179,10 @@ impl GPUCanvasContext {
     })
   }
 
-  pub fn copy_image_contents_to_canvas_data(&self, scope: &mut v8::HandleScope) {
+  pub fn copy_image_contents_to_canvas_data(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) {
     let configuration = self.configuration.borrow();
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
     else {
@@ -192,8 +197,7 @@ impl GPUCanvasContext {
 
     let texture_descriptor = self.texture_descriptor.borrow();
 
-    if let Some(texture) = self.current_texture.borrow().as_ref()
-    {
+    if let Some(texture) = self.current_texture.borrow().as_ref() {
       let backing_buffer = self.backing_buffer.borrow();
       let BackingBuffer { buffer, padding } = backing_buffer.as_ref().unwrap();
       let TextureDescriptor { size, .. } = texture_descriptor.as_ref().unwrap();
@@ -208,7 +212,9 @@ impl GPUCanvasContext {
         );
 
       let local = v8::Local::new(scope, texture).cast::<v8::Value>();
-      let underlying_texture = deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local).unwrap();
+      let underlying_texture =
+        deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local)
+          .unwrap();
 
       let data = copy_texture_to_vec(
         &device.instance,
@@ -232,10 +238,11 @@ impl GPUCanvasContext {
   }
 
   fn expire_current_texture(&self, scope: &mut v8::HandleScope) {
-    if let Some(texture) = self.current_texture.borrow().as_ref()
-    {
+    if let Some(texture) = self.current_texture.borrow().as_ref() {
       let local = v8::Local::new(scope, texture).cast::<v8::Value>();
-      let underlying_texture = deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local).unwrap();
+      let underlying_texture =
+        deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local)
+          .unwrap();
 
       let _ = underlying_texture
         .instance
@@ -243,7 +250,10 @@ impl GPUCanvasContext {
     }
   }
 
-  fn replace_drawing_buffer(&self, scope: &mut v8::HandleScope) -> Result<(), JsErrorBox> {
+  fn replace_drawing_buffer(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Result<(), JsErrorBox> {
     self.expire_current_texture(scope);
     let configuration = self.configuration.borrow();
     let data = self.bitmap.borrow();
