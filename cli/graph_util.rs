@@ -198,7 +198,7 @@ pub fn graph_walk_errors<'a>(
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
       && matches!(
         error,
-        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType { .. })
       )
     {
       return true;
@@ -285,22 +285,23 @@ pub fn module_error_for_tsc_diagnostic<'a>(
   error: &'a ModuleError,
 ) -> Option<ModuleNotFoundGraphErrorRef<'a>> {
   match error {
-    ModuleError::Missing(specifier, maybe_range) => {
-      Some(ModuleNotFoundGraphErrorRef {
-        specifier,
-        maybe_range: maybe_range.as_ref(),
-      })
-    }
-    ModuleError::LoadingErr(
+    ModuleError::Missing {
       specifier,
-      maybe_range,
-      ModuleLoadError::Loader(_),
-    ) => {
+      maybe_referrer,
+    } => Some(ModuleNotFoundGraphErrorRef {
+      specifier,
+      maybe_range: maybe_referrer.as_ref(),
+    }),
+    ModuleError::Load {
+      specifier,
+      maybe_referrer,
+      err: ModuleLoadError::Loader(_),
+    } => {
       if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
         if sys.fs_is_dir_no_err(path) {
           return Some(ModuleNotFoundGraphErrorRef {
             specifier,
-            maybe_range: maybe_range.as_ref(),
+            maybe_range: maybe_referrer.as_ref(),
           });
         }
       }
@@ -1080,8 +1081,8 @@ fn enhanced_sloppy_imports_error_message(
   error: &ModuleError,
 ) -> Option<String> {
   match error {
-    ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
-    | ModuleError::Missing(specifier, _) => {
+    ModuleError::Load { specifier, err: ModuleLoadError::Loader(_), .. } // ex. "Is a directory" error
+    | ModuleError::Missing { specifier, .. } => {
       let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
         "{} {}",
@@ -1111,13 +1112,13 @@ pub fn maybe_additional_sloppy_imports_message(
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
   match err {
-    ModuleError::LoadingErr(
+    ModuleError::Load {
       specifier,
-      _,
-      ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
+      err: ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
         checksum_err,
       )),
-    ) => {
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed in package. The package may have been tampered with.\n\n",
@@ -1134,16 +1135,15 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::LoadingErr(
-      _specifier,
-      _,
-      ModuleLoadError::Jsr(
+    ModuleError::Load {
+      err: ModuleLoadError::Jsr(
         JsrLoadError::PackageVersionManifestChecksumIntegrity(
           package_nv,
           checksum_err,
         ),
       ),
-    ) => {
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
@@ -1160,11 +1160,11 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::LoadingErr(
+    ModuleError::Load {
       specifier,
-      _,
-      ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
-    ) => {
+      err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",

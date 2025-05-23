@@ -29,7 +29,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
-use crate::graph_util::CreateGraphOptions;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;

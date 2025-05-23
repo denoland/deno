@@ -19,7 +19,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
-use crate::graph_util::CreateGraphOptions;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps

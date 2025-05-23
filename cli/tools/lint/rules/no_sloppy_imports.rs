@@ -87,6 +87,7 @@ impl LintRule for NoSloppyImportsRule {
       graph_kind: deno_graph::GraphKind::All,
       specifier: context.specifier().clone(),
       maybe_headers: None,
+      mtime: None,
       parsed_source: context.parsed_source(),
       // ignore resolving dynamic imports like import(`./dir/${something}`)
       file_system: &deno_graph::source::NullFileSystem,

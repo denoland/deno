@@ -224,6 +224,7 @@ impl Loader for FetchCacher {
             Ok(Some(LoadResponse::Module {
               specifier: file.url,
               maybe_headers,
+              mtime: file.mtime,
               content: file.source,
             }))
             },

@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,7 +12,6 @@ use std::str;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Instant;
 use std::time::SystemTime;
 
 use deno_ast::MediaType;
@@ -40,7 +38,6 @@ use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
-use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -48,7 +45,6 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
-use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NpmModuleLoadError;
@@ -73,7 +69,6 @@ use node_resolver::ResolutionMode;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
-use sys_traits::SystemTimeNow;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::jsr_url;
@@ -90,7 +85,6 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::enhance_graph_error;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
-use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliCjsCodeAnalyzer;
@@ -445,7 +439,6 @@ impl CliModuleLoaderFactory {
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
-        start_time: self.shared.sys.sys_time_now(),
         is_loading_dynamic_imports: deno_core::unsync::Flag::lowered(),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader {
@@ -547,6 +540,11 @@ pub struct CouldNotResolveError {
   source: node_resolver::errors::PackageSubpathResolveError,
 }
 
+enum LoadPreparedModuleOrDeferredEmitError<'a> {
+  Module(&'a deno_graph::ModuleError),
+  ClosestPkgJson(ClosestPkgJsonError),
+}
+
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
@@ -560,7 +558,6 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
-  start_time: SystemTime,
   is_loading_dynamic_imports: deno_core::unsync::Flag,
 }
 
@@ -638,10 +635,9 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
-    eprintln!("LOADING: {}", specifier);
-    let prepared_module_result = self.load_prepared_module(specifier).await;
-    match prepared_module_result {
-      Ok(None) => {
+    match self.load_prepared_module(specifier).await? {
+      Some(code) => Ok(code),
+      None => {
         if self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
           return self
             .shared
@@ -655,46 +651,59 @@ impl<TGraphContainer: ModuleGraphContainer>
           maybe_referrer: maybe_referrer.cloned(),
         })
       }
-      result => {
-        if self.should_reload_prepared_module(specifier) {
-          {
-            let mut graph_permit =
-              self.graph_container.acquire_update_permit().await;
-            let graph = graph_permit.graph_mut();
-            self
-              .shared
-              .module_load_preparer
-              .reload_specifiers(
-                graph,
-                vec![specifier.clone()],
-                true,
-                // todo: is this correct?
-                self.permissions.clone(),
-              )
-              .await
-              .unwrap(); // todo: don't unwrap
-            graph_permit.commit();
-          }
-          return Ok(self.load_prepared_module(specifier).await?.unwrap());
-        }
-
-        return Ok(result?.unwrap());
-      }
     }
   }
 
-  fn should_reload_prepared_module(&self, specifier: &ModuleSpecifier) -> bool {
+  fn should_reload_for_err(
+    &self,
+    specifier: &ModuleSpecifier,
+    err: &LoadPreparedModuleOrDeferredEmitError,
+  ) -> bool {
+    let err = match err {
+      LoadPreparedModuleOrDeferredEmitError::Module(module_error) => {
+        module_error
+      }
+      LoadPreparedModuleOrDeferredEmitError::ClosestPkgJson(_) => return false,
+    };
+    if matches!(err, deno_graph::ModuleError::Missing { .. }) {
+      if specifier.scheme() != "file"
+        || !self.is_loading_dynamic_imports.is_raised()
+      {
+        return false;
+      }
+      self.mtime_of_specifier(specifier).is_some() // it exists now
+    } else {
+      self.should_reload_prepared_module(specifier, err.mtime())
+    }
+  }
+
+  fn should_reload_prepared_module(
+    &self,
+    specifier: &ModuleSpecifier,
+    mtime: Option<SystemTime>,
+  ) -> bool {
     if specifier.scheme() != "file"
       || !self.is_loading_dynamic_imports.is_raised()
     {
       return false;
     }
+    let Some(loaded_mtime) = mtime else {
+      return false;
+    };
+    self
+      .mtime_of_specifier(&specifier)
+      .map(|mtime| mtime > loaded_mtime)
+      .unwrap_or(false)
+  }
+
+  fn mtime_of_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SystemTime> {
     deno_path_util::url_to_file_path(&specifier)
       .ok()
       .and_then(|path| self.shared.sys.fs_symlink_metadata(&path).ok())
       .and_then(|metadata| metadata.modified().ok())
-      .map(|mtime| mtime > self.start_time)
-      .unwrap_or(false)
   }
 
   fn resolve_referrer(
@@ -831,15 +840,75 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<ModuleCodeStringSource>, LoadPreparedModuleError> {
+    enum ControlFlow<T> {
+      Continue(T),
+      Reload,
+    }
+
     // Note: keep this in sync with the sync version below
-    let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
-      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
-      Some(CodeOrDeferredEmit::DeferredEmit {
+    let mut graph = self.graph_container.graph();
+    let result = self.load_prepared_module_or_defer_emit(&graph, specifier);
+    let result = match result {
+      Ok(Some(code_or_deferred_emit)) => {
+        if self.should_reload_prepared_module(
+          specifier,
+          code_or_deferred_emit.mtime(),
+        ) {
+          ControlFlow::Reload
+        } else {
+          ControlFlow::Continue(Ok(Some(code_or_deferred_emit)))
+        }
+      }
+      Ok(None) => ControlFlow::Continue(Ok(None)),
+      Err(err) => {
+        if self.should_reload_for_err(specifier, &err) {
+          ControlFlow::Reload
+        } else {
+          ControlFlow::Continue(Err(err))
+        }
+      }
+    };
+
+    let result = match result {
+      ControlFlow::Continue(result) => result,
+      ControlFlow::Reload => {
+        // reload this specifier in the graph
+        {
+          let mut graph_permit =
+            self.graph_container.acquire_update_permit().await;
+          let graph = graph_permit.graph_mut();
+          self
+            .shared
+            .module_load_preparer
+            .reload_specifiers(
+              graph,
+              vec![specifier.clone()],
+              true,
+              // todo: is this correct?
+              self.permissions.clone(),
+            )
+            .await
+            .unwrap(); // todo: don't unwrap
+          graph_permit.commit();
+        }
+        graph = self.graph_container.graph();
+        self.load_prepared_module_or_defer_emit(&graph, specifier)
+      }
+    };
+
+    let code_or_deferred_emit =
+      result.map_err(|err| self.enhance_module_graph_error(err))?;
+    let Some(code_or_deferred_emit) = code_or_deferred_emit else {
+      return Ok(None);
+    };
+    match code_or_deferred_emit {
+      CodeOrDeferredEmit::Code { mtime: _, source } => Ok(Some(source)),
+      CodeOrDeferredEmit::DeferredEmit {
         specifier,
+        mtime: _,
         media_type,
         source,
-      }) => {
+      } => {
         let transpile_result = self
           .emitter
           .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
@@ -855,16 +924,16 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type,
         }))
       }
-      Some(CodeOrDeferredEmit::Cjs {
+      CodeOrDeferredEmit::Cjs {
         specifier,
+        mtime: _,
         media_type,
         source,
-      }) => self
+      } => self
         .load_maybe_cjs(specifier, media_type, source)
         .await
         .map(Some)
         .map_err(LoadPreparedModuleError::LoadMaybeCjs),
-      None => Ok(None),
     }
   }
 
@@ -874,11 +943,20 @@ impl<TGraphContainer: ModuleGraphContainer>
   ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
     // Note: keep this in sync with the async version above
     let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
-      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
+    match self
+      .load_prepared_module_or_defer_emit(&graph, specifier)
+      .map_err(|err| self.enhance_module_graph_error(err))?
+    {
+      Some(CodeOrDeferredEmit::Code {
+        source,
+        // for source maps we always use the in memory representation
+        // and thus don't attempt to reload
+        mtime: _,
+      }) => Ok(Some(source)),
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
         media_type,
+        mtime: _,
         source,
       }) => {
         let transpile_result = self.emitter.emit_parsed_source_sync(
@@ -910,44 +988,60 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
+  fn enhance_module_graph_error(
+    &self,
+    err: LoadPreparedModuleOrDeferredEmitError<'_>,
+  ) -> JsErrorBox {
+    match err {
+      LoadPreparedModuleOrDeferredEmitError::Module(err) => JsErrorBox::new(
+        err.get_class(),
+        enhance_graph_error(
+          &self.shared.sys,
+          &ModuleGraphError::ModuleError(err.clone()),
+          EnhanceGraphErrorMode::ShowRange,
+        ),
+      ),
+      LoadPreparedModuleOrDeferredEmitError::ClosestPkgJson(err) => {
+        JsErrorBox::from_err(err)
+      }
+    }
+  }
+
   fn load_prepared_module_or_defer_emit<'graph>(
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
+  ) -> Result<
+    Option<CodeOrDeferredEmit<'graph>>,
+    LoadPreparedModuleOrDeferredEmitError<'graph>,
+  > {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
-    let maybe_module = match graph.try_get(specifier) {
-      Ok(module) => module,
-      Err(err) => {
-        return Err(JsErrorBox::new(
-          err.get_class(),
-          enhance_graph_error(
-            &self.shared.sys,
-            &ModuleGraphError::ModuleError(err.clone()),
-            EnhanceGraphErrorMode::ShowRange,
-          ),
-        ))
-      }
-    };
-
-    match maybe_module {
+    match graph
+      .try_get(specifier)
+      .map_err(LoadPreparedModuleOrDeferredEmitError::Module)?
+    {
       Some(deno_graph::Module::Json(JsonModule {
         source,
         media_type,
         specifier,
+        mtime,
         ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: ModuleSourceCode::String(source.clone().into()),
-        found_url: specifier.clone(),
-        media_type: *media_type,
-      }))),
+      })) => Ok(Some(CodeOrDeferredEmit::Code {
+        mtime: *mtime,
+        source: ModuleCodeStringSource {
+          code: ModuleSourceCode::String(source.clone().into()),
+          found_url: specifier.clone(),
+          media_type: *media_type,
+        },
+      })),
       Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
+        mtime,
         specifier,
         is_script,
         ..
@@ -956,11 +1050,12 @@ impl<TGraphContainer: ModuleGraphContainer>
           .shared
           .cjs_tracker
           .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
-          .map_err(JsErrorBox::from_err)?
+          .map_err(LoadPreparedModuleOrDeferredEmitError::ClosestPkgJson)?
         {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,
+            mtime: *mtime,
             source,
           }));
         }
@@ -976,6 +1071,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             return Ok(Some(CodeOrDeferredEmit::Cjs {
               specifier,
               media_type: *media_type,
+              mtime: *mtime,
               source,
             }));
           }
@@ -986,6 +1082,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
               specifier,
               media_type: *media_type,
+              mtime: *mtime,
               source,
             }));
           }
@@ -1001,19 +1098,28 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code: ModuleSourceCode::String(code),
-          found_url: specifier.clone(),
-          media_type: *media_type,
-        })))
+        Ok(Some(CodeOrDeferredEmit::Code {
+          mtime: *mtime,
+          source: ModuleCodeStringSource {
+            code: ModuleSourceCode::String(code),
+            found_url: specifier.clone(),
+            media_type: *media_type,
+          },
+        }))
       }
       Some(deno_graph::Module::Wasm(WasmModule {
-        source, specifier, ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: ModuleSourceCode::Bytes(source.clone().into()),
-        found_url: specifier.clone(),
-        media_type: MediaType::Wasm,
-      }))),
+        source,
+        specifier,
+        mtime,
+        ..
+      })) => Ok(Some(CodeOrDeferredEmit::Code {
+        mtime: *mtime,
+        source: ModuleCodeStringSource {
+          code: ModuleSourceCode::Bytes(source.clone().into()),
+          found_url: specifier.clone(),
+          media_type: MediaType::Wasm,
+        },
+      })),
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
@@ -1067,17 +1173,32 @@ impl<TGraphContainer: ModuleGraphContainer>
 }
 
 enum CodeOrDeferredEmit<'a> {
-  Code(ModuleCodeStringSource),
+  Code {
+    mtime: Option<SystemTime>,
+    source: ModuleCodeStringSource,
+  },
   DeferredEmit {
     specifier: &'a ModuleSpecifier,
+    mtime: Option<SystemTime>,
     media_type: MediaType,
     source: &'a Arc<str>,
   },
   Cjs {
     specifier: &'a ModuleSpecifier,
+    mtime: Option<SystemTime>,
     media_type: MediaType,
     source: &'a Arc<str>,
   },
+}
+
+impl CodeOrDeferredEmit<'_> {
+  pub fn mtime(&self) -> Option<SystemTime> {
+    match self {
+      CodeOrDeferredEmit::Code { mtime, .. } => *mtime,
+      CodeOrDeferredEmit::DeferredEmit { mtime, .. } => *mtime,
+      CodeOrDeferredEmit::Cjs { mtime, .. } => *mtime,
+    }
+  }
 }
 
 // todo(dsherret): this double Rc boxing is not ideal

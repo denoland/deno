@@ -638,6 +638,7 @@ mod tests {
     let file = File {
       source: Arc::from("some source code".as_bytes()),
       url: specifier.clone(),
+      mtime: None,
       maybe_headers: Some(HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),

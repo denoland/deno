@@ -126,6 +126,7 @@ pub async fn run_from_stdin(
   // to allow module access by TS compiler
   file_fetcher.insert_memory_files(File {
     url: main_module.clone(),
+    mtime: None,
     maybe_headers: None,
     source: source.into(),
   });
@@ -218,6 +219,7 @@ pub async fn eval_command(
   // to allow module access by TS compiler.
   file_fetcher.insert_memory_files(File {
     url: main_module.clone(),
+    mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
   });

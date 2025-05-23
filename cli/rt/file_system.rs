@@ -712,6 +712,21 @@ impl sys_traits::FsFileAsRaw for FsFileAdapter {
   }
 }
 
+impl sys_traits::FsFileMetadata for FsFileAdapter {
+  #[inline]
+  fn fs_file_metadata(&self) -> std::io::Result<BoxedFsMetadataValue> {
+    match self {
+      Self::Real(file) => file.fs_file_metadata(),
+      Self::Vfs(file) => Ok(BoxedFsMetadataValue::new(FileBackedVfsMetadata {
+        file_type: sys_traits::FileType::File,
+        name: file.file.name.clone(),
+        len: file.file.offset.len,
+        mtime: file.file.mtime,
+      })),
+    }
+  }
+}
+
 impl sys_traits::FsFileSyncData for FsFileAdapter {
   fn fs_file_sync_data(&mut self) -> std::io::Result<()> {
     match self {
@@ -1261,6 +1276,7 @@ impl FileBackedVfsMetadata {
       },
     }
   }
+
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
     FsStat {
