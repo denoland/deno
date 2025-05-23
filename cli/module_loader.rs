@@ -665,7 +665,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       return false;
     };
     self
-      .mtime_of_specifier(&specifier)
+      .mtime_of_specifier(specifier)
       .map(|mtime| mtime > loaded_mtime)
       .unwrap_or(false)
   }
@@ -674,7 +674,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<SystemTime> {
-    deno_path_util::url_to_file_path(&specifier)
+    deno_path_util::url_to_file_path(specifier)
       .ok()
       .and_then(|path| self.shared.sys.fs_symlink_metadata(&path).ok())
       .and_then(|metadata| metadata.modified().ok())
