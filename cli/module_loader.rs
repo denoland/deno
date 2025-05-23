@@ -660,7 +660,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
-  async fn check_reload_dynamic(
+  async fn maybe_reload_dynamic(
     &self,
     graph: &ModuleGraph,
     specifier: &ModuleSpecifier,
@@ -1275,9 +1275,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         // this part of the graph is valid.
         if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
           let did_reload = inner
-            .check_reload_dynamic(&graph, &specifier, permissions)
+            .maybe_reload_dynamic(&graph, &specifier, permissions)
             .await
-            .map_err(|err| JsErrorBox::from_err(err))?;
+            .map_err(JsErrorBox::from_err)?;
           if did_reload {
             graph = inner.graph_container.graph();
           }
@@ -1322,13 +1322,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
       if is_dynamic {
         inner
-          .check_reload_dynamic(
+          .maybe_reload_dynamic(
             &graph_container.graph(),
             &specifiers[0],
             permissions,
           )
           .await
-          .map_err(|err| JsErrorBox::from_err(err))?;
+          .map_err(JsErrorBox::from_err)?;
         // always validate the graph roots because we skipped doing it above
         module_load_preparer.graph_roots_valid(
           &graph_container.graph(),
