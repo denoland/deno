@@ -1012,7 +1012,7 @@ const ci = {
             'echo ""',
             "exit 1",
             "fi",
-          ],
+          ].join("\n"),
         },
         {
           name: "Configure hosts file for WPT",
