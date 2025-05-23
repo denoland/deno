@@ -999,6 +999,22 @@ const ci = {
           run: "cargo test --release --locked --features=panic-trace",
         },
         {
+          name: "Ensure no git changes",
+          if: "matrix.job == 'test'",
+          run: [
+            'if [[ -n "$(git status --porcelain)" ]]; then',
+            'echo "🧾 Diff:"',
+            "git diff",
+            'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+            'echo ""',
+            'echo "📋 Status:"',
+            "git status",
+            'echo ""',
+            "exit 1",
+            "fi",
+          ],
+        },
+        {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
