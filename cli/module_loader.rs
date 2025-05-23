@@ -547,11 +547,6 @@ pub struct CouldNotResolveError {
   source: node_resolver::errors::PackageSubpathResolveError,
 }
 
-enum LoadPreparedModuleOrDeferredEmitError<'a> {
-  Module(&'a deno_graph::ModuleError),
-  ClosestPkgJson(ClosestPkgJsonError),
-}
-
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
@@ -890,9 +885,8 @@ impl<TGraphContainer: ModuleGraphContainer>
   ) -> Result<Option<ModuleCodeStringSource>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     let graph = self.graph_container.graph();
-    let code_or_deferred_emit = self
-      .load_prepared_module_or_defer_emit(&graph, specifier)
-      .map_err(|err| self.enhance_module_graph_error(err))?;
+    let code_or_deferred_emit =
+      self.load_prepared_module_or_defer_emit(&graph, specifier)?;
     let Some(code_or_deferred_emit) = code_or_deferred_emit else {
       return Ok(None);
     };
@@ -936,10 +930,7 @@ impl<TGraphContainer: ModuleGraphContainer>
   ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
     // Note: keep this in sync with the async version above
     let graph = self.graph_container.graph();
-    match self
-      .load_prepared_module_or_defer_emit(&graph, specifier)
-      .map_err(|err| self.enhance_module_graph_error(err))?
-    {
+    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
       Some(CodeOrDeferredEmit::Code { source }) => Ok(Some(source)),
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
@@ -975,42 +966,28 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
-  fn enhance_module_graph_error(
+  fn load_prepared_module_or_defer_emit<'graph>(
     &self,
-    err: LoadPreparedModuleOrDeferredEmitError<'_>,
-  ) -> JsErrorBox {
-    match err {
-      LoadPreparedModuleOrDeferredEmitError::Module(err) => JsErrorBox::new(
+    graph: &'graph ModuleGraph,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
+    if specifier.scheme() == "node" {
+      // Node built-in modules should be handled internally.
+      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
+    }
+
+    let maybe_module = graph.try_get(specifier).map_err(|err| {
+      JsErrorBox::new(
         err.get_class(),
         enhance_graph_error(
           &self.shared.sys,
           &ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
         ),
-      ),
-      LoadPreparedModuleOrDeferredEmitError::ClosestPkgJson(err) => {
-        JsErrorBox::from_err(err)
-      }
-    }
-  }
+      )
+    })?;
 
-  fn load_prepared_module_or_defer_emit<'graph>(
-    &self,
-    graph: &'graph ModuleGraph,
-    specifier: &ModuleSpecifier,
-  ) -> Result<
-    Option<CodeOrDeferredEmit<'graph>>,
-    LoadPreparedModuleOrDeferredEmitError<'graph>,
-  > {
-    if specifier.scheme() == "node" {
-      // Node built-in modules should be handled internally.
-      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
-    }
-
-    match graph
-      .try_get(specifier)
-      .map_err(LoadPreparedModuleOrDeferredEmitError::Module)?
-    {
+    match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
         source,
         media_type,
@@ -1034,7 +1011,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           .shared
           .cjs_tracker
           .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
-          .map_err(LoadPreparedModuleOrDeferredEmitError::ClosestPkgJson)?
+          .map_err(JsErrorBox::from_err)?
         {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
