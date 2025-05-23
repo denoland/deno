@@ -368,8 +368,7 @@ napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 
 # geometry
-# NOTE: cannot disable grid feature: https://github.com/parcel-bundler/lightningcss/issues/376
-lightningcss = { version = "1.0.0-alpha.65", default-features = false, features = ["grid"] }
+lightningcss = { version = "1.0.0-alpha.66", default-features = false }
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 
 # webgpu

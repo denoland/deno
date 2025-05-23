@@ -122,7 +122,11 @@ pub struct DOMPointReadOnly {
   inner: RefCell<Vector4<f64>>,
 }
 
-impl GarbageCollected for DOMPointReadOnly {}
+impl GarbageCollected for DOMPointReadOnly {
+    fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMPointReadOnly"
+  }
+}
 
 impl DOMPointReadOnly {
   fn from_point_inner(init: DOMPointInit) -> DOMPointReadOnly {
@@ -224,7 +228,11 @@ impl DOMPointReadOnly {
 
 pub struct DOMPoint {}
 
-impl GarbageCollected for DOMPoint {}
+impl GarbageCollected for DOMPoint {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMPoint"
+  }
+}
 
 #[op2(inherit = DOMPointReadOnly)]
 impl DOMPoint {
@@ -338,7 +346,11 @@ pub struct DOMRectReadOnly {
   height: Cell<f64>,
 }
 
-impl GarbageCollected for DOMRectReadOnly {}
+impl GarbageCollected for DOMRectReadOnly {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMRectReadOnly"
+  }
+}
 
 impl DOMRectReadOnly {
   fn from_rect_inner(init: DOMRectInit) -> DOMRectReadOnly {
@@ -499,7 +511,11 @@ impl DOMRectReadOnly {
 
 pub struct DOMRect {}
 
-impl GarbageCollected for DOMRect {}
+impl GarbageCollected for DOMRect {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMRect"
+  }
+}
 
 #[op2(inherit = DOMRectReadOnly)]
 impl DOMRect {
@@ -607,7 +623,11 @@ pub struct DOMQuad {
   p4: SameObject<DOMPointReadOnly>,
 }
 
-impl GarbageCollected for DOMQuad {}
+impl GarbageCollected for DOMQuad {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMQuad"
+  }
+}
 
 #[op2]
 impl DOMQuad {
@@ -869,7 +889,11 @@ pub struct DOMMatrixReadOnly {
   is_2d: Cell<bool>,
 }
 
-impl GarbageCollected for DOMMatrixReadOnly {}
+impl GarbageCollected for DOMMatrixReadOnly {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMMatrixReadOnly"
+  }
+}
 
 /*
  * NOTE: column-major order
@@ -2102,7 +2126,11 @@ impl DOMMatrixReadOnly {
 
 pub struct DOMMatrix {}
 
-impl GarbageCollected for DOMMatrix {}
+impl GarbageCollected for DOMMatrix {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMMatrix"
+  }
+}
 
 #[op2(inherit = DOMMatrixReadOnly)]
 impl DOMMatrix {
