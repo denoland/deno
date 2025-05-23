@@ -800,6 +800,51 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_deno_config_setting_no_workspace() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir
+    .source_file("file.ts", "const foo_bar = 1;\nconsole.log(foo_bar);\n");
+  let temp_dir_for_deno_json = test_util::TempDir::new();
+  temp_dir_for_deno_json.write(
+    "deno.json",
+    json!({
+      "lint": {
+        "rules": { "include": ["camelcase"] },
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_workspace_folders(vec![]);
+    builder.set_deno_enable(true);
+    builder.set_config(temp_dir_for_deno_json.url().join("deno.json").unwrap());
+  });
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 6 },
+          "end": { "line": 0, "character": 13 },
+        },
+        "severity": 2,
+        "code": "camelcase",
+        "source": "deno-lint",
+        "message": "Identifier 'foo_bar' is not in camel case.\nConsider renaming `foo_bar` to `fooBar`",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_deno_json_imports_comments_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
