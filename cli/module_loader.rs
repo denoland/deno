@@ -885,18 +885,13 @@ impl<TGraphContainer: ModuleGraphContainer>
   ) -> Result<Option<ModuleCodeStringSource>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     let graph = self.graph_container.graph();
-    let code_or_deferred_emit =
-      self.load_prepared_module_or_defer_emit(&graph, specifier)?;
-    let Some(code_or_deferred_emit) = code_or_deferred_emit else {
-      return Ok(None);
-    };
-    match code_or_deferred_emit {
-      CodeOrDeferredEmit::Code { source } => Ok(Some(source)),
-      CodeOrDeferredEmit::DeferredEmit {
+    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
+      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
+      Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
         media_type,
         source,
-      } => {
+      }) => {
         let transpile_result = self
           .emitter
           .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
@@ -912,15 +907,16 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type,
         }))
       }
-      CodeOrDeferredEmit::Cjs {
+      Some(CodeOrDeferredEmit::Cjs {
         specifier,
         media_type,
         source,
-      } => self
+      }) => self
         .load_maybe_cjs(specifier, media_type, source)
         .await
         .map(Some)
         .map_err(LoadPreparedModuleError::LoadMaybeCjs),
+      None => Ok(None),
     }
   }
 
@@ -931,7 +927,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     // Note: keep this in sync with the async version above
     let graph = self.graph_container.graph();
     match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
-      Some(CodeOrDeferredEmit::Code { source }) => Ok(Some(source)),
+      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
         media_type,
@@ -993,13 +989,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         media_type,
         specifier,
         ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code {
-        source: ModuleCodeStringSource {
-          code: ModuleSourceCode::String(source.clone().into()),
-          found_url: specifier.clone(),
-          media_type: *media_type,
-        },
-      })),
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        code: ModuleSourceCode::String(source.clone().into()),
+        found_url: specifier.clone(),
+        media_type: *media_type,
+      }))),
       Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
@@ -1056,23 +1050,19 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(Some(CodeOrDeferredEmit::Code {
-          source: ModuleCodeStringSource {
-            code: ModuleSourceCode::String(code),
-            found_url: specifier.clone(),
-            media_type: *media_type,
-          },
-        }))
+        Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+          code: ModuleSourceCode::String(code),
+          found_url: specifier.clone(),
+          media_type: *media_type,
+        })))
       }
       Some(deno_graph::Module::Wasm(WasmModule {
         source, specifier, ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code {
-        source: ModuleCodeStringSource {
-          code: ModuleSourceCode::Bytes(source.clone().into()),
-          found_url: specifier.clone(),
-          media_type: MediaType::Wasm,
-        },
-      })),
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        code: ModuleSourceCode::Bytes(source.clone().into()),
+        found_url: specifier.clone(),
+        media_type: MediaType::Wasm,
+      }))),
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
@@ -1126,9 +1116,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 }
 
 enum CodeOrDeferredEmit<'a> {
-  Code {
-    source: ModuleCodeStringSource,
-  },
+  Code(ModuleCodeStringSource),
   DeferredEmit {
     specifier: &'a ModuleSpecifier,
     media_type: MediaType,
@@ -1223,7 +1211,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
-
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
