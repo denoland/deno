@@ -144,6 +144,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub permissions: PermissionsContainer,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
+  pub skip_graph_roots_validation: bool,
 }
 
 impl ModuleLoadPreparer {
@@ -181,6 +182,7 @@ impl ModuleLoadPreparer {
       permissions,
       ext_overwrite,
       allow_unknown_media_types,
+      skip_graph_roots_validation,
     } = options;
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
@@ -221,7 +223,9 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.graph_roots_valid(graph, roots, allow_unknown_media_types)?;
+    if !skip_graph_roots_validation {
+      self.graph_roots_valid(graph, roots, allow_unknown_media_types)?;
+    }
 
     drop(_pb_clear_guard);
 
@@ -654,6 +658,75 @@ impl<TGraphContainer: ModuleGraphContainer>
         })
       }
     }
+  }
+
+  async fn check_reload_dynamic(
+    &self,
+    graph: &ModuleGraph,
+    specifier: &ModuleSpecifier,
+    permissions: &PermissionsContainer,
+  ) -> Result<bool, PrepareModuleLoadError> {
+    let mut specifiers_to_reload = Vec::new();
+    let mut module_iter = graph.walk(
+      std::iter::once(specifier),
+      WalkOptions {
+        check_js: deno_graph::CheckJsOption::False,
+        follow_dynamic: false,
+        kind: GraphKind::CodeOnly,
+        prefer_fast_check_graph: false,
+      },
+    );
+    while let Some((specifier, module_entry)) = module_iter.next() {
+      if specifier.scheme() != "file"
+        || self.loaded_files.borrow().contains(specifier)
+      {
+        module_iter.skip_previous_dependencies(); // no need to analyze this module's dependencies
+        continue;
+      }
+      let should_reload = match module_entry {
+        deno_graph::ModuleEntryRef::Module(module) => {
+          self.has_module_changed_on_file_system(specifier, module.mtime())
+        }
+        deno_graph::ModuleEntryRef::Err(err) => {
+          if matches!(err, deno_graph::ModuleError::Missing { .. }) {
+            self.mtime_of_specifier(specifier).is_some() // it exists now
+          } else {
+            self.has_module_changed_on_file_system(specifier, err.mtime())
+          }
+        }
+        deno_graph::ModuleEntryRef::Redirect(_) => false,
+      };
+      if should_reload {
+        specifiers_to_reload.push(specifier.clone());
+      }
+    }
+
+    if specifiers_to_reload.is_empty() {
+      return Ok(false);
+    }
+
+    log::debug!(
+      "Reloading modified files: {}",
+      specifiers_to_reload
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+    );
+    let mut graph_permit = self.graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    self
+      .shared
+      .module_load_preparer
+      .reload_specifiers(
+        graph,
+        specifiers_to_reload,
+        /* is dynamic */ true,
+        permissions.clone(),
+      )
+      .await?;
+    graph_permit.commit();
+    Ok(true)
   }
 
   fn has_module_changed_on_file_system(
@@ -1187,82 +1260,31 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
+      let permissions = if is_dynamic {
+        &inner.permissions
+      } else {
+        &inner.parent_permissions
+      };
 
       if is_dynamic {
         // This doesn't acquire a graph update permit because that will
         // clone the graph which is a bit slow.
         let mut graph = graph_container.graph();
-        {
-          let mut specifiers_to_reload = Vec::new();
-          let mut module_iter = graph.walk(
-            std::iter::once(&specifier),
-            WalkOptions {
-              check_js: deno_graph::CheckJsOption::False,
-              follow_dynamic: false,
-              kind: GraphKind::CodeOnly,
-              prefer_fast_check_graph: false,
-            },
-          );
-          while let Some((specifier, module_entry)) = module_iter.next() {
-            if specifier.scheme() != "file"
-              || inner.loaded_files.borrow().contains(specifier)
-            {
-              module_iter.skip_previous_dependencies(); // no need to analyze this module's dependencies
-              continue;
-            }
-            let should_reload = match module_entry {
-              deno_graph::ModuleEntryRef::Module(module) => inner
-                .has_module_changed_on_file_system(specifier, module.mtime()),
-              deno_graph::ModuleEntryRef::Err(err) => {
-                if matches!(err, deno_graph::ModuleError::Missing { .. }) {
-                  inner.mtime_of_specifier(specifier).is_some() // it exists now
-                } else {
-                  inner
-                    .has_module_changed_on_file_system(specifier, err.mtime())
-                }
-              }
-              deno_graph::ModuleEntryRef::Redirect(_) => false,
-            };
-            if should_reload {
-              specifiers_to_reload.push(specifier.clone());
-            }
-          }
-
-          if !specifiers_to_reload.is_empty() {
-            log::debug!(
-              "Reloading modified files: {}",
-              specifiers_to_reload
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-            );
-            {
-              let mut graph_permit =
-                inner.graph_container.acquire_update_permit().await;
-              let graph = graph_permit.graph_mut();
-              module_load_preparer
-                .reload_specifiers(
-                  graph,
-                  specifiers_to_reload,
-                  /* is dynamic */ true,
-                  // todo(THIS PR): is this correct?
-                  inner.permissions.clone(),
-                )
-                .await
-                .unwrap(); // todo(THIS PR): don't unwrap
-              graph_permit.commit();
-            }
-            graph = inner.graph_container.graph();
-          }
-        }
         // When the specifier is already in the graph then it means it
         // was previously loaded, so we can skip that and only check if
         // this part of the graph is valid.
         if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
+          let did_reload = inner
+            .check_reload_dynamic(&graph, &specifier, permissions)
+            .await
+            .map_err(|err| JsErrorBox::from_err(err))?;
+          if did_reload {
+            graph = inner.graph_container.graph();
+          }
+
           log::debug!("Skipping prepare module load.");
           // roots are already validated so we can skip those
-          if !graph.roots.contains(&specifier) {
+          if did_reload || !graph.roots.contains(&specifier) {
             module_load_preparer.graph_roots_valid(
               &graph,
               &[specifier],
@@ -1273,31 +1295,48 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let permissions = if is_dynamic {
-        inner.permissions.clone()
-      } else {
-        inner.parent_permissions.clone()
-      };
       let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
-      let graph = update_permit.graph_mut();
-      module_load_preparer
-        .prepare_module_load(
-          graph,
-          &[specifier],
-          PrepareModuleLoadOptions {
-            is_dynamic,
-            lib,
+      let specifiers = &[specifier];
+      {
+        let graph = update_permit.graph_mut();
+        module_load_preparer
+          .prepare_module_load(
+            graph,
+            specifiers,
+            PrepareModuleLoadOptions {
+              is_dynamic,
+              lib,
+              permissions: permissions.clone(),
+              ext_overwrite: None,
+              allow_unknown_media_types: false,
+              skip_graph_roots_validation: is_dynamic,
+            },
+          )
+          .await
+          .map_err(JsErrorBox::from_err)?;
+        graph.prune_types();
+        update_permit.commit();
+      }
+
+      if is_dynamic {
+        inner
+          .check_reload_dynamic(
+            &graph_container.graph(),
+            &specifiers[0],
             permissions,
-            ext_overwrite: None,
-            allow_unknown_media_types: false,
-          },
-        )
-        .await
-        .map_err(JsErrorBox::from_err)?;
-      graph.prune_types();
-      update_permit.commit();
+          )
+          .await
+          .map_err(|err| JsErrorBox::from_err(err))?;
+        // always validate the graph roots because we skipped doing it above
+        module_load_preparer.graph_roots_valid(
+          &graph_container.graph(),
+          specifiers,
+          false,
+        )?;
+      }
+
       Ok(())
     }
     .boxed_local()
