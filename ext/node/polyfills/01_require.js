@@ -1026,15 +1026,9 @@ Module.prototype._compile = function (content, filename, format) {
   }
 
   const {
-    // TODO(bartlomieju): this is actually on `globalThis` not `nodeGlobals`
-    Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    // TODO(bartlomieju): this is actually on `globalThis` not `nodeGlobals`
-    global,
-    // TODO(bartlomieju): this is actually on `globalThis` not `nodeGlobals`
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1047,11 +1041,11 @@ Module.prototype._compile = function (content, filename, format) {
     this,
     filename,
     dirname,
-    Buffer,
+    buffer.Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    global,
+    globalThis,
     process,
     setImmediate,
     setInterval,
