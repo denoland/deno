@@ -10327,6 +10327,69 @@ fn lsp_auto_import_npm_export_node_modules_dir_manual() {
   client.shutdown();
 }
 
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "preact": "npm:preact",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
+  );
+  let file = temp_dir.source_file("file.ts", "useEffect;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test]
 #[timeout(300_000)]
