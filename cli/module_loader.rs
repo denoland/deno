@@ -697,6 +697,8 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
     }
 
+    self.loaded_files.borrow_mut().insert(specifier.clone());
+
     if specifiers_to_reload.is_empty() {
       return Ok(false);
     }
@@ -1187,6 +1189,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if let Some(eszip_loader) = &inner.shared.maybe_eszip_loader {
       return eszip_loader.load(specifier);
     }
+
+    self.0.loaded_files.borrow_mut().insert(specifier.clone());
 
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
