@@ -614,6 +614,9 @@ jobs:
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked --features=panic-trace
+      - name: Ensure no git changes
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"\U0001F9FE Diff:\"\ngit diff\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
