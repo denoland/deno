@@ -17,7 +17,8 @@ use deno_semver::Version;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::BuildGraphRequest;
+use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -161,11 +162,10 @@ pub async fn cache_top_level_deps(
     graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        CreateGraphOptions {
+        BuildGraphWithNpmOptions {
+          request: BuildGraphRequest::Roots(roots.clone()),
           loader: None,
-          graph_kind: graph.graph_kind(),
           is_dynamic: false,
-          roots: roots.clone(),
           npm_caching: NpmCachingStrategy::Manual,
         },
       )

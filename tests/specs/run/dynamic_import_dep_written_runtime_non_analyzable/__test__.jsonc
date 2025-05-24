@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run --allow-read --allow-write main.ts",
+    "output": "1\n"
+  }, {
+    // run again to ensure it still outputs 1
+    "args": "run --allow-read --allow-write main.ts",
+    "output": "1\n"
+  }]
+}
