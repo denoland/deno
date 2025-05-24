@@ -12,6 +12,7 @@ use deno_core::GarbageCollected;
 use rusqlite::ffi;
 use serde::Serialize;
 
+use super::validators;
 use super::SqliteError;
 
 // ECMA-262, 15th edition, 21.1.2.6. Number.MAX_SAFE_INTEGER (2^53-1)
@@ -653,7 +654,7 @@ impl StatementSync {
   #[undefined]
   fn set_allow_bare_named_parameters(
     &self,
-    enabled: bool,
+    #[validate(validators::allow_bare_named_params_bool)] enabled: bool,
   ) -> Result<(), SqliteError> {
     self.allow_bare_named_params.set(enabled);
     Ok(())
@@ -661,7 +662,10 @@ impl StatementSync {
 
   #[fast]
   #[undefined]
-  fn set_read_big_ints(&self, enabled: bool) -> Result<(), SqliteError> {
+  fn set_read_big_ints(
+    &self,
+    #[validate(validators::read_big_ints_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
     self.use_big_ints.set(enabled);
     Ok(())
   }

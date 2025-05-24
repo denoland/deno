@@ -65,7 +65,9 @@ impl DatabaseSyncOptions {
       if !open.is_undefined() {
         options.open = v8::Local::<v8::Boolean>::try_from(open)
           .map_err(|_| {
-            Error::InvalidArgType("The \"open\" property must be a boolean.")
+            Error::InvalidArgType(
+              "The \"options.open\" argument must be a boolean.",
+            )
           })?
           .is_true();
       }
@@ -77,7 +79,7 @@ impl DatabaseSyncOptions {
         options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"readOnly\" property must be a boolean.",
+              "The \"options.readOnly\" argument must be a boolean.",
             )
           })?
           .is_true();
@@ -96,7 +98,7 @@ impl DatabaseSyncOptions {
           v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
             .map_err(|_| {
               Error::InvalidArgType(
-              "The \"enableForeignKeyConstraints\" property must be a boolean.",
+              "The \"options.enableForeignKeyConstraints\" argument must be a boolean.",
             )
             })?
             .is_true();
@@ -112,7 +114,7 @@ impl DatabaseSyncOptions {
           v8::Local::<v8::Boolean>::try_from(allow_extension)
             .map_err(|_| {
               Error::InvalidArgType(
-                "The \"allowExtension\" property must be a boolean.",
+                "The \"options.allowExtension\" argument must be a boolean.",
               )
             })?
             .is_true();
@@ -308,7 +310,7 @@ impl DatabaseSync {
   fn new(
     scope: &mut v8::HandleScope,
     state: &mut OpState,
-    #[validate(validators::location_str)]
+    #[validate(validators::path_str)]
     #[string]
     location: String,
     options: v8::Local<v8::Value>,
@@ -577,7 +579,8 @@ impl DatabaseSync {
     &self,
     state: &mut OpState,
     #[validate(validators::path_str)]
-    #[string] path: &str,
+    #[string]
+    path: &str,
     #[string] entry_point: Option<String>,
   ) -> Result<(), SqliteError> {
     let db = self.conn.borrow();

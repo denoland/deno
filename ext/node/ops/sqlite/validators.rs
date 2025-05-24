@@ -48,19 +48,6 @@ pub(super) fn sql_str(
   ))
 }
 
-pub(super) fn location_str(
-  _: &mut v8::HandleScope,
-  value: v8::Local<v8::Value>,
-) -> Result<(), Error> {
-  if value.is_string() {
-    return Ok(());
-  }
-
-  Err(Error::InvalidArgType(
-    "The \"location\" argument must be a string.",
-  ))
-}
-
 pub(super) fn changeset_buffer(
   _: &mut v8::HandleScope,
   value: v8::Local<v8::Value>,
@@ -84,5 +71,31 @@ pub(super) fn path_str(
 
   Err(Error::InvalidArgType(
     "The \"path\" argument must be a string.",
+  ))
+}
+
+pub(super) fn allow_bare_named_params_bool(
+  _: &mut v8::HandleScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"allowBareNamedParameters\" argument must be a boolean.",
+  ))
+}
+
+pub(super) fn read_big_ints_bool(
+  _: &mut v8::HandleScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"readBigInts\" argument must be a boolean.",
   ))
 }

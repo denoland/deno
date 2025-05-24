@@ -40,10 +40,10 @@ pub enum SqliteError {
   #[error("Failed to get SQL")]
   GetSqlFailed,
   #[class(generic)]
-  #[error("Database is already closed")]
+  #[error("database is not open")]
   AlreadyClosed,
   #[class(generic)]
-  #[error("Database is already open")]
+  #[error("database is already open")]
   AlreadyOpen,
   #[class(generic)]
   #[error("Failed to prepare statement")]
