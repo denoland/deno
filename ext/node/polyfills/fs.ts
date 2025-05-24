@@ -135,6 +135,7 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
+import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 
 const {
   F_OK,
@@ -162,6 +163,7 @@ const promises = {
   constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
+  glob: globPromise,
   open: openPromise,
   opendir: opendirPromise,
   rename: renamePromise,
@@ -227,6 +229,8 @@ export default {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
   lchown,
   lchownSync,
   link,
@@ -344,6 +348,8 @@ export {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
   link,
   linkSync,
   lstat,
