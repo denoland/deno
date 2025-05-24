@@ -1,10 +1,88 @@
 use deno_core::v8;
 
-use super::SqliteError;
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("code" = self.code())]
+pub enum Error {
+  #[class(generic)]
+  #[error("{0}")]
+  InvalidArgType(&'static str),
+}
+
+impl Error {
+  pub fn code(&self) -> ErrorCode {
+    match self {
+      Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
+    }
+  }
+}
+
+#[allow(non_camel_case_types)]
+pub enum ErrorCode {
+  ERR_INVALID_ARG_TYPE,
+}
+
+impl std::fmt::Display for ErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl ErrorCode {
+  pub fn as_str(&self) -> &str {
+    match self {
+      Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
+    }
+  }
+}
 
 pub(super) fn sql_str(
-  scope: &mut v8::HandleScope,
+  _: &mut v8::HandleScope,
   value: v8::Local<v8::Value>,
-) -> Result<(), SqliteError> {
-  Ok(())
+) -> Result<(), Error> {
+  if value.is_string() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"sql\" argument must be a string.",
+  ))
+}
+
+pub(super) fn location_str(
+  _: &mut v8::HandleScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_string() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"location\" argument must be a string.",
+  ))
+}
+
+pub(super) fn changeset_buffer(
+  _: &mut v8::HandleScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_uint8_array() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"changeset\" argument must be a Uint8Array.",
+  ))
+}
+
+pub(super) fn path_str(
+  _: &mut v8::HandleScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_string() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"path\" argument must be a string.",
+  ))
 }

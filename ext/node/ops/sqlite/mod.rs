@@ -76,9 +76,14 @@ pub enum SqliteError {
   #[class(type)]
   #[error("FromUtf8Error: {0}")]
   FromUtf8Error(#[from] std::ffi::NulError),
+  #[class(inherit)]
+  #[error(transparent)]
+  #[property("code" = self.code())]
+  Validation(#[from] validators::Error),
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
 enum ErrorCode {
   ERR_SQLITE_ERROR,
   ERR_ILLEGAL_CONSTRUCTOR,

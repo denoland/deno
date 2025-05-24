@@ -311,9 +311,6 @@ impl StatementSync {
       let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
       let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
-      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
-      let handle = unsafe { db.handle() };
-
       // SAFETY: lifetime of the connection is guaranteed by reference
       // counting.
       let err_str = unsafe { ffi::sqlite3_errmsg(db.handle()) };
@@ -366,12 +363,6 @@ impl StatementSync {
 
             let e = bare_named_params.insert(bare_name, i);
             if e.is_some() {
-              let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-              let db = db_rc.borrow();
-              let db = db.as_ref().ok_or(SqliteError::InUse)?;
-              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
-              let handle = unsafe { db.handle() };
-
               return Err(SqliteError::FailedBind("Duplicate named parameter"));
             }
           }
@@ -698,11 +689,6 @@ impl StatementSync {
     unsafe {
       let raw = ffi::sqlite3_expanded_sql(self.inner);
       if raw.is_null() {
-        let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-        let db = db_rc.borrow();
-        let db = db.as_ref().ok_or(SqliteError::InUse)?;
-        let handle = db.handle();
-
         return Err(SqliteError::InvalidExpandedSql);
       }
       let sql = std::ffi::CStr::from_ptr(raw as _)

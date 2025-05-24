@@ -6,17 +6,70 @@ use std::ffi::c_void;
 use std::rc::Weak;
 
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_core::GarbageCollected;
 use rusqlite::ffi;
-use serde::Deserialize;
 
 use super::SqliteError;
+use super::validators;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SessionOptions {
   pub table: Option<String>,
   pub db: Option<String>,
+}
+
+impl SessionOptions {
+  pub fn from_value(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Option<Self>, validators::Error> {
+    use validators::Error;
+
+    if value.is_undefined() {
+      return Ok(None);
+    }
+
+    let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
+      Error::InvalidArgType("The \"options\" argument must be an object.")
+    })?;
+
+    let mut options = SessionOptions::default();
+
+    v8_static_strings! {
+      TABLE_STRING = "table",
+      DB_STRING = "db",
+    }
+
+    let table_string = TABLE_STRING.v8_string(scope).unwrap();
+    if let Some(table_value) =
+      obj.get(scope, table_string.into())
+    {
+      if !table_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"table\" property must be a string.",
+        ));
+      }
+      let table = v8::Local::<v8::String>::try_from(table_value)
+        .map_err(|_| Error::InvalidArgType("The \"table\" property must be a string."))?;
+      options.table = Some(table.to_rust_string_lossy(scope).to_string());
+    }
+
+    let db_string = DB_STRING.v8_string(scope).unwrap();
+    if let Some(db_value) = obj.get(scope, db_string.into()) {
+      if !db_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"db\" property must be a string.",
+        ));
+      }
+      let db = v8::Local::<v8::String>::try_from(db_value)
+        .map_err(|_| Error::InvalidArgType("The \"db\" property must be a string."))?;
+      options.db = Some(db.to_rust_string_lossy(scope).to_string());
+    }
+    
+    Ok(Some(options))
+  }
 }
 
 pub struct Session {
