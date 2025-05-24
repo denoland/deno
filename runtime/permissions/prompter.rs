@@ -126,10 +126,7 @@ fn clear_stdin(
     loop {
       let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
       if r != 0 {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "clear_stdin failed (tcflush)",
-        ));
+        return Err(std::io::Error::other("clear_stdin failed (tcflush)"));
       }
 
       // Initialize timeout for select to be 100ms
@@ -149,10 +146,7 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "clear_stdin failed (select)",
-        ));
+        return Err(std::io::Error::other("clear_stdin failed (select)"));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
@@ -211,13 +205,10 @@ fn clear_stdin(
   unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
     let success = FlushConsoleInputBuffer(stdin);
     if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-          "Could not flush the console input buffer: {}",
-          std::io::Error::last_os_error()
-        ),
-      ));
+      return Err(std::io::Error::other(format!(
+        "Could not flush the console input buffer: {}",
+        std::io::Error::last_os_error()
+      )));
     }
     Ok(())
   }
@@ -239,13 +230,10 @@ fn clear_stdin(
     let success =
       WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
     if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-          "Could not emulate enter key press: {}",
-          std::io::Error::last_os_error()
-        ),
-      ));
+      return Err(std::io::Error::other(format!(
+        "Could not emulate enter key press: {}",
+        std::io::Error::last_os_error()
+      )));
     }
     Ok(())
   }
@@ -258,13 +246,10 @@ fn clear_stdin(
     let success =
       PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
     if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-          "Could not peek the console input buffer: {}",
-          std::io::Error::last_os_error()
-        ),
-      ));
+      return Err(std::io::Error::other(format!(
+        "Could not peek the console input buffer: {}",
+        std::io::Error::last_os_error()
+      )));
     }
     Ok(events_read == 0)
   }
