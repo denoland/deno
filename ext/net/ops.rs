@@ -983,12 +983,12 @@ where
         NetError::DnsNotFound(e)
       }
       ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections { .. }) =>
+        if matches!(**kind, ProtoErrorKind::NoConnections) =>
       {
         NetError::DnsNotConnected(e)
       }
       ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout { .. }) =>
+        if matches!(**kind, ProtoErrorKind::Timeout) =>
       {
         NetError::DnsTimedOut(e)
       }

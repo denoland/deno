@@ -148,15 +148,15 @@ async fn lint_with_watch_inner(
     let files = std::mem::take(&mut paths_with_options.paths);
     paths_with_options.paths = if let Some(paths) = &changed_paths {
       // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
-      files
-        .iter()
-        .any(|path| {
-          canonicalize_path(path)
-            .map(|p| paths.contains(&p))
-            .unwrap_or(false)
-        })
-        .then_some(files)
-        .unwrap_or_else(|| [].to_vec())
+      if files.iter().any(|path| {
+        canonicalize_path(path)
+          .map(|p| paths.contains(&p))
+          .unwrap_or(false)
+      }) {
+        files
+      } else {
+        [].to_vec()
+      }
     } else {
       files
     };
