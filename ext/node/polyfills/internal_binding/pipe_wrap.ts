@@ -144,7 +144,7 @@ export class Pipe extends ConnectionWrap {
         path: address,
         kind: "windows",
       }).then((pipe: Deno.PipeNs.Pipe) => {
-        this[kStreamBaseField] = pipe
+        this[kStreamBaseField] = pipe;
         this.#address = req.address;
 
         try {
@@ -154,7 +154,7 @@ export class Pipe extends ConnectionWrap {
         }
       }, (e) => {
         const code = codeMap.get(e.code ?? "UNKNOWN") ??
-            codeMap.get("UNKNOWN")!;
+          codeMap.get("UNKNOWN")!;
 
         try {
           this.afterConnect(req, code);
