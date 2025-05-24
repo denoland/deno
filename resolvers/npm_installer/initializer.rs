@@ -120,6 +120,7 @@ pub struct ResolveSnapshotError {
   source: SnapshotFromLockfileError,
 }
 
+#[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
   patch_packages: &WorkspaceNpmPatchPackages,

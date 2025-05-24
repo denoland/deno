@@ -951,10 +951,7 @@ fn op_spawn_sync(
   })?;
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
-      ProcessError::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "stdin is not available",
-      ))
+      ProcessError::Io(std::io::Error::other("stdin is not available"))
     })?;
     stdin.write_all(&input)?;
     stdin.flush()?;
