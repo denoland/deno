@@ -1,5 +1,13 @@
 {
   "tempDir": true,
-  "args": "run -A main.js",
-  "output": "main.out"
+  "tests": {
+    "analyzable": {
+      "args": "run -A main.js",
+      "output": "main.out"
+    },
+    "non_analyzable": {
+      "args": "run -A main_non_analyzable.js",
+      "output": "main.out"
+    }
+  }
 }
