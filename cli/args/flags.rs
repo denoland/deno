@@ -336,6 +336,7 @@ pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
+  pub coverage_dir: Option<String>,
 }
 
 impl RunFlags {
@@ -345,6 +346,7 @@ impl RunFlags {
       script,
       watch: None,
       bare: false,
+      coverage_dir: None,
     }
   }
 
@@ -3077,6 +3079,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
+    .arg(coverage_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -4260,6 +4263,21 @@ fn no_code_cache_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn coverage_arg() -> Arg {
+  Arg::new("coverage")
+    .long("coverage")
+    .value_name("DIR")
+    .num_args(0..=1)
+    .require_equals(true)
+    .default_missing_value("coverage")
+    .conflicts_with("inspect")
+    .conflicts_with("inspect-wait")
+    .conflicts_with("inspect-brk")
+    .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
+  <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
+    .value_hint(ValueHint::AnyPath)
+}
+
 fn permit_no_files_arg() -> Arg {
   Arg::new("permit-no-files")
     .long("permit-no-files")
@@ -5317,6 +5335,7 @@ fn run_parse(
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+  let coverage_dir = matches.remove_one::<String>("coverage");
 
   if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
     let script = script_arg.next().unwrap();
@@ -5325,6 +5344,7 @@ fn run_parse(
       script,
       watch: watch_arg_parse_with_paths(matches)?,
       bare,
+      coverage_dir,
     });
   } else if bare {
     return Err(app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
@@ -6294,6 +6314,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6319,6 +6340,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: true,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6345,6 +6367,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6371,6 +6394,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6397,6 +6421,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6424,6 +6449,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: true,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6454,6 +6480,7 @@ mod tests {
             exclude: vec![],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6483,6 +6510,7 @@ mod tests {
             exclude: vec![String::from("foo")],
           }),
           bare: true,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6509,6 +6537,7 @@ mod tests {
             exclude: vec![String::from("bar")],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6536,6 +6565,7 @@ mod tests {
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
           bare: false,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6562,6 +6592,7 @@ mod tests {
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
           bare: true,
+          coverage_dir: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6584,6 +6615,24 @@ mod tests {
           allow_write: Some(vec![]),
           ..Default::default()
         },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_coverage() {
+    let r = flags_from_vec(svec!["deno", "run", "--coverage=foo", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: None,
+          bare: false,
+          coverage_dir: Some("foo".to_string()),
+        }),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6898,6 +6947,7 @@ mod tests {
           script: "gist.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
@@ -8184,6 +8234,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         permissions: PermissionFlags {
           deny_net: Some(svec!["127.0.0.1"]),
@@ -8371,6 +8422,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         permissions: PermissionFlags {
           deny_sys: Some(svec!["hostname"]),
@@ -8670,6 +8722,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         ..Flags::default()
       }
@@ -8979,6 +9032,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         log_level: Some(Level::Error),
         code_cache_enabled: true,
@@ -9099,6 +9153,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -9267,6 +9322,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
@@ -10468,6 +10524,7 @@ mod tests {
           script: "foo.js".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
         code_cache_enabled: true,
@@ -11158,6 +11215,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -11694,6 +11752,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: None,
           bare: true,
+          coverage_dir: None,
         }),
         config_flag: ConfigFlag::Disabled,
         code_cache_enabled: true,
