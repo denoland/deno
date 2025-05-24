@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install -e main.ts",
+    "output": ""
+  }, {
+    "args": [
+      "eval",
+      "Deno.removeSync('vendor', { recursive: true })"
+    ],
+    "output": ""
+  }, {
+    "args": "install -e main.ts",
+    "output": "[WILDCARD]"
+  }]
+}
