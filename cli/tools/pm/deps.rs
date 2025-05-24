@@ -623,6 +623,7 @@ impl DepManager {
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;

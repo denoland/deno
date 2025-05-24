@@ -66,6 +66,7 @@ impl JsrCacheResolver {
           module_graph_1: None,
           module_graph_2: None,
           manifest: Default::default(),
+          lockfile_checksum: None,
         });
         workspace_packages_by_name.insert(
           StackString::from_str(&jsr_pkg_config.name),

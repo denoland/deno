@@ -542,7 +542,7 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleError::Missing(_, _) = *err {
+        if let ModuleError::Missing { .. } = *err {
           bail!("module could not be found");
         } else {
           bail!("{:#}", err);
@@ -696,7 +696,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import attribute)")
       }
-      ModuleError::LoadingErr(_, _, err) => {
+      ModuleError::Load { err, .. } => {
         use deno_graph::ModuleLoadError::*;
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
@@ -714,7 +714,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
+      ModuleError::Parse { .. } | ModuleError::WasmParse { .. } => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {
@@ -723,7 +723,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+      ModuleError::Missing { .. } | ModuleError::MissingDynamic { .. } => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

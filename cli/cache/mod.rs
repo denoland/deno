@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_core::futures::FutureExt;
@@ -203,11 +204,17 @@ impl Loader for FetchCacher {
             deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
           }),
           FetchNoFollowOptions {
-          maybe_auth: None,
-          maybe_accept: None,
-          maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum: options.maybe_checksum.as_ref(),
-        })
+            local: FetchLocalOptions {
+              // only include the mtime in dynamic branches because we only
+              // need to know about it then in order to tell whether to reload
+              // or not
+              include_mtime: options.in_dynamic_branch,
+            },
+            maybe_auth: None,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+            maybe_checksum: options.maybe_checksum.as_ref(),
+          })
         .await
         .map(|file_or_redirect| {
           match file_or_redirect {
@@ -224,6 +231,7 @@ impl Loader for FetchCacher {
             Ok(Some(LoadResponse::Module {
               specifier: file.url,
               maybe_headers,
+              mtime: file.mtime,
               content: file.source,
             }))
             },
