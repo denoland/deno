@@ -50,7 +50,7 @@ export class Domain extends EventEmitter {
     const self = this;
     return function () {
       try {
-        FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments));
+        return FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments));
       } catch (e) {
         FunctionPrototypeCall(emitError, self, e);
       }
@@ -65,7 +65,11 @@ export class Domain extends EventEmitter {
         FunctionPrototypeCall(emitError, self, e);
       } else {
         try {
-          FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments, 1));
+          return FunctionPrototypeApply(
+            fn,
+            null,
+            ArrayPrototypeSlice(arguments, 1),
+          );
         } catch (e) {
           FunctionPrototypeCall(emitError, self, e);
         }
@@ -75,7 +79,7 @@ export class Domain extends EventEmitter {
 
   run(fn) {
     try {
-      fn();
+      return fn();
     } catch (e) {
       FunctionPrototypeCall(emitError, this, e);
     }
