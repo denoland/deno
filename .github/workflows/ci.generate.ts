@@ -947,6 +947,7 @@ const ci = {
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "rm canary-latest.txt gha-creds-*.json",
           ].join("\n"),
         },
         {
@@ -1003,8 +1004,6 @@ const ci = {
           if: "matrix.job == 'test'",
           run: [
             'if [[ -n "$(git status --porcelain)" ]]; then',
-            'echo "🧾 Diff:"',
-            "git diff",
             'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
             'echo ""',
             'echo "📋 Status:"',

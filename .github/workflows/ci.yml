@@ -580,6 +580,7 @@ jobs:
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          rm canary-latest.txt gha-creds-*.json
       - name: Autobahn testsuite
         if: |-
           !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
@@ -616,7 +617,7 @@ jobs:
         run: cargo test --release --locked --features=panic-trace
       - name: Ensure no git changes
         if: '!(matrix.skip) && (matrix.job == ''test'')'
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"\U0001F9FE Diff:\"\ngit diff\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
