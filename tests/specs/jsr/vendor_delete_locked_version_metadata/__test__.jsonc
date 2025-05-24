@@ -1,12 +1,17 @@
 {
   "tempDir": true,
   "steps": [{
+    // cache this to the global cache first
+    "args": "cache --vendor=false jsr:@denotest/add@1.0.0",
+    "output": "[WILDCARD]"
+  }, {
+    // now vendor it
     "args": "install -e main.ts",
-    "output": ""
+    "output": "[WILDCARD]"
   }, {
     "args": [
       "eval",
-      "Deno.removeSync('vendor', { recursive: true })"
+      "Deno.removeSync('vendor/http_127.0.0.1_4250/@denotest/add/1.0.0_meta.json', { recursive: true })"
     ],
     "output": ""
   }, {
