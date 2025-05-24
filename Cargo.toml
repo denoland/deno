@@ -520,5 +520,5 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-# deno_graph = { path = "../deno_graph" }
+deno_graph = { path = "../deno_graph" }
 deno_cache_dir = { path = "../deno_cache_dir/rs_lib" }
