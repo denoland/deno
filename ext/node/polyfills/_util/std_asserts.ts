@@ -198,9 +198,14 @@ export function equal(c: unknown, d: unknown): boolean {
 }
 
 function constructorsEqual(a: object, b: object) {
-  return a.constructor === b.constructor ||
-    a.constructor === Object && !b.constructor ||
-    !a.constructor && b.constructor === Object;
+  // Treat {} and Object.create(null) as not equal
+  if (
+    (a.constructor === Object && !b.constructor) ||
+    (!a.constructor && b.constructor === Object)
+  ) {
+    return false;
+  }
+  return a.constructor === b.constructor;
 }
 
 /** Make an assertion, error will be thrown if `expr` does not have truthy value. */
