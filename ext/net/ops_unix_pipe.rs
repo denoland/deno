@@ -68,7 +68,7 @@ where
       &args.path,
       args
         .mode
-        .map(|mode| nix::sys::stat::Mode::from_bits(mode as u16))
+        .map(|mode| nix::sys::stat::Mode::from_bits(mode as _))
         .unwrap_or(Some(nix::sys::stat::Mode::S_IRWXU))
         .ok_or(NetError::Io(io::ErrorKind::InvalidInput.into()))?,
       &api_call_expr,
