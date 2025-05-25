@@ -1024,11 +1024,17 @@ declare namespace Deno {
       readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     }
 
+    /**
+     * Pipe Options
+     *
+     * @category Network
+     */
     export interface Options {
       path: string;
       kind: Kind;
     }
 
+    /** @category Network */
     export interface WindowsListenOptions extends Options {
       kind: "windows";
       maxInstances?: number;
@@ -1037,6 +1043,7 @@ declare namespace Deno {
       outbound?: boolean;
     }
 
+    /** @category Network */
     export interface UnixListenOptions extends Options {
       kind: "unix";
       mode?: number;
