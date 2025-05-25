@@ -622,12 +622,12 @@ impl Resource for NodeHttpResponseResource {
 
         match std::mem::take(&mut *reader) {
           NodeHttpFetchResponseReader::Start(resp) => {
-            let stream: BytesStream =
-              Box::pin(resp.into_body().into_data_stream().map(|r| {
-                r.map_err(|err| {
-                  std::io::Error::new(std::io::ErrorKind::Other, err)
-                })
-              }));
+            let stream: BytesStream = Box::pin(
+              resp
+                .into_body()
+                .into_data_stream()
+                .map(|r| r.map_err(std::io::Error::other)),
+            );
             *reader =
               NodeHttpFetchResponseReader::BodyReader(stream.peekable());
           }
