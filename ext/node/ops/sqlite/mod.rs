@@ -34,10 +34,10 @@ pub enum SqliteError {
   #[error("Unknown named parameter '{0}'")]
   UnknownNamedParameter(String),
   #[class(generic)]
-  #[error("Unknown column type")]
+  #[error("unknown column type")]
   UnknownColumnType,
   #[class(generic)]
-  #[error("Failed to get SQL")]
+  #[error("failed to get SQL")]
   GetSqlFailed,
   #[class(generic)]
   #[error("database is not open")]
@@ -46,16 +46,16 @@ pub enum SqliteError {
   #[error("database is already open")]
   AlreadyOpen,
   #[class(generic)]
-  #[error("Failed to prepare statement")]
+  #[error("failed to prepare statement")]
   PrepareFailed,
   #[class(generic)]
-  #[error("Failed to create session")]
+  #[error("failed to create session")]
   SessionCreateFailed,
   #[class(generic)]
-  #[error("Failed to retrieve changeset")]
+  #[error("failed to retrieve changeset")]
   SessionChangesetFailed,
   #[class(generic)]
-  #[error("Session is already closed")]
+  #[error("session is already closed")]
   SessionClosed,
   #[class(generic)]
   #[error("Illegal constructor")]
@@ -117,6 +117,7 @@ impl SqliteError {
       Self::FailedBind(_)
       | Self::UnknownNamedParameter(_)
       | Self::AlreadyClosed
+      | Self::InUse
       | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,

@@ -9,6 +9,7 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::rc::Rc;
 
+use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
@@ -16,6 +17,8 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
+use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::limits::Limit;
 
 use super::session::SessionOptions;
@@ -32,6 +35,7 @@ struct DatabaseSyncOptions {
   enable_foreign_key_constraints: bool,
   read_only: bool,
   allow_extension: bool,
+  enable_double_quoted_string_literals: bool,
 }
 
 impl DatabaseSyncOptions {
@@ -58,6 +62,7 @@ impl DatabaseSyncOptions {
       ENABLE_FOREIGN_KEY_CONSTRAINTS_STRING = "enableForeignKeyConstraints",
       READ_ONLY_STRING = "readOnly",
       ALLOW_EXTENSION_STRING = "allowExtension",
+      ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -121,6 +126,25 @@ impl DatabaseSyncOptions {
       }
     }
 
+    let enable_double_quoted_string_literals_string =
+      ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING
+        .v8_string(scope)
+        .unwrap();
+    if let Some(enable_double_quoted_string_literals) =
+      obj.get(scope, enable_double_quoted_string_literals_string.into())
+    {
+      if !enable_double_quoted_string_literals.is_undefined() {
+        options.enable_double_quoted_string_literals =
+            v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
+                .map_err(|_| {
+                Error::InvalidArgType(
+                    "The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.",
+                )
+                })?
+                .is_true();
+      }
+    }
+
     Ok(options)
   }
 }
@@ -132,6 +156,7 @@ impl Default for DatabaseSyncOptions {
       enable_foreign_key_constraints: true,
       read_only: false,
       allow_extension: false,
+      enable_double_quoted_string_literals: false,
     }
   }
 }
@@ -296,6 +321,34 @@ fn open_db(
   Ok(conn)
 }
 
+fn database_constructor(
+  _: &mut v8::HandleScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), validators::Error> {
+  // TODO(littledivy): use `IsConstructCall()`
+  if args.new_target().is_undefined() {
+    return Err(validators::Error::ConstructCallRequired);
+  }
+
+  Ok(())
+}
+
+fn is_open(
+  scope: &mut v8::HandleScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), SqliteError> {
+  let this_ = args.this();
+  let db = cppgc::try_unwrap_cppgc_object::<DatabaseSync>(scope, this_.into())
+    .ok_or(SqliteError::AlreadyClosed)?;
+
+  db.conn
+    .borrow()
+    .as_ref()
+    .ok_or(SqliteError::AlreadyClosed)?;
+
+  Ok(())
+}
+
 // Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
@@ -306,6 +359,7 @@ impl DatabaseSync {
   // To use an in-memory database, the `location` should be special
   // name ":memory:".
   #[constructor]
+  #[validate(database_constructor)]
   #[cppgc]
   fn new(
     scope: &mut v8::HandleScope,
@@ -323,7 +377,20 @@ impl DatabaseSync {
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
+      } else {
+        db.execute("PRAGMA foreign_keys = OFF", [])?;
       }
+
+      set_db_config(
+        &db,
+        SQLITE_DBCONFIG_DQS_DDL,
+        options.enable_double_quoted_string_literals,
+      );
+      set_db_config(
+        &db,
+        SQLITE_DBCONFIG_DQS_DML,
+        options.enable_double_quoted_string_literals,
+      );
       Some(db)
     } else {
       None
@@ -357,7 +424,20 @@ impl DatabaseSync {
     )?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
+    } else {
+      db.execute("PRAGMA foreign_keys = OFF", [])?;
     }
+
+    set_db_config(
+      &db,
+      SQLITE_DBCONFIG_DQS_DDL,
+      self.options.enable_double_quoted_string_literals,
+    );
+    set_db_config(
+      &db,
+      SQLITE_DBCONFIG_DQS_DML,
+      self.options.enable_double_quoted_string_literals,
+    );
 
     *self.conn.borrow_mut() = Some(db);
 
@@ -393,6 +473,7 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[validate(is_open)]
   #[undefined]
   fn exec(
     &self,
@@ -411,6 +492,7 @@ impl DatabaseSync {
   // Compiles an SQL statement into a prepared statement.
   //
   // This method is a wrapper around `sqlite3_prepare_v2()`.
+  #[validate(is_open)]
   #[cppgc]
   fn prepare(
     &self,
