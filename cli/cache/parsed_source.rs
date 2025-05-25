@@ -31,6 +31,7 @@ impl<'a> LazyGraphSourceParser<'a> {
     Self { cache, graph }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn get_or_parse_source(
     &self,
     module_specifier: &ModuleSpecifier,
@@ -52,6 +53,7 @@ pub struct ParsedSourceCache {
 }
 
 impl ParsedSourceCache {
+  #[allow(clippy::result_large_err)]
   pub fn get_parsed_source_from_js_module(
     &self,
     module: &deno_graph::JsModule,
@@ -66,6 +68,7 @@ impl ParsedSourceCache {
     })
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn remove_or_parse_module(
     &self,
     specifier: &ModuleSpecifier,
