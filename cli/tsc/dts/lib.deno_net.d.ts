@@ -1028,7 +1028,7 @@ declare namespace Deno {
      * Pipe Options
      *
      * @category Network
-     * */
+     */
     export interface Options {
       path: string;
       kind: Kind;
