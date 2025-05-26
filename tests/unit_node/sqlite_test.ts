@@ -7,7 +7,10 @@ const tempDir = Deno.makeTempDirSync();
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
   const db2 = new DatabaseSync(":memory:");
-  db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+  assertEquals(
+    db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);"),
+    undefined,
+  );
   db1.exec("INSERT INTO data (key) VALUES (1);");
 
   db2.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -332,4 +335,14 @@ Deno.test("[node/sqlite] StatementSync empty blob", () => {
   assertEquals(result, { a: new Uint8Array([]), __proto__: null });
 
   db.close();
+});
+
+Deno.test("[node/sqlite] Database close locks", () => {
+  const db = new DatabaseSync(`${tempDir}/test4.db`);
+  const statement = db.prepare(
+    "CREATE TABLE test (key INTEGER PRIMARY KEY, value TEXT)",
+  );
+  statement.run();
+  db.close();
+  Deno.removeSync(`${tempDir}/test4.db`);
 });

@@ -5,6 +5,7 @@ mod structs;
 
 use std::collections::BTreeSet;
 
+pub use gen::UNSTABLE_ENV_VAR_NAMES;
 pub use gen::UNSTABLE_FEATURES;
 pub use structs::UnstableFeatureKind;
 

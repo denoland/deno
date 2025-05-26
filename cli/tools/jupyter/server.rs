@@ -36,7 +36,6 @@ use uuid::Uuid;
 
 use super::JupyterReplProxy;
 use crate::cdp;
-use crate::tools::repl;
 
 pub struct JupyterServer {
   execution_count: ExecutionCount,
@@ -322,11 +321,7 @@ impl JupyterServer {
             )
             .await
             .into_iter()
-            .filter(|n| {
-              !n.starts_with("Symbol(")
-                && n.starts_with(prop_name)
-                && n != &*repl::REPL_INTERNALS_NAME
-            })
+            .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
             .collect();
 
             if prop_name.len() > cursor_pos {
@@ -347,7 +342,7 @@ impl JupyterServer {
               get_global_lexical_scope_names(&mut self.repl_session_proxy)
                 .await,
             )
-            .filter(|n| n.starts_with(expr) && n != &*repl::REPL_INTERNALS_NAME)
+            .filter(|n| n.starts_with(expr))
             .collect::<Vec<_>>();
 
             // sort and remove duplicates

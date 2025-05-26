@@ -31,6 +31,8 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
@@ -47,7 +49,7 @@ use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-pub use crate::args::NpmCachingStrategy;
+use crate::args::DenoSubcommand;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -55,11 +57,10 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmGraphResolver;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -77,6 +78,7 @@ pub struct GraphValidOptions<'a> {
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
+  pub ignore_graph_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -104,6 +106,7 @@ pub fn graph_valid(
       check_js: options.check_js,
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
+      ignore_graph_errors: options.ignore_graph_errors,
     },
   );
   if let Some(error) = errors.next() {
@@ -143,6 +146,7 @@ pub fn fill_graph_from_lockfile(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
 }
 
@@ -154,10 +158,41 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
+  fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
+    match err {
+      ResolutionError::ResolverError { error, .. } => match error.as_ref() {
+        ResolveError::Specifier(_) => true,
+        ResolveError::ImportMap(err) => matches!(
+          err.as_kind(),
+          import_map::ImportMapErrorKind::UnmappedBareSpecifier { .. }
+        ),
+        ResolveError::Other(_) => false,
+      },
+      _ => false,
+    }
+  }
+
+  fn should_ignore_module_graph_error_for_types(
+    err: &ModuleGraphError,
+  ) -> bool {
+    match err {
+      ModuleGraphError::ResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::TypesResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::ModuleError(module_error) => {
+        matches!(module_error, ModuleError::Missing { .. })
+      }
+    }
+  }
+
   fn should_ignore_error(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
+    ignore_graph_errors: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -165,6 +200,11 @@ pub fn graph_walk_errors<'a>(
         error,
         ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
       )
+    {
+      return true;
+    }
+
+    if ignore_graph_errors && should_ignore_module_graph_error_for_types(error)
     {
       return true;
     }
@@ -190,6 +230,7 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
+        options.ignore_graph_errors,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -364,7 +405,6 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  npm_installer: Option<Arc<NpmInstaller>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
 }
@@ -372,13 +412,11 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    npm_installer: Option<Arc<NpmInstaller>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      npm_installer,
       module_graph_builder,
       type_checker,
     }
@@ -469,7 +507,7 @@ impl ModuleGraphCreator {
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
-      self.type_check_graph(graph.clone()).await?;
+      self.type_check_graph(graph.clone())?;
     }
 
     if build_fast_check_graph {
@@ -501,12 +539,6 @@ impl ModuleGraphCreator {
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
-    if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
-    }
-
     Ok(graph)
   }
 
@@ -530,7 +562,7 @@ impl ModuleGraphCreator {
 
     if self.options.type_check_mode().is_true() {
       // provide the graph to the type checker, then get it back after it's done
-      let graph = self.type_check_graph(graph).await?;
+      let graph = self.type_check_graph(graph)?;
       Ok(graph)
     } else {
       Ok(Arc::new(graph))
@@ -541,22 +573,20 @@ impl ModuleGraphCreator {
     self.module_graph_builder.graph_valid(graph)
   }
 
-  async fn type_check_graph(
+  #[allow(clippy::result_large_err)]
+  fn type_check_graph(
     &self,
     graph: ModuleGraph,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    self
-      .type_checker
-      .check(
-        graph,
-        CheckOptions {
-          build_fast_check_graph: true,
-          lib: self.options.ts_type_lib_window(),
-          reload: self.options.reload_flag(),
-          type_check_mode: self.options.type_check_mode(),
-        },
-      )
-      .await
+    self.type_checker.check(
+      graph,
+      CheckOptions {
+        build_fast_check_graph: true,
+        lib: self.options.ts_type_lib_window(),
+        reload: self.options.reload_flag(),
+        type_check_mode: self.options.type_check_mode(),
+      },
+    )
   }
 }
 
@@ -599,7 +629,7 @@ pub struct ModuleGraphBuilder {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -621,7 +651,7 @@ impl ModuleGraphBuilder {
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
-    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
@@ -785,7 +815,15 @@ impl ModuleGraphBuilder {
         },
         options.npm_caching,
       )
-      .await
+      .await?;
+
+    if let Some(npm_installer) = &self.npm_installer {
+      if graph.has_node_specifier && options.graph_kind.include_types() {
+        npm_installer.inject_synthetic_types_node_package().await?;
+      }
+    }
+
+    Ok(())
   }
 
   async fn build_graph_with_npm_resolution_and_build_options<'a>(
@@ -972,6 +1010,10 @@ impl ModuleGraphBuilder {
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
         allow_unknown_media_types,
+        ignore_graph_errors: matches!(
+          self.cli_options.sub_command(),
+          DenoSubcommand::Check { .. }
+        ),
       },
     )
   }
