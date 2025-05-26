@@ -44,29 +44,33 @@ impl SessionOptions {
 
     let table_string = TABLE_STRING.v8_string(scope).unwrap();
     if let Some(table_value) = obj.get(scope, table_string.into()) {
-      if !table_value.is_string() {
-        return Err(Error::InvalidArgType(
-          "The \"table\" property must be a string.",
-        ));
+      if !table_value.is_undefined() {
+        if !table_value.is_string() {
+          return Err(Error::InvalidArgType(
+            "The \"table\" property must be a string.",
+          ));
+        }
+        let table =
+          v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
+            Error::InvalidArgType("The \"table\" property must be a string.")
+          })?;
+        options.table = Some(table.to_rust_string_lossy(scope).to_string());
       }
-      let table =
-        v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
-          Error::InvalidArgType("The \"table\" property must be a string.")
-        })?;
-      options.table = Some(table.to_rust_string_lossy(scope).to_string());
     }
 
     let db_string = DB_STRING.v8_string(scope).unwrap();
     if let Some(db_value) = obj.get(scope, db_string.into()) {
-      if !db_value.is_string() {
-        return Err(Error::InvalidArgType(
-          "The \"db\" property must be a string.",
-        ));
+      if !db_value.is_undefined() {
+        if !db_value.is_string() {
+          return Err(Error::InvalidArgType(
+            "The \"db\" property must be a string.",
+          ));
+        }
+        let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
+          Error::InvalidArgType("The \"db\" property must be a string.")
+        })?;
+        options.db = Some(db.to_rust_string_lossy(scope).to_string());
       }
-      let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
-        Error::InvalidArgType("The \"db\" property must be a string.")
-      })?;
-      options.db = Some(db.to_rust_string_lossy(scope).to_string());
     }
 
     Ok(Some(options))
