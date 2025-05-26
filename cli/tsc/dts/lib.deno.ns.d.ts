@@ -5087,7 +5087,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeDefaultExport<Addr extends Deno.Addr = Deno.Addr> {
+  export interface ServeDefaultExport<Addr extends Deno.Addr = Deno.NetAddr> {
     /** A handler for HTTP requests. Consumes a request and returns a response.
      *
      * If a handler throws, the server calling the handler will assume the impact
