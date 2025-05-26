@@ -70,9 +70,9 @@ async fn generate_doc_nodes_for_builtin_types(
   graph
     .build(
       roots.clone(),
+      Vec::new(),
       &loader,
       deno_graph::BuildOptions {
-        imports: Vec::new(),
         is_dynamic: false,
         skip_dynamic_deps: false,
         passthrough_jsr_specifiers: false,
@@ -429,6 +429,7 @@ fn generate_docs_directory(
         deno_doc::html::comrak::COMRAK_STYLESHEET_FILENAME
       )
     })),
+    id_prefix: None,
   };
 
   if let Some(built_in_types) = built_in_types {
@@ -453,6 +454,7 @@ fn generate_docs_directory(
         ),
         markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
         head_inject: None,
+        id_prefix: None,
       },
       IndexMap::from([(
         ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),

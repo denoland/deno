@@ -1678,9 +1678,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.20.1"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8976e7d563536051895564bdc7041e7f7f771a64bede15ca92fbcffc4e7a4676"
+checksum = "6f497218d97d06086e5d2540da47a985cae6db20b574d41f27ac6c7518dacf61"
 dependencies = [
  "async-trait",
  "base32",
@@ -1850,9 +1850,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.173.0"
+version = "0.175.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffd5da996bd8679b4e55e66dbb3f078c30e63af465b11df60ea055b421518491"
+checksum = "161ec3cf8d07fc08a24a2600586881d9abafd48a0cb778633883dc8c1665d6fe"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2000,9 +2000,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.91.0"
+version = "0.92.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d54da704eeea3a15a23eb929f93914d833a2a2858c1aaec220097343445ca04"
+checksum = "51fed59054a55f3cbd0db096168c58836ca9f94c7b7c1b0730f63064d7dc0f9e"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -3568,9 +3568,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.88.0"
+version = "0.89.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9146196b938195a1c312ba742bd6fc640ff4d77f1784d591252bbfdb2a093b72"
+checksum = "38d9ea60ba198add01557b0f9e4d4df3795bbdc58a4c6774fee46734accdd64d"
 dependencies = [
  "anyhow",
  "async-trait",
