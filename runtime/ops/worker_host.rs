@@ -20,45 +20,45 @@ use log::debug;
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::SendableWebWorkerHandle;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
-use crate::web_worker::WorkerControlEvent;
-use crate::web_worker::WorkerId;
-use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
+use crate::worker_thread::run_worker_thread;
+use crate::worker_thread::SendableWorkerThreadHandle;
+use crate::worker_thread::WorkerControlEvent;
+use crate::worker_thread::WorkerId;
+use crate::worker_thread::WorkerMetadata;
+use crate::worker_thread::WorkerThread;
+use crate::worker_thread::WorkerThreadHandle;
+use crate::worker_thread::WorkerThreadType;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
-pub struct CreateWebWorkerArgs {
+pub struct CreateWorkerThreadArgs {
   pub name: String,
   pub worker_id: WorkerId,
   pub parent_permissions: PermissionsContainer,
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
-pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
+pub type CreateWorkerThreadCb = dyn Fn(CreateWorkerThreadArgs) -> (WorkerThread, SendableWorkerThreadHandle)
   + Sync
   + Send;
 
 /// A holder for callback that is used to create a new
-/// WebWorker. It's a struct instead of a type alias
+/// WorkerThread. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
-struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+struct CreateWorkerThreadCbHolder(Arc<CreateWorkerThreadCb>);
 
 #[derive(Clone)]
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
-  worker_handle: WebWorkerHandle,
+  worker_handle: WorkerThreadHandle,
   cancel_handle: Rc<CancelHandle>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
@@ -94,15 +94,15 @@ deno_core::extension!(
     op_host_recv_message,
   ],
   options = {
-    create_web_worker_cb: Arc<CreateWebWorkerCb>,
+    create_worker_thread_cb: Arc<CreateWorkerThreadCb>,
     format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   },
   state = |state, options| {
     state.put::<WorkersTable>(WorkersTable::default());
 
-    let create_web_worker_cb_holder =
-      CreateWebWorkerCbHolder(options.create_web_worker_cb);
-    state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+    let create_worker_thread_cb_holder =
+      CreateWorkerThreadCbHolder(options.create_worker_thread_cb);
+    state.put::<CreateWorkerThreadCbHolder>(create_worker_thread_cb_holder);
     let format_js_error_fn_holder =
       FormatJsErrorFnHolder(options.format_js_error_fn);
     state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
@@ -117,7 +117,7 @@ pub struct CreateWorkerArgs {
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
   close_on_idle: bool,
 }
 
@@ -156,7 +156,7 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WebWorkerType::Classic = worker_type {
+  if let WorkerThreadType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
       return Err(CreateWorkerError::ClassicWorkers);
     }
@@ -179,7 +179,8 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
+  let create_worker_thread_cb =
+    state.borrow::<CreateWorkerThreadCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
   let worker_id = WorkerId::new();
 
@@ -187,7 +188,7 @@ fn op_create_worker(
   let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
+    std::sync::mpsc::sync_channel::<SendableWorkerThreadHandle>(1);
 
   // Setup new thread
   let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
@@ -209,7 +210,7 @@ fn op_create_worker(
     // - newly spawned thread exits
     let fut = async move {
       let (worker, external_handle) =
-        (create_web_worker_cb.0)(CreateWebWorkerArgs {
+        (create_worker_thread_cb.0)(CreateWorkerThreadArgs {
           name: worker_name,
           worker_id,
           parent_permissions,
@@ -228,7 +229,7 @@ fn op_create_worker(
       // is using `worker.internal_channels`.
       //
       // Host can already push messages and interact with worker.
-      run_web_worker(
+      run_worker_thread(
         worker,
         module_specifier,
         maybe_source_code,
@@ -240,7 +241,7 @@ fn op_create_worker(
     create_and_run_current_thread(fut)
   })?;
 
-  // Receive WebWorkerHandle from newly created worker
+  // Receive WorkerThreadHandle from newly created worker
   let worker_handle = handle_receiver.recv().unwrap();
 
   let worker_thread = WorkerThread {

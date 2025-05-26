@@ -66,7 +66,7 @@ pub fn create_runtime_snapshot(
     ops::http::deno_http_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
     runtime::lazy_init(),
-    ops::web_worker::deno_web_worker::lazy_init(),
+    ops::worker_thread::deno_worker_thread::lazy_init(),
   ];
   extensions.extend(custom_extensions);
 

@@ -6,8 +6,8 @@ pub mod http;
 pub mod permissions;
 pub mod runtime;
 pub mod tty;
-pub mod web_worker;
 pub mod worker_host;
+pub mod worker_thread;
 
 use std::sync::Arc;
 

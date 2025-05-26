@@ -34,13 +34,13 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::web_worker::WebWorker;
-use deno_runtime::web_worker::WebWorkerOptions;
-use deno_runtime::web_worker::WebWorkerServiceOptions;
+use deno_runtime::ops::worker_host::CreateWorkerThreadCb;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
+use deno_runtime::worker_thread::WorkerThread;
+use deno_runtime::worker_thread::WorkerThreadOptions;
+use deno_runtime::worker_thread::WorkerThreadServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
@@ -399,10 +399,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
     }
   }
 
-  fn create_web_worker_callback(
+  fn create_worker_thread_callback(
     self: &Arc<Self>,
     stdio: deno_runtime::deno_io::Stdio,
-  ) -> Arc<CreateWebWorkerCb> {
+  ) -> Arc<CreateWorkerThreadCb> {
     let shared = self.clone();
     Arc::new(move |args| {
       let maybe_inspector_server = shared.maybe_inspector_server.clone();
@@ -414,8 +414,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         args.parent_permissions.clone(),
         args.permissions.clone(),
       );
-      let create_web_worker_cb =
-        shared.create_web_worker_callback(stdio.clone());
+      let create_worker_thread_cb =
+        shared.create_worker_thread_callback(stdio.clone());
 
       let maybe_storage_key = shared
         .storage_key_resolver
@@ -431,7 +431,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let unstable_features =
         shared.resolve_unstable_features(feature_checker.as_ref());
 
-      let services = WebWorkerServiceOptions {
+      let services = WorkerThreadServiceOptions {
         deno_rt_native_addon_loader: shared.deno_rt_native_addon_loader.clone(),
         root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
         module_loader,
@@ -454,7 +454,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         ),
         permissions: args.permissions,
       };
-      let options = WebWorkerOptions {
+      let options = WorkerThreadOptions {
         name: args.name,
         main_module: args.main_module.clone(),
         worker_id: args.worker_id,
@@ -493,7 +493,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           .unsafely_ignore_certificate_errors
           .clone(),
         seed: shared.options.seed,
-        create_web_worker_cb,
+        create_worker_thread_cb,
         format_js_error_fn: Some(Arc::new(format_js_error)),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
@@ -504,7 +504,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
-      WebWorker::bootstrap_from_options(services, options)
+      WorkerThread::bootstrap_from_options(services, options)
     })
   }
 }
@@ -673,7 +673,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .clone(),
       seed: shared.options.seed,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
+      create_worker_thread_cb: shared
+        .create_worker_thread_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,

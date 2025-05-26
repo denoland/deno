@@ -84,7 +84,7 @@ impl From<log::Level> for WorkerLogLevel {
   }
 }
 
-/// Common bootstrap options for MainWorker & WebWorker
+/// Common bootstrap options for MainWorker & WorkerThread
 #[derive(Clone)]
 pub struct BootstrapOptions {
   pub deno_version: String,

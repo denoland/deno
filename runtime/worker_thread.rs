@@ -100,7 +100,7 @@ impl Default for WorkerId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum WebWorkerType {
+pub enum WorkerThreadType {
   Classic,
   Module,
 }
@@ -154,7 +154,7 @@ impl Serialize for WorkerControlEvent {
 
 // Channels used for communication with worker's parent
 #[derive(Clone)]
-pub struct WebWorkerInternalHandle {
+pub struct WorkerThreadInternalHandle {
   sender: mpsc::Sender<WorkerControlEvent>,
   pub port: Rc<MessagePort>,
   pub cancel: Rc<CancelHandle>,
@@ -163,10 +163,10 @@ pub struct WebWorkerInternalHandle {
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
 }
 
-impl WebWorkerInternalHandle {
+impl WorkerThreadInternalHandle {
   /// Post WorkerEvent to parent as a worker
   #[allow(clippy::result_large_err)]
   pub fn post_event(
@@ -225,7 +225,7 @@ impl WebWorkerInternalHandle {
   }
 }
 
-pub struct SendableWebWorkerHandle {
+pub struct SendableWorkerThreadHandle {
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
@@ -234,9 +234,9 @@ pub struct SendableWebWorkerHandle {
   isolate_handle: v8::IsolateHandle,
 }
 
-impl From<SendableWebWorkerHandle> for WebWorkerHandle {
-  fn from(handle: SendableWebWorkerHandle) -> Self {
-    WebWorkerHandle {
+impl From<SendableWorkerThreadHandle> for WorkerThreadHandle {
+  fn from(handle: SendableWorkerThreadHandle) -> Self {
+    WorkerThreadHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
@@ -248,14 +248,14 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
 }
 
 /// This is the handle to the web worker that the parent thread uses to
-/// communicate with the worker. It is created from a `SendableWebWorkerHandle`
+/// communicate with the worker. It is created from a `SendableWorkerThreadHandle`
 /// which is sent to the parent thread from the worker thread where it is
 /// created. The reason for this separation is that the handle first needs to be
 /// `Send` when transferring between threads, and then must be `Clone` when it
 /// has arrived on the parent thread. It can not be both at once without large
 /// amounts of Arc<Mutex> and other fun stuff.
 #[derive(Clone)]
-pub struct WebWorkerHandle {
+pub struct WorkerThreadHandle {
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
@@ -264,7 +264,7 @@ pub struct WebWorkerHandle {
   isolate_handle: v8::IsolateHandle,
 }
 
-impl WebWorkerHandle {
+impl WorkerThreadHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
   #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
@@ -312,14 +312,14 @@ impl WebWorkerHandle {
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
-  worker_type: WebWorkerType,
-) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
+  worker_type: WorkerThreadType,
+) -> (WorkerThreadInternalHandle, SendableWorkerThreadHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
   let termination_signal = Arc::new(AtomicBool::new(false));
   let has_terminated = Arc::new(AtomicBool::new(false));
   let terminate_waker = Arc::new(AtomicWaker::new());
-  let internal_handle = WebWorkerInternalHandle {
+  let internal_handle = WorkerThreadInternalHandle {
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
@@ -330,7 +330,7 @@ fn create_handles(
     sender: ctrl_tx,
     worker_type,
   };
-  let external_handle = SendableWebWorkerHandle {
+  let external_handle = SendableWorkerThreadHandle {
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
@@ -341,7 +341,7 @@ fn create_handles(
   (internal_handle, external_handle)
 }
 
-pub struct WebWorkerServiceOptions<
+pub struct WorkerThreadServiceOptions<
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
@@ -367,7 +367,7 @@ pub struct WebWorkerServiceOptions<
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
-pub struct WebWorkerOptions {
+pub struct WorkerThreadOptions {
   pub name: String,
   pub main_module: ModuleSpecifier,
   pub worker_id: WorkerId,
@@ -378,9 +378,9 @@ pub struct WebWorkerOptions {
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
   pub seed: Option<u64>,
-  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub create_worker_thread_cb: Arc<ops::worker_host::CreateWorkerThreadCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
@@ -391,15 +391,15 @@ pub struct WebWorkerOptions {
 
 /// This struct is an implementation of `Worker` Web API
 ///
-/// Each `WebWorker` is either a child of `MainWorker` or other
-/// `WebWorker`.
-pub struct WebWorker {
+/// Each `WorkerThread` is either a child of `MainWorker` or other
+/// `WorkerThread`.
+pub struct WorkerThread {
   id: WorkerId,
   pub js_runtime: JsRuntime,
   pub name: String,
   close_on_idle: bool,
-  internal_handle: WebWorkerInternalHandle,
-  pub worker_type: WebWorkerType,
+  internal_handle: WorkerThreadInternalHandle,
+  pub worker_type: WorkerThreadType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
@@ -409,7 +409,7 @@ pub struct WebWorker {
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
-impl Drop for WebWorker {
+impl Drop for WorkerThread {
   fn drop(&mut self) {
     // clean up the package.json thread local cache
     node_resolver::PackageJsonThreadLocalCache::clear();
@@ -420,19 +420,19 @@ impl Drop for WebWorker {
   }
 }
 
-impl WebWorker {
+impl WorkerThread {
   pub fn bootstrap_from_options<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    services: WebWorkerServiceOptions<
+    services: WorkerThreadServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
       TExtNodeSys,
     >,
-    options: WebWorkerOptions,
-  ) -> (Self, SendableWebWorkerHandle) {
+    options: WorkerThreadOptions,
+  ) -> (Self, SendableWorkerThreadHandle) {
     let (mut worker, handle, bootstrap_options) =
       Self::from_options(services, options);
     worker.bootstrap(&bootstrap_options);
@@ -444,17 +444,19 @@ impl WebWorker {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    services: WebWorkerServiceOptions<
+    services: WorkerThreadServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
       TExtNodeSys,
     >,
-    mut options: WebWorkerOptions,
-  ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
+    mut options: WorkerThreadOptions,
+  ) -> (Self, SendableWorkerThreadHandle, BootstrapOptions) {
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
 
-    fn create_cache_inner(options: &WebWorkerOptions) -> Option<CreateCache> {
+    fn create_cache_inner(
+      options: &WorkerThreadOptions,
+    ) -> Option<CreateCache> {
       if let Ok(var) = std::env::var("DENO_CACHE_LSC_ENDPOINT") {
         let elems: Vec<_> = var.split(",").collect();
         if elems.len() == 2 {
@@ -489,7 +491,7 @@ impl WebWorker {
     let create_cache = create_cache_inner(&options);
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+    // `runtime/worker.rs`, `runtime/worker_thread.rs`, `runtime/snapshot_info.rs`
     // and `runtime/snapshot.rs`!
     let mut extensions = vec![
       deno_telemetry::deno_telemetry::init(),
@@ -567,10 +569,10 @@ impl WebWorker {
         TNpmPackageFolderResolver,
         TExtNodeSys,
       >(services.node_services, services.fs),
-      // Runtime ops that are always initialized for WebWorkers
+      // Runtime ops that are always initialized for WorkerThreads
       ops::runtime::deno_runtime::init(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init(
-        options.create_web_worker_cb,
+        options.create_worker_thread_cb,
         options.format_js_error_fn,
       ),
       ops::fs_events::deno_fs_events::init(),
@@ -582,7 +584,7 @@ impl WebWorker {
         false,
       ),
       runtime::init(),
-      ops::web_worker::deno_web_worker::init(),
+      ops::worker_thread::deno_worker_thread::init(),
     ];
 
     #[cfg(feature = "hmr")]
@@ -723,7 +725,7 @@ impl WebWorker {
     let op_state = self.js_runtime.op_state();
     op_state.borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
-    // WebWorkers can have empty string as name.
+    // WorkerThreads can have empty string as name.
     {
       let scope = &mut self.js_runtime.handle_scope();
       let args = options.as_v8(scope);
@@ -941,7 +943,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        if self.worker_type == WebWorkerType::Module {
+        if self.worker_type == WorkerThreadType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
@@ -1014,8 +1016,8 @@ fn print_worker_error(
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 // TODO(bartlomieju): run following block using "select!"
 // with terminate
-pub async fn run_web_worker(
-  mut worker: WebWorker,
+pub async fn run_worker_thread(
+  mut worker: WorkerThread,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,

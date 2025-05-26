@@ -332,6 +332,6 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ops::http::deno_http_runtime::init(),
     ops::bootstrap::deno_bootstrap::init(None, false),
     runtime::init(),
-    ops::web_worker::deno_web_worker::init(),
+    ops::worker_thread::deno_worker_thread::init(),
   ]
 }

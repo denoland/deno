@@ -13,11 +13,11 @@ use deno_web::MessagePortError;
 pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use crate::worker_thread::WorkerThreadInternalHandle;
+use crate::worker_thread::WorkerThreadType;
 
 deno_core::extension!(
-  deno_web_worker,
+  deno_worker_thread,
   ops = [
     op_worker_post_message,
     op_worker_recv_message,
@@ -33,7 +33,7 @@ fn op_worker_post_message(
   state: &mut OpState,
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
-  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  let handle = state.borrow::<WorkerThreadInternalHandle>().clone();
   handle.port.send(state, data)
 }
 
@@ -44,7 +44,7 @@ async fn op_worker_recv_message(
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let handle = {
     let state = state.borrow();
-    state.borrow::<WebWorkerInternalHandle>().clone()
+    state.borrow::<WorkerThreadInternalHandle>().clone()
   };
   handle
     .port
@@ -56,14 +56,14 @@ async fn op_worker_recv_message(
 #[op2(fast)]
 fn op_worker_close(state: &mut OpState) {
   // Notify parent that we're finished
-  let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
+  let mut handle = state.borrow_mut::<WorkerThreadInternalHandle>().clone();
 
   handle.terminate();
 }
 
 #[op2]
 #[serde]
-fn op_worker_get_type(state: &mut OpState) -> WebWorkerType {
-  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+fn op_worker_get_type(state: &mut OpState) -> WorkerThreadType {
+  let handle = state.borrow::<WorkerThreadInternalHandle>().clone();
   handle.worker_type
 }

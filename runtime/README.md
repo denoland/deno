@@ -35,11 +35,11 @@ runtime's properties:
 ## `Worker` Web API
 
 `deno_runtime` comes with support for `Worker` Web API. The `Worker` API is
-implemented using `WebWorker` structure.
+implemented using `WorkerThread` structure.
 
 When creating a new instance of `MainWorker` implementors must provide a
 callback function that is used when creating a new instance of `Worker`.
 
-All `WebWorker` instances are descendents of `MainWorker` which is responsible
-for setting up communication with child worker. Each `WebWorker` spawns a new OS
-thread that is dedicated solely to that worker.
+All `WorkerThread` instances are descendents of `MainWorker` which is
+responsible for setting up communication with child worker. Each `WorkerThread`
+spawns a new OS thread that is dedicated solely to that worker.

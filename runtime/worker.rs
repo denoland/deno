@@ -147,7 +147,7 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
 ///
 /// It provides ops available in the `Deno` namespace.
 ///
-/// All `WebWorker`s created during program execution
+/// All `WorkerThread`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
@@ -240,8 +240,8 @@ pub struct WorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub seed: Option<u64>,
 
-  // Callbacks invoked when creating new instance of WebWorker
-  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  // Callbacks invoked when creating new instance of WorkerThread
+  pub create_web_worker_cb: Arc<ops::worker_host::CreateWorkerThreadCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -1087,7 +1087,7 @@ fn common_extensions<
     // are available and importing them in `99_main.js` doesn't cause an
     // error because they're not defined. Trying to use these ops in non-worker
     // context will cause a panic.
-    ops::web_worker::deno_web_worker::init().disable(),
+    ops::worker_thread::deno_worker_thread::init().disable(),
   ]
 }
 
