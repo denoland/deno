@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "ok": {
+      "args": "serve --check --port 12369 ok.ts",
+      "output": "ok.out",
+      "exitCode": 0
+    },
+    "type_check_bad_prop": {
+      "args": "serve --check --port 12369 type_check_bad_prop.ts",
+      "output": "type_check_bad_prop.out",
+      "exitCode": 1
+    },
+    "error_on_non_function": {
+      "args": "serve --check --port 12369 error_on_non_function.ts",
+      "output": "error_on_non_function.out",
+      "exitCode": 1
+    }
+  }
+}
