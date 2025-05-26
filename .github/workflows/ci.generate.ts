@@ -445,6 +445,7 @@ const ci = {
             job: "test",
             profile: "release",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",

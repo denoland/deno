@@ -123,10 +123,11 @@ jobs:
             profile: debug
           - os: linux
             arch: aarch64
-            runner: ubicloud-standard-16-arm
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ubicloud-standard-16-arm'' }}'
             job: test
             profile: release
             use_sysroot: true
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: x86_64
             runner: macos-13
