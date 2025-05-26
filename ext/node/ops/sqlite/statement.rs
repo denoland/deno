@@ -8,9 +8,9 @@ use std::rc::Weak;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
+use deno_core::v8_static_strings;
 use deno_core::GarbageCollected;
 use rusqlite::ffi;
-use serde::Serialize;
 
 use super::validators;
 use super::SqliteError;
@@ -18,11 +18,45 @@ use super::SqliteError;
 // ECMA-262, 15th edition, 21.1.2.6. Number.MAX_SAFE_INTEGER (2^53-1)
 const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RunStatementResult {
   last_insert_rowid: i64,
   changes: u64,
+}
+
+impl RunStatementResult {
+  fn serialize<'a>(
+    &self,
+    scope: &'a mut v8::HandleScope,
+    use_big_ints: bool,
+  ) -> v8::Local<'a, v8::Value> {
+    v8_static_strings! {
+      LAST_INSERT_ROW_ID = "lastInsertRowid",
+      CHANGES = "changes",
+    }
+
+    let obj = v8::Object::new(scope);
+
+    let last_insert_row_id_str = LAST_INSERT_ROW_ID.v8_string(scope).unwrap();
+    let last_insert_row_id = if use_big_ints {
+      v8::BigInt::new_from_i64(scope, self.last_insert_rowid).into()
+    } else {
+      v8::Number::new(scope, self.last_insert_rowid as f64).into()
+    };
+
+    obj
+      .set(scope, last_insert_row_id_str.into(), last_insert_row_id)
+      .unwrap();
+
+    let changes_str = CHANGES.v8_string(scope).unwrap();
+    let changes = if use_big_ints {
+      v8::BigInt::new_from_u64(scope, self.changes).into()
+    } else {
+      v8::Number::new(scope, self.changes as f64).into()
+    };
+
+    obj.set(scope, changes_str.into(), changes).unwrap();
+    obj.into()
+  }
 }
 
 #[derive(Debug)]
@@ -292,7 +326,7 @@ impl StatementSync {
       let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
       let (as_int, lossless) = value.i64_value();
       if !lossless {
-        return Err(SqliteError::FailedBind(
+        return Err(SqliteError::InvalidBindValue(
           "BigInt value is too large to bind",
         ));
       }
@@ -301,7 +335,7 @@ impl StatementSync {
       // as it lives as long as the StatementSync instance.
       unsafe { ffi::sqlite3_bind_int64(raw, index, as_int) }
     } else {
-      return Err(SqliteError::FailedBind("Unsupported type"));
+      return Err(SqliteError::InvalidBindType(index));
     };
 
     self.check_error_code(r)
@@ -321,7 +355,10 @@ impl StatementSync {
         let err_str = unsafe { std::ffi::CStr::from_ptr(err_str) }
           .to_string_lossy()
           .into_owned();
-        return Err(SqliteError::SqliteSysError(err_str));
+        return Err(SqliteError::SqliteSysError {
+          message: err_str,
+          errcode: r,
+        });
       }
     }
 
@@ -335,6 +372,13 @@ impl StatementSync {
     params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
+    // Reset the prepared statement to its initial state.
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    unsafe {
+      let r = ffi::sqlite3_clear_bindings(raw);
+      self.check_error_code(r)?;
+    }
+
     let mut anon_start = 0;
 
     if let Some(params) = params {
@@ -354,17 +398,35 @@ impl StatementSync {
           let param_count = unsafe { ffi::sqlite3_bind_parameter_count(raw) };
           for i in 1..=param_count {
             // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
-            let bare_name = unsafe {
+            let full_name = unsafe {
               let name = ffi::sqlite3_bind_parameter_name(raw, i);
               if name.is_null() {
                 continue;
               }
-              std::ffi::CStr::from_ptr(name.offset(1)).to_bytes()
+              std::ffi::CStr::from_ptr(name).to_bytes()
             };
+            let bare_name = &full_name[1..];
 
             let e = bare_named_params.insert(bare_name, i);
-            if e.is_some() {
-              return Err(SqliteError::FailedBind("Duplicate named parameter"));
+            if let Some(existing_index) = e {
+              let bare_name_str = std::str::from_utf8(bare_name).unwrap();
+              let full_name_str = std::str::from_utf8(full_name).unwrap();
+
+              // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+              unsafe {
+                let existing_full_name =
+                  ffi::sqlite3_bind_parameter_name(raw, existing_index);
+                let existing_full_name_str =
+                  std::ffi::CStr::from_ptr(existing_full_name)
+                    .to_str()
+                    .unwrap();
+
+                return Err(SqliteError::DuplicateNamedParameter(
+                  bare_name_str.to_string(),
+                  existing_full_name_str.to_string(),
+                  full_name_str.to_string(),
+                ));
+              }
             }
           }
         }
@@ -467,12 +529,11 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
-  #[serde]
-  fn run(
+  fn run<'a>(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &'a mut v8::HandleScope,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
-  ) -> Result<RunStatementResult, SqliteError> {
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
     let db = db_rc.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
@@ -485,10 +546,13 @@ impl StatementSync {
     // Reset to return correct change metadata.
     drop(reset);
 
-    Ok(RunStatementResult {
-      last_insert_rowid: db.last_insert_rowid(),
-      changes: db.changes(),
-    })
+    Ok(
+      RunStatementResult {
+        last_insert_rowid: db.last_insert_rowid(),
+        changes: db.changes(),
+      }
+      .serialize(scope, self.use_big_ints.get()),
+    )
   }
 
   // Executes a prepared statement and returns all results as an array of objects.

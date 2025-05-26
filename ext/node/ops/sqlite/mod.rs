@@ -19,8 +19,12 @@ pub enum SqliteError {
   #[error(transparent)]
   SqliteError(#[from] rusqlite::Error),
   #[class(generic)]
-  #[error("{0}")]
-  SqliteSysError(String),
+  #[error("{message}")]
+  SqliteSysError {
+    message: String,
+    #[property]
+    errcode: i32,
+  },
   #[class(generic)]
   #[error("Database is already in use")]
   InUse,
@@ -30,6 +34,15 @@ pub enum SqliteError {
   #[class(generic)]
   #[error("Failed to bind parameter. {0}")]
   FailedBind(&'static str),
+  #[class(type)]
+  #[error("Provided value cannot be bound to SQLite parameter {0}.")]
+  InvalidBindType(i32),
+  #[class(type)]
+  #[error("{0}")]
+  InvalidBindValue(&'static str),
+  #[class(generic)]
+  #[error("Cannot create bare named parameter '{0}' because of conflicting names '{1}' and '{2}'.")]
+  DuplicateNamedParameter(String, String, String),
   #[class(generic)]
   #[error("Unknown named parameter '{0}'")]
   UnknownNamedParameter(String),
@@ -90,6 +103,8 @@ enum ErrorCode {
   ERR_INVALID_STATE,
   ERR_OUT_OF_RANGE,
   ERR_LOAD_SQLITE_EXTENSION,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -103,6 +118,8 @@ impl ErrorCode {
     match self {
       Self::ERR_SQLITE_ERROR => "ERR_SQLITE_ERROR",
       Self::ERR_ILLEGAL_CONSTRUCTOR => "ERR_ILLEGAL_CONSTRUCTOR",
+      Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
+      Self::ERR_INVALID_ARG_VALUE => "ERR_INVALID_ARG_VALUE",
       Self::ERR_INVALID_STATE => "ERR_INVALID_STATE",
       Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
       Self::ERR_LOAD_SQLITE_EXTENSION => "ERR_LOAD_SQLITE_EXTENSION",
@@ -114,8 +131,11 @@ impl SqliteError {
   fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,
+      Self::InvalidBindType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
+      Self::InvalidBindValue(_) => ErrorCode::ERR_INVALID_ARG_VALUE,
       Self::FailedBind(_)
       | Self::UnknownNamedParameter(_)
+      | Self::DuplicateNamedParameter(..)
       | Self::AlreadyClosed
       | Self::InUse
       | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
