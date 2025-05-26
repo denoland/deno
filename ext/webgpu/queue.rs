@@ -6,7 +6,6 @@ use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
-use tokio::sync::oneshot;
 
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;

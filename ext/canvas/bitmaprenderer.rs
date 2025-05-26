@@ -80,7 +80,12 @@ impl ImageBitmapRenderingContext {
 impl CanvasContextHooks for ImageBitmapRenderingContext {
   fn resize(&self, _scope: &mut v8::HandleScope) {}
 
-  fn bitmap_read_hook(&self, _scope: &mut v8::HandleScope) {}
+  fn bitmap_read_hook(
+    &self,
+    _scope: &mut v8::HandleScope,
+  ) -> Result<(), JsErrorBox> {
+    Ok(())
+  }
 
   fn post_transfer_to_image_bitmap_hook(&self, _scope: &mut v8::HandleScope) {}
 }

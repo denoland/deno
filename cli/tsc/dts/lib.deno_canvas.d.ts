@@ -261,9 +261,15 @@ interface OffscreenCanvas extends EventTarget {
    * Get a drawing context for the canvas.
    * If this was previously called, it will return the same context.
    */
-  getContext(contextId: "bitmaprenderer", options?: any): ImageBitmapRenderingContext | null;
+  getContext(
+    contextId: "bitmaprenderer",
+    options?: any,
+  ): ImageBitmapRenderingContext | null;
   getContext(contextId: "webgpu", options?: any): GPUCanvasContext | null;
-  getContext(contextId: OffscreenRenderingContextId, options?: any): OffscreenRenderingContext | null;
+  getContext(
+    contextId: OffscreenRenderingContextId,
+    options?: any,
+  ): OffscreenRenderingContext | null;
 
   /**
    * Create an ImageBitmap object representing the image contained in the canvas.
@@ -273,5 +279,5 @@ interface OffscreenCanvas extends EventTarget {
 
 declare var OffscreenCanvas: {
   prototype: OffscreenCanvas;
-  new(width: number, height: number): OffscreenCanvas;
+  new (width: number, height: number): OffscreenCanvas;
 };

@@ -177,7 +177,7 @@ impl OffscreenCanvas {
     let active_context =
       get_context.0(&active_context.0, scope, active_context_local);
 
-    active_context.bitmap_read_hook(scope);
+    active_context.bitmap_read_hook(scope)?;
 
     let data = self.data.replace_with(|image| {
       let (width, height) = image.dimensions();
@@ -206,7 +206,7 @@ impl OffscreenCanvas {
     let active_context =
       get_context.0(&active_context.0, scope, active_context_local);
 
-    active_context.bitmap_read_hook(scope);
+    active_context.bitmap_read_hook(scope)?;
 
     let data = self.data.borrow();
 
@@ -267,7 +267,10 @@ impl OffscreenCanvas {
 pub trait CanvasContextHooks {
   fn resize(&self, scope: &mut v8::HandleScope);
 
-  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope);
+  fn bitmap_read_hook(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Result<(), JsErrorBox>;
 
   fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope);
 }

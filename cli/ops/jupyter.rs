@@ -196,12 +196,6 @@ pub fn op_jupyter_create_png_from_texture(
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
 
-  let (buffer, padded_size) = canvas::create_buffer_for_texture_to_vec(
-    &texture.instance,
-    texture.device_id,
-    &texture.size,
-  )?;
-
   let (command_encoder, maybe_err) =
     texture.instance.device_create_command_encoder(
       texture.device_id,
@@ -219,8 +213,6 @@ pub fn op_jupyter_create_png_from_texture(
     command_encoder,
     texture.id,
     &texture.size,
-    buffer,
-    &padded_size,
   )?;
 
   let color_type = match texture.format {
@@ -246,12 +238,6 @@ pub fn op_jupyter_create_png_from_texture(
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
-
-  texture
-    .instance
-    .buffer_unmap(buffer)
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-  texture.instance.buffer_drop(buffer);
 
   Ok(deno_runtime::deno_web::forgiving_base64_encode(&out))
 }

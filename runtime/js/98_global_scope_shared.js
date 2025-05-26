@@ -343,7 +343,9 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
-  GPUCanvasSurfaceContext: core.propNonEnumerable(webgpuSurface.GPUCanvasSurfaceContext),
+  GPUCanvasSurfaceContext: core.propNonEnumerable(
+    webgpuSurface.GPUCanvasSurfaceContext,
+  ),
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {

@@ -1316,7 +1316,7 @@ impl deno_canvas::canvas::CanvasContextHooks for CanvasContextHooksEnum {
     }
   }
 
-  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope) {
+  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope) -> Result<(), deno_error::JsErrorBox> {
     match &self {
       CanvasContextHooksEnum::Bitmap(c) => c.bitmap_read_hook(scope),
       CanvasContextHooksEnum::WebGPU(c) => c.bitmap_read_hook(scope),

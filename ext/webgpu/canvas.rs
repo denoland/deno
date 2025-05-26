@@ -20,11 +20,6 @@ use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 use crate::Instance;
 
-struct BackingBuffer {
-  buffer: wgpu_core::id::BufferId,
-  padding: PaddedSize,
-}
-
 pub struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
   bitmap: Rc<RefCell<DynamicImage>>,
@@ -33,7 +28,6 @@ pub struct GPUCanvasContext {
   configuration: RefCell<Option<GPUCanvasConfiguration>>,
 
   current_texture: RefCell<Option<v8::Global<v8::Object>>>,
-  backing_buffer: RefCell<Option<BackingBuffer>>,
 }
 
 impl GarbageCollected for GPUCanvasContext {
@@ -110,16 +104,6 @@ impl GPUCanvasContext {
       );
       device.error_handler.push_error(err);
 
-      let (buffer, padding) = create_buffer_for_texture_to_vec(
-        &device.instance,
-        device.id,
-        &texture_descriptor.size,
-      )?;
-
-      self
-        .backing_buffer
-        .replace(Some(BackingBuffer { buffer, padding }));
-
       let texture = GPUTexture {
         instance: device.instance.clone(),
         error_handler: device.error_handler.clone(),
@@ -181,7 +165,7 @@ impl GPUCanvasContext {
   pub fn copy_image_contents_to_canvas_data(
     &self,
     scope: &mut v8::HandleScope,
-  ) {
+  ) -> Result<(), JsErrorBox> {
     let configuration = self.configuration.borrow();
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
     else {
@@ -191,15 +175,18 @@ impl GPUCanvasContext {
         DynamicImage::from(image)
       });
 
-      return;
+      return Ok(());
     };
 
     let texture_descriptor = self.texture_descriptor.borrow();
 
     if let Some(texture) = self.current_texture.borrow().as_ref() {
-      let backing_buffer = self.backing_buffer.borrow();
-      let BackingBuffer { buffer, padding } = backing_buffer.as_ref().unwrap();
       let TextureDescriptor { size, .. } = texture_descriptor.as_ref().unwrap();
+
+      let local = v8::Local::new(scope, texture).cast::<v8::Value>();
+      let underlying_texture =
+        deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local)
+          .unwrap();
 
       let (command_encoder, err) =
         device.instance.device_create_command_encoder(
@@ -210,11 +197,6 @@ impl GPUCanvasContext {
           None,
         );
 
-      let local = v8::Local::new(scope, texture).cast::<v8::Value>();
-      let underlying_texture =
-        deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local)
-          .unwrap();
-
       let data = copy_texture_to_vec(
         &device.instance,
         device.id,
@@ -222,10 +204,7 @@ impl GPUCanvasContext {
         command_encoder,
         underlying_texture.id,
         size,
-        *buffer,
-        padding,
-      )
-      .unwrap();
+      )?;
 
       self.bitmap.replace_with(|image| {
         let (width, height) = image.dimensions();
@@ -234,6 +213,8 @@ impl GPUCanvasContext {
         DynamicImage::from(image)
       });
     }
+
+    Ok(())
   }
 
   fn expire_current_texture(&self, scope: &mut v8::HandleScope) {
@@ -249,38 +230,14 @@ impl GPUCanvasContext {
     }
   }
 
-  fn replace_drawing_buffer(
-    &self,
-    scope: &mut v8::HandleScope,
-  ) -> Result<(), JsErrorBox> {
+  fn replace_drawing_buffer(&self, scope: &mut v8::HandleScope) {
     self.expire_current_texture(scope);
-    let configuration = self.configuration.borrow();
-    let data = self.bitmap.borrow();
-    let (width, height) = data.dimensions();
-
-    // TODO: somehow handle creating the backing buffer if configuration is not set
-    if let Some(configuration) = configuration.as_ref() {
-      let (buffer, padding) = create_buffer_for_texture_to_vec(
-        &configuration.device.instance,
-        configuration.device.id,
-        &Extent3d {
-          width,
-          height,
-          depth_or_array_layers: 1,
-        },
-      )?;
-      self
-        .backing_buffer
-        .replace(Some(BackingBuffer { buffer, padding }));
-    }
-
-    Ok(())
   }
 }
 
 impl CanvasContextHooks for GPUCanvasContext {
   fn resize(&self, scope: &mut v8::HandleScope) {
-    let _ = self.replace_drawing_buffer(scope);
+    self.replace_drawing_buffer(scope);
     if let Some(configuration) = self.configuration.borrow().as_ref() {
       self.texture_descriptor.replace(Some(
         self
@@ -290,12 +247,15 @@ impl CanvasContextHooks for GPUCanvasContext {
     }
   }
 
-  fn bitmap_read_hook(&self, scope: &mut v8::HandleScope) {
-    self.copy_image_contents_to_canvas_data(scope);
+  fn bitmap_read_hook(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Result<(), JsErrorBox> {
+    self.copy_image_contents_to_canvas_data(scope)
   }
 
   fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope) {
-    let _ = self.replace_drawing_buffer(scope);
+    self.replace_drawing_buffer(scope);
   }
 }
 
@@ -327,11 +287,14 @@ pub struct PaddedSize {
   pub unpadded_bytes_per_row: u32,
 }
 
-pub fn create_buffer_for_texture_to_vec(
+pub fn copy_texture_to_vec(
   instance: &Instance,
   device: wgpu_core::id::DeviceId,
+  queue: wgpu_core::id::QueueId,
+  command_encoder: wgpu_core::id::CommandEncoderId,
+  texture: wgpu_core::id::TextureId,
   size: &Extent3d,
-) -> Result<(wgpu_core::id::BufferId, PaddedSize), JsErrorBox> {
+) -> Result<Vec<u8>, JsErrorBox> {
   // We only support the 8 bit per pixel formats with 4 channels
   // as such a pixel has 4 bytes
   const BYTES_PER_PIXEL: u32 = 4;
@@ -356,29 +319,9 @@ pub fn create_buffer_for_texture_to_vec(
   );
 
   if let Some(maybe_err) = maybe_err {
-    Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()))
-  } else {
-    Ok((
-      buffer,
-      PaddedSize {
-        padded_bytes_per_row,
-        unpadded_bytes_per_row,
-      },
-    ))
+    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
-}
 
-#[allow(clippy::too_many_arguments)]
-pub fn copy_texture_to_vec(
-  instance: &Instance,
-  device: wgpu_core::id::DeviceId,
-  queue: wgpu_core::id::QueueId,
-  command_encoder: wgpu_core::id::CommandEncoderId,
-  texture: wgpu_core::id::TextureId,
-  size: &Extent3d,
-  buffer: wgpu_core::id::BufferId,
-  padded_size: &PaddedSize,
-) -> Result<Vec<u8>, JsErrorBox> {
   instance
     .command_encoder_copy_texture_to_buffer(
       command_encoder,
@@ -392,7 +335,7 @@ pub fn copy_texture_to_vec(
         buffer,
         layout: wgpu_types::TexelCopyBufferLayout {
           offset: 0,
-          bytes_per_row: Some(padded_size.padded_bytes_per_row),
+          bytes_per_row: Some(padded_bytes_per_row),
           rows_per_image: None,
         },
       },
@@ -440,20 +383,24 @@ pub fn copy_texture_to_vec(
       std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
     };
 
-    let mut unpadded = Vec::with_capacity(
-      (padded_size.unpadded_bytes_per_row * size.height) as _,
-    );
+    let mut unpadded =
+      Vec::with_capacity((unpadded_bytes_per_row * size.height) as _);
 
     for i in 0..size.height {
       unpadded.extend_from_slice(
-        &slice[((i * padded_size.padded_bytes_per_row) as usize)
-          ..(((i + 1) * padded_size.padded_bytes_per_row) as usize)]
-          [..(padded_size.unpadded_bytes_per_row as usize)],
+        &slice[((i * padded_bytes_per_row) as usize)
+          ..(((i + 1) * padded_bytes_per_row) as usize)]
+          [..(unpadded_bytes_per_row as usize)],
       );
     }
 
     unpadded
   };
+
+  instance
+    .buffer_unmap(buffer)
+    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+  instance.buffer_drop(buffer);
 
   Ok(data)
 }
@@ -476,7 +423,6 @@ pub fn create<'s>(
       texture_descriptor: RefCell::new(None),
       configuration: RefCell::new(None),
       current_texture: RefCell::new(None),
-      backing_buffer: RefCell::new(None),
     },
   );
 
