@@ -582,6 +582,7 @@ impl ModuleGraphCreator {
     self.module_graph_builder.graph_valid(graph)
   }
 
+  #[allow(clippy::result_large_err)]
   fn type_check_graph(
     &self,
     graph: ModuleGraph,

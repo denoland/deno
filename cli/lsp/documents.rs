@@ -1943,6 +1943,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,

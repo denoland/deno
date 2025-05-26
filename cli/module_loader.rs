@@ -751,6 +751,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       .and_then(|metadata| metadata.modified().ok())
   }
 
+  #[allow(clippy::result_large_err)]
   fn resolve_referrer(
     &self,
     referrer: &str,
@@ -778,6 +779,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
+  #[allow(clippy::result_large_err)]
   fn inner_resolve(
     &self,
     raw_specifier: &str,

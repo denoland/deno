@@ -1423,7 +1423,7 @@ pub fn custom_headers(
   if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
-      .last()
+      .next_back()
       .unwrap()
       .trim_end_matches(".ts");
 
