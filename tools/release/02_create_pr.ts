@@ -34,7 +34,6 @@ $.log(`Opened PR at ${openedPr.data.url}`);
 function getPrBody() {
   let text = `Bumped versions for ${cliCrate.version}\n\n` +
     `Please ensure:\n` +
-    `- [ ] Target branch is correct (\`vX.XX\` if a patch release, \`main\` if minor)\n` +
     `- [ ] Crate versions are bumped correctly\n` +
     `- [ ] Releases.md is updated correctly (think relevancy and remove reverts)\n\n` +
     `To make edits to this PR:\n` +

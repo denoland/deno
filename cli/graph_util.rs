@@ -31,6 +31,8 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
@@ -48,7 +50,6 @@ use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
-pub use crate::args::NpmCachingStrategy;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -56,11 +57,10 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmGraphResolver;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -573,6 +573,7 @@ impl ModuleGraphCreator {
     self.module_graph_builder.graph_valid(graph)
   }
 
+  #[allow(clippy::result_large_err)]
   fn type_check_graph(
     &self,
     graph: ModuleGraph,
@@ -628,7 +629,7 @@ pub struct ModuleGraphBuilder {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -650,7 +651,7 @@ impl ModuleGraphBuilder {
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
-    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,

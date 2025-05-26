@@ -198,8 +198,7 @@ async fn run_subcommand(
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      let factory = CliFactory::from_flags(flags.clone());
-      lsp::start(Arc::new(factory.lockfile_npm_package_info_provider()?)).await
+      lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -309,7 +308,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
           env::set_var(
-            "DENO_UNSTABLE_COVERAGE_DIR",
+            "DENO_COVERAGE_DIR",
             PathBuf::from(coverage_dir).canonicalize()?,
           );
         }
@@ -626,7 +625,9 @@ fn wait_for_start(
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockAddr;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
@@ -663,6 +664,7 @@ fn wait_for_start(
         let (rx, tx) = stream.into_split();
         (Box::new(rx), Box::new(tx))
       }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");

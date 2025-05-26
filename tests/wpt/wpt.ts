@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json
+#!/usr/bin/env -S deno run -RWNE --allow-run --lock=tools/deno.lock.json --config=tests/config/deno.json --unsafely-ignore-certificate-errors
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
@@ -689,7 +689,8 @@ function createReportTestCase(expectation: boolean | string[]) {
     switch (status) {
       case 0:
         if (expectFail) {
-          simpleMessage += red("ok (expected fail)");
+          simpleMessage += green("ok") + " " +
+            red("(previously failed—update expectations.json)");
         } else {
           simpleMessage += green("ok");
           if (quiet) {
@@ -764,6 +765,14 @@ function discoverTestsToRun(
           // encoding, which the WPT test server does not. Unfortunately this
           // also disables some useful fetch tests.
           if (url.pathname.includes("request-upload")) {
+            continue;
+          }
+          // We don't support shadow realm, service worker, or shared worker.
+          if (
+            url.pathname.includes("shadowrealm") ||
+            url.pathname.includes("serviceworker") ||
+            url.pathname.includes("sharedworker")
+          ) {
             continue;
           }
           const finalPath = url.pathname + url.search;

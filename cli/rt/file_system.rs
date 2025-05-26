@@ -935,10 +935,7 @@ impl VfsRoot {
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
-            return Err(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              "circular symlinks",
-            ));
+            return Err(std::io::Error::other("circular symlinks"));
           }
           path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
         }
@@ -1143,6 +1140,22 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
   async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn chown_sync(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
 
@@ -1372,10 +1385,9 @@ impl FileBackedVfs {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
       }
-      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "not a symlink",
-      )),
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => {
+        Err(std::io::Error::other("not a symlink"))
+      }
     }
   }
 
@@ -1451,20 +1463,14 @@ impl FileBackedVfs {
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a file",
-      )),
+      VfsEntryRef::File(_) => Err(std::io::Error::other("path is a file")),
     }
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
-      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a directory",
-      )),
+      VfsEntryRef::Dir(_) => Err(std::io::Error::other("path is a directory")),
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => Ok(file),
     }

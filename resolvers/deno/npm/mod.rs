@@ -27,10 +27,6 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
@@ -158,22 +154,26 @@ pub enum ResolvePkgFolderFromDenoReqError {
   Byonm(byonm::ByonmResolvePkgFolderFromDenoReqError),
 }
 
-pub enum NpmResolverCreateOptions<
-  TSys: FsRead
-    + FsCanonicalize
-    + FsMetadata
-    + std::fmt::Debug
-    + MaybeSend
-    + MaybeSync
-    + Clone
-    + 'static,
-> {
+pub enum NpmResolverCreateOptions<TSys: NpmResolverSys> {
   Managed(ManagedNpmResolverCreateOptions<TSys>),
   Byonm(ByonmNpmResolverCreateOptions<TSys>),
 }
 
+#[sys_traits::auto_impl]
+pub trait NpmResolverSys:
+  managed::ManagedNpmResolverSys
+  + byonm::ByonmNpmResolverSys
+  + node_resolver::NodeResolverSys
+  + std::fmt::Debug
+  + MaybeSend
+  + MaybeSync
+  + Clone
+  + 'static
+{
+}
+
 #[derive(Debug, Clone)]
-pub enum NpmResolver<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> {
+pub enum NpmResolver<TSys: NpmResolverSys> {
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
@@ -181,18 +181,8 @@ pub enum NpmResolver<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> {
   Managed(ManagedNpmResolverRc<TSys>),
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> NpmResolver<TSys> {
-  pub fn new<
-    TCreateSys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + std::fmt::Debug
-      + MaybeSend
-      + MaybeSync
-      + Clone
-      + 'static,
-  >(
+impl<TSys: NpmResolverSys> NpmResolver<TSys> {
+  pub fn new<TCreateSys: NpmResolverSys>(
     options: NpmResolverCreateOptions<TCreateSys>,
   ) -> NpmResolver<TCreateSys> {
     match options {
@@ -245,9 +235,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> NpmResolver<TSys> {
   }
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
-  NpmPackageFolderResolver for NpmResolver<TSys>
-{
+impl<TSys: NpmResolverSys> NpmPackageFolderResolver for NpmResolver<TSys> {
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
@@ -267,7 +255,7 @@ pub struct NpmReqResolverOptions<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: NpmResolverSys,
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_resolver: NodeResolverRc<
@@ -300,7 +288,7 @@ pub struct NpmReqResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: NpmResolverSys,
 > {
   sys: TSys,
   in_npm_pkg_checker: TInNpmPackageChecker,
@@ -317,7 +305,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+    TSys: NpmResolverSys,
   >
   NpmReqResolver<
     TInNpmPackageChecker,

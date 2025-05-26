@@ -1,9 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
@@ -18,7 +15,51 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify, SafeArrayIterator, SymbolFor } = primordials;
+const {
+  AggregateError,
+  ArrayIsArray,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypePop,
+  ArrayPrototypeSplice,
+  Error,
+  ErrorPrototype,
+  ErrorCaptureStackTrace,
+  JSONStringify,
+  MapPrototypeGet,
+  MathAbs,
+  NumberIsInteger,
+  ObjectAssign,
+  ObjectDefineProperty,
+  ObjectDefineProperties,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  RangeErrorPrototype,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeRegExp,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeMatch,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  StringPrototypeToLocaleLowerCase,
+  StringPrototypeToLowerCase,
+  StringPrototypeToString,
+  Symbol,
+  SymbolFor,
+  SyntaxError,
+  SyntaxErrorPrototype,
+  TypeError,
+  TypeErrorPrototype,
+  URIError,
+  URIErrorPrototype,
+} = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -39,7 +80,7 @@ const kIsNodeError = Symbol("kIsNodeError");
 /**
  * @see https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js
  */
-const classRegExp = /^([A-Z][a-z0-9]*)+$/;
+const classRegExp = new SafeRegExp(/^([A-Z][a-z0-9]*)+$/);
 
 /**
  * @see https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js
@@ -105,15 +146,15 @@ function addNumericalSeparator(val: string) {
   let i = val.length;
   const start = val[0] === "-" ? 1 : 0;
   for (; i >= start + 4; i -= 3) {
-    res = `_${val.slice(i - 3, i)}${res}`;
+    res = `_${StringPrototypeSlice(val, i - 3, i)}${res}`;
   }
-  return `${val.slice(0, i)}${res}`;
+  return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
 
 const captureLargerStackTrace = hideStackFrames(
   function captureLargerStackTrace(err) {
     // @ts-ignore this function is not available in lib.dom.d.ts
-    Error.captureStackTrace(err);
+    ErrorCaptureStackTrace(err);
 
     return err;
   },
@@ -198,7 +239,7 @@ export const errnoException = hideStackFrames(function errnoException(
 });
 
 function uvErrmapGet(name: number) {
-  return errorMap.get(name);
+  return MapPrototypeGet(errorMap, name);
 }
 
 const uvUnmappedError = ["UNKNOWN", "unknown error"];
@@ -221,18 +262,18 @@ export const uvException = hideStackFrames(function uvException(ctx) {
   let dest;
 
   if (ctx.path) {
-    path = ctx.path.toString();
+    path = StringPrototypeToString(ctx.path);
     message += ` '${path}'`;
   }
   if (ctx.dest) {
-    dest = ctx.dest.toString();
+    dest = StringPrototypeToString(ctx.dest);
     message += ` -> '${dest}'`;
   }
 
   // deno-lint-ignore no-explicit-any
   const err: any = new Error(message);
 
-  for (const prop of Object.keys(ctx)) {
+  for (const prop of new SafeArrayIterator(ObjectKeys(ctx))) {
     if (prop === "message" || prop === "path" || prop === "dest") {
       continue;
     }
@@ -314,8 +355,8 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     // ENOTFOUND is not a proper POSIX error, but this error has been in place
     // long enough that it's not practical to remove it.
     if (
-      code === codeMap.get("EAI_NODATA") ||
-      code === codeMap.get("EAI_NONAME")
+      code === MapPrototypeGet(codeMap, "EAI_NODATA") ||
+      code === MapPrototypeGet(codeMap, "EAI_NONAME")
     ) {
       code = "ENOTFOUND"; // Fabricated error name.
     } else {
@@ -350,7 +391,9 @@ export class NodeErrorAbstraction extends Error {
     this.code = code;
     this.name = name;
     this.stack = this.stack &&
-      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
+      `${name} [${this.code}]${
+        StringPrototypeSlice(this.stack, this.name.length)
+      }`;
   }
 
   override toString() {
@@ -368,7 +411,7 @@ export class NodeSyntaxError extends NodeErrorAbstraction
   implements SyntaxError {
   constructor(code: string, message: string) {
     super(SyntaxError.prototype.name, code, message);
-    Object.setPrototypeOf(this, SyntaxError.prototype);
+    ObjectSetPrototypeOf(this, SyntaxErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -378,7 +421,7 @@ export class NodeSyntaxError extends NodeErrorAbstraction
 export class NodeRangeError extends NodeErrorAbstraction {
   constructor(code: string, message: string) {
     super(RangeError.prototype.name, code, message);
-    Object.setPrototypeOf(this, RangeError.prototype);
+    ObjectSetPrototypeOf(this, RangeErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -388,7 +431,7 @@ export class NodeRangeError extends NodeErrorAbstraction {
 export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
   constructor(code: string, message: string) {
     super(TypeError.prototype.name, code, message);
-    Object.setPrototypeOf(this, TypeError.prototype);
+    ObjectSetPrototypeOf(this, TypeErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -398,7 +441,7 @@ export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
 export class NodeURIError extends NodeErrorAbstraction implements URIError {
   constructor(code: string, message: string) {
     super(URIError.prototype.name, code, message);
-    Object.setPrototypeOf(this, URIError.prototype);
+    ObjectSetPrototypeOf(this, URIErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -438,32 +481,37 @@ class NodeSystemError extends Error {
 
     captureLargerStackTrace(this);
 
-    Object.defineProperties(this, {
+    ObjectDefineProperties(this, {
       [kIsNodeError]: {
+        __proto__: null,
         value: true,
         enumerable: false,
         writable: false,
         configurable: true,
       },
       name: {
+        __proto__: null,
         value: "SystemError",
         enumerable: false,
         writable: true,
         configurable: true,
       },
       message: {
+        __proto__: null,
         value: message,
         enumerable: false,
         writable: true,
         configurable: true,
       },
       info: {
+        __proto__: null,
         value: context,
         enumerable: true,
         configurable: true,
         writable: false,
       },
       errno: {
+        __proto__: null,
         get() {
           return context.errno;
         },
@@ -474,6 +522,7 @@ class NodeSystemError extends Error {
         configurable: true,
       },
       syscall: {
+        __proto__: null,
         get() {
           return context.syscall;
         },
@@ -486,7 +535,8 @@ class NodeSystemError extends Error {
     });
 
     if (context.path !== undefined) {
-      Object.defineProperty(this, "path", {
+      ObjectDefineProperty(this, "path", {
+        __proto__: null,
         get() {
           return context.path;
         },
@@ -499,7 +549,8 @@ class NodeSystemError extends Error {
     }
 
     if (context.dest !== undefined) {
-      Object.defineProperty(this, "dest", {
+      ObjectDefineProperty(this, "dest", {
+        __proto__: null,
         get() {
           return context.dest;
         },
@@ -544,13 +595,13 @@ function createInvalidArgType(
   expected: string | string[],
 ): string {
   // https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js#L1037-L1087
-  expected = Array.isArray(expected) ? expected : [expected];
+  expected = ArrayIsArray(expected) ? expected : [expected];
   let msg = "The ";
-  if (name.endsWith(" argument")) {
+  if (StringPrototypeEndsWith(name, " argument")) {
     // For cases like 'first argument'
     msg += `${name} `;
   } else {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     msg += `"${name}" ${type} `;
   }
   msg += "must be ";
@@ -558,30 +609,30 @@ function createInvalidArgType(
   const types = [];
   const instances = [];
   const other = [];
-  for (const value of expected) {
-    if (kTypes.includes(value)) {
-      types.push(value.toLocaleLowerCase());
-    } else if (classRegExp.test(value)) {
-      instances.push(value);
+  for (const value of new SafeArrayIterator(expected)) {
+    if (ArrayPrototypeIncludes(kTypes, value)) {
+      ArrayPrototypePush(types, StringPrototypeToLocaleLowerCase(value));
+    } else if (RegExpPrototypeTest(classRegExp, value)) {
+      ArrayPrototypePush(instances, value);
     } else {
-      other.push(value);
+      ArrayPrototypePush(other, value);
     }
   }
 
   // Special handle `object` in case other instances are allowed to outline
   // the differences between each other.
   if (instances.length > 0) {
-    const pos = types.indexOf("object");
+    const pos = ArrayPrototypeIndexOf(types, "object");
     if (pos !== -1) {
-      types.splice(pos, 1);
-      instances.push("Object");
+      ArrayPrototypeSplice(types, pos, 1);
+      ArrayPrototypePush(instances, "Object");
     }
   }
 
   if (types.length > 0) {
     if (types.length > 2) {
-      const last = types.pop();
-      msg += `one of type ${types.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(types);
+      msg += `one of type ${ArrayPrototypeJoin(types, ", ")}, or ${last}`;
     } else if (types.length === 2) {
       msg += `one of type ${types[0]} or ${types[1]}`;
     } else {
@@ -594,8 +645,10 @@ function createInvalidArgType(
 
   if (instances.length > 0) {
     if (instances.length > 2) {
-      const last = instances.pop();
-      msg += `an instance of ${instances.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(instances);
+      msg += `an instance of ${
+        ArrayPrototypeJoin(instances, ", ")
+      }, or ${last}`;
     } else {
       msg += `an instance of ${instances[0]}`;
       if (instances.length === 2) {
@@ -609,12 +662,12 @@ function createInvalidArgType(
 
   if (other.length > 0) {
     if (other.length > 2) {
-      const last = other.pop();
-      msg += `one of ${other.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(other);
+      msg += `one of ${ArrayPrototypeJoin(other, ", ")}, or ${last}`;
     } else if (other.length === 2) {
       msg += `one of ${other[0]} or ${other[1]}`;
     } else {
-      if (other[0].toLowerCase() !== other[0]) {
+      if (StringPrototypeToLowerCase(other[0]) !== other[0]) {
         msg += "an ";
       }
       msg += `${other[0]}`;
@@ -652,7 +705,7 @@ export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
 
 export class ERR_INVALID_ARG_VALUE_RANGE extends NodeRangeError {
   constructor(name: string, value: unknown, reason: string = "is invalid") {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     const inspected = inspect(value);
 
     super(
@@ -664,7 +717,7 @@ export class ERR_INVALID_ARG_VALUE_RANGE extends NodeRangeError {
 
 export class ERR_INVALID_ARG_VALUE extends NodeTypeError {
   constructor(name: string, value: unknown, reason: string = "is invalid") {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     const inspected = inspect(value);
 
     super(
@@ -693,7 +746,7 @@ function invalidArgTypeHelper(input: any) {
   }
   let inspected = inspect(input, { colors: false });
   if (inspected.length > 25) {
-    inspected = `${inspected.slice(0, 25)}...`;
+    inspected = `${StringPrototypeSlice(inspected, 0, 25)}...`;
   }
   return ` Received type ${typeof input} (${inspected})`;
 }
@@ -710,7 +763,7 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
       ? str
       : `The value of "${str}" is out of range.`;
     let received;
-    if (Number.isInteger(input) && Math.abs(input as number) > 2 ** 32) {
+    if (NumberIsInteger(input) && MathAbs(input as number) > 2 ** 32) {
       received = addNumericalSeparator(String(input));
     } else if (typeof input === "bigint") {
       received = String(input);
@@ -1027,7 +1080,7 @@ export class ERR_ENCODING_INVALID_ENCODED_DATA extends NodeErrorAbstraction
       "ERR_ENCODING_INVALID_ENCODED_DATA",
       `The encoded data was not valid for encoding ${encoding}`,
     );
-    Object.setPrototypeOf(this, TypeError.prototype);
+    ObjectSetPrototypeOf(this, TypeErrorPrototype);
 
     this.errno = ret;
   }
@@ -1646,8 +1699,12 @@ export class ERR_MISSING_ARGS extends NodeTypeError {
 
     const wrap = (a: unknown) => `"${a}"`;
 
-    args = args.map((a) =>
-      Array.isArray(a) ? a.map(wrap).join(" or ") : wrap(a)
+    args = ArrayPrototypeMap(
+      args,
+      (a) =>
+        ArrayIsArray(a)
+          ? ArrayPrototypeJoin(ArrayPrototypeMap(a, wrap), " or ")
+          : wrap(a),
     );
 
     switch (len) {
@@ -1658,7 +1715,7 @@ export class ERR_MISSING_ARGS extends NodeTypeError {
         msg += `${args[0]} and ${args[1]} arguments`;
         break;
       default:
-        msg += args.slice(0, len - 1).join(", ");
+        msg += ArrayPrototypeJoin(ArrayPrototypeSlice(args, 0, len - 1), ", ");
         msg += `, and ${args[len - 1]} arguments`;
         break;
     }
@@ -2418,7 +2475,7 @@ export class ERR_INVALID_URL extends NodeTypeError {
 
 export class ERR_INVALID_URL_SCHEME extends NodeTypeError {
   constructor(expected: string | [string] | [string, string]) {
-    expected = Array.isArray(expected) ? expected : [expected];
+    expected = ArrayIsArray(expected) ? expected : [expected];
     const res = expected.length === 2
       ? `one of scheme ${expected[0]} or ${expected[1]}`
       : `of scheme ${expected[0]}`;
@@ -2468,16 +2525,16 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
     const relError = typeof target === "string" &&
       !isImport &&
       target.length &&
-      !target.startsWith("./");
+      !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
       assert(isImport === false);
-      msg = `Invalid "exports" main target ${JSON.stringify(target)} defined ` +
+      msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
           base ? ` imported from ${base}` : ""
         }${relError ? '; targets must start with "./"' : ""}`;
     } else {
       msg = `Invalid "${isImport ? "imports" : "exports"}" target ${
-        JSON.stringify(
+        JSONStringify(
           target,
         )
       } defined for '${key}' in the package config ${
@@ -2614,8 +2671,8 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
 }
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
-  const match = e instanceof Error
-    ? e.message.match(/\(os error (\d+)\)/)
+  const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
+    ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
 
   if (match) {
@@ -2637,9 +2694,9 @@ export function aggregateTwoErrors(
   outerError: AggregateError & { code: string },
 ) {
   if (innerError && outerError && innerError !== outerError) {
-    if (Array.isArray(outerError.errors)) {
+    if (ArrayIsArray(outerError.errors)) {
       // If `outerError` is already an `AggregateError`.
-      outerError.errors.push(innerError);
+      ArrayPrototypePush(outerError.errors, innerError);
       return outerError;
     }
     // eslint-disable-next-line no-restricted-syntax
@@ -2715,7 +2772,7 @@ const genericNodeError = hideStackFrames(
   function genericNodeError(message, errorProperties) {
     // eslint-disable-next-line no-restricted-syntax
     const err = new Error(message);
-    Object.assign(err, errorProperties);
+    ObjectAssign(err, errorProperties);
 
     return err;
   },
@@ -2741,15 +2798,19 @@ function determineSpecificType(value: any) {
     return `${inspect(value, { depth: -1 })}`;
   }
   let inspected = inspect(value, { colors: false });
-  if (inspected.length > 28) inspected = `${inspected.slice(0, 25)}...`;
+  if (inspected.length > 28) {
+    inspected = `${StringPrototypeSlice(inspected, 0, 25)}...`;
+  }
 
   return `type ${typeof value} (${inspected})`;
 }
 
 // Non-robust path join
 function displayJoin(dir: string, fileName: string) {
-  const sep = dir.includes("\\") ? "\\" : "/";
-  return dir.endsWith(sep) ? dir + fileName : dir + sep + fileName;
+  const sep = StringPrototypeIncludes(dir, "\\") ? "\\" : "/";
+  return StringPrototypeEndsWith(dir, sep)
+    ? dir + fileName
+    : dir + sep + fileName;
 }
 
 export { codes, genericNodeError, hideStackFrames };

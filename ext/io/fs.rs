@@ -227,6 +227,17 @@ pub trait File {
   fn chmod_sync(self: Rc<Self>, pathmode: u32) -> FsResult<()>;
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()>;
 
+  fn chown_sync(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn chown_async(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
   async fn seek_async(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
 

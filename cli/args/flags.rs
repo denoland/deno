@@ -35,6 +35,7 @@ use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -623,25 +624,6 @@ impl Default for TypeCheckMode {
   }
 }
 
-// Info needed to run NPM lifecycle scripts
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct LifecycleScriptsConfig {
-  pub allowed: PackagesAllowedScripts,
-  pub initial_cwd: PathBuf,
-  pub root_dir: PathBuf,
-  /// Part of an explicit `deno install`
-  pub explicit_install: bool,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-/// The set of npm packages that are allowed to run lifecycle scripts.
-pub enum PackagesAllowedScripts {
-  All,
-  Some(Vec<String>),
-  #[default]
-  None,
-}
-
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!("Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required", s);
@@ -1208,7 +1190,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
                          database.
-  <g>DENO_EMIT_CACHE_MODE</>   Control is the transpiled sources should be cached.
+  <g>DENO_EMIT_CACHE_MODE</>   Control if the transpiled sources should be cached.
   <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
@@ -5663,10 +5645,9 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
         } else {
           if current.is_empty() {
             return Err(
-              std::io::Error::new(
-                std::io::ErrorKind::Other,
-                String::from("Empty values are not allowed"),
-              )
+              std::io::Error::other(String::from(
+                "Empty values are not allowed",
+              ))
               .into(),
             );
           }
@@ -5677,11 +5658,8 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
         }
       } else {
         return Err(
-          std::io::Error::new(
-            std::io::ErrorKind::Other,
-            String::from("Empty values are not allowed"),
-          )
-          .into(),
+          std::io::Error::other(String::from("Empty values are not allowed"))
+            .into(),
         );
       }
     } else {
@@ -5691,11 +5669,8 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
 
   if current.is_empty() {
     return Err(
-      std::io::Error::new(
-        std::io::ErrorKind::Other,
-        String::from("Empty values are not allowed"),
-      )
-      .into(),
+      std::io::Error::other(String::from("Empty values are not allowed"))
+        .into(),
     );
   }
 
@@ -6051,18 +6026,15 @@ fn node_modules_and_vendor_dir_arg_parse(
 fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   if urlstr.is_empty() {
     return Err(
-      std::io::Error::new(
-        std::io::ErrorKind::Other,
-        String::from("Missing url. Check for extra commas."),
-      )
+      std::io::Error::other(String::from(
+        "Missing url. Check for extra commas.",
+      ))
       .into(),
     );
   }
   match Url::from_str(&urlstr) {
     Ok(_) => Ok(urlstr),
-    Err(e) => {
-      Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
-    }
+    Err(e) => Err(std::io::Error::other(e.to_string()).into()),
   }
 }
 

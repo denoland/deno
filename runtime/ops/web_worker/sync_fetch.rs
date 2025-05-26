@@ -84,6 +84,7 @@ pub struct SyncFetchScript {
 
 #[op2]
 #[serde]
+#[allow(clippy::result_large_err)]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
   #[serde] scripts: Vec<String>,

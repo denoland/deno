@@ -6,6 +6,8 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeForEach,
   SafePromiseAll,
+  TypeError,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   Symbol,
 } = primordials;
@@ -30,6 +32,7 @@ const methodsToCopy = [
   "rejects",
   "strictEqual",
   "throws",
+  "ok",
 ];
 
 /** `assert` object available via t.assert */
@@ -54,6 +57,8 @@ const skippedSymbol = Symbol("skipped");
 
 class NodeTestContext {
   #denoContext: Deno.TestContext;
+  #afterHooks: (() => void)[] = [];
+  #beforeHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
 
@@ -109,6 +114,16 @@ class NodeTestContext {
     const prepared = prepareOptions(name, options, fn, {});
     // deno-lint-ignore no-this-alias
     const parentContext = this;
+    const after = async () => {
+      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+        await hook();
+      }
+    };
+    const before = async () => {
+      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+        await hook();
+      }
+    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -118,11 +133,16 @@ class NodeTestContext {
             parentContext,
           );
           try {
+            await before();
             await prepared.fn(newNodeTextContext);
+            await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
+            try {
+              await after();
+            } catch { /* ignore, test is already failing */ }
           }
         },
         ignore: prepared.options.todo || prepared.options.skip,
@@ -134,12 +154,18 @@ class NodeTestContext {
     );
   }
 
-  before(_fn, _options) {
-    notImplemented("test.TestContext.before");
+  before(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("before() requires a function");
+    }
+    ArrayPrototypePush(this.#beforeHooks, fn);
   }
 
-  after(_fn, _options) {
-    notImplemented("test.TestContext.after");
+  after(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("after() requires a function");
+    }
+    ArrayPrototypePush(this.#afterHooks, fn);
   }
 
   beforeEach(_fn, _options) {
