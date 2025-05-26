@@ -144,6 +144,9 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub permissions: PermissionsContainer,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
+  /// Whether to skip validating the graph roots. This is useful
+  /// for when you want to defer doing this until later (ex. get the
+  /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
 }
 
@@ -264,6 +267,14 @@ impl ModuleLoadPreparer {
     is_dynamic: bool,
     permissions: PermissionsContainer,
   ) -> Result<(), PrepareModuleLoadError> {
+    log::debug!(
+      "Reloading modified files: {}",
+      specifiers
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+    );
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
@@ -662,6 +673,34 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     permissions: &PermissionsContainer,
   ) -> Result<bool, PrepareModuleLoadError> {
+    let specifiers_to_reload =
+      self.check_specifiers_to_reload_for_dynamic_import(graph, specifier);
+
+    if specifiers_to_reload.is_empty() {
+      return Ok(false);
+    }
+
+    let mut graph_permit = self.graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    self
+      .shared
+      .module_load_preparer
+      .reload_specifiers(
+        graph,
+        specifiers_to_reload,
+        /* is dynamic */ true,
+        permissions.clone(),
+      )
+      .await?;
+    graph_permit.commit();
+    Ok(true)
+  }
+
+  fn check_specifiers_to_reload_for_dynamic_import(
+    &self,
+    graph: &ModuleGraph,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
     let mut specifiers_to_reload = Vec::new();
     let mut module_iter = graph.walk(
       std::iter::once(specifier),
@@ -699,32 +738,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     self.loaded_files.borrow_mut().insert(specifier.clone());
 
-    if specifiers_to_reload.is_empty() {
-      return Ok(false);
-    }
-
-    log::debug!(
-      "Reloading modified files: {}",
-      specifiers_to_reload
-        .iter()
-        .map(|s| s.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
-    );
-    let mut graph_permit = self.graph_container.acquire_update_permit().await;
-    let graph = graph_permit.graph_mut();
-    self
-      .shared
-      .module_load_preparer
-      .reload_specifiers(
-        graph,
-        specifiers_to_reload,
-        /* is dynamic */ true,
-        permissions.clone(),
-      )
-      .await?;
-    graph_permit.commit();
-    Ok(true)
+    specifiers_to_reload
   }
 
   fn has_module_changed_on_file_system(
