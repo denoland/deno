@@ -117,6 +117,23 @@ impl<
       VersionReq::parse_from_npm("22.9.0 - 22.15.15").unwrap()
     }
 
+    fn get_first_resolution_error(
+      result: &deno_npm::resolution::AddPkgReqsResult,
+    ) -> Option<&deno_npm::resolution::NpmPackageVersionResolutionError> {
+      if let Err(NpmResolutionError::Resolution(err)) = &result.dep_graph_result
+      {
+        return Some(err);
+      }
+      result
+        .results
+        .iter()
+        .filter_map(|result| match result {
+          Err(NpmResolutionError::Resolution(err)) => Some(err),
+          _ => None,
+        })
+        .next()
+    }
+
     let snapshot = self.resolution.snapshot();
     if package_reqs
       .iter()
@@ -147,10 +164,8 @@ impl<
         },
       )
       .await;
-    let result = match &result.dep_graph_result {
-      Err(NpmResolutionError::Resolution(err))
-        if npm_registry_api.mark_force_reload() =>
-      {
+    let result = if let Some(err) = get_first_resolution_error(&result) {
+      if npm_registry_api.mark_force_reload() {
         log::debug!("{err:#}");
         log::debug!("npm resolution failed. Trying again...");
 
@@ -166,8 +181,11 @@ impl<
             },
           )
           .await
+      } else {
+        result
       }
-      _ => result,
+    } else {
+      result
     };
 
     self.registry_info_provider.clear_memory_cache();
