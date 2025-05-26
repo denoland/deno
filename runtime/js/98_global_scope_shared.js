@@ -175,7 +175,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBufferUsage,
     loadWebGPU,
   ),
-  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
+  GPUCanvasContext: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCanvasContext,
+    loadWebGPU,
+  ),
   GPUColorWrite: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUColorWrite,
     loadWebGPU,
@@ -339,7 +342,9 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   ),
 };
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
+  GPUCanvasSurfaceContext: core.propNonEnumerable(webgpuSurface.GPUCanvasSurfaceContext),
+};
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   Buffer: core.propWritable(Buffer),

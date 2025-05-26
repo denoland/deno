@@ -33,6 +33,7 @@ import {
   GPUSupportedLimits,
   GPUTexture,
   GPUTextureView,
+  GPUCanvasContext,
   op_create_gpu,
   op_webgpu_device_start_capture,
   op_webgpu_device_stop_capture,
@@ -885,5 +886,6 @@ export {
   GPUTextureView,
   GPUUncapturedErrorEvent,
   GPUValidationError,
+  GPUCanvasContext,
   initGPU,
 };

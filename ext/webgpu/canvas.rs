@@ -1,8 +1,7 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::thread::scope;
 
-use deno_canvas::bitmaprenderer::ImageBitmapRenderingContext;
 use deno_canvas::canvas::CanvasContextHooks;
 use deno_canvas::image::DynamicImage;
 use deno_canvas::image::GenericImageView;
@@ -369,6 +368,7 @@ pub fn create_buffer_for_texture_to_vec(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn copy_texture_to_vec(
   instance: &Instance,
   device: wgpu_core::id::DeviceId,
