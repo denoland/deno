@@ -584,36 +584,6 @@ impl<
         }
       };
 
-      // if bundling {
-      //   let mut temp_var_count = 0;
-      //   let mut source = vec![
-      //     r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
-      //       const require = __internalCreateRequire(import.meta.url);"#
-      //     .to_string(),
-      //   ];
-      //   source.push(format!(
-      //     r#"const mod = require("{0}");"#,
-      //     url_to_file_path(entry_specifier)
-      //       .unwrap()
-      //       .to_str()
-      //       .unwrap()
-      //       .replace('\\', "\\\\")
-      //       .replace('\'', "\\\'")
-      //       .replace('\"', "\\\"")
-      //   ));
-      //   for export in &all_exports {
-      //     if !matches!(export.as_str(), "default" | "module.exports") {
-      //       add_export(
-      //         &mut source,
-      //         export,
-      //         &format!("mod[{}]", to_double_quote_string(export)),
-      //         &mut temp_var_count,
-      //       );
-      //     }
-      //   }
-      //   return Ok(Cow::Owned(source.join("\n")));
-      // }
-
       // todo(dsherret): use capacity_builder here to remove all these heap
       // allocations and make the string writing faster
       let mut temp_var_count = 0;

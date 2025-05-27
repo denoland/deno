@@ -1942,7 +1942,7 @@ fn bundle_subcommand() -> Command {
       .arg(
         Arg::new("output")
           .long("output")
-          .help("Output path")
+          .help("Output path. Defaults to `dist/bundled.js`")
           .num_args(1)
           .value_parser(value_parser!(String))
           .value_hint(ValueHint::FilePath),

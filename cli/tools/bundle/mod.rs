@@ -167,12 +167,7 @@ pub async fn bundle(
     }
     resolved
   };
-  eprintln!(
-    "resolved: {:?}",
-    resolved.iter().map(|u| u.as_str()).collect::<Vec<_>>()
-  );
-  let res = plugin_handler.prepare_module_load(&resolved).await;
-  eprintln!("prepare_module_load: {:?}", res);
+
   let roots = resolved
     .into_iter()
     .map(|url| {
@@ -292,7 +287,7 @@ pub async fn bundle(
     for warning in &response.warnings {
       eprintln!(
         "{}: {}",
-        deno_terminal::colors::yellow("bundler warn"),
+        deno_terminal::colors::yellow("bundler warning"),
         format_message(warning)
       );
     }
@@ -652,7 +647,6 @@ impl DenoPluginHandler {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
-    // eprintln!("about to prepare module load");
     let _prepared = self
       .module_load_preparer
       .prepare_module_load(
