@@ -219,7 +219,7 @@ fn op_get_env(
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
 
   if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   }
 
   get_env_var(key)
