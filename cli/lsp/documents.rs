@@ -1876,6 +1876,7 @@ impl OpenDocumentsGraphLoader<'_> {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
             content: Arc::from(doc.text.as_bytes().to_owned()),
+            mtime: None,
             specifier: doc.specifier.as_ref().clone(),
             maybe_headers: None,
           })))
@@ -1942,6 +1943,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -1989,6 +1991,7 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
@@ -2000,9 +2003,13 @@ fn analyze_module(
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleError::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: diagnostic.clone(),
+        },
       )),
       ResolutionMode::Import,
     ),

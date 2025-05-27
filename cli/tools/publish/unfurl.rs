@@ -719,7 +719,7 @@ fn relative_url(
   if resolved.scheme() == "file" {
     let relative = referrer.make_relative(resolved).unwrap();
     if relative.is_empty() {
-      let last = resolved.path_segments().unwrap().last().unwrap();
+      let last = resolved.path_segments().unwrap().next_back().unwrap();
       format!("./{last}")
     } else if relative.starts_with("../") {
       relative
