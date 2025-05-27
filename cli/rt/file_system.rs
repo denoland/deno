@@ -905,9 +905,18 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 }
 
 impl sys_traits::EnvCurrentDir for DenoRtSys {
+  #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
     sys_traits::impls::RealSys.env_current_dir()
+  }
+}
+
+impl sys_traits::EnvHomeDir for DenoRtSys {
+  #[inline]
+  fn env_home_dir(&self) -> Option<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_home_dir()
   }
 }
 

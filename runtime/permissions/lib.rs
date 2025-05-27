@@ -28,6 +28,7 @@ use serde::Serialize;
 use url::Url;
 
 pub mod prompter;
+pub mod which;
 use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
@@ -36,6 +37,8 @@ pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
+
+use self::which::WhichSys;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionDeniedError {
@@ -1373,7 +1376,7 @@ pub enum PathResolveError {
 impl RunQueryDescriptor {
   pub fn parse(
     requested: &str,
-    sys: &impl sys_traits::EnvCurrentDir,
+    sys: &impl which::WhichSys,
   ) -> Result<RunQueryDescriptor, PathResolveError> {
     if is_path(requested) {
       let path = PathBuf::from(requested);
@@ -1390,7 +1393,11 @@ impl RunQueryDescriptor {
         resolved,
       })
     } else {
-      match which::which(requested) {
+      let cwd = sys
+        .env_current_dir()
+        .map_err(PathResolveError::CwdResolve)?;
+      match which::which_in(sys.clone(), requested, sys.env_var_os("PATH"), cwd)
+      {
         Ok(resolved) => Ok(RunQueryDescriptor::Path {
           requested: requested.to_string(),
           resolved,
@@ -1544,13 +1551,19 @@ impl AllowRunDescriptor {
   pub fn parse(
     text: &str,
     cwd: &Path,
+    sys: &impl WhichSys,
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
     let is_path = is_path(text);
     // todo(dsherret): canonicalize in #25458
     let path = if is_path {
       resolve_from_known_cwd(Path::new(text), cwd)
     } else {
-      match which::which_in(text, std::env::var_os("PATH"), cwd) {
+      match which::which_in(
+        sys.clone(),
+        text,
+        sys.env_var_os("PATH"),
+        cwd.to_path_buf(),
+      ) {
         Ok(path) => path,
         Err(err) => match err {
           which::Error::CannotGetCurrentDirAndPathListEmpty => {
@@ -3881,14 +3894,8 @@ mod tests {
       &self,
       requested: &str,
     ) -> Result<RunQueryDescriptor, RunDescriptorParseError> {
-      struct Sys;
-      impl sys_traits::EnvCurrentDir for Sys {
-        fn env_current_dir(&self) -> std::io::Result<PathBuf> {
-          #[allow(clippy::disallowed_methods)] // tests
-          std::env::current_dir()
-        }
-      }
-      RunQueryDescriptor::parse(requested, &Sys).map_err(Into::into)
+      RunQueryDescriptor::parse(requested, &sys_traits::impls::RealSys)
+        .map_err(Into::into)
     }
   }
 

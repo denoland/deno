@@ -28,6 +28,7 @@ pin-project-lite.workspace = true
 rand.workspace = true
 serde.workspace = true
 simd-json.workspace = true
+sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

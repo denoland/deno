@@ -34,3 +34,7 @@ which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
+windows-sys = { workspace = true }
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["real"] }

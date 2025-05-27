@@ -22,12 +22,12 @@ use deno_permissions::WriteDescriptor;
 
 #[derive(Debug)]
 pub struct RuntimePermissionDescriptorParser<
-  TSys: sys_traits::EnvCurrentDir + Send + Sync,
+  TSys: deno_permissions::which::WhichSys + Send + Sync,
 > {
   sys: TSys,
 }
 
-impl<TSys: sys_traits::EnvCurrentDir + Send + Sync>
+impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
   RuntimePermissionDescriptorParser<TSys>
 {
   pub fn new(sys: TSys) -> Self {
@@ -55,7 +55,7 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync>
   }
 }
 
-impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
+impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
   deno_permissions::PermissionDescriptorParser
   for RuntimePermissionDescriptorParser<TSys>
 {
@@ -113,7 +113,11 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<AllowRunDescriptorParseResult, RunDescriptorParseError> {
-    Ok(AllowRunDescriptor::parse(text, &self.resolve_cwd()?)?)
+    Ok(AllowRunDescriptor::parse(
+      text,
+      &self.resolve_cwd()?,
+      &self.sys,
+    )?)
   }
 
   fn parse_deny_run_descriptor(

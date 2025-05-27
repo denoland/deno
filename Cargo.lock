@@ -1850,9 +1850,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.175.0"
+version = "0.176.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "161ec3cf8d07fc08a24a2600586881d9abafd48a0cb778633883dc8c1665d6fe"
+checksum = "95ce3b4ff0fee9bd2f2c73996739556d986e1486cdc74e44da2b8f3296ea28bb"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2000,7 +2000,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.92.0"
+version = "0.93.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f7b63c5334fd2ee41db14596a5b03c37ce90dff057c1da9f573de515a3bb2c0"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2535,8 +2537,9 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "url",
- "which",
+ "which 7.0.3",
  "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2558,10 +2561,11 @@ dependencies = [
  "rand",
  "serde",
  "simd-json",
+ "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "which",
+ "which 7.0.3",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -3572,9 +3576,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.89.0"
+version = "0.90.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d9ea60ba198add01557b0f9e4d4df3795bbdc58a4c6774fee46734accdd64d"
+checksum = "c5a6b90a53591e5adf9884048a79c291305b2a576d69fbc2b85de31d1a6e8372"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8399,9 +8403,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db83fa685d1637625266341c69bf6e810632f5a53502d5d03fde8fcbcd3153f2"
+checksum = "3fa2ce58051567cc6064a9a80eea34db4a03132ff5b84c812e8c371e1dcf76e8"
 dependencies = [
  "filetime",
  "getrandom",
@@ -9263,7 +9267,7 @@ dependencies = [
  "home",
  "miniz_oxide 0.8.8",
  "paste",
- "which",
+ "which 6.0.1",
 ]
 
 [[package]]
@@ -9633,6 +9637,13 @@ dependencies = [
  "home",
  "rustix",
  "winsafe",
+]
+
+[[package]]
+name = "which"
+version = "7.0.3"
+dependencies = [
+ "either",
 ]
 
 [[package]]

@@ -800,7 +800,12 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
-    match which::which_in(cmd, path, &env.cwd) {
+    match deno_permissions::which::which_in(
+      sys_traits::impls::RealSys,
+      cmd,
+      path.cloned(),
+      env.cwd.clone(),
+    ) {
       Ok(cmd) => Ok(cmd),
       Err(which::Error::CannotFindBinaryPath) => {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
