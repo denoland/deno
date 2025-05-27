@@ -149,7 +149,7 @@ impl<TSys: sys_traits::EnvCurrentDir + Send + Sync + std::fmt::Debug>
     if requested.is_empty() {
       return Err(RunDescriptorParseError::EmptyRunQuery);
     }
-    RunQueryDescriptor::parse(requested)
+    RunQueryDescriptor::parse(requested, &self.sys)
       .map_err(RunDescriptorParseError::PathResolve)
   }
 }

@@ -2532,6 +2532,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+ "sys_traits",
  "thiserror 2.0.12",
  "url",
  "which",

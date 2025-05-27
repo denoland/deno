@@ -189,7 +189,9 @@ impl ModuleLoadPreparer {
     } = options;
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    let mut loader = self
+      .module_graph_builder
+      .create_graph_loader_with_permissions(permissions);
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
@@ -200,7 +202,7 @@ impl ModuleLoadPreparer {
       };
       if let Some(content_type) = maybe_content_type {
         for root in roots {
-          cache.insert_file_header_override(
+          loader.insert_file_header_override(
             root.clone(),
             std::collections::HashMap::from([(
               "content-type".to_string(),
@@ -220,7 +222,7 @@ impl ModuleLoadPreparer {
         BuildGraphWithNpmOptions {
           is_dynamic,
           request: BuildGraphRequest::Roots(roots.to_vec()),
-          loader: Some(&mut cache),
+          loader: Some(&mut loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -277,7 +279,9 @@ impl ModuleLoadPreparer {
     );
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    let mut loader = self
+      .module_graph_builder
+      .create_graph_loader_with_permissions(permissions);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
@@ -285,7 +289,7 @@ impl ModuleLoadPreparer {
         BuildGraphWithNpmOptions {
           is_dynamic,
           request: BuildGraphRequest::Reload(specifiers),
-          loader: Some(&mut cache),
+          loader: Some(&mut loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )

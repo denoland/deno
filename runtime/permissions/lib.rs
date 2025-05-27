@@ -1373,14 +1373,16 @@ pub enum PathResolveError {
 impl RunQueryDescriptor {
   pub fn parse(
     requested: &str,
+    sys: &impl sys_traits::EnvCurrentDir,
   ) -> Result<RunQueryDescriptor, PathResolveError> {
     if is_path(requested) {
       let path = PathBuf::from(requested);
       let resolved = if path.is_absolute() {
         normalize_path(path)
       } else {
-        let cwd =
-          std::env::current_dir().map_err(PathResolveError::CwdResolve)?;
+        let cwd = sys
+          .env_current_dir()
+          .map_err(PathResolveError::CwdResolve)?;
         normalize_path(cwd.join(path))
       };
       Ok(RunQueryDescriptor::Path {
@@ -3879,7 +3881,14 @@ mod tests {
       &self,
       requested: &str,
     ) -> Result<RunQueryDescriptor, RunDescriptorParseError> {
-      RunQueryDescriptor::parse(requested).map_err(Into::into)
+      struct Sys;
+      impl sys_traits::EnvCurrentDir for Sys {
+        fn env_current_dir(&self) -> std::io::Result<PathBuf> {
+          #[allow(clippy::disallowed_methods)] // tests
+          std::env::current_dir()
+        }
+      }
+      RunQueryDescriptor::parse(requested, &Sys).map_err(Into::into)
     }
   }
 
