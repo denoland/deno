@@ -956,7 +956,7 @@ pub async fn run(
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string())
       .or(std::env::args().next()),
     node_debug: std::env::var("NODE_DEBUG").ok(),
     origin_data_folder_path: None,

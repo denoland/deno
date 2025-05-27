@@ -89,7 +89,6 @@ const { NumberMAX_SAFE_INTEGER } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
-  "worker",
 ];
 
 export const argv: string[] = ["", ""];
@@ -789,9 +788,11 @@ process.getBuiltinModule = getBuiltinModule;
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
 
-process.loadEnvFile = (path = ".env") => {
+export function loadEnvFile(path = ".env") {
   return op_node_load_env_file(path);
-};
+}
+
+process.loadEnvFile = loadEnvFile;
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
@@ -995,12 +996,6 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
-
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
@@ -1023,6 +1018,12 @@ internals.__bootstrapNodeProcess = function (
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
 
     delete internals.__bootstrapNodeProcess;
   } else {

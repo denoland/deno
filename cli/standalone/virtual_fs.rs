@@ -13,9 +13,9 @@ use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_lib::standalone::virtual_fs::VirtualSymlinkParts;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+use deno_resolver::display::DisplayTreeNode;
 
 use crate::util::display::human_size;
-use crate::util::display::DisplayTreeNode;
 
 pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   if !log::log_enabled!(log::Level::Info) {

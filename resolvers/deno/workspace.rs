@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_media_type::MediaType;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -26,10 +28,14 @@ use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageReq;
 use deno_semver::RangeSetOrTag;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_terminal::colors;
 use import_map::specifier::SpecifierError;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
@@ -1672,6 +1678,130 @@ impl ScopedJsxImportSourceConfig {
   }
 }
 
+#[allow(clippy::disallowed_types)] // ok, because definition
+pub type WorkspaceNpmPatchPackagesRc =
+  crate::sync::MaybeArc<WorkspaceNpmPatchPackages>;
+
+#[derive(Debug, Default)]
+pub struct WorkspaceNpmPatchPackages(
+  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+);
+
+impl WorkspaceNpmPatchPackages {
+  pub fn from_workspace(workspace: &Workspace) -> Self {
+    let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
+      HashMap::new();
+    if workspace.has_unstable("npm-patch") {
+      for pkg_json in workspace.patch_pkg_jsons() {
+        let Some(name) = pkg_json.name.as_ref() else {
+          log::warn!(
+          "{} Patch package ignored because package.json was missing name field.\n    at {}",
+          colors::yellow("Warning"),
+          pkg_json.path.display(),
+        );
+          continue;
+        };
+        match pkg_json_to_version_info(pkg_json) {
+          Ok(version_info) => {
+            let entry = entries.entry(PackageName::from_str(name)).or_default();
+            entry.push(version_info);
+          }
+          Err(err) => {
+            log::warn!(
+              "{} {}\n    at {}",
+              colors::yellow("Warning"),
+              err,
+              pkg_json.path.display(),
+            );
+          }
+        }
+      }
+    } else if workspace.patch_pkg_jsons().next().is_some() {
+      log::warn!(
+        "{} {}\n    at {}",
+        colors::yellow("Warning"),
+        "Patching npm packages is only supported when setting \"unstable\": [\"npm-patch\"] in the root deno.json",
+        workspace
+          .root_deno_json()
+          .map(|d| d.specifier.to_string())
+          .unwrap_or_else(|| workspace.root_dir().to_string()),
+      );
+    }
+    Self(entries)
+  }
+}
+
+#[derive(Debug, Error)]
+enum PkgJsonToVersionInfoError {
+  #[error(
+    "Patch package ignored because package.json was missing version field."
+  )]
+  VersionMissing,
+  #[error("Patch package ignored because package.json version field could not be parsed.")]
+  VersionInvalid {
+    #[source]
+    source: deno_semver::npm::NpmVersionParseError,
+  },
+}
+
+fn pkg_json_to_version_info(
+  pkg_json: &deno_package_json::PackageJson,
+) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+  fn parse_deps(
+    deps: Option<&IndexMap<String, String>>,
+  ) -> HashMap<StackString, StackString> {
+    deps
+      .map(|d| {
+        d.into_iter()
+          .map(|(k, v)| (StackString::from_str(k), StackString::from_str(v)))
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
+    v.iter().map(|s| SmallStackString::from_str(s)).collect()
+  }
+
+  let Some(version) = &pkg_json.version else {
+    return Err(PkgJsonToVersionInfoError::VersionMissing);
+  };
+
+  let version = Version::parse_from_npm(version)
+    .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
+  Ok(NpmPackageVersionInfo {
+    version,
+    dist: None,
+    bin: pkg_json
+      .bin
+      .as_ref()
+      .and_then(|v| serde_json::from_value(v.clone()).ok()),
+    dependencies: parse_deps(pkg_json.dependencies.as_ref()),
+    optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
+    peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
+    peer_dependencies_meta: pkg_json
+      .peer_dependencies_meta
+      .clone()
+      .and_then(|m| serde_json::from_value(m).ok())
+      .unwrap_or_default(),
+    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
+    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
+    scripts: pkg_json
+      .scripts
+      .as_ref()
+      .map(|scripts| {
+        scripts
+          .iter()
+          .map(|(k, v)| (SmallStackString::from_str(k), v.clone()))
+          .collect()
+      })
+      .unwrap_or_default(),
+    // not worth increasing memory for showing a deprecated
+    // message for patched packages
+    deprecated: None,
+  })
+}
+
 #[cfg(test)]
 mod test {
   use std::path::Path;
@@ -1680,6 +1810,7 @@ mod test {
   use deno_config::workspace::WorkspaceDirectory;
   use deno_config::workspace::WorkspaceDiscoverOptions;
   use deno_config::workspace::WorkspaceDiscoverStart;
+  use deno_npm::registry::NpmPeerDependencyMeta;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
@@ -2848,5 +2979,101 @@ mod test {
       },
     )
     .unwrap()
+  }
+
+  #[test]
+  fn test_pkg_json_to_version_info() {
+    fn convert(
+      text: &str,
+    ) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+      let pkg_json = deno_package_json::PackageJson::load_from_string(
+        PathBuf::from("package.json"),
+        text,
+      )
+      .unwrap();
+      pkg_json_to_version_info(&pkg_json)
+    }
+
+    assert_eq!(
+      convert(
+        r#"{
+  "name": "pkg",
+  "version": "1.0.0",
+  "bin": "./bin.js",
+  "dependencies": {
+    "my-dep": "1"
+  },
+  "optionalDependencies": {
+    "optional-dep": "~1"
+  },
+  "peerDependencies": {
+    "my-peer-dep": "^2"
+  },
+  "peerDependenciesMeta": {
+    "my-peer-dep": {
+      "optional": true
+    }
+  },
+  "os": ["win32"],
+  "cpu": ["x86_64"],
+  "scripts": {
+    "script": "testing",
+    "postInstall": "testing2"
+  },
+  "deprecated": "ignored for now"
+}"#
+      )
+      .unwrap(),
+      NpmPackageVersionInfo {
+        version: Version::parse_from_npm("1.0.0").unwrap(),
+        dist: None,
+        bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
+          "./bin.js".to_string()
+        )),
+        dependencies: HashMap::from([(
+          StackString::from_static("my-dep"),
+          StackString::from_static("1")
+        )]),
+        optional_dependencies: HashMap::from([(
+          StackString::from_static("optional-dep"),
+          StackString::from_static("~1")
+        )]),
+        peer_dependencies: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          StackString::from_static("^2")
+        )]),
+        peer_dependencies_meta: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          NpmPeerDependencyMeta { optional: true }
+        )]),
+        os: vec![SmallStackString::from_static("win32")],
+        cpu: vec![SmallStackString::from_static("x86_64")],
+        scripts: HashMap::from([
+          (
+            SmallStackString::from_static("script"),
+            "testing".to_string(),
+          ),
+          (
+            SmallStackString::from_static("postInstall"),
+            "testing2".to_string(),
+          )
+        ]),
+        // we don't bother ever setting this because we don't store it in deno_package_json
+        deprecated: None,
+      }
+    );
+
+    match convert("{}").unwrap_err() {
+      PkgJsonToVersionInfoError::VersionMissing => {
+        // ok
+      }
+      _ => unreachable!(),
+    }
+    match convert(r#"{ "version": "1.0.~" }"#).unwrap_err() {
+      PkgJsonToVersionInfoError::VersionInvalid { source: err } => {
+        assert_eq!(err.to_string(), "Invalid npm version");
+      }
+      _ => unreachable!(),
+    }
   }
 }

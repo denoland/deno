@@ -22,6 +22,7 @@ use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -69,9 +70,9 @@ async fn generate_doc_nodes_for_builtin_types(
   graph
     .build(
       roots.clone(),
+      Vec::new(),
       &loader,
       deno_graph::BuildOptions {
-        imports: Vec::new(),
         is_dynamic: false,
         skip_dynamic_deps: false,
         passthrough_jsr_specifiers: false,
@@ -140,7 +141,7 @@ pub async fn doc(
         .create_graph(
           GraphKind::TypesOnly,
           module_specifiers.clone(),
-          crate::graph_util::NpmCachingStrategy::Eager,
+          NpmCachingStrategy::Eager,
         )
         .await?;
 
@@ -153,6 +154,7 @@ pub async fn doc(
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
+          ignore_graph_errors: true,
         },
       );
       for error in errors {
@@ -427,6 +429,7 @@ fn generate_docs_directory(
         deno_doc::html::comrak::COMRAK_STYLESHEET_FILENAME
       )
     })),
+    id_prefix: None,
   };
 
   if let Some(built_in_types) = built_in_types {
@@ -451,6 +454,7 @@ fn generate_docs_directory(
         ),
         markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
         head_inject: None,
+        id_prefix: None,
       },
       IndexMap::from([(
         ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),

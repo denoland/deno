@@ -14,25 +14,24 @@ use std::string::ToString;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
-use deno_core::parking_lot::Mutex;
-use deno_core::serde::de;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
-use deno_core::serde::Serialize;
-use deno_core::serde_json;
-use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use serde::de;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use url::Url;
 
 pub mod prompter;
 use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
+pub use prompter::GetFormattedStackFn;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
@@ -410,6 +409,8 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
 
   pub fn is_allow_all(&self) -> bool {
     self.granted_global
+      && !self.flag_denied_global
+      && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
   }
@@ -2535,7 +2536,7 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     kind: CheckSpecifierKind,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
@@ -3770,9 +3771,9 @@ pub fn is_standalone() -> bool {
 mod tests {
   use std::net::Ipv4Addr;
 
-  use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
+  use serde_json::json;
 
   use super::*;
 
@@ -4164,22 +4165,22 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
+        Url::parse("http://deno.land/x/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ),
       (
-        ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        Url::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
@@ -4187,33 +4188,33 @@ mod tests {
 
     if cfg!(target_os = "windows") {
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(),
+        Url::parse("file:///C:/a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));
     } else {
       fixtures.push((
-        ModuleSpecifier::parse("file:///a/mod.ts").unwrap(),
+        Url::parse("file:///a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));
@@ -4841,6 +4842,30 @@ mod tests {
 
     let write_query = parser.parse_path_query("/foo").unwrap().into_write();
     perms.write.check_partial(&write_query, None).unwrap();
+    assert!(perms.write.check(&write_query, None).is_err());
+  }
+
+  #[test]
+  fn test_check_allow_global_deny_global() {
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        deny_write: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.read.check_all(None).is_err());
+    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    assert!(perms.read.check(&read_query, None).is_err());
+
+    assert!(perms.write.check_all(None).is_err());
+    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
     assert!(perms.write.check(&write_query, None).is_err());
   }
 

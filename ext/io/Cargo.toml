@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.114.0"
+version = "0.115.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,6 +28,9 @@ uuid.workspace = true
 [target.'cfg(not(windows))'.dependencies]
 os_pipe.workspace = true
 libc.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }

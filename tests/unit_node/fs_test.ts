@@ -11,6 +11,8 @@ import {
   copyFileSync,
   createWriteStream,
   existsSync,
+  fchown,
+  fchownSync,
   lstatSync,
   mkdtempSync,
   openSync,
@@ -301,4 +303,51 @@ Deno.test("[node/fs] readFile aborted with signal", async () => {
     DOMException,
     "The signal has been aborted",
   );
+});
+
+async function execCmd(cmd: string) {
+  const dec = new TextDecoder();
+  const [bin, ...args] = cmd.split(" ");
+  const command = new Deno.Command(bin, { args });
+  const { code, stdout, stderr } = await command.output();
+  if (code !== 0) {
+    throw new Error(
+      `Command failed with code ${code}: ${cmd} - ${dec.decode(stderr)}`,
+    );
+  }
+  return dec.decode(stdout).trim();
+}
+
+Deno.test("[node/fs] fchown and fchownSync", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const file = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+  await writeFile(file, "Hello");
+  const uid = await execCmd("id -u");
+  const gid = await execCmd("id -g");
+  const fd = openSync(file, "r+");
+  // Changing the owner of a file to the current user is not an error.
+  await new Promise<void>((resolve) =>
+    fchown(fd, +uid, +gid, (err) => {
+      assertEquals(err, null);
+      resolve();
+    })
+  );
+  fchownSync(fd, +uid, +gid);
+  // Changing the owner of a file to root is an error.
+  await assertRejects(() =>
+    new Promise<void>((resolve, reject) =>
+      fchown(fd, 0, 0, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      })
+    )
+  );
+  assertThrows(() => {
+    fchownSync(fd, 0, 0);
+  });
+  closeSync(fd);
 });

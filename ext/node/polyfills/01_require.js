@@ -946,7 +946,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1035,7 +1035,6 @@ Module.prototype._compile = function (content, filename, format) {
     setImmediate,
     setInterval,
     setTimeout,
-    performance,
   } = nodeGlobals;
 
   const result = compiledWrapper.call(
@@ -1054,7 +1053,6 @@ Module.prototype._compile = function (content, filename, format) {
     setImmediate,
     setInterval,
     setTimeout,
-    performance,
   );
   if (requireDepth === 0) {
     statCache = null;

@@ -44,6 +44,8 @@ const {
   SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -331,23 +333,23 @@ class InnerRequest {
   }
 
   get remoteAddr() {
-    const transport = this.#context.listener?.addr.transport;
-    if (transport === "unix" || transport === "unixpacket") {
-      return {
-        transport,
-        path: this.#context.listener.addr.path,
-      };
-    }
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
-    if (transport === "vsock") {
+    const transport = this.#context.listener?.addr.transport;
+    if (this.#methodAndUri[3] === "unix") {
       return {
         transport,
-        cid: Number(this.#methodAndUri[3]),
+        path: this.#context.listener.addr.path,
+      };
+    }
+    if (StringPrototypeStartsWith(this.#methodAndUri[3], "vsock:")) {
+      return {
+        transport,
+        cid: Number(StringPrototypeSlice(this.#methodAndUri[3], 6)),
         port: this.#methodAndUri[4],
       };
     }
@@ -1107,16 +1109,21 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
-  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+  return ({
+    servePort,
+    serveHost,
+    workerCountWhenMain,
+  }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-        serveWorkerCount !== null,
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
       onListen: ({ transport, port, hostname, path, cid }) => {
-        if (serveIsMain) {
-          const nThreads = serveWorkerCount > 1
-            ? ` with ${serveWorkerCount} threads`
+        if (workerCountWhenMain != null) {
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
           let target;

@@ -252,12 +252,16 @@ pub enum FetchPermissionsOptionRef<'a> {
 
 #[derive(Debug, Default)]
 pub struct FetchOptions<'a> {
+  pub local: FetchLocalOptions,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
 }
 
+pub type FetchLocalOptions = deno_cache_dir::file_fetcher::FetchLocalOptions;
+
 pub struct FetchNoFollowOptions<'a> {
+  pub local: FetchLocalOptions,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
@@ -368,6 +372,7 @@ impl CliFileFetcher {
         specifier,
         permissions,
         FetchOptions {
+          local: Default::default(),
           maybe_auth,
           maybe_accept: None,
           maybe_cache_setting: None,
@@ -402,6 +407,7 @@ impl CliFileFetcher {
           &specifier,
           permissions,
           FetchNoFollowOptions {
+            local: options.local.clone(),
             maybe_auth: maybe_auth.clone(),
             maybe_accept: options.maybe_accept,
             maybe_cache_setting: options.maybe_cache_setting,
@@ -449,6 +455,7 @@ impl CliFileFetcher {
       .fetch_no_follow(
         specifier,
         deno_cache_dir::file_fetcher::FetchNoFollowOptions {
+          local: options.local,
           maybe_auth: options.maybe_auth,
           maybe_checksum: options
             .maybe_checksum
@@ -469,7 +476,11 @@ impl CliFileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<File>, AnyError> {
     if specifier.scheme() == "file" {
-      Ok(self.file_fetcher.fetch_local(specifier)?)
+      Ok(
+        self
+          .file_fetcher
+          .fetch_local(specifier, &Default::default())?,
+      )
     } else {
       Ok(self.file_fetcher.fetch_cached(specifier, 10)?)
     }
@@ -638,6 +649,7 @@ mod tests {
     let file = File {
       source: Arc::from("some source code".as_bytes()),
       url: specifier.clone(),
+      mtime: None,
       maybe_headers: Some(HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),

@@ -1,6 +1,7 @@
 *.orig
 *.pyc
 *.swp
+*.symcache
 .env
 
 /.cargo_home/

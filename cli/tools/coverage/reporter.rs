@@ -18,7 +18,7 @@ use super::CoverageReport;
 use crate::args::CoverageType;
 use crate::colors;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CoverageStats<'a> {
   pub line_hit: usize,
   pub line_miss: usize,

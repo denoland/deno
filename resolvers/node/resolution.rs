@@ -198,6 +198,9 @@ pub struct NodeResolverOptions {
   pub typescript_version: Option<Version>,
 }
 
+#[sys_traits::auto_impl]
+pub trait NodeResolverSys: FsCanonicalize + FsMetadata + FsRead {}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -218,7 +221,7 @@ pub struct NodeResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
@@ -234,7 +237,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeResolver<
     TInNpmPackageChecker,
