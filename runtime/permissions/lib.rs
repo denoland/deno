@@ -31,7 +31,7 @@ pub mod prompter;
 use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
-pub use prompter::GetStackFn;
+pub use prompter::GetFormattedStackFn;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
