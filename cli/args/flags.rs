@@ -468,6 +468,8 @@ pub struct BundleFlags {
   pub format: BundleFormat,
   pub minify: bool,
   pub code_splitting: bool,
+  pub bundle: bool,
+  pub packages: PackageHandling,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -483,6 +485,21 @@ impl std::fmt::Display for BundleFormat {
       BundleFormat::Esm => write!(f, "esm"),
       BundleFormat::Cjs => write!(f, "cjs"),
       BundleFormat::Iife => write!(f, "iife"),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum PackageHandling {
+  Bundle,
+  External,
+}
+
+impl std::fmt::Display for PackageHandling {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      PackageHandling::Bundle => write!(f, "bundle"),
+      PackageHandling::External => write!(f, "external"),
     }
   }
 }
@@ -1901,6 +1918,13 @@ fn bundle_subcommand() -> Command {
       _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
     }
   }
+  fn packages_parser(s: &str) -> Result<PackageHandling, clap::Error> {
+    match s {
+      "bundle" => Ok(PackageHandling::Bundle),
+      "external" => Ok(PackageHandling::External),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
   command(
     "bundle",
     "bundle a thing",
@@ -1945,6 +1969,13 @@ fn bundle_subcommand() -> Command {
           .default_value("esm"),
       )
       .arg(
+        Arg::new("packages")
+          .long("packages")
+          .help("How to handle packages. Accepted values are 'bundle' or 'external'")
+          .value_parser(clap::builder::ValueParser::new(packages_parser))
+          .default_value("bundle"),
+      )
+      .arg(
         Arg::new("minify")
           .long("minify")
           .help("Minify the output")
@@ -1954,6 +1985,13 @@ fn bundle_subcommand() -> Command {
         Arg::new("code-splitting")
           .long("code-splitting")
           .help("Enable code splitting")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("bundle")
+          .long("bundle")
+          .help("Enable bundling")
+          .default_value("true")
           .action(ArgAction::SetTrue),
       )
       .arg(frozen_lockfile_arg())
@@ -4754,8 +4792,10 @@ fn bundle_parse(
       .map(|f| f.collect::<Vec<_>>())
       .unwrap_or_default(),
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
+    packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
+    bundle: matches.get_flag("bundle"),
   });
   Ok(())
 }

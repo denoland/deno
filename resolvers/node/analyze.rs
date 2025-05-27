@@ -570,33 +570,8 @@ impl<
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
     let inner = async || {
       let all_exports = if bundling {
-        let analysis = self
-          .module_export_analyzer
-          .analyze_all_exports(entry_specifier, source.clone())
-          .await?;
-        match analysis {
-          ResolvedCjsAnalysis::Esm(source) => return Ok(source),
-          ResolvedCjsAnalysis::Cjs(_) => {
-            let src = source.unwrap();
-            let (prefix, src) = if src.starts_with("#!") {
-              let start = src.find('\n').unwrap_or(src.len());
-              (Cow::Borrowed(&src[..start]), Cow::Borrowed(&src[start..]))
-            } else {
-              (Cow::Borrowed(""), src)
-            };
-            let mut new_source = String::with_capacity(src.len() + 1000);
-            new_source.push_str(&*prefix);
-            new_source.push_str(
-              r#"var { Buffer } = require("node:buffer");
-  var global = globalThis;"#,
-            );
-            new_source.push_str("\n{");
-            new_source.push_str(&src);
-            new_source.push_str("\n}");
-
-            return Ok(Cow::Owned(new_source));
-          }
-        }
+        // let the bundler handle it instead of the module loader
+        return Ok(source.unwrap());
       } else {
         let analysis = self
           .module_export_analyzer

@@ -117,7 +117,6 @@ pub struct NpmModuleLoader<
       TSys,
     >,
   >,
-  translate_cjs: bool,
   bundling: bool,
 }
 
@@ -148,14 +147,12 @@ impl<
       >,
     >,
     sys: TSys,
-    translate_cjs: bool,
     bundling: bool,
   ) -> Self {
     Self {
       cjs_tracker,
       node_code_translator,
       sys,
-      translate_cjs,
       bundling,
     }
   }

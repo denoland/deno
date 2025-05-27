@@ -31,12 +31,12 @@ use sys_traits::EnvCurrentDir;
 use crate::args::BundleFlags;
 use crate::args::BundleFormat;
 use crate::args::Flags;
+use crate::args::PackageHandling;
 use crate::cache::DenoDir;
 use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
@@ -44,7 +44,6 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmTarballCache;
-use crate::npm::NpmPackageInfoApiAdapter;
 use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
@@ -221,7 +220,7 @@ pub async fn bundle(
 
   let mut builder = EsbuildFlagsBuilder::default();
   builder
-    .bundle(true)
+    .bundle(bundle_flags.bundle)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
@@ -229,6 +228,10 @@ pub async fn bundle(
       BundleFormat::Esm => esbuild_rs::Format::Esm,
       BundleFormat::Cjs => esbuild_rs::Format::Cjs,
       BundleFormat::Iife => esbuild_rs::Format::Iife,
+    })
+    .packages(match bundle_flags.packages {
+      PackageHandling::External => esbuild_rs::PackagesHandling::External,
+      PackageHandling::Bundle => esbuild_rs::PackagesHandling::Bundle,
     });
   if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
@@ -308,9 +311,15 @@ pub async fn bundle(
         .unwrap_or_else(|| "./dist/bundled.js".to_string());
       let contents = std::fs::read_to_string(&out).unwrap();
       let contents = contents.replace(
-        r#"throw Error('Dynamic require of "' + x + '" is not supported');"#,
-        r#"if (process.getBuiltinModule(x)) { return process.getBuiltinModule(x); }
-throw Error('Dynamic require of "' + x + '" is not supported');"#,
+        r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});"#,
+        r#"import { createRequire } from "node:module";
+var __require = createRequire(import.meta.url);
+"#,
       );
       std::fs::write(&out, contents).unwrap();
     }
@@ -583,16 +592,7 @@ impl DenoPluginHandler {
         );
 
         let graph = self.module_graph_container.graph();
-        let mut module = graph.get(&result.url).cloned();
-        // if module.is_none() {
-        //   log::debug!(
-        //     "{}: {}",
-        //     deno_terminal::colors::cyan("module is none"),
-        //     result.url,
-        //   );
-        //   self.prepare_module_load(&[result.url.clone()]).await?;
-        //   module = graph.get(&result.url).cloned();
-        // }
+        let module = graph.get(&result.url).cloned();
         if let Some(module) = module {
           log::debug!(
             "{}: {} -> {}",
