@@ -54,10 +54,10 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<GetStackFn>>> =
+static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<GetFormattedStackFn>>> =
   Lazy::new(|| Mutex::new(None));
 
-pub fn set_current_stacktrace(get_stack: GetStackFn) {
+pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
   *MAYBE_CURRENT_STACKTRACE.lock() = Some(get_stack);
 }
 
@@ -94,7 +94,7 @@ pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
-pub type GetStackFn = Box<dyn FnOnce() -> Vec<String> + Send + Sync>;
+pub type GetFormattedStackFn = Box<dyn FnOnce() -> Vec<String> + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
   fn prompt(
@@ -103,7 +103,7 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    get_stack: Option<GetStackFn>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse;
 }
 
@@ -296,7 +296,7 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    get_stack: Option<GetStackFn>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
@@ -491,7 +491,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
-      _get_stack: Option<GetStackFn>,
+      _get_stack: Option<GetFormattedStackFn>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow
