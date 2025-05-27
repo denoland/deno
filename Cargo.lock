@@ -2520,7 +2520,6 @@ name = "deno_permissions"
 version = "0.64.0"
 dependencies = [
  "capacity_builder",
- "deno_core",
  "deno_error",
  "deno_path_util",
  "deno_terminal 0.2.2",

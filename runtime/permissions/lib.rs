@@ -25,13 +25,13 @@ use serde::de;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
-use serde_json;
 use url::Url;
 
 pub mod prompter;
 use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
+pub use prompter::GetStackFn;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
@@ -3771,9 +3771,9 @@ pub fn is_standalone() -> bool {
 mod tests {
   use std::net::Ipv4Addr;
 
-  use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
+  use serde_json::json;
 
   use super::*;
 
