@@ -2001,8 +2001,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.92.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51fed59054a55f3cbd0db096168c58836ca9f94c7b7c1b0730f63064d7dc0f9e"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2526,13 +2524,17 @@ dependencies = [
  "deno_error",
  "deno_path_util",
  "deno_terminal 0.2.2",
+ "deno_unsync",
  "fqdn",
  "libc",
  "log",
  "once_cell",
+ "parking_lot",
  "percent-encoding",
  "serde",
+ "serde_json",
  "thiserror 2.0.12",
+ "url",
  "which",
  "winapi",
 ]
@@ -2588,6 +2590,7 @@ dependencies = [
  "deno_unsync",
  "dissimilar",
  "futures",
+ "http 1.1.0",
  "import_map",
  "indexmap 2.8.0",
  "log",

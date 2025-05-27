@@ -14,20 +14,19 @@ use std::string::ToString;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
-use deno_core::parking_lot::Mutex;
-use deno_core::serde::de;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
-use deno_core::serde::Serialize;
-use deno_core::serde_json;
-use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use serde::de;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde_json;
+use url::Url;
 
 pub mod prompter;
 use prompter::permission_prompt;
@@ -2537,7 +2536,7 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     kind: CheckSpecifierKind,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
@@ -4166,22 +4165,22 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
+        Url::parse("http://deno.land/x/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ),
       (
-        ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        Url::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
@@ -4189,33 +4188,33 @@ mod tests {
 
     if cfg!(target_os = "windows") {
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(),
+        Url::parse("file:///C:/a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));
     } else {
       fixtures.push((
-        ModuleSpecifier::parse("file:///a/mod.ts").unwrap(),
+        Url::parse("file:///a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));

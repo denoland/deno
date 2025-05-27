@@ -8,9 +8,9 @@ use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
 use deno_core::error::JsStackFrame;
-use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 
 use crate::is_standalone;
 
@@ -107,6 +107,7 @@ pub trait PermissionPrompter: Send + Sync {
 }
 
 pub struct TtyPrompter;
+
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,

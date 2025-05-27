@@ -200,7 +200,7 @@ impl ModuleLoadPreparer {
       };
       if let Some(content_type) = maybe_content_type {
         for root in roots {
-          cache.file_header_overrides.insert(
+          cache.insert_file_header_override(
             root.clone(),
             std::collections::HashMap::from([(
               "content-type".to_string(),

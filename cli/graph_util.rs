@@ -459,6 +459,7 @@ impl ModuleGraphCreator {
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     struct PublishLoader(FetchCacher);
+
     impl Loader for PublishLoader {
       fn load(
         &self,
@@ -466,15 +467,27 @@ impl ModuleGraphCreator {
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
         if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
-          return Box::pin(std::future::ready(Ok(Some(
+          Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
             },
-          ))));
+          ))))
+        } else if matches!(specifier.scheme(), "http" | "https")
+          && !specifier.as_str().starts_with(jsr_url().as_str())
+        {
+          // mark non-JSR remote modules as external so we don't need --allow-import
+          // permissions as these will error out later when publishing
+          Box::pin(std::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))))
+        } else {
+          self.0.load(specifier, options)
         }
-        self.0.load(specifier, options)
       }
     }
+
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // Earlier on, we marked external non-JSR modules as external.
       // If the graph contains any of those, it would cause type checking
@@ -816,6 +829,7 @@ impl ModuleGraphBuilder {
           jsr_url_provider: &CliJsrUrlProvider,
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
+          module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
@@ -998,7 +1012,6 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
       self.in_npm_pkg_checker.clone(),
-      self.module_info_cache.clone(),
       self.sys.clone(),
       cache::FetchCacherOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
