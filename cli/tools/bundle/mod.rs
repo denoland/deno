@@ -12,10 +12,13 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::ModuleLoader;
 use deno_error::JsError;
+use deno_graph::Position;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm_cache::TarballCache;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -41,12 +44,11 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmCache;
+use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmTarballCache;
-use crate::npm::WorkspaceNpmPatchPackages;
-use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
+use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 
 const ESBUILD_VERSION: &str = "0.25.5";
@@ -56,7 +58,7 @@ pub async fn ensure_esbuild(
   npmrc: &ResolvedNpmRc,
   npm_registry_info: &Arc<CliNpmRegistryInfoProvider>,
   workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
-  tarball_cache: &Arc<CliNpmTarballCache>,
+  tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
   target: &str,
 ) -> Result<PathBuf, AnyError> {
@@ -103,19 +105,23 @@ pub async fn bundle(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
 
+  let installer_factory = factory.npm_installer_factory()?;
   let npmrc = factory.npmrc()?;
   let deno_dir = factory.deno_dir()?;
+  let resolver_factory = factory.resolver_factory()?;
+  let workspace_factory = resolver_factory.workspace_factory();
+  let npm_registry_info = installer_factory.registry_info_provider()?;
   let esbuild_path = ensure_esbuild(
     &deno_dir,
     &npmrc,
-    factory.npm_registry_info_provider()?,
-    factory.workspace_npm_patch_packages()?,
-    factory.npm_tarball_cache()?,
+    npm_registry_info,
+    workspace_factory.workspace_npm_patch_packages()?,
+    installer_factory.tarball_cache()?,
     factory.npm_cache()?,
     "darwin-arm64",
   )
   .await?;
-  let resolver = factory.deno_resolver().await?.clone();
+  let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
   let root_permissions = factory.root_permissions_container()?;
   let npm_resolver = factory.npm_resolver().await?.clone();
@@ -159,11 +165,12 @@ pub async fn bundle(
         .resolve(
           e.as_str(),
           &init_cwd_url,
+          Position::new(0, 0),
           ResolutionMode::Import,
           NodeResolutionKind::Execution,
         )
         .unwrap();
-      resolved.push(r.url);
+      resolved.push(r);
     }
     resolved
   };
@@ -352,7 +359,7 @@ enum BundleError {
   // #[error("Invalid import kind")]
   // InvalidImportKind,
   #[error(transparent)]
-  Resolver(#[from] deno_resolver::DenoResolveError),
+  Resolver(#[from] deno_graph::source::ResolveError),
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
   #[error(transparent)]
@@ -381,7 +388,7 @@ enum BundleError {
 }
 
 struct DenoPluginHandler {
-  resolver: Arc<CliDenoResolver>,
+  resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
@@ -560,8 +567,9 @@ impl DenoPluginHandler {
     let result = resolver.resolve(
       &path,
       &referrer,
+      Position::new(0, 0),
       import_kind_to_resolution_mode(kind),
-      node_resolver::NodeResolutionKind::Execution,
+      NodeResolutionKind::Execution,
     );
 
     log::debug!(
@@ -578,27 +586,26 @@ impl DenoPluginHandler {
         log::debug!(
           "{}: {:?}",
           deno_terminal::colors::cyan("preparing module load"),
-          result.url
+          result
         );
         log::debug!(
           "{}: {:?}",
           deno_terminal::colors::green("prepared module load"),
-          result.url
+          result
         );
 
         let graph = self.module_graph_container.graph();
-        let module = graph.get(&result.url).cloned();
+        let module = graph.get(&result).cloned();
         if let Some(module) = module {
           log::debug!(
             "{}: {} -> {}",
             deno_terminal::colors::cyan("module"),
-            result.url,
+            result,
             module.specifier()
           );
           let specifier = match module {
             deno_graph::Module::Npm(_) => {
-              let req_ref =
-                NpmPackageReqReference::from_specifier(&result.url)?;
+              let req_ref = NpmPackageReqReference::from_specifier(&result)?;
               return Ok(Some(file_path_or_url(
                 &self
                   .npm_req_resolver
@@ -616,8 +623,8 @@ impl DenoPluginHandler {
           return Ok(Some(file_path_or_url(&specifier)));
         }
 
-        if result.url.scheme() == "npm" {
-          let req_ref = NpmPackageReqReference::from_specifier(&result.url)?;
+        if result.scheme() == "npm" {
+          let req_ref = NpmPackageReqReference::from_specifier(&result)?;
           Ok(Some(file_path_or_url(
             &self
               .npm_req_resolver
@@ -630,7 +637,7 @@ impl DenoPluginHandler {
               .into_url()?,
           )))
         } else {
-          Ok(Some(file_path_or_url(&result.url)))
+          Ok(Some(file_path_or_url(&result)))
         }
       }
       Err(e) => {
@@ -658,6 +665,7 @@ impl DenoPluginHandler {
           permissions: self.permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: false,
+          skip_graph_roots_validation: true,
         },
       )
       .await
