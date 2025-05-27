@@ -1876,6 +1876,7 @@ impl OpenDocumentsGraphLoader<'_> {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
             content: Arc::from(doc.text.as_bytes().to_owned()),
+            mtime: None,
             specifier: doc.specifier.as_ref().clone(),
             maybe_headers: None,
           })))
@@ -1942,6 +1943,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -1989,6 +1991,7 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
@@ -2000,9 +2003,13 @@ fn analyze_module(
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleError::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: diagnostic.clone(),
+        },
       )),
       ResolutionMode::Import,
     ),
@@ -2038,26 +2045,6 @@ mod tests {
 
   use super::*;
   use crate::lsp::cache::LspCache;
-
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
 
   async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -2206,7 +2193,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 
@@ -2249,7 +2235,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 

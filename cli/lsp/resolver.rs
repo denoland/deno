@@ -20,16 +20,24 @@ use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::TarballCache;
+use deno_npm_installer::initializer::NpmResolutionInitializer;
+use deno_npm_installer::initializer::NpmResolverManagedSnapshotOption;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npm_installer::package_json::NpmInstallDepsProvider;
+use deno_npm_installer::resolution::NpmResolutionInstaller;
+use deno_npm_installer::LifecycleScriptsConfig;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -38,6 +46,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use import_map::ImportMap;
 use indexmap::IndexMap;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
@@ -53,8 +62,6 @@ use super::cache::LspCache;
 use super::documents::DocumentModule;
 use super::jsr::JsrCacheResolver;
 use crate::args::CliLockfile;
-use crate::args::LifecycleScriptsConfig;
-use crate::args::NpmInstallDepsProvider;
 use crate::factory::Deferred;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
@@ -63,20 +70,14 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::NpmResolutionInstaller;
-use crate::npm::installer::NullLifecycleScriptsExecutor;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolver;
-use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::NpmResolutionInitializer;
-use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
@@ -92,7 +93,7 @@ pub struct LspScopedResolver {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_installer_reqs: Arc<Mutex<BTreeSet<PackageReq>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolver: Option<CliNpmResolver>,
@@ -102,7 +103,7 @@ pub struct LspScopedResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
-  package_json_dep_resolutions: Arc<PackageJsonDepResolutions>,
+  configured_npm_resolutions: Arc<ConfiguredNpmResolutions>,
   config_data: Option<Arc<ConfigData>>,
 }
 
@@ -124,7 +125,7 @@ impl Default for LspScopedResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       dep_info: Default::default(),
-      package_json_dep_resolutions: Default::default(),
+      configured_npm_resolutions: Default::default(),
       config_data: None,
     }
   }
@@ -183,11 +184,11 @@ impl LspScopedResolver {
         )
       })
       .unwrap_or_default();
-    let package_json_dep_resolutions = (|| {
+    let configured_npm_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
-      let package_json = config_data?.maybe_pkg_json()?;
-      Some(Arc::new(PackageJsonDepResolutions::new(
-        package_json,
+      Some(Arc::new(ConfiguredNpmResolutions::new(
+        config_data.and_then(|d| d.resolver.maybe_import_map()),
+        config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
         &pkg_json_resolver,
       )))
@@ -208,7 +209,7 @@ impl LspScopedResolver {
       redirect_resolver,
       graph_imports,
       dep_info: Default::default(),
-      package_json_dep_resolutions,
+      configured_npm_resolutions,
       config_data: config_data.cloned(),
     }
   }
@@ -251,7 +252,7 @@ impl LspScopedResolver {
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
-              CliManagedNpmResolverCreateOptions {
+              ManagedNpmResolverCreateOptions {
                 sys,
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
@@ -282,7 +283,7 @@ impl LspScopedResolver {
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       graph_imports: self.graph_imports.clone(),
       dep_info: self.dep_info.clone(),
-      package_json_dep_resolutions: self.package_json_dep_resolutions.clone(),
+      configured_npm_resolutions: self.configured_npm_resolutions.clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -338,6 +339,16 @@ impl LspScopedResolver {
     self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
   }
 
+  pub fn jsr_lookup_bare_specifier_for_workspace_file(
+    &self,
+    specifier: &Url,
+  ) -> Option<String> {
+    self
+      .jsr_resolver
+      .as_ref()?
+      .lookup_bare_specifier_for_workspace_file(specifier)
+  }
+
   pub fn jsr_lookup_export_for_path(
     &self,
     nv: &PackageNv,
@@ -373,13 +384,13 @@ impl LspScopedResolver {
     )))
   }
 
-  pub fn file_url_to_package_json_dep(
+  pub fn file_url_to_npm_dep_key(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     self
-      .package_json_dep_resolutions
-      .package_ref_from_resolution(specifier)
+      .configured_npm_resolutions
+      .dep_key_from_resolution(specifier)
       .or_else(|| {
         self
           .node_resolver
@@ -635,100 +646,176 @@ pub struct ScopeDepInfo {
 }
 
 #[derive(Debug, Default)]
-struct PackageJsonDepResolutions {
+struct ConfiguredNpmResolutions {
   deps_by_resolution: IndexMap<ModuleSpecifier, String>,
 }
 
-impl PackageJsonDepResolutions {
+impl ConfiguredNpmResolutions {
   fn new(
-    package_json: &PackageJson,
+    import_map: Option<&ImportMap>,
+    package_json: Option<&PackageJson>,
     npm_pkg_req_resolver: &CliNpmReqResolver,
     pkg_json_resolver: &CliPackageJsonResolver,
   ) -> Self {
-    let referrer = package_json.specifier();
-    let Some(dependencies) = package_json.dependencies.as_ref() else {
-      return Self::default();
-    };
     let mut result = Self::default();
-    for name in dependencies.keys() {
-      let Some(req_ref) =
-        NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
-      else {
-        continue;
+    let insert_export_resolutions =
+      |key_prefix: &str,
+       dep_req_str: &str,
+       dep_package_json: &PackageJson,
+       referrer,
+       result: &mut Self| {
+        let export_keys = dep_package_json
+          .exports
+          .as_ref()
+          .into_iter()
+          .flat_map(|e| e.keys());
+        for export_key in export_keys {
+          let Some(export_name) = export_key.strip_prefix("./") else {
+            continue;
+          };
+          // Wildcards are not supported here.
+          if export_name.chars().filter(|c| *c == '*').count() == 1 {
+            continue;
+          }
+          let Some(req_ref) = NpmPackageReqReference::from_str(&format!(
+            "npm:{dep_req_str}/{export_name}"
+          ))
+          .ok() else {
+            continue;
+          };
+          for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution]
+          {
+            let Some(url_or_path) = npm_pkg_req_resolver
+              .resolve_req_reference(
+                &req_ref,
+                referrer,
+                // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+                ResolutionMode::Import,
+                kind,
+              )
+              .ok()
+            else {
+              continue;
+            };
+            let Some(file_url) = url_or_path.into_url().ok() else {
+              continue;
+            };
+            result
+              .deps_by_resolution
+              .insert(file_url, format!("{key_prefix}/{export_name}"));
+          }
+        }
       };
-      let mut dep_package_json = None;
-      for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution] {
-        let Some(req) = npm_pkg_req_resolver
-          .resolve_req_reference(
-            &req_ref,
-            &referrer,
-            // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-            ResolutionMode::Import,
-            kind,
-          )
-          .ok()
-        else {
+    if let Some(import_map) = import_map {
+      let referrer = import_map.base_url();
+      for entry in import_map.imports().entries().chain(
+        import_map
+          .scopes()
+          .flat_map(|scope| scope.imports.entries()),
+      ) {
+        let Some(value) = entry.value else {
           continue;
         };
-        let Some(url) = req.into_url().ok() else {
+        let Ok(req_ref) = NpmPackageReqReference::from_specifier(value) else {
           continue;
         };
-        let specifier = into_specifier_and_media_type(Some(url)).0;
-        if dep_package_json.is_none() {
-          dep_package_json = (|| {
-            let path = url_to_file_path(&specifier).ok()?;
-            pkg_json_resolver.get_closest_package_json(&path).ok()?
-          })();
-        }
-        result.deps_by_resolution.insert(specifier, name.clone());
-      }
-      let export_keys = dep_package_json
-        .as_ref()
-        .and_then(|p| p.exports.as_ref())
-        .into_iter()
-        .flat_map(|e| e.keys());
-      for export_key in export_keys {
-        let Some(export_name) = export_key.strip_prefix("./") else {
-          continue;
-        };
-        // Wildcards are not supported here.
-        if export_name.chars().filter(|c| *c == '*').count() == 1 {
+        if !import_map
+          .resolve(entry.key, referrer)
+          .is_ok_and(|s| &s == value)
+        {
           continue;
         }
-        let package_ref = format!("{name}/{export_name}");
-        let Some(req_ref) =
-          NpmPackageReqReference::from_str(&format!("npm:{}", &package_ref))
-            .ok()
-        else {
-          continue;
-        };
+        let mut dep_package_json = None;
         for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution] {
-          let Some(req) = npm_pkg_req_resolver
+          let Some(file_url) = npm_pkg_req_resolver
             .resolve_req_reference(
               &req_ref,
-              &referrer,
+              referrer,
               // todo(dsherret): this is wrong because it doesn't consider CJS referrers
               ResolutionMode::Import,
               kind,
             )
             .ok()
+            .and_then(|u| u.into_url().ok())
           else {
+            continue;
+          };
+          if dep_package_json.is_none() {
+            dep_package_json = (|| {
+              let path = url_to_file_path(&file_url).ok()?;
+              pkg_json_resolver.get_closest_package_json(&path).ok()?
+            })();
+          }
+          if !entry.key.ends_with('/') {
+            result
+              .deps_by_resolution
+              .insert(file_url, entry.key.to_string());
+          }
+        }
+        if let Some(key_prefix) = entry.key.strip_suffix('/') {
+          if req_ref.sub_path().is_none() {
+            if let Some(dep_package_json) = &dep_package_json {
+              insert_export_resolutions(
+                key_prefix,
+                &req_ref.req().to_string(),
+                dep_package_json,
+                referrer,
+                &mut result,
+              );
+            }
+          }
+        }
+      }
+    }
+    if let Some(package_json) = package_json {
+      let referrer = package_json.specifier();
+      let Some(dependencies) = package_json.dependencies.as_ref() else {
+        return Self::default();
+      };
+      for name in dependencies.keys() {
+        let Some(req_ref) =
+          NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
+        else {
+          continue;
+        };
+        let mut dep_package_json = None;
+        for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution] {
+          let Ok(req) = npm_pkg_req_resolver.resolve_req_reference(
+            &req_ref,
+            &referrer,
+            // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+            ResolutionMode::Import,
+            kind,
+          ) else {
             continue;
           };
           let Some(url) = req.into_url().ok() else {
             continue;
           };
           let specifier = into_specifier_and_media_type(Some(url)).0;
-          result
-            .deps_by_resolution
-            .insert(specifier, package_ref.clone());
+          if dep_package_json.is_none() {
+            dep_package_json = (|| {
+              let path = url_to_file_path(&specifier).ok()?;
+              pkg_json_resolver.get_closest_package_json(&path).ok()?
+            })();
+          }
+          result.deps_by_resolution.insert(specifier, name.clone());
+        }
+        if let Some(dep_package_json) = &dep_package_json {
+          insert_export_resolutions(
+            name,
+            name,
+            dep_package_json,
+            &referrer,
+            &mut result,
+          );
         }
       }
     }
     result
   }
 
-  fn package_ref_from_resolution(&self, resolution: &Url) -> Option<String> {
+  fn dep_key_from_resolution(&self, resolution: &Url) -> Option<String> {
     self.deps_by_resolution.get(resolution).cloned()
   }
 }
@@ -740,7 +827,7 @@ struct ResolverFactoryServices {
   in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<CliNpmResolver>,
   npm_resolution: Arc<NpmResolutionCell>,
@@ -842,11 +929,11 @@ impl<'a> ResolverFactory<'a> {
         patch_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
-            CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+            NpmResolverManagedSnapshotOption::ResolveFromLockfile(
               lockfile.clone(),
             )
           }
-          None => CliNpmResolverManagedSnapshotOption::Specified(None),
+          None => NpmResolverManagedSnapshotOption::Specified(None),
         },
       ));
       // Don't provide the lockfile. We don't want these resolvers
@@ -866,7 +953,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_lockfile.clone(),
         patch_packages.clone(),
       ));
-      let npm_installer = Arc::new(NpmInstaller::new(
+      let npm_installer = Arc::new(CliNpmInstaller::new(
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
@@ -888,7 +975,7 @@ impl<'a> ResolverFactory<'a> {
         log::warn!("failed to initialize npm resolution: {}", err);
       }
 
-      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
+      CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
         maybe_node_modules_path,
@@ -900,7 +987,7 @@ impl<'a> ResolverFactory<'a> {
     self.set_npm_resolver(CliNpmResolver::new(options));
   }
 
-  pub fn set_npm_installer(&mut self, npm_installer: Arc<NpmInstaller>) {
+  pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {
     self.services.npm_installer = Some(npm_installer);
   }
 
@@ -962,7 +1049,7 @@ impl<'a> ResolverFactory<'a> {
     })
   }
 
-  pub fn npm_installer(&self) -> Option<&Arc<NpmInstaller>> {
+  pub fn npm_installer(&self) -> Option<&Arc<CliNpmInstaller>> {
     self.services.npm_installer.as_ref()
   }
 
@@ -1247,7 +1334,7 @@ impl RedirectResolver {
 }
 
 type AddNpmReqsRequest = (
-  Arc<NpmInstaller>,
+  Arc<CliNpmInstaller>,
   Vec<PackageReq>,
   std::sync::mpsc::Sender<Result<(), JsErrorBox>>,
 );
@@ -1282,7 +1369,7 @@ impl AddNpmReqsThread {
 
   pub fn add_npm_reqs(
     &self,
-    npm_installer: Arc<NpmInstaller>,
+    npm_installer: Arc<CliNpmInstaller>,
     reqs: Vec<PackageReq>,
   ) -> Result<(), JsErrorBox> {
     let request_tx = self.request_tx.as_ref().unwrap();

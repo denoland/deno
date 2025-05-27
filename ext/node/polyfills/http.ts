@@ -522,12 +522,12 @@ class ClientRequest extends OutgoingMessage {
           throw (this.socket.errored || err);
         }
         if (this._encrypted) {
-          const hasCaCerts = this.agent?.options?.ca !== undefined;
+          const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
             : [];
-          const hasTlsKey = this.agent?.options?.key !== undefined &&
-            this.agent?.options?.cert !== undefined;
+          const hasTlsKey = !!this.agent?.options?.key &&
+            !!this.agent?.options?.cert;
           const keyPair = hasTlsKey
             ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
             : op_tls_key_null();

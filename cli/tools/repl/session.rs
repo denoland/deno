@@ -48,7 +48,7 @@ use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::installer::NpmInstaller;
+use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
@@ -172,7 +172,7 @@ struct ReplJsxState {
 
 pub struct ReplSession {
   internal_object_id: Option<RemoteObjectId>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
@@ -192,18 +192,14 @@ impl ReplSession {
   #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
     resolver: Arc<CliResolver>,
     tsconfig_resolver: &TsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) -> Result<Self, AnyError> {
-    let language_server =
-      ReplLanguageServer::new_initialized(registry_provider).await?;
+    let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session();
 
     worker

@@ -49,7 +49,6 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
-use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -102,15 +101,15 @@ pub async fn format(
             paths_with_options.paths = if let Some(paths) = &changed_paths {
               if fmt_flags.check {
                 // check all files on any changed (https://github.com/denoland/deno/issues/12446)
-                files
-                  .iter()
-                  .any(|path| {
-                    canonicalize_path(path)
-                      .map(|path| paths.contains(&path))
-                      .unwrap_or(false)
-                  })
-                  .then_some(files)
-                  .unwrap_or_else(|| [].to_vec())
+                if files.iter().any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                }) {
+                  files
+                } else {
+                  [].to_vec()
+                }
               } else {
                 files
                   .into_iter()
@@ -620,11 +619,14 @@ fn format_embedded_css(
       ignore_file_comment_directive: "malva-ignore-file".into(),
     },
   };
-  // Wraps the text in a css block of `a { ... }`
-  // to make it valid css (scss)
+  // Wraps the text in a css block of `a { ... ;}`
+  // to make it valid css
+  // Note: We choose LESS for the syntax because it allows us to use
+  // @variable for both property values and mixins, which is convenient
+  // for handling placeholders used as both properties and mixins.
   let text = malva::format_text(
-    &format!("a{{\n{}\n}}", text),
-    malva::Syntax::Scss,
+    &format!("a{{\n{}\n;}}", text),
+    malva::Syntax::Less,
     &options,
   )?;
   let mut buf = vec![];
@@ -922,7 +924,8 @@ impl Formatter for CheckFormatter {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
-            let diff = diff(&file_text, &formatted_text);
+            let diff =
+              deno_resolver::display::diff(&file_text, &formatted_text);
             info!("");
             info!("{} {}:", colors::bold("from"), file_path.display());
             info!("{}", diff);

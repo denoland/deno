@@ -720,7 +720,9 @@ fn op_load_inner(
     let maybe_module = match graph.try_get(specifier) {
       Ok(maybe_module) => maybe_module,
       Err(err) => match err {
-        deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
+        deno_graph::ModuleError::UnsupportedMediaType {
+          media_type, ..
+        } => {
           return Ok(Some(LoadResponse {
             data: FastString::from_static(""),
             version: Some("1".to_string()),
@@ -1011,11 +1013,11 @@ fn resolve_graph_specifier_types(
     Ok(Some(module)) => Some(module),
     Ok(None) => None,
     Err(err) => match err {
-      deno_graph::ModuleError::UnsupportedMediaType(
+      deno_graph::ModuleError::UnsupportedMediaType {
         specifier,
         media_type,
-        _,
-      ) => {
+        ..
+      } => {
         return Ok(Some((specifier.clone(), *media_type)));
       }
       _ => None,
@@ -1230,6 +1232,7 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -1390,6 +1393,7 @@ impl deno_core::ExtCodeCache for TscExtCodeCache {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
+#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -1506,6 +1510,7 @@ mod tests {
         .map(|c| {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
+            mtime: None,
             maybe_headers: None,
             content: c.into(),
           })
@@ -1531,7 +1536,7 @@ mod tests {
     let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier], &loader, Default::default())
+      .build(vec![specifier], Vec::new(), &loader, Default::default())
       .await;
     let state = State::new(
       Arc::new(graph),
@@ -1563,7 +1568,12 @@ mod tests {
     let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier.clone()], &loader, Default::default())
+      .build(
+        vec![specifier.clone()],
+        Vec::new(),
+        &loader,
+        Default::default(),
+      )
       .await;
     let config = Arc::new(TsConfig::new(json!({
       "allowJs": true,
