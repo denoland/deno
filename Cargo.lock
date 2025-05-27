@@ -2584,6 +2584,7 @@ dependencies = [
  "deno_npm",
  "deno_package_json",
  "deno_path_util",
+ "deno_permissions",
  "deno_semver",
  "deno_terminal 0.2.2",
  "deno_unsync",

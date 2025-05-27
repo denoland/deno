@@ -33,6 +33,9 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::MediaType;
+use deno_permissions::CheckSpecifierKind;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use futures::FutureExt;
 use http::header;
 use node_resolver::InNpmPackageChecker;
@@ -330,8 +333,6 @@ impl<TBlobStore: BlobStore, TSys: CliFileFetcherSys, THttpClient: HttpClient>
 pub struct FetchCacherOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
   pub permissions: PermissionsContainer,
-  /// If we're publishing for `deno publish`.
-  pub is_deno_publish: bool,
 }
 
 #[sys_traits::auto_impl]
@@ -353,7 +354,6 @@ pub struct FetchCacher<
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   permissions: PermissionsContainer,
   sys: TSys,
-  is_deno_publish: bool,
   cache_info_enabled: bool,
 }
 
@@ -374,7 +374,6 @@ impl<TBlobStore: BlobStore, TSys: FetchCacherSys, THttpClient: HttpClient>
       sys,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
-      is_deno_publish: options.is_deno_publish,
       cache_info_enabled: false,
     }
   }
@@ -407,8 +406,11 @@ impl<TBlobStore: BlobStore, TSys: FetchCacherSys, THttpClient: HttpClient>
   }
 }
 
-impl<TBlobStore: BlobStore, TSys: FetchCacherSys, THttpClient: HttpClient>
-  Loader for FetchCacher<TBlobStore, TSys, THttpClient>
+impl<
+    TBlobStore: BlobStore + 'static,
+    TSys: FetchCacherSys + 'static,
+    THttpClient: HttpClient + 'static,
+  > Loader for FetchCacher<TBlobStore, TSys, THttpClient>
 {
   fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
@@ -472,9 +474,9 @@ impl<TBlobStore: BlobStore, TSys: FetchCacherSys, THttpClient: HttpClient>
           &specifier,
           FetchPermissionsOptionRef::Restricted(&permissions,
           if is_statically_analyzable {
-            deno_runtime::deno_permissions::CheckSpecifierKind::Static
+            CheckSpecifierKind::Static
           } else {
-            deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
+            CheckSpecifierKind::Dynamic
           }),
           FetchNoFollowOptions {
             local: FetchLocalOptions {
