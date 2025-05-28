@@ -28,16 +28,16 @@ percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
+temp_deno_which.workspace = true
 thiserror.workspace = true
 url.workspace = true
-which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
-windows-sys = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 
-[target.'cfg(all(unix, not(target_arch = "wasm32")))'.dependencies]
-rustix = { version = "0.38.34", default-features = false, features = ["fs", "std"] }
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["real"] }

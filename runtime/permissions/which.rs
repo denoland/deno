@@ -1,19 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use which::sys::Sys;
-pub use which::Error;
+use temp_deno_which::sys::Sys;
+pub use temp_deno_which::Error;
 
 pub fn which_in(
   sys: impl WhichSys,
   binary_name: &str,
   path: Option<OsString>,
   cwd: PathBuf,
-) -> Result<PathBuf, which::Error> {
+) -> Result<PathBuf, Error> {
   let sys = WhichSysAdapter(sys);
-  let config = which::WhichConfig::new_with_sys(sys)
+  let config = temp_deno_which::WhichConfig::new_with_sys(sys)
     .custom_cwd(cwd)
     .binary_name(OsString::from(binary_name));
   let config = match path {
@@ -55,10 +56,7 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     self.0.env_home_dir()
   }
 
-  fn env_split_paths(
-    &self,
-    paths: &std::ffi::OsStr,
-  ) -> Vec<std::path::PathBuf> {
+  fn env_split_paths(&self, paths: &OsStr) -> Vec<std::path::PathBuf> {
     if cfg!(target_arch = "wasm32") && self.is_windows() {
       // not perfect, but good enough
       paths
@@ -71,7 +69,7 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     }
   }
 
-  fn env_var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+  fn env_var_os(&self, name: &OsStr) -> Option<std::ffi::OsString> {
     self.0.env_var_os(name)
   }
 
@@ -107,15 +105,19 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     Ok(iter)
   }
 
-  #[cfg(all(unix, not(target_arch = "wasm32")))]
+  #[cfg(unix)]
   fn is_valid_executable(
     &self,
     path: &std::path::Path,
   ) -> std::io::Result<bool> {
-    use rustix::fs as rfs;
-    rfs::access(path, rfs::Access::EXEC_OK)
-      .map(|_| true)
-      .map_err(|e| io::Error::from_raw_os_error(e.raw_os_error()))
+    use nix::unistd::access;
+    use nix::unistd::AccessFlags;
+
+    match access(path, AccessFlags::X_OK) {
+      Ok(()) => Ok(true),
+      Err(nix::errno::Errno::ENOENT) => Ok(false),
+      Err(e) => Err(std::io::Error::from_raw_os_error(e as i32)),
+    }
   }
 
   #[cfg(target_arch = "wasm32")]
@@ -138,7 +140,7 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
       .encode_wide()
       .chain(Some(0))
       .collect::<Vec<u16>>();
-    let mut bt: winapi::shared::minwindef::DWORD = 0;
+    let mut bt: u32 = 0;
     // SAFETY: winapi call
     unsafe {
       Ok(
@@ -155,7 +157,7 @@ pub struct WhichReadDirEntrySysAdapter<TFsDirEntry: sys_traits::FsDirEntry>(
   TFsDirEntry,
 );
 
-impl<TFsDirEntry: sys_traits::FsDirEntry> which::sys::SysReadDirEntry
+impl<TFsDirEntry: sys_traits::FsDirEntry> temp_deno_which::sys::SysReadDirEntry
   for WhichReadDirEntrySysAdapter<TFsDirEntry>
 {
   fn file_name(&self) -> std::ffi::OsString {
@@ -171,7 +173,7 @@ pub struct WhichMetadataSysAdapter<TMetadata: sys_traits::FsMetadataValue>(
   TMetadata,
 );
 
-impl<TMetadata: sys_traits::FsMetadataValue> which::sys::SysMetadata
+impl<TMetadata: sys_traits::FsMetadataValue> temp_deno_which::sys::SysMetadata
   for WhichMetadataSysAdapter<TMetadata>
 {
   fn is_symlink(&self) -> bool {

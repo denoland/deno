@@ -2529,16 +2529,16 @@ dependencies = [
  "fqdn",
  "libc",
  "log",
+ "nix 0.27.1",
  "once_cell",
  "parking_lot",
  "percent-encoding",
- "rustix",
  "serde",
  "serde_json",
  "sys_traits",
+ "temp_deno_which",
  "thiserror 2.0.12",
  "url",
- "which 7.0.3",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -2566,7 +2566,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "which 7.0.3",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -8459,6 +8458,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
+name = "temp_deno_which"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "366c5ccd670145885feb6efd6bbf2478ed236c4c3839046fcc8e2a1a84c51091"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9268,7 +9276,7 @@ dependencies = [
  "home",
  "miniz_oxide 0.8.8",
  "paste",
- "which 6.0.1",
+ "which",
 ]
 
 [[package]]
@@ -9638,13 +9646,6 @@ dependencies = [
  "home",
  "rustix",
  "winsafe",
-]
-
-[[package]]
-name = "which"
-version = "7.0.3"
-dependencies = [
- "either",
 ]
 
 [[package]]
