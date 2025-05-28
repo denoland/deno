@@ -128,7 +128,7 @@ fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
-import_map = { workspace = true, features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
