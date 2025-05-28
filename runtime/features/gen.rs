@@ -171,7 +171,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
   UnstableFeatureDefinition {
     name: "subdomain-wildcards",
     flag_name: "unstable-subdomain-wildcards",
-    help_text: "Enable unstable subdomain wildcards for `--allow-net`",
+    help_text: "Enable subdomain wildcards support for the `--allow-net` flag",
     show_in_help: true,
     id: 18,
     kind: UnstableFeatureKind::Cli,
