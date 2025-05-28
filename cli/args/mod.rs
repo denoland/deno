@@ -833,10 +833,7 @@ impl CliOptions {
 
   pub fn permissions_options(&self) -> PermissionsOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
-    fn flags_to_options(
-      flags: &PermissionFlags,
-      cli_options: &CliOptions,
-    ) -> PermissionsOptions {
+    fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
       fn handle_allow<T: Default>(
         allow_all: bool,
         value: Option<T>,
@@ -867,13 +864,10 @@ impl CliOptions {
         deny_write: flags.deny_write.clone(),
         allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
         prompt: !resolve_no_prompt(flags),
-        unstable_subdomain_wildcards: cli_options
-          .unstable_subdomain_wildcards(),
       }
     }
 
-    let mut permissions_options =
-      flags_to_options(&self.flags.permissions, self);
+    let mut permissions_options = flags_to_options(&self.flags.permissions);
     self.augment_import_permissions(&mut permissions_options);
     permissions_options
   }

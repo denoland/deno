@@ -819,11 +819,13 @@ impl QueryDescriptor for WriteQueryDescriptor {
 pub struct WriteDescriptor(pub PathBuf);
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
-enum SubdomainWildcards {
+pub enum SubdomainWildcards {
   Enabled,
   #[default]
   Disabled,
 }
+
+pub type UnstableSubdomainWildcards = SubdomainWildcards;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
@@ -1029,16 +1031,9 @@ impl NetDescriptor {
 
   pub fn parse_for_list(
     hostname: &str,
-    unstable_subdomain_wildcards: bool,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(
-      hostname,
-      if unstable_subdomain_wildcards {
-        SubdomainWildcards::Enabled
-      } else {
-        SubdomainWildcards::Disabled
-      },
-    )
+    Self::parse_inner(hostname, unstable_subdomain_wildcards)
   }
 
   fn parse_inner(
@@ -1227,9 +1222,11 @@ impl QueryDescriptor for ImportDescriptor {
 impl ImportDescriptor {
   pub fn parse_for_list(
     specifier: &str,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
     Ok(ImportDescriptor(NetDescriptor::parse_for_list(
-      specifier, true,
+      specifier,
+      unstable_subdomain_wildcards,
     )?))
   }
 
@@ -2171,7 +2168,6 @@ pub struct Permissions {
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
   pub import: UnaryPermission<ImportDescriptor>,
   pub all: UnitPermission,
-  pub unstable_subdomain_wildcards: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -2193,7 +2189,6 @@ pub struct PermissionsOptions {
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
   pub prompt: bool,
-  pub unstable_subdomain_wildcards: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -2339,10 +2334,10 @@ impl Permissions {
       ),
       net: Permissions::new_unary(
         parse_maybe_vec(opts.allow_net.as_deref(), |item| {
-          parser.parse_net_descriptor(item, opts.unstable_subdomain_wildcards)
+          parser.parse_net_descriptor(item)
         })?,
         parse_maybe_vec(opts.deny_net.as_deref(), |item| {
-          parser.parse_net_descriptor(item, opts.unstable_subdomain_wildcards)
+          parser.parse_net_descriptor(item)
         })?,
         opts.prompt,
       ),
@@ -2388,7 +2383,6 @@ impl Permissions {
         opts.prompt,
       ),
       all: Permissions::new_all(opts.allow_all),
-      unstable_subdomain_wildcards: opts.unstable_subdomain_wildcards,
     })
   }
 
@@ -2404,7 +2398,6 @@ impl Permissions {
       ffi: UnaryPermission::allow_all(),
       import: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
-      unstable_subdomain_wildcards: true,
     }
   }
 
@@ -2429,7 +2422,6 @@ impl Permissions {
       ffi: Permissions::new_unary(None, None, prompt),
       import: Permissions::new_unary(None, None, prompt),
       all: Permissions::new_all(false),
-      unstable_subdomain_wildcards: true,
     }
   }
 }
@@ -2581,14 +2573,11 @@ impl PermissionsContainer {
         ))
       },
     )?;
-    let unstable_subdomain_wildcards = inner.unstable_subdomain_wildcards;
     worker_perms.net = inner.net.create_child_permissions(
       child_permissions_arg.net,
       |text| {
         Ok::<_, NetDescriptorParseError>(Some(
-          self
-            .descriptor_parser
-            .parse_net_descriptor(text, unstable_subdomain_wildcards)?,
+          self.descriptor_parser.parse_net_descriptor(text)?,
         ))
       },
     )?;
@@ -2625,8 +2614,6 @@ impl PermissionsContainer {
         ))
       },
     )?;
-    worker_perms.unstable_subdomain_wildcards =
-      inner.unstable_subdomain_wildcards;
 
     Ok(PermissionsContainer::new(
       self.descriptor_parser.clone(),
@@ -3799,7 +3786,6 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_net_descriptor(
     &self,
     text: &str,
-    unstable_subdomain_wildcards: bool,
   ) -> Result<NetDescriptor, NetDescriptorParseError>;
 
   fn parse_net_descriptor_from_url(
@@ -3920,16 +3906,18 @@ mod tests {
     fn parse_net_descriptor(
       &self,
       text: &str,
-      unstable_subdomain_wildcards: bool,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse_for_list(text, unstable_subdomain_wildcards)
+      NetDescriptor::parse_for_list(text, UnstableSubdomainWildcards::Enabled)
     }
 
     fn parse_import_descriptor(
       &self,
       text: &str,
     ) -> Result<ImportDescriptor, NetDescriptorParseError> {
-      ImportDescriptor::parse_for_list(text)
+      ImportDescriptor::parse_for_list(
+        text,
+        UnstableSubdomainWildcards::Enabled,
+      )
     }
 
     fn parse_env_descriptor(
@@ -4063,7 +4051,6 @@ mod tests {
           "443.example.com:443",
           "*.discord.gg"
         ]),
-        unstable_subdomain_wildcards: true,
         ..Default::default()
       },
     )
@@ -5162,7 +5149,6 @@ mod tests {
       &PermissionsOptions {
         allow_env: Some(vec![]),
         allow_net: Some(svec!["*.foo", "bar"]),
-        unstable_subdomain_wildcards: true,
         ..Default::default()
       },
     )
@@ -5183,9 +5169,11 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([
-            NetDescriptor::parse_for_list("foo", true).unwrap()
-          ])),
+          Some(HashSet::from([NetDescriptor::parse_for_list(
+            "foo",
+            UnstableSubdomainWildcards::Enabled
+          )
+          .unwrap()])),
           None,
           false
         ),
@@ -5508,7 +5496,11 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(
-        NetDescriptor::parse_for_list(input, true).ok(),
+        NetDescriptor::parse_for_list(
+          input,
+          UnstableSubdomainWildcards::Enabled
+        )
+        .ok(),
         *expected,
         "'{input}'"
       );

@@ -18,6 +18,7 @@ use deno_permissions::RunDescriptorParseError;
 use deno_permissions::RunQueryDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::SysDescriptorParseError;
+use deno_permissions::UnstableSubdomainWildcards;
 use deno_permissions::WriteDescriptor;
 
 #[derive(Debug)]
@@ -25,13 +26,20 @@ pub struct RuntimePermissionDescriptorParser<
   TSys: deno_permissions::which::WhichSys + Send + Sync,
 > {
   sys: TSys,
+  unstable_subdomain_wildcards: UnstableSubdomainWildcards,
 }
 
 impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
   RuntimePermissionDescriptorParser<TSys>
 {
-  pub fn new(sys: TSys) -> Self {
-    Self { sys }
+  pub fn new(
+    sys: TSys,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
+  ) -> Self {
+    Self {
+      sys,
+      unstable_subdomain_wildcards,
+    }
   }
 
   fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, PathResolveError> {
@@ -76,16 +84,15 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
   fn parse_net_descriptor(
     &self,
     text: &str,
-    unstable_subdomain_wildcards: bool,
   ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
-    NetDescriptor::parse_for_list(text, unstable_subdomain_wildcards)
+    NetDescriptor::parse_for_list(text, self.unstable_subdomain_wildcards)
   }
 
   fn parse_import_descriptor(
     &self,
     text: &str,
   ) -> Result<ImportDescriptor, deno_permissions::NetDescriptorParseError> {
-    ImportDescriptor::parse_for_list(text)
+    ImportDescriptor::parse_for_list(text, self.unstable_subdomain_wildcards)
   }
 
   fn parse_env_descriptor(
@@ -174,12 +181,14 @@ mod test {
 
   #[test]
   fn test_handle_empty_value() {
-    let parser =
-      RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
+    let parser = RuntimePermissionDescriptorParser::new(
+      sys_traits::impls::RealSys,
+      UnstableSubdomainWildcards::Enabled,
+    );
     assert!(parser.parse_read_descriptor("").is_err());
     assert!(parser.parse_write_descriptor("").is_err());
     assert!(parser.parse_env_descriptor("").is_err());
-    assert!(parser.parse_net_descriptor("", true).is_err());
+    assert!(parser.parse_net_descriptor("").is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
     assert!(parser.parse_path_query("").is_err());
     assert!(parser.parse_net_query("").is_err());
