@@ -38,7 +38,6 @@
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
-      "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
