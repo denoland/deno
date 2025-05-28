@@ -119,7 +119,9 @@ const MAX_UINT32 = 2 ** 32;
 
 const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 
-export const INSPECT_MAX_BYTES = 50;
+let INSPECT_MAX_BYTES_ = 50;
+
+export const INSPECT_MAX_BYTES = INSPECT_MAX_BYTES_;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
@@ -611,17 +613,17 @@ Buffer.prototype[customInspectSymbol] =
   Buffer.prototype.inspect =
     function inspect() {
       let str = "";
-      const max = INSPECT_MAX_BYTES;
       str = StringPrototypeTrim(
         StringPrototypeReplace(
           // deno-lint-ignore prefer-primordials
-          this.toString("hex", 0, max),
+          this.toString("hex", 0, INSPECT_MAX_BYTES_),
           SPACER_PATTERN,
           "$1 ",
         ),
       );
-      if (this.length > max) {
-        str += " ... ";
+      if (this.length > INSPECT_MAX_BYTES_) {
+        const remaining = this.length - INSPECT_MAX_BYTES_;
+        str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
       }
       return "<Buffer " + str + ">";
     };
@@ -2766,7 +2768,7 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
-export default {
+const mod = {
   atob,
   btoa,
   Blob,
@@ -2774,9 +2776,21 @@ export default {
   constants,
   isAscii,
   isUtf8,
-  INSPECT_MAX_BYTES,
+  get INSPECT_MAX_BYTES() {
+    return INSPECT_MAX_BYTES_;
+  },
+  set INSPECT_MAX_BYTES(val) {
+    validateNumber(val, "INSPECT_MAX_BYTES", 0);
+    INSPECT_MAX_BYTES_ = val;
+  },
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
   transcode,
 };
+
+// NB(bartlomieju): we want to have a default exports from this module for ES imports,
+// as well as make it work with `require` in such a way that getters/setters
+// for `INSPECT_MAX_BYTES` work correctly - using `as "module.exports"` ensures
+// that `require`ing this module does that.
+export { mod as "module.exports", mod as default };
