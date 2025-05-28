@@ -1025,7 +1025,7 @@ impl ModuleGraphBuilder {
       self.sys.clone(),
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
-        permissions,
+        permissions: Some(permissions),
       },
     )
   }

@@ -372,7 +372,7 @@ impl<
 
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
-  pub permissions: PermissionsContainer,
+  pub permissions: Option<PermissionsContainer>,
 }
 
 #[sys_traits::auto_impl]
@@ -392,7 +392,7 @@ pub struct DenoGraphLoader<
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
-  permissions: PermissionsContainer,
+  permissions: Option<PermissionsContainer>,
   sys: TSys,
   cache_info_enabled: bool,
 }
@@ -515,12 +515,17 @@ impl<
       file_fetcher
         .fetch_no_follow(
           &specifier,
-          FetchPermissionsOptionRef::Restricted(&permissions,
-          if is_statically_analyzable {
-            CheckSpecifierKind::Static
-          } else {
-            CheckSpecifierKind::Dynamic
-          }),
+          match &permissions {
+            Some(permissions) => {
+              FetchPermissionsOptionRef::Restricted(permissions,
+              if is_statically_analyzable {
+                CheckSpecifierKind::Static
+              } else {
+                CheckSpecifierKind::Dynamic
+              })
+            },
+            None => FetchPermissionsOptionRef::AllowAll,
+          },
           FetchNoFollowOptions {
             local: FetchLocalOptions {
               // only include the mtime in dynamic branches because we only
