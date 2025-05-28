@@ -7,10 +7,9 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
-use deno_core::error::JsStackFrame;
-use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 
 use crate::is_standalone;
 
@@ -55,11 +54,11 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
+static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<GetFormattedStackFn>>> =
   Lazy::new(|| Mutex::new(None));
 
-pub fn set_current_stacktrace(trace: Vec<JsStackFrame>) {
-  *MAYBE_CURRENT_STACKTRACE.lock() = Some(trace);
+pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
+  *MAYBE_CURRENT_STACKTRACE.lock() = Some(get_stack);
 }
 
 pub fn permission_prompt(
@@ -95,6 +94,8 @@ pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
+pub type GetFormattedStackFn = Box<dyn FnOnce() -> Vec<String> + Send + Sync>;
+
 pub trait PermissionPrompter: Send + Sync {
   fn prompt(
     &mut self,
@@ -102,11 +103,12 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    stack: Option<Vec<JsStackFrame>>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse;
 }
 
 pub struct TtyPrompter;
+
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
@@ -294,7 +296,7 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    stack: Option<Vec<JsStackFrame>>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
@@ -351,16 +353,15 @@ impl PermissionPrompter for TtyPrompter {
         )
         .unwrap();
       }
-      let stack_lines_count = if let Some(stack) = stack {
+      let stack_lines_count = if let Some(get_stack) = get_stack {
+        let stack = get_stack();
         let len = stack.len();
         for (idx, frame) in stack.into_iter().enumerate() {
           writeln!(
             &mut output,
             "┃  {} {}",
             colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
-            colors::gray(deno_core::error::format_frame::<
-              deno_core::error::NoAnsiColors,
-            >(&frame))
+            colors::gray(frame),
           )
           .unwrap();
         }
@@ -490,7 +491,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
-      _stack: Option<Vec<JsStackFrame>>,
+      _get_stack: Option<GetFormattedStackFn>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

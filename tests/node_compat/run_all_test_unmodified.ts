@@ -1,10 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // deno-lint-ignore-file no-console
 
+// This script runs all Node.js test cases without modification
+// It saves the test results in `tests/node_compat/report.json` when
+// filtering is not specified.
+// The saved results are uploaded to cloud storage bucket `dl.deno.land`
+// daily, and can be viewed at the web page:
+// https://node-test-viewer.deno.dev/
+
 import { deadline } from "@std/async/deadline";
 import { expandGlob } from "@std/fs/expand-glob";
 import { toFileUrl } from "@std/path/to-file-url";
-import { basename } from "@std/path/basename";
 import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
@@ -66,150 +72,10 @@ const NODE_IGNORED_TEST_CASES = new Set([
   "parallel/test-benchmark-cli.js", // testing private benchmark utility
 ]);
 
-// Category names are usually one word, but there are some exceptions.
-// This list contains the exceptions.
-const multiWordsCategoryNames = [
-  "async-hooks",
-  "async-local-storage",
-  "async-wrap",
-  "child-process",
-  "cpu-prof",
-  "double-tls",
-  "diagnostics-channel",
-  "force-repl",
-  "listen-fd",
-  "memory-usage",
-  "next-tick",
-  "outgoing-message",
-  "shadow-realm",
-  "single-executable",
-  "string-decoder",
-];
-
-const categoryMap = {
-  cjs: "module",
-  cwd: "process",
-  diagnostic: "diagnostics-channel",
-  "double-tls": "net",
-  event: "events",
-  eventsource: "events",
-  eventtarget: "events",
-  esm: "module",
-  file: "fs",
-  filehandle: "fs",
-  "force-repl": "repl",
-  inspect: "util",
-  "listen-fd": "net",
-  "next-tick": "process",
-  "outgoing-message": "http",
-  promises: "promise",
-  readable: "stream",
-  require: "module",
-  socket: "net",
-  stdin: "stdio",
-  stdout: "stdio",
-  stream2: "stream",
-  stream3: "stream",
-  tcp: "net",
-  ttywrap: "tty",
-  webstream: "webstreams",
-} as Record<string, string>;
-
-// These name could appear as category name, but they are actually not.
-// If the category name is one of these, it should be categorized as "others".
-const otherCategories = [
-  "common",
-  "compile",
-  "corepack",
-  "disable",
-  "env",
-  "error",
-  "errors",
-  "eslint",
-  "eval",
-  "exception",
-  "handle",
-  "heap",
-  "heapdump",
-  "heapsnapshot",
-  "internal",
-  "memory",
-  "no",
-  "queue",
-  "release",
-  "set",
-  "source",
-  "startup",
-  "sync",
-  "trace",
-  "tick",
-  "unhandled",
-  "uv",
-  "warn",
-  "windows",
-  "wrap",
-];
-
-/**
- * The test files in these dirs seem categorized in the form
- * test-[category-name]-test-case.js
- */
-const categorizedTestGroups = [
-  "es-module",
-  "parallel",
-  "pummel",
-  "sequential",
-  "internet",
-];
-
 /** The group is the directory name of the test file.
  * e.g. parallel, internet, pummel, sequential, pseudo-tty, etc */
 function getGroupRelUrl(str: string) {
   return str.split("/")[0];
-}
-
-/** Gets the category name from the test path
- * e.g.
- * - parallel/test-async-hooks-destroyed-context.js -> async-hooks
- * - sequential/test-child-process-exec-stderr.js -> child-process
- * - internet/test-http-keep-alive.js -> http
- * - pseudo-tty/test-stdin.js -> tty
- * - module-hooks/test-require.js -> module
- */
-function getCategoryFromPath(str: string) {
-  const group = getGroupRelUrl(str);
-  if (group === "pseudo-tty") {
-    return "tty";
-  } else if (group === "module-hooks") {
-    return "module";
-  } else if (categorizedTestGroups.includes(group)) {
-    const name = basename(str).replace(/\.js/, "");
-    let category = name.split("-")[1];
-    for (const multiWord of multiWordsCategoryNames) {
-      if (name.startsWith("test-" + multiWord)) {
-        category = multiWord;
-      }
-    }
-    category = categoryMap[category] ?? category;
-    if (otherCategories.includes(category)) {
-      return "others";
-    }
-    return category;
-  } else {
-    return "others";
-  }
-}
-
-/** Collect the items that are not categorized into the "others" category. */
-function collectNonCategorizedItems(categories: Record<string, string[]>) {
-  const others = [] as string[];
-  for (const [category, items] of Object.entries(categories)) {
-    if (items.length === 1) {
-      delete categories[category];
-      others.push(...items);
-    }
-  }
-  (categories["others"] ??= []).push(...others);
 }
 
 function truncateTestOutput(output: string): string {
@@ -395,7 +261,6 @@ async function main() {
 
   const start = Date.now();
   const tests = [] as string[];
-  const categories = {} as Record<string, string[]>;
   for await (
     const test of expandGlob(
       "tests/node_compat/runner/suite/**/test-*{.mjs,.cjs.,.js,.ts}",
@@ -405,12 +270,8 @@ async function main() {
     const relUrl = toFileUrl(test.path).href.replace(testDirUrl, "");
     if (NODE_IGNORED_TEST_DIRS.every((dir) => !relUrl.startsWith(dir))) {
       tests.push(relUrl);
-      (categories[getCategoryFromPath(relUrl)] ??= []).push(relUrl);
     }
   }
-  collectNonCategorizedItems(categories);
-  const categoryList = Object.entries(categories)
-    .sort(([c0], [c1]) => c0.localeCompare(c1));
   const reports = {} as TestReports;
   let i = 0;
 
@@ -435,7 +296,6 @@ async function main() {
     (test) => getGroupRelUrl(test) === "sequential",
   );
 
-  console.log;
   if (filterTerm) {
     sequential = sequential.filter((term) => {
       if (term.includes(filterTerm)) {
@@ -469,58 +329,39 @@ async function main() {
     // pass
   }
 
-  // Reporting to stdout
-  console.log(`Result by categories (${categoryList.length}):`);
-  for (const [category, tests] of categoryList) {
-    if (
-      tests.every((test) => reports[test].result === NodeTestFileResult.SKIP)
-    ) {
-      continue;
-    }
-    const s = tests.filter((test) =>
-      reports[test].result === NodeTestFileResult.PASS
-    ).length;
-    const all = filterTerm
-      ? tests.map((testPath) => reports[testPath].result).filter((result) =>
-        result !== NodeTestFileResult.SKIP
-      ).length
-      : tests.length;
-    console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
-    for (const testPath of tests) {
-      switch (reports[testPath].result) {
-        case NodeTestFileResult.PASS: {
-          console.log(`    %cPASS`, "color: green", testPath);
-          break;
-        }
-        case NodeTestFileResult.FAIL: {
-          // deno-lint-ignore no-explicit-any
-          let elements: any[] = [];
-          const error = reports[testPath].error!;
-          if (error.code) {
-            elements = ["exit code:", error.code, "\n   ", error.stderr];
-          } else if (error.timeout) {
-            elements = ["timeout out after", error.timeout, "seconds"];
-          } else {
-            elements = ["errored with:", error.message];
-          }
-          console.log(`    %cFAIL`, "color: red", testPath);
-          console.log("   ", ...elements);
-          break;
-        }
-        case NodeTestFileResult.IGNORED: {
-          console.log(`    %cIGNORED`, "color: gray", testPath);
-          break;
-        }
-        case NodeTestFileResult.SKIP: {
-          // Don't print message for "skip" for now, as it's too noisy
-          // console.log(`    %cSKIP`, "color: yellow", testPath);
-          break;
-        }
-        default:
-          console.warn(
-            `Unknown result (${reports[testPath].result}) for ${testPath}`,
-          );
+  for (const [testPath, fileResult] of Object.entries(reports)) {
+    switch (fileResult.result) {
+      case NodeTestFileResult.PASS: {
+        console.log(`    %cPASS`, "color: green", testPath);
+        break;
       }
+      case NodeTestFileResult.FAIL: {
+        let elements: string[] = [];
+        const error = fileResult.error!;
+        if ("code" in error) {
+          elements = [`exit code: ${error.code}\n   `, error.stderr];
+        } else if ("timeout" in error) {
+          elements = [`timeout out after ${error.timeout} seconds`];
+        } else {
+          elements = ["errored with:", error.message];
+        }
+        console.log(`    %cFAIL`, "color: red", testPath);
+        console.log("   ", ...elements);
+        break;
+      }
+      case NodeTestFileResult.SKIP: {
+        // Don't print message for "skip" for now, as it's too noisy
+        // console.log(`    %cSKIP`, "color: yellow", testPath);
+        break;
+      }
+      case NodeTestFileResult.IGNORED: {
+        console.log(`    %cIGNORED`, "color: gray", testPath);
+        break;
+      }
+      default:
+        console.warn(
+          `Unknown result (${fileResult.result}) for ${testPath}`,
+        );
     }
   }
 
