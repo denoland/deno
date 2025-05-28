@@ -1666,7 +1666,6 @@ pub fn clap_root() -> Command {
         .subcommand(compile_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
-        .subcommand(deploy_subcommand())
         .subcommand(doc_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
@@ -1686,6 +1685,12 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand());
+
+      let cmd = if std::env::var("DENO_DEPLOY_SUBCOMMAND").is_ok() {
+        cmd.subcommand(deploy_subcommand())
+      } else {
+        cmd
+      };
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
