@@ -37,6 +37,7 @@ export type TestReportMetadata = {
   runId: string | null;
   total: number;
   pass: number;
+  ignore: number;
 };
 
 // The test report format, which is stored in JSON file
@@ -67,6 +68,10 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
+const NODE_IGNORED_TEST_CASES = new Set([
+  "parallel/test-benchmark-cli.js", // testing private benchmark utility
+]);
+
 /** The group is the directory name of the test file.
  * e.g. parallel, internet, pummel, sequential, pseudo-tty, etc */
 function getGroupRelUrl(str: string) {
@@ -84,7 +89,8 @@ function truncateTestOutput(output: string): string {
 enum NodeTestFileResult {
   PASS = "pass",
   FAIL = "fail",
-  SKIP = "skip",
+  SKIP = "skip", // skipped because of filtering (for debugging locally)
+  IGNORED = "ignored", // ignored because the test case does not need to pass in Deno
 }
 
 interface NodeTestFileReport {
@@ -95,7 +101,7 @@ interface NodeTestFileReport {
 type TestReports = Record<string, NodeTestFileReport>;
 
 export type SingleResult = [
-  pass: boolean,
+  pass: boolean | "IGNORE",
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
 ];
 type ErrorExit = {
@@ -136,6 +142,9 @@ async function runSingle(
   testPath: string,
   retry = 0,
 ): Promise<NodeTestFileReport> {
+  if (NODE_IGNORED_TEST_CASES.has(testPath)) {
+    return { result: NodeTestFileResult.IGNORED };
+  }
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   try {
@@ -203,6 +212,8 @@ function transformReportsIntoResults(
     let result: SingleResult = [true];
     if (value.result === NodeTestFileResult.FAIL) {
       result = [false, value.error];
+    } else if (value.result === NodeTestFileResult.IGNORED) {
+      result = ["IGNORE"];
     }
     results[key] = result;
   }
@@ -214,6 +225,7 @@ async function writeTestReport(
   reports: TestReports,
   total: number,
   pass: number,
+  ignore: number,
 ) {
   // First transform the results - before we added `NodeTestFileReport` we used `SingleResult`.
   // For now we opt to keep that format, as migrating existing results is cumbersome.
@@ -231,6 +243,7 @@ async function writeTestReport(
         runId: Deno.env.get("GITHUB_RUN_ID") ?? null,
         total,
         pass,
+        ignore,
         results,
       } satisfies TestReport,
     ),
@@ -270,6 +283,8 @@ async function main() {
       console.log(`${num} %cPASS`, "color: green", testPath);
     } else if (result.result === NodeTestFileResult.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
+    } else if (result.result === NodeTestFileResult.IGNORED) {
+      console.log(`${num} %cIGNORED`, "color: gray", testPath);
     } else {
       // Don't print message for "skip" for now, as it's too noisy
       // console.log(`${num} %cSKIP`, "color: yellow", testPath);
@@ -339,6 +354,10 @@ async function main() {
         // console.log(`    %cSKIP`, "color: yellow", testPath);
         break;
       }
+      case NodeTestFileResult.IGNORED: {
+        console.log(`    %cIGNORED`, "color: gray", testPath);
+        break;
+      }
       default:
         console.warn(
           `Unknown result (${fileResult.result}) for ${testPath}`,
@@ -347,19 +366,21 @@ async function main() {
   }
 
   // Summary
-  let total;
   const pass =
     tests.filter((test) => reports[test].result === NodeTestFileResult.PASS)
       .length;
+  const fail =
+    tests.filter((test) => reports[test].result === NodeTestFileResult.FAIL)
+      .length;
+  const ignore =
+    tests.filter((test) => reports[test].result === NodeTestFileResult.IGNORED)
+      .length;
+  const total = pass + fail;
   if (filterTerm) {
-    total = tests.map((testPath) =>
-      reports[testPath].result
-    ).filter((result) => result !== NodeTestFileResult.SKIP).length;
     console.log(
       `Filtered tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
     );
   } else {
-    total = tests.length;
     console.log(
       `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
     );
@@ -369,7 +390,7 @@ async function main() {
   // Store the results in a JSON file
 
   if (!filterTerm) {
-    await writeTestReport(reports, total, pass);
+    await writeTestReport(reports, total, pass, ignore);
   }
 
   Deno.exit(0);
