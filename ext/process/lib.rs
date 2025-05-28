@@ -254,7 +254,7 @@ pub enum ProcessError {
   BorrowMut(std::cell::BorrowMutError),
   #[class(generic)]
   #[error(transparent)]
-  Which(which::Error),
+  Which(deno_permissions::which::Error),
   #[class(type)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
@@ -800,9 +800,14 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
-    match which::which_in(cmd, path, &env.cwd) {
+    match deno_permissions::which::which_in(
+      sys_traits::impls::RealSys,
+      cmd,
+      path.cloned(),
+      env.cwd.clone(),
+    ) {
       Ok(cmd) => Ok(cmd),
-      Err(which::Error::CannotFindBinaryPath) => {
+      Err(deno_permissions::which::Error::CannotFindBinaryPath) => {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
       }
       Err(err) => Err(ProcessError::Which(err)),

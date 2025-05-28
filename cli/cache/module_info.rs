@@ -136,6 +136,28 @@ impl ModuleInfoCache {
   }
 }
 
+impl deno_graph::source::ModuleInfoCacher for ModuleInfoCache {
+  fn cache_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<[u8]>,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    log::debug!("Caching module info for {}", specifier);
+    let source_hash = CacheDBHash::from_hashable(source);
+    let result =
+      self.set_module_info(specifier, media_type, source_hash, module_info);
+    if let Err(err) = result {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
+  }
+}
+
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
