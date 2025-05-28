@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1172 tests out of 3993 have been ported from Node 23.9.0 (29.35% ported, 71.17% remaining).
+1177 tests out of 3993 have been ported from Node 23.9.0 (29.48% ported, 71.05% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -292,7 +292,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
 - [parallel/test-buffer-resizable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-resizable.js)
-- [parallel/test-buffer-set-inspect-max-bytes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-set-inspect-max-bytes.js)
 - [parallel/test-buffer-write-fast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-write-fast.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
@@ -790,7 +789,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-exists.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-exists.js)
 - [parallel/test-fs-existssync-false.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-existssync-false.js)
 - [parallel/test-fs-fchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchmod.js)
-- [parallel/test-fs-fchown.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchown.js)
 - [parallel/test-fs-filehandle-use-after-close.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle-use-after-close.js)
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)
@@ -2056,8 +2054,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-sqlite-named-parameters.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-named-parameters.js)
 - [parallel/test-sqlite-session.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-session.js)
 - [parallel/test-sqlite-statement-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-statement-sync.js)
-- [parallel/test-sqlite-transactions.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-transactions.js)
-- [parallel/test-sqlite-typed-array-and-data-view.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-typed-array-and-data-view.js)
 - [parallel/test-sqlite.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite.js)
 - [parallel/test-stack-size-limit.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stack-size-limit.js)
 - [parallel/test-startup-empty-regexp-statics.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-startup-empty-regexp-statics.js)
@@ -2522,7 +2518,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-worker-esm-missing-main.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esm-missing-main.js)
 - [parallel/test-worker-esmodule.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-esmodule.js)
 - [parallel/test-worker-eval-typescript.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-eval-typescript.js)
-- [parallel/test-worker-event.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-event.js)
 - [parallel/test-worker-execargv-invalid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv-invalid.js)
 - [parallel/test-worker-execargv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-execargv.js)
 - [parallel/test-worker-exit-code.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-worker-exit-code.js)

@@ -34,3 +34,18 @@ Deno.test("sub process with deno eval", () => {
     throw new Error("Failed");
   }
 });
+
+Deno.test("DENO_COVERAGE_DIR is set and passed down to child process", () => {
+  const coverageDir = Deno.env.get("DENO_COVERAGE_DIR");
+  if (coverageDir === undefined) {
+    throw new Error("DENO_COVERAGE_DIR is not set");
+  }
+  const code = "console.log(Deno.env.get('DENO_COVERAGE_DIR'))";
+  const { stdout } = new Deno.Command(Deno.execPath(), {
+    args: ["eval", code],
+  }).outputSync();
+  const output = new TextDecoder().decode(stdout);
+  if (output.trim() !== coverageDir) {
+    throw new Error("Failed");
+  }
+});

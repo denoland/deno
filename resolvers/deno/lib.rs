@@ -29,13 +29,10 @@ use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use self::npm::NpmResolverSys;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
@@ -43,9 +40,12 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
 pub mod graph;
+pub mod import_map;
+pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
 mod sync;
@@ -116,7 +116,7 @@ pub struct NodeAndNpmReqResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: NpmResolverSys,
 > {
   pub node_resolver: NodeResolverRc<
     TInNpmPackageChecker,
@@ -132,15 +132,8 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
-pub trait DenoResolverSys:
-  FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
-{
-}
-
-impl<T> DenoResolverSys for T where
-  T: FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
-{
-}
+#[sys_traits::auto_impl]
+pub trait DenoResolverSys: NpmResolverSys {}
 
 pub struct DenoResolverOptions<
   'a,

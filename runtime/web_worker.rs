@@ -107,6 +107,7 @@ pub enum WebWorkerType {
 
 /// Events that are sent to host from child
 /// worker.
+#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError),
   Close,
@@ -167,6 +168,7 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
+  #[allow(clippy::result_large_err)]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -630,13 +632,9 @@ impl WebWorker {
         validate_import_attributes_callback,
       )),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-      maybe_op_stack_trace_callback: if options.enable_stack_trace_arg_in_ops {
-        Some(Box::new(|stack| {
-          deno_permissions::prompter::set_current_stacktrace(stack)
-        }))
-      } else {
-        None
-      },
+      maybe_op_stack_trace_callback: options
+        .enable_stack_trace_arg_in_ops
+        .then(crate::worker::create_permissions_stack_trace_callback),
       ..Default::default()
     });
 
@@ -828,6 +826,7 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,

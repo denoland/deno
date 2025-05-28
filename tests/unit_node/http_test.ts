@@ -2127,3 +2127,21 @@ Deno.test("[node/http] client http over unix socket works", {
   await promise;
   await server.finished;
 });
+
+Deno.test("[node/https] null ca, key and cert req options", {
+  permissions: { net: ["localhost:5545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  https.request("https://localhost:5545/echo.ts", {
+    ca,
+    // @ts-expect-error - key can be null at runtime
+    key: null,
+    // @ts-expect-error - cert can be null at runtime
+    cert: null,
+  }, async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
+});
