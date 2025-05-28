@@ -96,23 +96,34 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     &self,
     path: &std::path::Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     let iter = self.0.fs_read_dir(path)?;
-    let test = Box::new(
+    let iter = Box::new(
       iter
         .into_iter()
         .map(|value| value.map(WhichReadDirEntrySysAdapter)),
     );
-    Ok(test)
+    Ok(iter)
   }
 
-  #[cfg(not(windows))]
+  #[cfg(all(unix, not(target_arch = "wasm32")))]
   fn is_valid_executable(
     &self,
     path: &std::path::Path,
   ) -> std::io::Result<bool> {
-    todo!()
+    use rustix::fs as rfs;
+    rfs::access(path, rfs::Access::EXEC_OK)
+      .map(|_| true)
+      .map_err(|e| io::Error::from_raw_os_error(e.raw_os_error()))
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  fn is_valid_executable(
+    &self,
+    _path: &std::path::Path,
+  ) -> std::io::Result<bool> {
+    Ok(true)
   }
 
   #[cfg(windows)]

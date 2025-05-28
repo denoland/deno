@@ -582,7 +582,7 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
     &self,
     path: &Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     if self.0.is_path_within(path) {
       let entries = self.0.read_dir_with_metadata(path)?;
@@ -1390,16 +1390,23 @@ impl FileBackedVfs {
     )
   }
 
-  pub fn read_dir_with_metadata<'a>(
-    &'a self,
+  pub fn read_dir_with_metadata(
+    &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
-    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
-      parent_path: path.to_path_buf(),
-      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
-    }))
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(move |entry| FileBackedVfsDirEntry {
+          parent_path: path.to_path_buf(),
+          metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
+        })
+        .collect::<Vec<_>>()
+        .into_iter(),
+    )
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {

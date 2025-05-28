@@ -180,7 +180,7 @@ impl<TSys: FsReadDir> BaseFsReadDir for NodeResolutionSys<TSys> {
     &self,
     path: &Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     self.sys.base_fs_read_dir(path)
   }

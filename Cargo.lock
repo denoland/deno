@@ -2532,6 +2532,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "percent-encoding",
+ "rustix",
  "serde",
  "serde_json",
  "sys_traits",
@@ -8403,9 +8404,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.13"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fa2ce58051567cc6064a9a80eea34db4a03132ff5b84c812e8c371e1dcf76e8"
+checksum = "b0f8c2c55b6b4dd67f0f8df8de9bdf00b16c8ea4fbc4be0c2133d5d3924be5d4"
 dependencies = [
  "filetime",
  "getrandom",
