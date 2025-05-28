@@ -4,9 +4,8 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use deno_core::url::Url;
-use deno_runtime::deno_permissions::{
-  NetDescriptor, UnstableSubdomainWildcards,
-};
+use deno_runtime::deno_permissions::NetDescriptor;
+use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);
