@@ -6,7 +6,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 export { timingSafeEqual } from "ext:deno_node/internal_binding/_timingSafeEqual.ts";
 
 export function getFipsCrypto(): boolean {
-  notImplemented("crypto.getFipsCrypto");
+  return false;
 }
 
 export function setFipsCrypto(_fips: boolean) {
