@@ -814,6 +814,13 @@ impl QueryDescriptor for WriteQueryDescriptor {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
 
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+enum SubdomainWildcards {
+  Enabled,
+  #[default]
+  Disabled,
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
   Fqdn(FQDN),
@@ -841,17 +848,17 @@ pub enum HostParseError {
 
 impl Host {
   fn parse_for_query(s: &str) -> Result<Self, HostParseError> {
-    Self::parse_inner(s, false)
+    Self::parse_inner(s, SubdomainWildcards::Disabled)
   }
 
   #[cfg(test)]
   fn parse_for_list(s: &str) -> Result<Self, HostParseError> {
-    Self::parse_inner(s, true)
+    Self::parse_inner(s, SubdomainWildcards::Enabled)
   }
 
   fn parse_inner(
     s: &str,
-    allow_subdomain_wildcard: bool,
+    subdomain_wildcards: SubdomainWildcards,
   ) -> Result<Self, HostParseError> {
     if s.starts_with('[') && s.ends_with(']') {
       let ip = s[1..s.len() - 1]
@@ -876,7 +883,7 @@ impl Host {
       };
       let mut host_or_suffix = lower.as_ref();
       let mut has_subdomain_wildcard = false;
-      if allow_subdomain_wildcard {
+      if matches!(subdomain_wildcards, SubdomainWildcards::Enabled) {
         if let Some(suffix) = lower.strip_prefix("*.") {
           host_or_suffix = suffix;
           has_subdomain_wildcard = true;
@@ -1013,19 +1020,26 @@ impl NetDescriptor {
   pub fn parse_for_query(
     hostname: &str,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(hostname, false)
+    Self::parse_inner(hostname, SubdomainWildcards::Disabled)
   }
 
   pub fn parse_for_list(
     hostname: &str,
     unstable_subdomain_wildcards: bool,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(hostname, unstable_subdomain_wildcards)
+    Self::parse_inner(
+      hostname,
+      if unstable_subdomain_wildcards {
+        SubdomainWildcards::Enabled
+      } else {
+        SubdomainWildcards::Disabled
+      },
+    )
   }
 
   fn parse_inner(
     hostname: &str,
-    allow_subdomain_wildcard: bool,
+    subdomain_wildcards: SubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
     #[cfg(unix)]
     if let Some(vsock) = hostname.strip_prefix("vsock:") {
@@ -1090,7 +1104,7 @@ impl NetDescriptor {
       Some((host, port)) => (host, port),
       None => (hostname, ""),
     };
-    let host = Host::parse_inner(host, allow_subdomain_wildcard)?;
+    let host = Host::parse_inner(host, subdomain_wildcards)?;
 
     let port = if port.is_empty() {
       None
