@@ -54,27 +54,27 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.47.0", features = ["transpiling"] }
-deno_core = { version = "0.348.0" }
+deno_ast = { version = "=0.48.0", features = ["transpiling"] }
+deno_core = { version = "0.349.0" }
 
-deno_cache_dir = "=0.21.0"
-deno_config = { version = "=0.54.2", features = ["workspace"] }
-deno_doc = "=0.176.0"
-deno_error = "=0.5.7"
-deno_graph = { version = "=0.93.0", default-features = false }
-deno_lint = "=0.75.0"
-deno_lockfile = "=0.28.0"
+deno_cache_dir = "=0.22.0"
+deno_config = { version = "=0.55.0", features = ["workspace"] }
+deno_doc = "=0.177.0"
+deno_error = "=0.6.0"
+deno_graph = { version = "=0.94.0", default-features = false }
+deno_lint = "=0.76.0"
+deno_lockfile = "=0.29.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.33.4"
-deno_package_json = { version = "=0.6.0", default-features = false }
-deno_path_util = "=0.3.3"
-deno_semver = "=0.7.1"
-deno_task_shell = "=0.23.0"
+deno_npm = "=0.34.0"
+deno_package_json = { version = "=0.7.0", default-features = false }
+deno_path_util = "=0.4.0"
+deno_semver = "=0.8.0"
+deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
 deno_unsync = "0.4.3"
 deno_whoami = "0.1.0"
-eszip = "=0.90.0"
+eszip = "=0.91.0"
 
 denokv_proto = "0.10.0"
 denokv_remote = "0.10.0"
@@ -177,7 +177,7 @@ hyper-rustls = { version = "0.27.2", default-features = false, features = ["http
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
-import_map = { version = "0.21.0", features = ["ext"] }
+import_map = { version = "0.22.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 ipnetwork = "0.20.0"
@@ -295,7 +295,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.95.4"
+dprint-plugin-typescript = "=0.95.5"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"

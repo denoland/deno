@@ -45,7 +45,7 @@ node_resolver.workspace = true
 
 async-trait.workspace = true
 bincode.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map = { workspace = true, features = ["ext"] }
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
 serde.workspace = true
