@@ -186,10 +186,10 @@ pub async fn outdated(
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let file_fetcher = create_cli_file_fetcher(
+    Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.sys(),
-    Default::default(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
       cache_setting: CacheSetting::RespectHeaders,

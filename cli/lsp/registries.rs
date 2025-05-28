@@ -435,10 +435,10 @@ impl ModuleRegistry {
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       http_cache.clone().into(),
       http_client_provider,
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting: CacheSetting::RespectHeaders,

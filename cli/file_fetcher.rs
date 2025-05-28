@@ -80,13 +80,14 @@ pub struct CreateCliFileFetcherOptions {
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_cli_file_fetcher(
+  blob_store: Arc<BlobStore>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,
   http_client_provider: Arc<HttpClientProvider>,
   sys: CliSys,
-  blob_store: Arc<BlobStore>,
   options: CreateCliFileFetcherOptions,
 ) -> CliFileFetcher {
   CliFileFetcher::new(
+    BlobStoreAdapter(blob_store),
     Arc::new(http_cache),
     HttpClientAdapter {
       http_client_provider: http_client_provider.clone(),
@@ -94,7 +95,6 @@ pub fn create_cli_file_fetcher(
       progress_bar: options.progress_bar,
     },
     sys,
-    BlobStoreAdapter(blob_store),
     PermissionedFileFetcherOptions {
       allow_remote: options.allow_remote,
       cache_setting: options.cache_setting,
@@ -287,10 +287,10 @@ mod tests {
     let blob_store: Arc<BlobStore> = Default::default();
     let cache = Arc::new(GlobalHttpCache::new(CliSys::default(), location));
     let file_fetcher = create_cli_file_fetcher(
+      blob_store.clone(),
       GlobalOrLocalHttpCache::Global(cache.clone()),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
-      blob_store.clone(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting,
@@ -510,10 +510,10 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting: CacheSetting::ReloadAll,
@@ -543,10 +543,10 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
-        Default::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
           cache_setting: CacheSetting::Use,
@@ -567,10 +567,10 @@ mod tests {
 
     let file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
-        Default::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
           cache_setting: CacheSetting::Use,
@@ -702,10 +702,10 @@ mod tests {
 
     let metadata_file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
-        Default::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
           cache_setting: CacheSetting::Use,
@@ -727,10 +727,10 @@ mod tests {
 
     let metadata_file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         CliSys::default(),
-        Default::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
           cache_setting: CacheSetting::Use,
@@ -836,10 +836,10 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: false,
         cache_setting: CacheSetting::Use,
@@ -880,11 +880,11 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
         .into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting: CacheSetting::Only,
@@ -893,10 +893,10 @@ mod tests {
       },
     );
     let file_fetcher_02 = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting: CacheSetting::Use,

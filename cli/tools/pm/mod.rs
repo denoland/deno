@@ -415,10 +415,10 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
+    Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.sys(),
-    Default::default(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
       cache_setting: CacheSetting::ReloadAll,

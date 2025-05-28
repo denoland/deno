@@ -1126,10 +1126,10 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
-      Default::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
         cache_setting: CacheSetting::RespectHeaders,

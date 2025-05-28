@@ -157,10 +157,10 @@ impl<
   > PermissionedFileFetcher<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
+    blob_store: TBlobStore,
     http_cache: HttpCacheRc,
     http_client: THttpClient,
     sys: TSys,
-    blob_store: TBlobStore,
     options: PermissionedFileFetcherOptions,
   ) -> Self {
     let memory_files = crate::sync::new_rc(MemoryFiles::default());

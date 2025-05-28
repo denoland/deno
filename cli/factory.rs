@@ -505,10 +505,10 @@ impl CliFactory {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       Ok(Arc::new(create_cli_file_fetcher(
+        self.blob_store().clone(),
         self.http_cache()?.clone(),
         self.http_client_provider().clone(),
         self.sys(),
-        self.blob_store().clone(),
         CreateCliFileFetcherOptions {
           allow_remote: !cli_options.no_remote(),
           cache_setting: cli_options.cache_setting(),
