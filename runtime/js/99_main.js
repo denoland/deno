@@ -393,6 +393,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "InvalidStateError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionSyntaxError",
+  function DOMExceptionSyntaxError(msg) {
+    return new DOMException(msg, "SyntaxError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
