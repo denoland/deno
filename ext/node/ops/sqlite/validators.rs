@@ -3,7 +3,7 @@ use deno_core::v8;
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[property("code" = self.code())]
 pub enum Error {
-  #[class(generic)]
+  #[class(type)]
   #[error("{0}")]
   InvalidArgType(&'static str),
   #[class(type)]

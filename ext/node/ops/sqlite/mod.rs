@@ -10,84 +10,104 @@ pub use session::Session;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[property("code" = self.code())]
 pub enum SqliteError {
   #[class(inherit)]
   #[error(transparent)]
+  #[property("code" = self.code())]
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(generic)]
   #[error(transparent)]
+  #[property("code" = self.code())]
   SqliteError(#[from] rusqlite::Error),
   #[class(generic)]
   #[error("{message}")]
+  #[property("code" = self.code())]
+  #[property("errstr" = self.errstr())]
   SqliteSysError {
     message: String,
+    errstr: String,
     #[property]
-    errcode: i32,
+    errcode: f64,
   },
   #[class(generic)]
   #[error("Database is already in use")]
+  #[property("code" = self.code())]
   InUse,
   #[class(generic)]
   #[error("Failed to load SQLite extension: {0}")]
+  #[property("code" = self.code())]
   LoadExensionFailed(String),
   #[class(generic)]
   #[error("Failed to bind parameter. {0}")]
+  #[property("code" = self.code())]
   FailedBind(&'static str),
   #[class(type)]
   #[error("Provided value cannot be bound to SQLite parameter {0}.")]
+  #[property("code" = self.code())]
   InvalidBindType(i32),
   #[class(type)]
   #[error("{0}")]
+  #[property("code" = self.code())]
   InvalidBindValue(&'static str),
   #[class(generic)]
   #[error("Cannot create bare named parameter '{0}' because of conflicting names '{1}' and '{2}'.")]
+  #[property("code" = self.code())]
   DuplicateNamedParameter(String, String, String),
   #[class(generic)]
   #[error("Unknown named parameter '{0}'")]
+  #[property("code" = self.code())]
   UnknownNamedParameter(String),
   #[class(generic)]
   #[error("unknown column type")]
+  #[property("code" = self.code())]
   UnknownColumnType,
   #[class(generic)]
   #[error("failed to get SQL")]
+  #[property("code" = self.code())]
   GetSqlFailed,
   #[class(generic)]
   #[error("database is not open")]
+  #[property("code" = self.code())]
   AlreadyClosed,
   #[class(generic)]
   #[error("database is already open")]
+  #[property("code" = self.code())]
   AlreadyOpen,
   #[class(generic)]
   #[error("failed to prepare statement")]
+  #[property("code" = self.code())]
   PrepareFailed,
   #[class(generic)]
   #[error("failed to create session")]
+  #[property("code" = self.code())]
   SessionCreateFailed,
   #[class(generic)]
   #[error("failed to retrieve changeset")]
+  #[property("code" = self.code())]
   SessionChangesetFailed,
   #[class(generic)]
-  #[error("session is already closed")]
+  #[error("session is not open")]
+  #[property("code" = self.code())]
   SessionClosed,
   #[class(generic)]
   #[error("Illegal constructor")]
+  #[property("code" = self.code())]
   InvalidConstructor,
   #[class(generic)]
   #[error("Expanded SQL text would exceed configured limits")]
+  #[property("code" = self.code())]
   InvalidExpandedSql,
   #[class(range)]
   #[error("The value of column {0} is too large to be represented as a JavaScript number: {1}")]
+  #[property("code" = self.code())]
   NumberTooLarge(i32, i64),
-  #[class(range)]
-  #[class(generic)]
-  #[error("Failed to apply changeset")]
-  ChangesetApplyFailed,
   #[class(type)]
   #[error("Invalid callback: {0}")]
+  #[property("code" = self.code())]
   InvalidCallback(&'static str),
   #[class(type)]
   #[error("FromUtf8Error: {0}")]
+  #[property("code" = self.code())]
   FromUtf8Error(#[from] std::ffi::NulError),
   #[class(inherit)]
   #[error(transparent)]
@@ -134,6 +154,13 @@ impl From<ErrorCode> for deno_error::PropertyValue {
 }
 
 impl SqliteError {
+  fn errstr(&self) -> String {
+    match self {
+      Self::SqliteSysError { errstr, .. } => errstr.clone(),
+      _ => unreachable!(),
+    }
+  }
+
   fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,

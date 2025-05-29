@@ -22,6 +22,7 @@ use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::limits::Limit;
 
 use super::session::SessionOptions;
+use super::statement::check_error_code2;
 use super::validators;
 use super::Session;
 use super::SqliteError;
@@ -194,6 +195,12 @@ impl<'a> ApplyChangesetOptions<'a> {
     let filter_string = FILTER_STRING.v8_string(scope).unwrap();
     if let Some(filter) = obj.get(scope, filter_string.into()) {
       if !filter.is_undefined() {
+        if !filter.is_function() {
+          return Err(Error::InvalidArgType(
+            "The \"options.filter\" argument must be a function.",
+          ));
+        }
+
         options.filter = Some(filter);
       }
     }
@@ -201,6 +208,12 @@ impl<'a> ApplyChangesetOptions<'a> {
     let on_conflict_string = ON_CONFLICT_STRING.v8_string(scope).unwrap();
     if let Some(on_conflict) = obj.get(scope, on_conflict_string.into()) {
       if !on_conflict.is_undefined() {
+        if !on_conflict.is_function() {
+          return Err(Error::InvalidArgType(
+            "The \"options.onConflict\" argument must be a function.",
+          ));
+        }
+
         options.on_conflict = Some(on_conflict);
       }
     }
@@ -570,10 +583,24 @@ impl DatabaseSync {
         let recv = v8::undefined(ctx.scope).into();
         let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-        let ret = conflict.call(ctx.scope, recv, &args).unwrap();
-        return ret
-          .int32_value(ctx.scope)
-          .unwrap_or(libsqlite3_sys::SQLITE_CHANGESET_ABORT);
+        let tc_scope = &mut v8::TryCatch::new(ctx.scope);
+
+        let ret = conflict.call(tc_scope, recv, &args).unwrap_or_else(|| {
+          v8::undefined(tc_scope).into()
+        });
+        if tc_scope.has_caught() {
+          tc_scope.rethrow();
+          return libsqlite3_sys::SQLITE_CHANGESET_ABORT;
+        }
+        
+        const INVALID_VALUE: i32 = -1;
+        if !ret.is_int32() { return INVALID_VALUE }
+
+        let value = ret
+            .int32_value(tc_scope)
+            .unwrap_or(libsqlite3_sys::SQLITE_CHANGESET_ABORT);
+
+        return value;
       }
 
       libsqlite3_sys::SQLITE_CHANGESET_ABORT
@@ -649,7 +676,9 @@ impl DatabaseSync {
         return Ok(false);
       }
 
-      Err(SqliteError::ChangesetApplyFailed)
+      check_error_code2(r)?;
+
+      Ok(false)
     }
   }
 

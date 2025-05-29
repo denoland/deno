@@ -61,7 +61,7 @@ deno_core = { path = "../deno_core/core" }
 deno_cache_dir = "=0.22.0"
 deno_config = { version = "=0.55.0", features = ["workspace"] }
 deno_doc = "=0.177.0"
-deno_error = "=0.6.0"
+deno_error = "=0.6.1"
 deno_graph = { version = "=0.94.0", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.29.0"

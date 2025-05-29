@@ -87,6 +87,50 @@ impl Drop for StatementSync {
   }
 }
 
+pub(crate) fn check_error_code(
+  r: i32,
+  db: *mut ffi::sqlite3,
+) -> Result<(), SqliteError> {
+    if r != ffi::SQLITE_OK {
+      // SAFETY: lifetime of the connection is guaranteed by reference
+      // counting.
+      let err_message = unsafe { ffi::sqlite3_errmsg(db) };
+
+      if !err_message.is_null() {
+        // SAFETY: `err_str` is a valid pointer to a null-terminated string.
+        let err_message = unsafe { std::ffi::CStr::from_ptr(err_message) }
+          .to_string_lossy()
+          .into_owned();
+        let err_str =
+          unsafe { std::ffi::CStr::from_ptr(ffi::sqlite3_errstr(r)) }
+            .to_string_lossy()
+            .into_owned();
+
+        return Err(SqliteError::SqliteSysError {
+          message: err_message,
+          errcode: r as _,
+          errstr: err_str,
+        });
+      }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn check_error_code2(
+  r: i32,
+) -> Result<(), SqliteError> {
+  let err_str = unsafe { std::ffi::CStr::from_ptr(ffi::sqlite3_errstr(r)) }
+    .to_string_lossy()
+    .into_owned();
+
+  Err(SqliteError::SqliteSysError {
+    message: err_str.clone(),
+    errcode: r as _,
+    errstr: err_str,
+  })
+}
+
 struct ColumnIterator<'a> {
   stmt: &'a StatementSync,
   index: i32,
@@ -346,19 +390,12 @@ impl StatementSync {
       let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
       let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
-      // SAFETY: lifetime of the connection is guaranteed by reference
-      // counting.
-      let err_str = unsafe { ffi::sqlite3_errmsg(db.handle()) };
 
-      if !err_str.is_null() {
-        // SAFETY: `err_str` is a valid pointer to a null-terminated string.
-        let err_str = unsafe { std::ffi::CStr::from_ptr(err_str) }
-          .to_string_lossy()
-          .into_owned();
-        return Err(SqliteError::SqliteSysError {
-          message: err_str,
-          errcode: r,
-        });
+      unsafe {
+        check_error_code(
+          r,
+          db.handle(),
+        )?;
       }
     }
 

@@ -47,12 +47,12 @@ impl SessionOptions {
       if !table_value.is_undefined() {
         if !table_value.is_string() {
           return Err(Error::InvalidArgType(
-            "The \"table\" property must be a string.",
+            "The \"options.table\" argument must be a string.",
           ));
         }
         let table =
           v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
-            Error::InvalidArgType("The \"table\" property must be a string.")
+            Error::InvalidArgType("The \"options.table\" argument must be a string.")
           })?;
         options.table = Some(table.to_rust_string_lossy(scope).to_string());
       }
@@ -63,11 +63,11 @@ impl SessionOptions {
       if !db_value.is_undefined() {
         if !db_value.is_string() {
           return Err(Error::InvalidArgType(
-            "The \"db\" property must be a string.",
+            "The \"options.db\" argument must be a string.",
           ));
         }
         let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
-          Error::InvalidArgType("The \"db\" property must be a string.")
+          Error::InvalidArgType("The \"options.db\" argument must be a string.")
         })?;
         options.db = Some(db.to_rust_string_lossy(scope).to_string());
       }
