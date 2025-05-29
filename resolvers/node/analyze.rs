@@ -568,66 +568,62 @@ impl<
     source: Option<Cow<'a, str>>,
     bundling: bool,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let inner = async || {
-      let all_exports = if bundling {
-        // let the bundler handle it instead of the module loader
-        return Ok(source.unwrap());
-      } else {
-        let analysis = self
-          .module_export_analyzer
-          .analyze_all_exports(entry_specifier, source)
-          .await?;
+    let all_exports = if bundling {
+      // let the bundler handle it instead of the module loader
+      return Ok(source.unwrap());
+    } else {
+      let analysis = self
+        .module_export_analyzer
+        .analyze_all_exports(entry_specifier, source)
+        .await?;
 
-        match analysis {
-          ResolvedCjsAnalysis::Esm(source) => return Ok(source),
-          ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
-        }
-      };
+      match analysis {
+        ResolvedCjsAnalysis::Esm(source) => return Ok(source),
+        ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
+      }
+    };
 
-      // todo(dsherret): use capacity_builder here to remove all these heap
-      // allocations and make the string writing faster
-      let mut temp_var_count = 0;
-      let mut source = vec![
+    // todo(dsherret): use capacity_builder here to remove all these heap
+    // allocations and make the string writing faster
+    let mut temp_var_count = 0;
+    let mut source = vec![
         r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
         const require = __internalCreateRequire(import.meta.url);"#
           .to_string(),
       ];
 
-      source.push(format!(
-        r#"let mod;
+    source.push(format!(
+      r#"let mod;
         if (import.meta.main) {{
           mod = __internalModule._load("{0}", null, true)
         }} else {{
           mod = require("{0}");
         }}"#,
-        url_to_file_path(entry_specifier)
-          .unwrap()
-          .to_str()
-          .unwrap()
-          .replace('\\', "\\\\")
-          .replace('\'', "\\\'")
-          .replace('\"', "\\\"")
-      ));
+      url_to_file_path(entry_specifier)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('\\', "\\\\")
+        .replace('\'', "\\\'")
+        .replace('\"', "\\\"")
+    ));
 
-      for export in &all_exports {
-        if !matches!(export.as_str(), "default" | "module.exports") {
-          add_export(
-            &mut source,
-            export,
-            &format!("mod[{}]", to_double_quote_string(export)),
-            &mut temp_var_count,
-          );
-        }
+    for export in &all_exports {
+      if !matches!(export.as_str(), "default" | "module.exports") {
+        add_export(
+          &mut source,
+          export,
+          &format!("mod[{}]", to_double_quote_string(export)),
+          &mut temp_var_count,
+        );
       }
+    }
 
-      source.push("export default mod;".to_string());
-      add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
+    source.push("export default mod;".to_string());
+    add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
 
-      let translated_source = source.join("\n");
-      Ok(Cow::Owned(translated_source))
-    };
-    let result = inner().await;
-    result
+    let translated_source = source.join("\n");
+    Ok(Cow::Owned(translated_source))
   }
 }
 

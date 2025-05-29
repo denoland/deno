@@ -1110,11 +1110,6 @@ impl CliFactory {
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
-      // self.deno_resolver().await?.clone(),
-      // self.module_load_preparer().await?.clone(),
-      // self.main_module_graph_container().await?.clone(),
-      // self.npm_req_resolver()?.clone(),
-      // self.node_resolver().await?.clone(),
     ))
   }
 

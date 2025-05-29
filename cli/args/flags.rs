@@ -472,7 +472,7 @@ pub struct BundleFlags {
   pub format: BundleFormat,
   pub minify: bool,
   pub code_splitting: bool,
-  pub bundle: bool,
+  pub one_file: bool,
   pub packages: PackageHandling,
 }
 
@@ -1930,6 +1930,7 @@ fn bundle_subcommand() -> Command {
       .arg(
         Arg::new("output")
           .long("output")
+          .short('o')
           .help("Output path. Defaults to `dist/bundled.js`")
           .num_args(1)
           .value_parser(value_parser!(String))
@@ -1976,11 +1977,15 @@ fn bundle_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("bundle")
-          .long("bundle")
-          .help("Enable bundling")
+        Arg::new("one-file")
+          .long("one-file")
+          .help("Bundle into one file")
+          .require_equals(true)
           .default_value("true")
-          .action(ArgAction::SetTrue),
+          .default_missing_value("true")
+          .value_parser(value_parser!(bool))
+          .num_args(0..=1)
+          .action(ArgAction::Set),
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
@@ -4803,7 +4808,7 @@ fn bundle_parse(
     packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
-    bundle: matches.get_flag("bundle"),
+    one_file: matches.get_flag("one-file"),
   });
   Ok(())
 }

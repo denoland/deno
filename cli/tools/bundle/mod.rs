@@ -29,6 +29,7 @@ use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use regex::Regex;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
@@ -53,6 +54,22 @@ use crate::sys::CliSys;
 
 const ESBUILD_VERSION: &str = "0.25.5";
 
+fn esbuild_platform() -> &'static str {
+  match (std::env::consts::ARCH, std::env::consts::OS) {
+    ("x86_64", "linux") => "linux-x64",
+    ("aarch64", "linux") => "linux-arm64",
+    ("x86_64", "macos" | "apple") => "darwin-x64",
+    ("aarch64", "macos" | "apple") => "darwin-arm64",
+    ("x86_64", "windows") => "win32-x64",
+    ("aarch64", "windows") => "win32-arm64",
+    _ => panic!(
+      "Unsupported platform: {} {}",
+      std::env::consts::ARCH,
+      std::env::consts::OS
+    ),
+  }
+}
+
 pub async fn ensure_esbuild(
   deno_dir: &DenoDir,
   npmrc: &ResolvedNpmRc,
@@ -60,8 +77,8 @@ pub async fn ensure_esbuild(
   workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
   tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
-  target: &str,
 ) -> Result<PathBuf, AnyError> {
+  let target = esbuild_platform();
   let esbuild_path = deno_dir
     .dl_folder_path()
     .join(format!("esbuild-{}", ESBUILD_VERSION))
@@ -70,6 +87,7 @@ pub async fn ensure_esbuild(
   if esbuild_path.exists() {
     return Ok(esbuild_path);
   }
+
   let pkg_name = format!("@esbuild/{}", target);
   let nv =
     PackageNv::from_str(&format!("{}@{}", pkg_name, ESBUILD_VERSION)).unwrap();
@@ -99,6 +117,22 @@ pub async fn ensure_esbuild(
   anyhow::bail!("esbuild not found");
 }
 
+pub fn externals_regex(external: &[String]) -> Regex {
+  let mut regex_str = String::new();
+  for (i, e) in external.iter().enumerate() {
+    if i > 0 {
+      regex_str.push('|');
+    }
+    regex_str.push_str("(^");
+    if e.starts_with("/") {
+      regex_str.push_str(".*");
+    }
+    regex_str.push_str(&regex::escape(e).replace("\\*", ".*"));
+    regex_str.push(')');
+  }
+  regex::Regex::new(&regex_str).unwrap()
+}
+
 pub async fn bundle(
   flags: Arc<Flags>,
   mut bundle_flags: BundleFlags,
@@ -118,7 +152,6 @@ pub async fn bundle(
     workspace_factory.workspace_npm_patch_packages()?,
     installer_factory.tarball_cache()?,
     factory.npm_cache()?,
-    "darwin-arm64",
   )
   .await?;
   let resolver = factory.resolver().await?.clone();
@@ -148,6 +181,12 @@ pub async fn bundle(
     node_resolver: node_resolver.clone(),
     http_cache: factory.http_cache()?.clone(),
     module_loader: module_loader.clone(),
+    // TODO(nathanwhit): validate external strings
+    externals_regex: if bundle_flags.external.is_empty() {
+      None
+    } else {
+      Some(externals_regex(&bundle_flags.external))
+    },
   });
   let start = std::time::Instant::now();
 
@@ -218,14 +257,18 @@ pub async fn bundle(
     });
   }
 
-  bundle_flags.external.push("*.node".into());
+  if bundle_flags.one_file {
+    bundle_flags.external.push("*.node".into());
+  }
 
+  eprintln!("external: {:?}", bundle_flags.external);
   let mut builder = EsbuildFlagsBuilder::default();
   builder
-    .bundle(bundle_flags.bundle)
+    .bundle(bundle_flags.one_file)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
+    .tree_shaking(true)
     .format(match bundle_flags.format {
       BundleFormat::Esm => esbuild_rs::Format::Esm,
       BundleFormat::Cjs => esbuild_rs::Format::Cjs,
@@ -329,14 +372,13 @@ var __require = createRequire(import.meta.url);
     log::info!(
       "{}",
       deno_terminal::colors::green(format!(
-        "bundled in {}ms",
-        start.elapsed().as_millis()
+        "bundled in {}",
+        crate::display::human_elapsed(start.elapsed().as_millis()),
       ))
     );
   }
 
   Ok(())
-  // let plugin
 }
 
 fn format_message(message: &esbuild_rs::protocol::Message) -> String {
@@ -398,6 +440,7 @@ struct DenoPluginHandler {
   #[allow(dead_code)]
   http_cache: GlobalOrLocalHttpCache<CliSys>,
   module_loader: Rc<dyn ModuleLoader>,
+  externals_regex: Option<Regex>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -407,6 +450,17 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
     args: esbuild_rs::OnResolveArgs,
   ) -> Result<Option<esbuild_rs::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
+    if let Some(reg) = &self.externals_regex {
+      if reg.is_match(&args.path) {
+        return Ok(Some(esbuild_rs::OnResolveResult {
+          external: Some(true),
+          path: Some(args.path),
+          plugin_name: Some("deno".to_string()),
+          plugin_data: None.into(),
+          ..Default::default()
+        }));
+      }
+    }
     let result = self
       .bundle_resolve(
         &args.path,
@@ -417,20 +471,29 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
       )
       .await?;
 
-    Ok(result.map(|r| esbuild_rs::OnResolveResult {
-      namespace: if r.starts_with("jsr:")
-        || r.starts_with("https:")
-        || r.starts_with("http:")
-      {
-        Some("deno".into())
-      } else {
-        None
-      },
-      external: Some(r.starts_with("node:")),
-      path: Some(r),
-      plugin_name: Some("deno".to_string()),
-      plugin_data: None.into(),
-      ..Default::default()
+    Ok(result.map(|r| {
+      esbuild_rs::OnResolveResult {
+        namespace: if r.starts_with("jsr:")
+          || r.starts_with("https:")
+          || r.starts_with("http:")
+        {
+          Some("deno".into())
+        } else {
+          None
+        },
+        external: Some(
+          r.starts_with("node:")
+            || self
+              .externals_regex
+              .as_ref()
+              .map(|reg| reg.is_match(&r))
+              .unwrap_or(false),
+        ),
+        path: Some(r),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None.into(),
+        ..Default::default()
+      }
     }))
   }
 

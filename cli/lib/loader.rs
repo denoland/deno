@@ -192,8 +192,7 @@ impl<
       ));
     }
 
-    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? && true
-    {
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_cow(code);
       ModuleSourceCode::String(
