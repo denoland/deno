@@ -4448,7 +4448,7 @@ Deno.test(
         },
         onError: createOnErrorCb(ac),
       },
-      async (request) => {
+      (request) => {
         const { socket, response } = Deno.upgradeWebSocket(request);
 
         socket.onmessage = (event) => {
@@ -4480,7 +4480,7 @@ Deno.test(
 
     // Read upgrade response
     const responseData = new Uint8Array(512);
-    let responseRead = await conn.read(responseData);
+    const responseRead = await conn.read(responseData);
     const responseText = new TextDecoder().decode(
       responseData.subarray(0, responseRead!),
     );
