@@ -76,10 +76,10 @@ deno_unsync = "0.4.3"
 deno_whoami = "0.1.0"
 eszip = "=0.91.0"
 
-denokv_proto = "0.10.0"
-denokv_remote = "0.10.0"
+denokv_proto = "0.11.0"
+denokv_remote = "0.11.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.10.0" }
+denokv_sqlite = { default-features = false, version = "0.11.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.199.0", path = "./ext/broadcast_channel" }
