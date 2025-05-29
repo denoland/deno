@@ -1850,9 +1850,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.175.0"
+version = "0.176.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "161ec3cf8d07fc08a24a2600586881d9abafd48a0cb778633883dc8c1665d6fe"
+checksum = "95ce3b4ff0fee9bd2f2c73996739556d986e1486cdc74e44da2b8f3296ea28bb"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2000,9 +2000,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.92.0"
+version = "0.93.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51fed59054a55f3cbd0db096168c58836ca9f94c7b7c1b0730f63064d7dc0f9e"
+checksum = "8f7b63c5334fd2ee41db14596a5b03c37ce90dff057c1da9f573de515a3bb2c0"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2529,15 +2529,18 @@ dependencies = [
  "fqdn",
  "libc",
  "log",
+ "nix 0.27.1",
  "once_cell",
  "parking_lot",
  "percent-encoding",
  "serde",
  "serde_json",
+ "sys_traits",
+ "temp_deno_which",
  "thiserror 2.0.12",
  "url",
- "which",
  "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2559,10 +2562,10 @@ dependencies = [
  "rand",
  "serde",
  "simd-json",
+ "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "which",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -3571,9 +3574,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.89.0"
+version = "0.90.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d9ea60ba198add01557b0f9e4d4df3795bbdc58a4c6774fee46734accdd64d"
+checksum = "c5a6b90a53591e5adf9884048a79c291305b2a576d69fbc2b85de31d1a6e8372"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8398,9 +8401,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.12"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db83fa685d1637625266341c69bf6e810632f5a53502d5d03fde8fcbcd3153f2"
+checksum = "b0f8c2c55b6b4dd67f0f8df8de9bdf00b16c8ea4fbc4be0c2133d5d3924be5d4"
 dependencies = [
  "filetime",
  "getrandom",
@@ -8451,6 +8454,15 @@ name = "target-lexicon"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
+
+[[package]]
+name = "temp_deno_which"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "366c5ccd670145885feb6efd6bbf2478ed236c4c3839046fcc8e2a1a84c51091"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "tempfile"

@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
@@ -75,7 +74,6 @@ pub struct FetchCacher {
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
-  module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   sys: CliSys,
   is_deno_publish: bool,
@@ -87,7 +85,6 @@ impl FetchCacher {
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
-    module_info_cache: Arc<ModuleInfoCache>,
     sys: CliSys,
     options: FetchCacherOptions,
   ) -> Self {
@@ -95,7 +92,6 @@ impl FetchCacher {
       file_fetcher,
       global_http_cache,
       in_npm_pkg_checker,
-      module_info_cache,
       sys,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
@@ -286,29 +282,5 @@ impl Loader for FetchCacher {
         })
     }
     .boxed_local()
-  }
-
-  fn cache_module_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_hashable(source);
-    let result = self.module_info_cache.set_module_info(
-      specifier,
-      media_type,
-      source_hash,
-      module_info,
-    );
-    if let Err(err) = result {
-      log::debug!(
-        "Error saving module cache info for {}. {:#}",
-        specifier,
-        err
-      );
-    }
   }
 }

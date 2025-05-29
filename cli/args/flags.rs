@@ -6116,6 +6116,8 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
+  flags.unstable_config.subdomain_wildcards =
+    matches.get_flag("unstable-subdomain-wildcards");
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
