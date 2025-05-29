@@ -1899,21 +1899,6 @@ impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
       None => self.inner_loader.load(specifier, options),
     }
   }
-
-  fn cache_module_info(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    self.inner_loader.cache_module_info(
-      specifier,
-      media_type,
-      source,
-      module_info,
-    )
-  }
 }
 
 fn parse_and_analyze_module(
@@ -1943,6 +1928,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,

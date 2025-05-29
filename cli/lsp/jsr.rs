@@ -57,10 +57,8 @@ impl JsrCacheResolver {
     let info_by_name = DashMap::new();
     let mut workspace_packages_by_name = HashMap::new();
     if let Some(config_data) = config_data {
-      for jsr_pkg_config in config_data.member_dir.workspace.jsr_packages() {
-        let Some(exports) = &jsr_pkg_config.config_file.json.exports else {
-          continue;
-        };
+      for jsr_package in config_data.resolver.jsr_packages() {
+        let exports = deno_core::serde_json::json!(&jsr_package.exports);
         let version_info = Arc::new(JsrPackageVersionInfo {
           exports: exports.clone(),
           module_graph_1: None,
@@ -68,24 +66,19 @@ impl JsrCacheResolver {
           manifest: Default::default(),
           lockfile_checksum: None,
         });
+        let name = StackString::from_str(&jsr_package.name);
         workspace_packages_by_name.insert(
-          StackString::from_str(&jsr_pkg_config.name),
+          name.clone(),
           WorkspacePackage {
-            dir_url: Url::from_directory_path(
-              jsr_pkg_config.config_file.dir_path(),
-            )
-            .unwrap(),
+            dir_url: jsr_package.base.clone(),
             version_info: version_info.clone(),
           },
         );
-        let Some(version) = &jsr_pkg_config.config_file.json.version else {
-          continue;
-        };
-        let Ok(version) = Version::parse_standard(version) else {
+        let Some(version) = &jsr_package.version else {
           continue;
         };
         let nv = PackageNv {
-          name: jsr_pkg_config.name.as_str().into(),
+          name,
           version: version.clone(),
         };
         info_by_name.insert(

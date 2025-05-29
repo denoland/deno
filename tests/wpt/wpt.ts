@@ -689,7 +689,8 @@ function createReportTestCase(expectation: boolean | string[]) {
     switch (status) {
       case 0:
         if (expectFail) {
-          simpleMessage += red("ok (expected fail)");
+          simpleMessage += green("ok") + " " +
+            red("(previously failed—update expectations.json)");
         } else {
           simpleMessage += green("ok");
           if (quiet) {
