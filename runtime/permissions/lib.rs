@@ -818,9 +818,19 @@ impl QueryDescriptor for WriteQueryDescriptor {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
 
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub enum SubdomainWildcards {
+  Enabled,
+  #[default]
+  Disabled,
+}
+
+pub type UnstableSubdomainWildcards = SubdomainWildcards;
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
   Fqdn(FQDN),
+  FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
 }
@@ -843,7 +853,19 @@ pub enum HostParseError {
 }
 
 impl Host {
-  fn parse(s: &str) -> Result<Self, HostParseError> {
+  fn parse_for_query(s: &str) -> Result<Self, HostParseError> {
+    Self::parse_inner(s, SubdomainWildcards::Disabled)
+  }
+
+  #[cfg(test)]
+  fn parse_for_list(s: &str) -> Result<Self, HostParseError> {
+    Self::parse_inner(s, SubdomainWildcards::Enabled)
+  }
+
+  fn parse_inner(
+    s: &str,
+    subdomain_wildcards: SubdomainWildcards,
+  ) -> Result<Self, HostParseError> {
     if s.starts_with('[') && s.ends_with(']') {
       let ip = s[1..s.len() - 1]
         .parse::<Ipv6Addr>()
@@ -865,9 +887,17 @@ impl Host {
       } else {
         Cow::Owned(s.to_ascii_lowercase())
       };
+      let mut host_or_suffix = lower.as_ref();
+      let mut has_subdomain_wildcard = false;
+      if matches!(subdomain_wildcards, SubdomainWildcards::Enabled) {
+        if let Some(suffix) = lower.strip_prefix("*.") {
+          host_or_suffix = suffix;
+          has_subdomain_wildcard = true;
+        }
+      }
       let fqdn = {
         use std::str::FromStr;
-        FQDN::from_str(&lower).map_err(|e| HostParseError::Fqdn {
+        FQDN::from_str(host_or_suffix).map_err(|e| HostParseError::Fqdn {
           error: e,
           host: s.to_string(),
         })?
@@ -875,14 +905,18 @@ impl Host {
       if fqdn.is_root() {
         return Err(HostParseError::InvalidEmptyHost(s.to_string()));
       }
-      Ok(Host::Fqdn(fqdn))
+      if has_subdomain_wildcard {
+        Ok(Host::FqdnWithSubdomainWildcard(fqdn))
+      } else {
+        Ok(Host::Fqdn(fqdn))
+      }
     }
   }
 
   #[cfg(test)]
   #[track_caller]
   fn must_parse(s: &str) -> Self {
-    Self::parse(s).unwrap()
+    Self::parse_for_list(s).unwrap()
   }
 }
 
@@ -923,11 +957,26 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
-    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+    if other.1.is_some() && self.1 != other.1 {
+      return false;
+    }
+    match (&other.0, &self.0) {
+      (Host::Fqdn(a), Host::Fqdn(b)) => a == b,
+      (Host::FqdnWithSubdomainWildcard(a), Host::Fqdn(b)) => {
+        b.is_subdomain_of(a)
+      }
+      (
+        Host::FqdnWithSubdomainWildcard(a),
+        Host::FqdnWithSubdomainWildcard(b),
+      ) => a == b,
+      (Host::Ip(a), Host::Ip(b)) => a == b,
+      (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      _ => false,
+    }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+    self.matches_allow(other)
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
@@ -974,7 +1023,23 @@ pub enum NetDescriptorFromUrlParseError {
 }
 
 impl NetDescriptor {
-  pub fn parse(hostname: &str) -> Result<Self, NetDescriptorParseError> {
+  pub fn parse_for_query(
+    hostname: &str,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Self::parse_inner(hostname, SubdomainWildcards::Disabled)
+  }
+
+  pub fn parse_for_list(
+    hostname: &str,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Self::parse_inner(hostname, unstable_subdomain_wildcards)
+  }
+
+  fn parse_inner(
+    hostname: &str,
+    subdomain_wildcards: SubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
     #[cfg(unix)]
     if let Some(vsock) = hostname.strip_prefix("vsock:") {
       let mut split = vsock.split(':');
@@ -1038,7 +1103,7 @@ impl NetDescriptor {
       Some((host, port)) => (host, port),
       None => (hostname, ""),
     };
-    let host = Host::parse(host)?;
+    let host = Host::parse_inner(host, subdomain_wildcards)?;
 
     let port = if port.is_empty() {
       None
@@ -1068,7 +1133,7 @@ impl NetDescriptor {
     let host = url.host_str().ok_or_else(|| {
       NetDescriptorFromUrlParseError::MissingHost(url.clone())
     })?;
-    let host = Host::parse(host)?;
+    let host = Host::parse_for_query(host)?;
     let port = url.port_or_known_default();
     Ok(NetDescriptor(host, port.map(Into::into)))
   }
@@ -1085,6 +1150,7 @@ impl fmt::Display for NetDescriptor {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.0 {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
+      Host::FqdnWithSubdomainWildcard(fqdn) => write!(f, "*.{fqdn}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
@@ -1154,8 +1220,14 @@ impl QueryDescriptor for ImportDescriptor {
 }
 
 impl ImportDescriptor {
-  pub fn parse(specifier: &str) -> Result<Self, NetDescriptorParseError> {
-    Ok(ImportDescriptor(NetDescriptor::parse(specifier)?))
+  pub fn parse_for_list(
+    specifier: &str,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Ok(ImportDescriptor(NetDescriptor::parse_for_list(
+      specifier,
+      unstable_subdomain_wildcards,
+    )?))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -2981,7 +3053,7 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
-    let hostname = Host::parse(host.0.as_ref())?;
+    let hostname = Host::parse_for_query(host.0.as_ref())?;
     let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
     inner.check(&descriptor, Some(api_name))?;
     Ok(())
@@ -3113,7 +3185,7 @@ impl PermissionsContainer {
       permission.query(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3243,7 +3315,7 @@ impl PermissionsContainer {
       self.inner.lock().net.revoke(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3353,7 +3425,7 @@ impl PermissionsContainer {
       self.inner.lock().net.request(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3767,6 +3839,11 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
     path: &str,
   ) -> Result<PathQueryDescriptor, PathResolveError>;
 
+  fn parse_net_query(
+    &self,
+    text: &str,
+  ) -> Result<NetDescriptor, NetDescriptorParseError>;
+
   fn parse_run_query(
     &self,
     requested: &str,
@@ -3830,14 +3907,17 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse(text)
+      NetDescriptor::parse_for_list(text, UnstableSubdomainWildcards::Enabled)
     }
 
     fn parse_import_descriptor(
       &self,
       text: &str,
     ) -> Result<ImportDescriptor, NetDescriptorParseError> {
-      ImportDescriptor::parse(text)
+      ImportDescriptor::parse_for_list(
+        text,
+        UnstableSubdomainWildcards::Enabled,
+      )
     }
 
     fn parse_env_descriptor(
@@ -3889,6 +3969,13 @@ mod tests {
         resolved: self.join_path_with_root(path),
         requested: path.to_string(),
       })
+    }
+
+    fn parse_net_query(
+      &self,
+      text: &str,
+    ) -> Result<NetDescriptor, NetDescriptorParseError> {
+      NetDescriptor::parse_for_query(text)
     }
 
     fn parse_run_query(
@@ -3961,7 +4048,8 @@ mod tests {
           "172.16.0.2:8000",
           "www.github.com:443",
           "80.example.com:80",
-          "443.example.com:443"
+          "443.example.com:443",
+          "*.discord.gg"
         ]),
         ..Default::default()
       },
@@ -3989,13 +4077,15 @@ mod tests {
       ("443.example.com", 444, false),
       ("80.example.com", 81, false),
       ("80.example.com", 80, true),
+      ("discord.gg", 0, true),
+      ("foo.discord.gg", 0, true),
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
     ];
 
     for (host, port, is_ok) in domain_tests {
-      let host = Host::parse(host).unwrap();
+      let host = Host::parse_for_query(host).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert_eq!(
         is_ok,
@@ -4041,7 +4131,7 @@ mod tests {
     ];
 
     for (host_str, port) in domain_tests {
-      let host = Host::parse(host_str).unwrap();
+      let host = Host::parse_for_query(host_str).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert!(
         perms.net.check(&descriptor, None).is_ok(),
@@ -4086,7 +4176,7 @@ mod tests {
     ];
 
     for (host_str, port) in domain_tests {
-      let host = Host::parse(host_str).unwrap();
+      let host = Host::parse_for_query(host_str).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert!(
         perms.net.check(&descriptor, None).is_err(),
@@ -5058,7 +5148,7 @@ mod tests {
       &parser,
       &PermissionsOptions {
         allow_env: Some(vec![]),
-        allow_net: Some(svec!["foo", "bar"]),
+        allow_net: Some(svec!["*.foo", "bar"]),
         ..Default::default()
       },
     )
@@ -5079,7 +5169,11 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([NetDescriptor::parse("foo").unwrap()])),
+          Some(HashSet::from([NetDescriptor::parse_for_list(
+            "foo",
+            UnstableSubdomainWildcards::Enabled
+          )
+          .unwrap()])),
           None,
           false
         ),
@@ -5175,9 +5269,57 @@ mod tests {
   }
 
   #[test]
-  fn test_host_parse() {
+  fn test_host_parse_for_query() {
     let hosts = &[
       ("deno.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      ("DENO.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (
+        "1.1.1.1",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "::1",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))),
+      ),
+      (
+        "[::1]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))),
+      ),
+      ("[::1", None),
+      ("::1]", None),
+      ("deno. land", None),
+      ("1. 1.1.1", None),
+      ("1.1.1.1.", None),
+      ("1::1.", None),
+      ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (".deno.land", None),
+      ("*.deno.land", None),
+      (
+        "::ffff:1.1.1.1",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
+        )))),
+      ),
+    ];
+
+    for (host_str, expected) in hosts {
+      assert_eq!(
+        Host::parse_for_query(host_str).ok(),
+        *expected,
+        "{host_str}"
+      );
+    }
+  }
+
+  #[test]
+  fn test_host_parse_for_list() {
+    let hosts = &[
+      ("deno.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (
+        "*.deno.land",
+        Some(Host::FqdnWithSubdomainWildcard(fqdn!("deno.land"))),
+      ),
       ("DENO.land", Some(Host::Fqdn(fqdn!("deno.land")))),
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (
@@ -5209,12 +5351,12 @@ mod tests {
     ];
 
     for (host_str, expected) in hosts {
-      assert_eq!(Host::parse(host_str).ok(), *expected, "{host_str}");
+      assert_eq!(Host::parse_for_list(host_str).ok(), *expected, "{host_str}");
     }
   }
 
   #[test]
-  fn test_net_descriptor_parse() {
+  fn test_net_descriptor_parse_for_query() {
     let cases = &[
       (
         "deno.land",
@@ -5227,6 +5369,84 @@ mod tests {
       (
         "deno.land:8000",
         Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), Some(8000))),
+      ),
+      ("*.deno.land", None),
+      ("deno.land:", None),
+      ("deno.land:a", None),
+      ("deno. land:a", None),
+      ("deno.land.: a", None),
+      (
+        "1.1.1.1",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
+          None,
+        )),
+      ),
+      ("1.1.1.1.", None),
+      ("1.1.1.1..", None),
+      (
+        "1.1.1.1:8000",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
+          Some(8000),
+        )),
+      ),
+      ("::", None),
+      (":::80", None),
+      ("::80", None),
+      (
+        "[::]",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0))),
+          None,
+        )),
+      ),
+      ("[::1", None),
+      ("::1]", None),
+      ("::1]", None),
+      ("[::1]:", None),
+      ("[::1]:a", None),
+      (
+        "[::1]:443",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+          Some(443),
+        )),
+      ),
+      ("", None),
+      ("deno.land..", None),
+    ];
+
+    for (input, expected) in cases {
+      assert_eq!(
+        NetDescriptor::parse_for_query(input).ok(),
+        *expected,
+        "'{input}'"
+      );
+    }
+  }
+
+  #[test]
+  fn test_net_descriptor_parse_for_list() {
+    let cases = &[
+      (
+        "deno.land",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
+      ),
+      (
+        "DENO.land",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
+      ),
+      (
+        "deno.land:8000",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), Some(8000))),
+      ),
+      (
+        "*.deno.land",
+        Some(NetDescriptor(
+          Host::FqdnWithSubdomainWildcard(fqdn!("deno.land")),
+          None,
+        )),
       ),
       ("deno.land:", None),
       ("deno.land:a", None),
@@ -5275,7 +5495,15 @@ mod tests {
     ];
 
     for (input, expected) in cases {
-      assert_eq!(NetDescriptor::parse(input).ok(), *expected, "'{input}'");
+      assert_eq!(
+        NetDescriptor::parse_for_list(
+          input,
+          UnstableSubdomainWildcards::Enabled
+        )
+        .ok(),
+        *expected,
+        "'{input}'"
+      );
     }
   }
 
