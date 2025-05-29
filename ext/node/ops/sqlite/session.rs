@@ -52,7 +52,9 @@ impl SessionOptions {
         }
         let table =
           v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
-            Error::InvalidArgType("The \"options.table\" argument must be a string.")
+            Error::InvalidArgType(
+              "The \"options.table\" argument must be a string.",
+            )
           })?;
         options.table = Some(table.to_rust_string_lossy(scope).to_string());
       }

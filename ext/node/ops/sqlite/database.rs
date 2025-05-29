@@ -585,20 +585,22 @@ impl DatabaseSync {
 
         let tc_scope = &mut v8::TryCatch::new(ctx.scope);
 
-        let ret = conflict.call(tc_scope, recv, &args).unwrap_or_else(|| {
-          v8::undefined(tc_scope).into()
-        });
+        let ret = conflict
+          .call(tc_scope, recv, &args)
+          .unwrap_or_else(|| v8::undefined(tc_scope).into());
         if tc_scope.has_caught() {
           tc_scope.rethrow();
           return libsqlite3_sys::SQLITE_CHANGESET_ABORT;
         }
-        
+
         const INVALID_VALUE: i32 = -1;
-        if !ret.is_int32() { return INVALID_VALUE }
+        if !ret.is_int32() {
+          return INVALID_VALUE;
+        }
 
         let value = ret
-            .int32_value(tc_scope)
-            .unwrap_or(libsqlite3_sys::SQLITE_CHANGESET_ABORT);
+          .int32_value(tc_scope)
+          .unwrap_or(libsqlite3_sys::SQLITE_CHANGESET_ABORT);
 
         return value;
       }
