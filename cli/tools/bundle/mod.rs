@@ -244,24 +244,13 @@ pub async fn bundle(
 
   {
     tokio::spawn(async move {
-      loop {
-        tokio::select! {
-            res = esbuild.wait_for_exit() => {
-                eprintln!("esbuild exited: {:?}", res);
-                break;
-            }
-        }
-      }
+      let res = esbuild.wait_for_exit().await;
+      eprintln!("esbuild exited: {:?}", res);
 
       Ok::<(), AnyError>(())
     });
   }
 
-  if bundle_flags.one_file {
-    bundle_flags.external.push("*.node".into());
-  }
-
-  eprintln!("external: {:?}", bundle_flags.external);
   let mut builder = EsbuildFlagsBuilder::default();
   builder
     .bundle(bundle_flags.one_file)
@@ -398,8 +387,6 @@ fn format_message(message: &esbuild_rs::protocol::Message) -> String {
 #[derive(Debug, thiserror::Error, JsError)]
 #[class(generic)]
 enum BundleError {
-  // #[error("Invalid import kind")]
-  // InvalidImportKind,
   #[error(transparent)]
   Resolver(#[from] deno_graph::source::ResolveError),
   #[error(transparent)]
