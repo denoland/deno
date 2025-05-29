@@ -13,7 +13,7 @@
         },
         {
           "args": "bundle --output=out.js main.ts",
-          "output": "bundled in [WILDCARD]s\n"
+          "output": "Download[WILDCARD]\nbundled in [WILDCARD]s\n"
         },
         {
           "args": "clean",
@@ -37,7 +37,7 @@
         },
         {
           "args": "bundle --output=out.js main2.ts",
-          "output": "bundled in [WILDCARD]s\n"
+          "output": "Download[WILDCARD]\nbundled in [WILDCARD]s\n"
         },
         {
           "args": "clean",

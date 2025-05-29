@@ -135,7 +135,7 @@ pub fn externals_regex(external: &[String]) -> Regex {
 
 pub async fn bundle(
   flags: Arc<Flags>,
-  mut bundle_flags: BundleFlags,
+  bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
 
