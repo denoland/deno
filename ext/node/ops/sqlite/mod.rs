@@ -127,6 +127,12 @@ impl ErrorCode {
   }
 }
 
+impl From<ErrorCode> for deno_error::PropertyValue {
+  fn from(code: ErrorCode) -> Self {
+    deno_error::PropertyValue::from(code.as_str().to_string())
+  }
+}
+
 impl SqliteError {
   fn code(&self) -> ErrorCode {
     match self {
