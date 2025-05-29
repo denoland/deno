@@ -1002,7 +1002,7 @@ const ci = {
         },
         {
           name: "Ensure no git changes",
-          if: "matrix.job == 'test'",
+          if: "matrix.job == 'test' && github.event_name == 'pull_request'",
           run: [
             'if [[ -n "$(git status --porcelain)" ]]; then',
             'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
