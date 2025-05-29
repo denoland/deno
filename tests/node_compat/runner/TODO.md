@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1180 tests out of 3993 have been ported from Node 23.9.0 (29.55% ported, 70.97% remaining).
+1182 tests out of 3993 have been ported from Node 23.9.0 (29.60% ported, 70.92% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -292,7 +292,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
 - [parallel/test-buffer-resizable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-resizable.js)
-- [parallel/test-buffer-set-inspect-max-bytes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-set-inspect-max-bytes.js)
 - [parallel/test-buffer-write-fast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-write-fast.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
@@ -790,7 +789,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-exists.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-exists.js)
 - [parallel/test-fs-existssync-false.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-existssync-false.js)
 - [parallel/test-fs-fchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchmod.js)
-- [parallel/test-fs-fchown.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchown.js)
 - [parallel/test-fs-filehandle-use-after-close.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle-use-after-close.js)
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)

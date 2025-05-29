@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_core::futures::FutureExt;
@@ -74,7 +74,6 @@ pub struct FetchCacher {
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
-  module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   sys: CliSys,
   is_deno_publish: bool,
@@ -86,7 +85,6 @@ impl FetchCacher {
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
-    module_info_cache: Arc<ModuleInfoCache>,
     sys: CliSys,
     options: FetchCacherOptions,
   ) -> Self {
@@ -94,7 +92,6 @@ impl FetchCacher {
       file_fetcher,
       global_http_cache,
       in_npm_pkg_checker,
-      module_info_cache,
       sys,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
@@ -203,11 +200,17 @@ impl Loader for FetchCacher {
             deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic
           }),
           FetchNoFollowOptions {
-          maybe_auth: None,
-          maybe_accept: None,
-          maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum: options.maybe_checksum.as_ref(),
-        })
+            local: FetchLocalOptions {
+              // only include the mtime in dynamic branches because we only
+              // need to know about it then in order to tell whether to reload
+              // or not
+              include_mtime: options.in_dynamic_branch,
+            },
+            maybe_auth: None,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+            maybe_checksum: options.maybe_checksum.as_ref(),
+          })
         .await
         .map(|file_or_redirect| {
           match file_or_redirect {
@@ -224,6 +227,7 @@ impl Loader for FetchCacher {
             Ok(Some(LoadResponse::Module {
               specifier: file.url,
               maybe_headers,
+              mtime: file.mtime,
               content: file.source,
             }))
             },
@@ -278,29 +282,5 @@ impl Loader for FetchCacher {
         })
     }
     .boxed_local()
-  }
-
-  fn cache_module_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_hashable(source);
-    let result = self.module_info_cache.set_module_info(
-      specifier,
-      media_type,
-      source_hash,
-      module_info,
-    );
-    if let Err(err) = result {
-      log::debug!(
-        "Error saving module cache info for {}. {:#}",
-        specifier,
-        err
-      );
-    }
   }
 }

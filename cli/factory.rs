@@ -17,8 +17,8 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::args::get_root_cert_store;
+use deno_lib::args::npm_process_state;
 use deno_lib::args::CaData;
-use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::loader::NpmModuleLoader;
 use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
@@ -45,6 +45,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -585,9 +586,9 @@ impl CliFactory {
           ),
           caching_strategy: cli_options.default_npm_caching_strategy(),
           lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
-          resolve_npm_resolution_snapshot: Box::new(
-            deno_lib::args::resolve_npm_resolution_snapshot,
-          ),
+          resolve_npm_resolution_snapshot: Box::new(|| {
+            deno_lib::args::resolve_npm_resolution_snapshot(&CliSys::default())
+          }),
         },
       ))
     })
@@ -930,7 +931,14 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      Ok(Arc::new(RuntimePermissionDescriptorParser::new(self.sys())))
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(
+        self.sys(),
+        if self.cli_options()?.unstable_subdomain_wildcards() {
+          UnstableSubdomainWildcards::Enabled
+        } else {
+          UnstableSubdomainWildcards::Disabled
+        },
+      )))
     })
   }
 
@@ -1291,15 +1299,15 @@ fn new_workspace_factory_options(
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
-    npm_process_state: NPM_PROCESS_STATE.as_ref().map(|s| {
-      NpmProcessStateOptions {
+    npm_process_state: npm_process_state(&CliSys::default()).as_ref().map(
+      |s| NpmProcessStateOptions {
         node_modules_dir: s
           .local_node_modules_path
           .as_ref()
           .map(|s| Cow::Borrowed(s.as_str())),
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
-      }
-    }),
+      },
+    ),
     vendor: flags.vendor,
   }
 }

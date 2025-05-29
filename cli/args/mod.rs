@@ -38,8 +38,8 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
+use deno_lib::args::npm_process_state;
 use deno_lib::args::CaData;
-use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
@@ -597,7 +597,7 @@ impl CliOptions {
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_node_main(&self) -> bool {
-    NPM_PROCESS_STATE.is_some()
+    npm_process_state(&CliSys::default()).is_some()
   }
 
   /// Gets the explicitly specified NodeModulesDir setting.
@@ -976,9 +976,9 @@ impl CliOptions {
             std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
             Some(var)
           }
-          Err(_) => NpmPackageReqReference::from_str(&flags.script)
-            .ok()
-            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+          Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
+            |req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string(),
+          ),
         }
       }
       _ => None,
@@ -991,6 +991,11 @@ impl CliOptions {
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
+  }
+
+  pub fn unstable_subdomain_wildcards(&self) -> bool {
+    self.flags.unstable_config.subdomain_wildcards
+      || self.workspace().has_unstable("subdomain-wildcards")
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
