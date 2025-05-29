@@ -937,7 +937,6 @@ impl Flags {
   }
 
   pub fn otel_config(&self, has_unstable_flag: bool) -> OtelConfig {
-
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
       Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),

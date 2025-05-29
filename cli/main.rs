@@ -533,7 +533,7 @@ fn resolve_flags_and_init(
 
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let otel_config = factory.cli_options()?.otel_config();
-  
+
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
     deno_lib::version::otel_runtime_config(),

@@ -1021,7 +1021,11 @@ impl CliOptions {
   }
 
   pub fn unstable_otel(&self) -> bool {
-    self.flags.unstable_config.features.contains(&String::from("otel"))
+    self
+      .flags
+      .unstable_config
+      .features
+      .contains(&String::from("otel"))
       || self.workspace().has_unstable("otel")
   }
 
