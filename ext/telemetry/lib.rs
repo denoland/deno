@@ -770,7 +770,70 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
+  setup_signal_handlers();
   Ok(())
+}
+
+#[cfg(unix)]
+fn setup_signal_handlers() {
+  use tokio::signal::unix::SignalKind;
+
+  let signals_to_handle = [
+    SignalKind::hangup(),
+    SignalKind::interrupt(),
+    SignalKind::terminate(),
+  ];
+
+  for signal_kind in signals_to_handle {
+    tokio::spawn(async move {
+      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
+        return;
+      };
+
+      loop {
+        signal_fut.recv().await;
+        flush();
+      }
+    });
+  }
+}
+
+#[cfg(windows)]
+fn setup_signal_handlers() {
+  tokio::spawn(async {
+    loop {
+      tokio::signal::windows::ctrl_break().recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    loop {
+      tokio::signal::windows::ctrl_c().recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    loop {
+      tokio::signal::windows::ctrl_close().recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    loop {
+      tokio::signal::windows::ctrl_logoff().recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    loop {
+      tokio::signal::windows::ctrl_shutdown().recv().await;
+      flush();
+    }
+  });
 }
 
 /// This function is called by the runtime whenever it is about to call
