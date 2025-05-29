@@ -70,6 +70,7 @@ const NODE_IGNORED_TEST_DIRS = [
 
 const NODE_IGNORED_TEST_CASES = new Set([
   "parallel/test-benchmark-cli.js", // testing private benchmark utility
+  "parallel/test-buffer-backing-arraybuffer.js", // Deno does not allow heap-allocated ArrayBuffer, and we can't change it (for now)
 ]);
 
 /** The group is the directory name of the test file.
