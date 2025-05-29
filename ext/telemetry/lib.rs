@@ -801,36 +801,51 @@ fn setup_signal_handlers() {
 #[cfg(windows)]
 fn setup_signal_handlers() {
   tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_break() else {
+      return;
+    };
     loop {
-      tokio::signal::windows::ctrl_break().recv().await;
+      signal_fut.recv().await;
       flush();
     }
   });
 
   tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_c() else {
+      return;
+    };
     loop {
-      tokio::signal::windows::ctrl_c().recv().await;
+      signal_fut.recv().await;
       flush();
     }
   });
 
   tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_close() else {
+      return;
+    };
     loop {
-      tokio::signal::windows::ctrl_close().recv().await;
+      signal_fut.recv().await;
       flush();
     }
   });
 
   tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_logoff() else {
+      return;
+    };
     loop {
-      tokio::signal::windows::ctrl_logoff().recv().await;
+      signal_fut.recv().await;
       flush();
     }
   });
 
   tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_shutdown() else {
+      return;
+    };
     loop {
-      tokio::signal::windows::ctrl_shutdown().recv().await;
+      signal_fut.recv().await;
       flush();
     }
   });
