@@ -532,6 +532,7 @@ fn resolve_flags_and_init(
   flags.unstable_config.fill_with_env();
 
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+
   let otel_config = factory.cli_options()?.otel_config();
 
   init_logging(flags.log_level, Some(otel_config.clone()));
