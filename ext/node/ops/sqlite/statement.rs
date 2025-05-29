@@ -97,10 +97,11 @@ pub(crate) fn check_error_code(
     let err_message = unsafe { ffi::sqlite3_errmsg(db) };
 
     if !err_message.is_null() {
-      // SAFETY: `err_str` is a valid pointer to a null-terminated string.
+      // SAFETY: `err_msg` is a valid pointer to a null-terminated string.
       let err_message = unsafe { std::ffi::CStr::from_ptr(err_message) }
         .to_string_lossy()
         .into_owned();
+      // SAFETY: `err_str` is a valid pointer to a null-terminated string.
       let err_str = unsafe { std::ffi::CStr::from_ptr(ffi::sqlite3_errstr(r)) }
         .to_string_lossy()
         .into_owned();
@@ -117,6 +118,8 @@ pub(crate) fn check_error_code(
 }
 
 pub(crate) fn check_error_code2(r: i32) -> Result<(), SqliteError> {
+  // SAFETY: `ffi::sqlite3_errstr` is a valid function that returns a pointer to a null-terminated
+  // string.
   let err_str = unsafe { std::ffi::CStr::from_ptr(ffi::sqlite3_errstr(r)) }
     .to_string_lossy()
     .into_owned();
@@ -388,6 +391,7 @@ impl StatementSync {
       let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
+      // SAFETY: db.handle() is valid
       unsafe {
         check_error_code(r, db.handle())?;
       }
