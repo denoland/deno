@@ -936,11 +936,7 @@ impl Flags {
       .contains(&String::from("no-legacy-abort"))
   }
 
-  pub fn otel_config(&self) -> OtelConfig {
-    let has_unstable_flag = self
-      .unstable_config
-      .features
-      .contains(&String::from("otel"));
+  pub fn otel_config(&self, has_unstable_flag: bool) -> OtelConfig {
 
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),

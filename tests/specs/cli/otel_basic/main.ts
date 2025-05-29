@@ -18,7 +18,6 @@ const server = Deno.serve(
           "--env-file=env_file",
           "-A",
           "-q",
-          "--unstable-otel",
           Deno.args[0],
         ],
         env: {

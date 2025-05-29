@@ -499,7 +499,7 @@ impl CliOptions {
   }
 
   pub fn otel_config(&self) -> OtelConfig {
-    self.flags.otel_config()
+    self.flags.otel_config(self.unstable_otel())
   }
 
   pub fn no_legacy_abort(&self) -> bool {
@@ -1018,6 +1018,11 @@ impl CliOptions {
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
+  }
+
+  pub fn unstable_otel(&self) -> bool {
+    self.flags.unstable_config.features.contains(&String::from("otel"))
+      || self.workspace().has_unstable("otel")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
