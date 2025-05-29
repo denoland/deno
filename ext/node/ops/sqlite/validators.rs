@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use deno_core::v8;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
