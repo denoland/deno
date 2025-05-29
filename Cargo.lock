@@ -1755,6 +1755,8 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.350.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e273b731fce500130790e777cb2631dc451db412975304d23816c1e444a10c5b"
 dependencies = [
  "anyhow",
  "az",
@@ -2440,6 +2442,8 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.226.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28b12489187c71fa123731cc783d48beb17ae5df04da991909cc2ae5a3d0ef9"
 dependencies = [
  "indexmap 2.8.0",
  "proc-macro-rules",
@@ -7476,6 +7480,8 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.259.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7e4c5f439cffc03021c8bfd380cd1ef6acb4788a72b7e54bf4a83c73f91f8a0"
 dependencies = [
  "deno_error",
  "num-bigint",
