@@ -1684,6 +1684,13 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
+    {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
   let upgraded =
     match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
       Ok(res) => return res,
