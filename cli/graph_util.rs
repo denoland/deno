@@ -49,11 +49,11 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::cache;
-use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
+use crate::file_fetcher::CliDenoGraphLoader;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
@@ -427,7 +427,9 @@ impl ModuleGraphCreator {
     roots: Vec<ModuleSpecifier>,
     npm_caching: NpmCachingStrategy,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.module_graph_builder.create_graph_loader();
+    let mut cache = self
+      .module_graph_builder
+      .create_graph_loader_with_root_permissions();
     self
       .create_graph_with_loader(graph_kind, roots, &mut cache, npm_caching)
       .await
@@ -456,7 +458,8 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
-    struct PublishLoader(FetchCacher);
+    struct PublishLoader(CliDenoGraphLoader);
+
     impl Loader for PublishLoader {
       fn load(
         &self,
@@ -464,15 +467,27 @@ impl ModuleGraphCreator {
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
         if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
-          return Box::pin(std::future::ready(Ok(Some(
+          Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
             },
-          ))));
+          ))))
+        } else if matches!(specifier.scheme(), "http" | "https")
+          && !specifier.as_str().starts_with(jsr_url().as_str())
+        {
+          // mark non-JSR remote modules as external so we don't need --allow-import
+          // permissions as these will error out later when publishing
+          Box::pin(std::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))))
+        } else {
+          self.0.load(specifier, options)
         }
-        self.0.load(specifier, options)
       }
     }
+
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // Earlier on, we marked external non-JSR modules as external.
       // If the graph contains any of those, it would cause type checking
@@ -491,7 +506,9 @@ impl ModuleGraphCreator {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
 
-    let loader = self.module_graph_builder.create_graph_loader();
+    let loader = self
+      .module_graph_builder
+      .create_graph_loader_with_root_permissions();
     let mut publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
@@ -707,7 +724,7 @@ impl ModuleGraphBuilder {
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
-      Owned(cache::FetchCacher),
+      Owned(CliDenoGraphLoader),
     }
 
     impl MutLoaderRef<'_> {
@@ -722,7 +739,9 @@ impl ModuleGraphBuilder {
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
-      None => MutLoaderRef::Owned(self.create_graph_loader()),
+      None => {
+        MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
+      }
     };
     let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
       &self.cli_options.start_dir,
@@ -921,26 +940,26 @@ impl ModuleGraphBuilder {
   }
 
   /// Creates the default loader used for creating a graph.
-  pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(self.root_permissions_container.clone())
+  pub fn create_graph_loader_with_root_permissions(
+    &self,
+  ) -> CliDenoGraphLoader {
+    self.create_graph_loader_with_permissions(
+      self.root_permissions_container.clone(),
+    )
   }
 
-  pub fn create_fetch_cacher(
+  pub fn create_graph_loader_with_permissions(
     &self,
     permissions: PermissionsContainer,
-  ) -> cache::FetchCacher {
-    cache::FetchCacher::new(
+  ) -> CliDenoGraphLoader {
+    CliDenoGraphLoader::new(
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
       self.in_npm_pkg_checker.clone(),
       self.sys.clone(),
-      cache::FetchCacherOptions {
+      deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
-        permissions,
-        is_deno_publish: matches!(
-          self.cli_options.sub_command(),
-          crate::args::DenoSubcommand::Publish { .. }
-        ),
+        permissions: Some(permissions),
       },
     )
   }
