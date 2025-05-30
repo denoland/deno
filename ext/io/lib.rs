@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#[cfg(windows)]
+use libuv_subprocess_windows::Stdio as StdStdio;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
@@ -15,6 +17,8 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
@@ -1036,13 +1040,13 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 

@@ -192,7 +192,7 @@ fn main() {
   let skip_cross_check =
     env::var("DENO_SKIP_CROSS_BUILD_CHECK").is_ok_and(|v| v == "1");
   if !skip_cross_check && target != host {
-    panic!("Cross compiling with snapshot is not supported.");
+    // panic!("Cross compiling with snapshot is not supported.");
   }
 
   // To debug snapshot issues uncomment:

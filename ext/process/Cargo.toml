@@ -22,6 +22,7 @@ deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 libc.workspace = true
+libuv-subprocess-windows.workspace = true
 log.workspace = true
 memchr.workspace = true
 pin-project-lite.workspace = true

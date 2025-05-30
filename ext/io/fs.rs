@@ -16,6 +16,11 @@ use deno_core::ResourceId;
 use deno_error::JsErrorBox;
 use tokio::task::JoinError;
 
+#[cfg(windows)]
+use libuv_subprocess_windows::Stdio as StdStdio;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
+
 #[derive(Debug, deno_error::JsError)]
 pub enum FsError {
   #[class(inherit)]
@@ -275,7 +280,7 @@ pub trait File {
   ) -> FsResult<()>;
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }

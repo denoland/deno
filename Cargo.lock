@@ -2085,6 +2085,7 @@ dependencies = [
  "filetime",
  "fs3",
  "libc",
+ "libuv-subprocess-windows",
  "log",
  "nix 0.27.1",
  "once_cell",
@@ -2305,6 +2306,7 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
+ "libuv-subprocess-windows",
  "libz-sys",
  "md-5",
  "md4",
@@ -2556,6 +2558,7 @@ dependencies = [
  "deno_path_util",
  "deno_permissions",
  "libc",
+ "libuv-subprocess-windows",
  "log",
  "memchr",
  "nix 0.27.1",
@@ -3009,6 +3012,7 @@ dependencies = [
  "import_map",
  "indexmap 2.8.0",
  "libsui",
+ "libuv-subprocess-windows",
  "log",
  "memmap2",
  "node_resolver",
@@ -5198,9 +5202,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
+checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "libffi"
@@ -5281,6 +5285,16 @@ dependencies = [
  "sha2",
  "windows-sys 0.48.0",
  "zerocopy",
+]
+
+[[package]]
+name = "libuv-subprocess-windows"
+version = "0.1.0"
+dependencies = [
+ "futures-channel",
+ "libc",
+ "nanorand",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5597,6 +5611,12 @@ dependencies = [
  "thiserror 2.0.12",
  "unicode-xid",
 ]
+
+[[package]]
+name = "nanorand"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
 
 [[package]]
 name = "napi-build"

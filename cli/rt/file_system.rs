@@ -42,6 +42,11 @@ use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
 use url::Url;
 
+#[cfg(windows)]
+use libuv_subprocess_windows::Stdio as StdStdio;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
+
 #[derive(Debug, Clone)]
 pub struct DenoRtSys(Arc<FileBackedVfs>);
 
@@ -1252,7 +1257,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
