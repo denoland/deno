@@ -5,6 +5,7 @@ pub mod check;
 pub mod clean;
 pub mod compile;
 pub mod coverage;
+pub mod deploy;
 pub mod doc;
 pub mod fmt;
 pub mod info;
