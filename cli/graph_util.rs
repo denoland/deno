@@ -18,7 +18,6 @@ use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
-use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolveError;
 use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
@@ -40,7 +39,6 @@ use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use sys_traits::FsMetadata;
 
@@ -721,67 +719,6 @@ impl ModuleGraphBuilder {
       }
     }
 
-    struct LockfileLocker<'a>(&'a CliLockfile);
-
-    impl deno_graph::source::Locker for LockfileLocker<'_> {
-      fn get_remote_checksum(
-        &self,
-        specifier: &deno_ast::ModuleSpecifier,
-      ) -> Option<LoaderChecksum> {
-        self
-          .0
-          .lock()
-          .remote()
-          .get(specifier.as_str())
-          .map(|s| LoaderChecksum::new(s.clone()))
-      }
-
-      fn has_remote_checksum(
-        &self,
-        specifier: &deno_ast::ModuleSpecifier,
-      ) -> bool {
-        self.0.lock().remote().contains_key(specifier.as_str())
-      }
-
-      fn set_remote_checksum(
-        &mut self,
-        specifier: &deno_ast::ModuleSpecifier,
-        checksum: LoaderChecksum,
-      ) {
-        self
-          .0
-          .lock()
-          .insert_remote(specifier.to_string(), checksum.into_string())
-      }
-
-      fn get_pkg_manifest_checksum(
-        &self,
-        package_nv: &PackageNv,
-      ) -> Option<LoaderChecksum> {
-        self
-          .0
-          .lock()
-          .content
-          .packages
-          .jsr
-          .get(package_nv)
-          .map(|s| LoaderChecksum::new(s.integrity.clone()))
-      }
-
-      fn set_pkg_manifest_checksum(
-        &mut self,
-        package_nv: &PackageNv,
-        checksum: LoaderChecksum,
-      ) {
-        // a value would only exist in here if two workers raced
-        // to insert the same package manifest checksum
-        self
-          .0
-          .lock()
-          .insert_package(package_nv.clone(), checksum.into_string());
-      }
-    }
-
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
@@ -797,10 +734,7 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let mut locker = self
-      .lockfile
-      .as_ref()
-      .map(|lockfile| LockfileLocker(lockfile));
+    let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,

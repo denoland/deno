@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.64.0"
+version = "0.65.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,7 +37,7 @@ winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
+nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["real"] }
