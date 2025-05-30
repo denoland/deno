@@ -81,8 +81,8 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 24 assets on the
-        [GitHub release draft](https://github.com/denoland/deno/releases/v$VERSION).
+  - [ ] There are 24 assets on the v$VERSION
+        [GitHub release draft](https://github.com/denoland/deno/releases/).
   - [ ] There are 25 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
