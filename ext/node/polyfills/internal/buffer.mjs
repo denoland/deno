@@ -794,6 +794,13 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -865,6 +872,13 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -890,6 +904,13 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   offset = offset || 0;
   const maxLength = MathMin(length || Infinity, this.length - offset);
   const buf = offset || maxLength < this.length
@@ -993,7 +1014,6 @@ function _base64Slice(buf, start, end) {
     return forgivingBase64Encode(buf.slice(start, end));
   }
 }
-
 const decoder = new TextDecoder();
 
 function _utf8Slice(buf, start, end) {
