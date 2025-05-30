@@ -274,27 +274,8 @@ fn create_package_version_info(
   package_name: &str,
   registry_hostname: &str,
 ) -> Result<(Vec<u8>, serde_json::Map<String, serde_json::Value>)> {
-  // create the tarball
-  let mut tarball_bytes = Vec::new();
-  {
-    let mut encoder =
-      GzEncoder::new(&mut tarball_bytes, Compression::default());
-    {
-      let mut builder = Builder::new(&mut encoder);
-      append_dir_all(
-        &mut builder,
-        Path::new("package"),
-        version_folder.as_path(),
-      )
-      .with_context(|| {
-        format!("Error adding tarball for directory {}", version_folder)
-      })?;
-      builder.finish()?;
-    }
-    encoder.finish()?;
-  }
+  let tarball_bytes = create_tarball_from_dir(version_folder.as_path())?;
 
-  // create the registry file JSON for this version
   let mut dist = serde_json::Map::new();
   if package_name != "@denotest/no-shasums" {
     let tarball_checksum = get_tarball_checksum(&tarball_bytes);

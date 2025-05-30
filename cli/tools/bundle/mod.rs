@@ -338,23 +338,12 @@ pub async fn bundle(
     if bundle_flags.output_dir.is_none()
       && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
     {
-      // TODO(nathanwhit): MASSIVE HACK
       let out = bundle_flags
         .output_path
         .clone()
         .unwrap_or_else(|| "./dist/bundled.js".to_string());
       let contents = std::fs::read_to_string(&out).unwrap();
-      let contents = contents.replace(
-        r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});"#,
-        r#"import { createRequire } from "node:module";
-var __require = createRequire(import.meta.url);
-"#,
-      );
+      let contents = replace_require_shim(&contents);
       std::fs::write(&out, contents).unwrap();
     }
 
@@ -368,6 +357,23 @@ var __require = createRequire(import.meta.url);
   }
 
   Ok(())
+}
+
+// TODO(nathanwhit): MASSIVE HACK
+// See tests::specs::bundle::requires_node_builtin for why this is needed.
+// Without this hack, that test would fail with "Dynamic require of "util" is not supported"
+fn replace_require_shim(contents: &str) -> String {
+  contents.replace(
+    r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+if (typeof require !== "undefined") return require.apply(this, arguments);
+throw Error('Dynamic require of "' + x + '" is not supported');
+});"#,
+    r#"import { createRequire } from "node:module";
+var __require = createRequire(import.meta.url);
+"#,
+  )
 }
 
 fn format_message(message: &esbuild_rs::protocol::Message) -> String {
