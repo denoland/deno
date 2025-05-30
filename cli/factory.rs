@@ -754,6 +754,12 @@ impl CliFactory {
             self.cjs_module_export_analyzer().await?;
           Ok(Arc::new(NodeCodeTranslator::new(
             module_export_analyzer.clone(),
+            match self.cli_options()?.sub_command() {
+              DenoSubcommand::Bundle(_) => {
+                node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+              }
+              _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+            },
           )))
         }
         .boxed_local(),
@@ -1061,7 +1067,6 @@ impl CliFactory {
         self.cjs_tracker()?.clone(),
         node_code_translator.clone(),
         self.sys(),
-        matches!(cli_options.sub_command(), DenoSubcommand::Bundle(_)),
       ),
       npm_registry_permission_checker,
       npm_req_resolver.clone(),

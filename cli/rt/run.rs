@@ -458,7 +458,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               };
               let source = shared
                 .node_code_translator
-                .translate_cjs_to_esm(&module_specifier, Some(source), false)
+                .translate_cjs_to_esm(&module_specifier, Some(source))
                 .await
                 .map_err(JsErrorBox::from_err)?;
               let module_source = match source {
@@ -817,8 +817,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
-  let node_code_translator =
-    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+  ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -901,7 +903,6 @@ pub async fn run(
         cjs_tracker.clone(),
         node_code_translator,
         sys.clone(),
-        false,
       )),
       npm_registry_permission_checker,
       npm_req_resolver,
