@@ -8,6 +8,7 @@ use std::rc::Weak;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use rusqlite::ffi;
 
@@ -20,15 +21,17 @@ pub struct SessionOptions {
   pub db: Option<String>,
 }
 
-impl SessionOptions {
-  pub fn from_value(
+impl<'a> FromV8<'a> for SessionOptions {
+  type Error = validators::Error;
+
+  fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
-  ) -> Result<Option<Self>, validators::Error> {
+  ) -> Result<Self, validators::Error> {
     use validators::Error;
 
     if value.is_undefined() {
-      return Ok(None);
+      return Ok(SessionOptions::default());
     }
 
     let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
@@ -75,7 +78,7 @@ impl SessionOptions {
       }
     }
 
-    Ok(Some(options))
+    Ok(options)
   }
 }
 

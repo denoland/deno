@@ -10,6 +10,7 @@ use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8_static_strings;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use rusqlite::ffi;
 
 use super::validators;
@@ -21,14 +22,16 @@ const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;
 pub struct RunStatementResult {
   last_insert_rowid: i64,
   changes: u64,
+  use_big_ints: bool,
 }
 
-impl RunStatementResult {
-  fn serialize<'a>(
-    &self,
-    scope: &'a mut v8::HandleScope,
-    use_big_ints: bool,
-  ) -> v8::Local<'a, v8::Value> {
+impl<'a> ToV8<'a> for RunStatementResult {
+  type Error = SqliteError;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     v8_static_strings! {
       LAST_INSERT_ROW_ID = "lastInsertRowid",
       CHANGES = "changes",
@@ -37,7 +40,7 @@ impl RunStatementResult {
     let obj = v8::Object::new(scope);
 
     let last_insert_row_id_str = LAST_INSERT_ROW_ID.v8_string(scope).unwrap();
-    let last_insert_row_id = if use_big_ints {
+    let last_insert_row_id = if self.use_big_ints {
       v8::BigInt::new_from_i64(scope, self.last_insert_rowid).into()
     } else {
       v8::Number::new(scope, self.last_insert_rowid as f64).into()
@@ -48,14 +51,14 @@ impl RunStatementResult {
       .unwrap();
 
     let changes_str = CHANGES.v8_string(scope).unwrap();
-    let changes = if use_big_ints {
+    let changes = if self.use_big_ints {
       v8::BigInt::new_from_u64(scope, self.changes).into()
     } else {
       v8::Number::new(scope, self.changes as f64).into()
     };
 
     obj.set(scope, changes_str.into(), changes).unwrap();
-    obj.into()
+    Ok(obj.into())
   }
 }
 
@@ -444,17 +447,15 @@ impl StatementSync {
 
             let e = bare_named_params.insert(bare_name, i);
             if let Some(existing_index) = e {
-              let bare_name_str = std::str::from_utf8(bare_name).unwrap();
-              let full_name_str = std::str::from_utf8(full_name).unwrap();
+              let bare_name_str = std::str::from_utf8(bare_name)?;
+              let full_name_str = std::str::from_utf8(full_name)?;
 
               // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
               unsafe {
                 let existing_full_name =
                   ffi::sqlite3_bind_parameter_name(raw, existing_index);
                 let existing_full_name_str =
-                  std::ffi::CStr::from_ptr(existing_full_name)
-                    .to_str()
-                    .unwrap();
+                  std::ffi::CStr::from_ptr(existing_full_name).to_str()?;
 
                 return Err(SqliteError::DuplicateNamedParameter(
                   bare_name_str.to_string(),
@@ -564,11 +565,12 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
-  fn run<'a>(
+  #[to_v8]
+  fn run(
     &self,
-    scope: &'a mut v8::HandleScope,
+    scope: &mut v8::HandleScope,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
-  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+  ) -> Result<RunStatementResult, SqliteError> {
     let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
     let db = db_rc.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
@@ -581,13 +583,11 @@ impl StatementSync {
     // Reset to return correct change metadata.
     drop(reset);
 
-    Ok(
-      RunStatementResult {
-        last_insert_rowid: db.last_insert_rowid(),
-        changes: db.changes(),
-      }
-      .serialize(scope, self.use_big_ints.get()),
-    )
+    Ok(RunStatementResult {
+      last_insert_rowid: db.last_insert_rowid(),
+      changes: db.changes(),
+      use_big_ints: self.use_big_ints.get(),
+    })
   }
 
   // Executes a prepared statement and returns all results as an array of objects.

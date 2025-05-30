@@ -9,10 +9,12 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::rc::Rc;
 
+use deno_core::convert::OptionUndefined;
 use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
@@ -39,11 +41,13 @@ struct DatabaseSyncOptions {
   enable_double_quoted_string_literals: bool,
 }
 
-impl DatabaseSyncOptions {
-  fn from_value(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
-  ) -> Result<Self, validators::Error> {
+impl<'a> FromV8<'a> for DatabaseSyncOptions {
+  type Error = validators::Error;
+
+  fn from_v8(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
     use validators::Error;
 
     if value.is_undefined() {
@@ -167,6 +171,8 @@ struct ApplyChangesetOptions<'a> {
   on_conflict: Option<v8::Local<'a, v8::Value>>,
 }
 
+// Note: Can't use `FromV8` here because of lifetime issues with holding
+// Local references.
 impl<'a> ApplyChangesetOptions<'a> {
   fn from_value(
     scope: &mut v8::HandleScope<'a>,
@@ -375,15 +381,12 @@ impl DatabaseSync {
   #[validate(database_constructor)]
   #[cppgc]
   fn new(
-    scope: &mut v8::HandleScope,
     state: &mut OpState,
     #[validate(validators::path_str)]
     #[string]
     location: String,
-    options: v8::Local<v8::Value>,
+    #[from_v8] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
-    let options = DatabaseSyncOptions::from_value(scope, options)?;
-
     let db = if options.open {
       let db =
         open_db(state, options.read_only, &location, options.allow_extension)?;
@@ -763,11 +766,9 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    scope: &mut v8::HandleScope,
-    options: v8::Local<v8::Value>,
+    #[from_v8] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
-    let options = SessionOptions::from_value(scope, options)?;
-
+    let options = options.0;
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 

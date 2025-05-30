@@ -108,7 +108,11 @@ pub enum SqliteError {
   #[class(type)]
   #[error("FromUtf8Error: {0}")]
   #[property("code" = self.code())]
-  FromUtf8Error(#[from] std::ffi::NulError),
+  FromNullError(#[from] std::ffi::NulError),
+  #[class(type)]
+  #[error("FromUtf8Error: {0}")]
+  #[property("code" = self.code())]
+  FromUtf8Error(#[from] std::str::Utf8Error),
   #[class(inherit)]
   #[error(transparent)]
   #[property("code" = self.code())]
