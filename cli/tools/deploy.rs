@@ -28,6 +28,7 @@ pub async fn deploy(
 
   let mut flags = Arc::unwrap_or_clone(flags);
   flags.subcommand = DenoSubcommand::Run(RunFlags {
+    // https://github.com/denoland/deploy-cli
     script: format!(
       "jsr:@deno/deploy@{}",
       res
