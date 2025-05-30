@@ -22,7 +22,6 @@
       "test-assert-fail.js",
       "test-assert.js",
       "test-blocklist.js",
-      "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
       "test-buffer-backing-arraybuffer.js",
       "test-buffer-includes.js",
