@@ -1754,10 +1754,10 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
       end = this.length;
     }
     if (encoding !== void 0 && typeof encoding !== "string") {
-      throw new TypeError("encoding must be a string");
+      throw new codes.ERR_INVALID_ARG_TYPE("encoding", "string", encoding);
     }
     if (typeof encoding === "string" && !BufferIsEncoding(encoding)) {
-      throw new TypeError("Unknown encoding: " + encoding);
+      throw new codes.ERR_UNKNOWN_ENCODING(encoding);
     }
     if (val.length === 1) {
       const code = StringPrototypeCharCodeAt(val, 0);
@@ -1770,6 +1770,19 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   } else if (typeof val === "boolean") {
     val = Number(val);
   }
+ 
+  if (typeof start === "string") {
+    encoding = start;
+    start = 0;
+    end = this.length;
+  }
+  if (start !== undefined) {
+    validateNumber(start, "start", 0, Number.MAX_SAFE_INTEGER);
+    if (end !== undefined) {
+      validateNumber(end, "end", 0, this.length);
+    }
+  }
+
   if (start < 0 || this.length < start || this.length < end) {
     throw new RangeError("Out of range index");
   }
