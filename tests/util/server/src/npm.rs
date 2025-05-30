@@ -12,9 +12,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use serde_json;
 use tar::Builder;
-use tempfile;
 
 use crate::root_path;
 use crate::tests_path;

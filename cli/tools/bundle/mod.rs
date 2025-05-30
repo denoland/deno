@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -101,7 +103,7 @@ pub async fn ensure_esbuild(
     let existed = package_folder.exists();
 
     if !existed {
-      tarball_cache.ensure_package(&nv, &dist).await?;
+      tarball_cache.ensure_package(&nv, dist).await?;
     }
 
     let path = package_folder.join("bin/esbuild");
@@ -146,8 +148,8 @@ pub async fn bundle(
   let workspace_factory = resolver_factory.workspace_factory();
   let npm_registry_info = installer_factory.registry_info_provider()?;
   let esbuild_path = ensure_esbuild(
-    &deno_dir,
-    &npmrc,
+    deno_dir,
+    npmrc,
     npm_registry_info,
     workspace_factory.workspace_npm_patch_packages()?,
     installer_factory.tarball_cache()?,
@@ -168,6 +170,7 @@ pub async fn bundle(
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().canonicalize()?;
 
+  #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
     resolver: resolver.clone(),
     module_load_preparer,
@@ -245,7 +248,7 @@ pub async fn bundle(
   {
     tokio::spawn(async move {
       let res = esbuild.wait_for_exit().await;
-      eprintln!("esbuild exited: {:?}", res);
+      log::warn!("esbuild exited: {:?}", res);
 
       Ok::<(), AnyError>(())
     });
@@ -291,7 +294,7 @@ pub async fn bundle(
       stdin_resolve_dir: None.into(),
       abs_working_dir: init_cwd.to_string_lossy().to_string(),
       context: false,
-      mangle_cache: None.into(),
+      mangle_cache: None,
       node_paths: vec![],
       plugins: Some(vec![protocol::BuildPlugin {
         name: "deno".into(),
@@ -312,9 +315,9 @@ pub async fn bundle(
     .await
     .unwrap();
 
-  if response.errors.len() > 0 {
+  if !response.errors.is_empty() {
     for error in &response.errors {
-      eprintln!(
+      log::error!(
         "{}: {}",
         deno_terminal::colors::red("bundler error"),
         format_message(error)
@@ -322,9 +325,9 @@ pub async fn bundle(
     }
   }
 
-  if response.warnings.len() > 0 {
+  if !response.warnings.is_empty() {
     for warning in &response.warnings {
-      eprintln!(
+      log::warn!(
         "{}: {}",
         deno_terminal::colors::yellow("bundler warning"),
         format_message(warning)
@@ -333,8 +336,11 @@ pub async fn bundle(
   }
 
   if let Some(stdout) = response.write_to_stdout {
-    println!("{}", String::from_utf8_lossy(&stdout));
-  } else if response.errors.len() == 0 {
+    #[allow(clippy::print_stdout)]
+    {
+      println!("{}", String::from_utf8_lossy(&stdout));
+    }
+  } else if response.errors.is_empty() {
     if bundle_flags.output_dir.is_none()
       && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
     {
@@ -449,20 +455,18 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
           external: Some(true),
           path: Some(args.path),
           plugin_name: Some("deno".to_string()),
-          plugin_data: None.into(),
+          plugin_data: None,
           ..Default::default()
         }));
       }
     }
-    let result = self
-      .bundle_resolve(
-        &args.path,
-        args.importer.as_deref(),
-        args.resolve_dir.as_deref(),
-        args.kind,
-        args.with,
-      )
-      .await?;
+    let result = self.bundle_resolve(
+      &args.path,
+      args.importer.as_deref(),
+      args.resolve_dir.as_deref(),
+      args.kind,
+      args.with,
+    )?;
 
     Ok(result.map(|r| {
       esbuild_rs::OnResolveResult {
@@ -484,7 +488,7 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
         ),
         path: Some(r),
         plugin_name: Some("deno".to_string()),
-        plugin_data: None.into(),
+        plugin_data: None,
         ..Default::default()
       }
     }))
@@ -500,7 +504,7 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
       deno_terminal::colors::magenta("on_load"),
       result.as_ref().map(|(code, loader)| format!(
         "{}: {:?}",
-        String::from_utf8_lossy(&code),
+        String::from_utf8_lossy(code),
         loader
       ))
     );
@@ -573,7 +577,7 @@ impl DenoPluginHandler {
       _ => Ok(specifier.to_string()),
     }
   }
-  async fn bundle_resolve(
+  fn bundle_resolve(
     &self,
     path: &str,
     importer: Option<&str>,
@@ -597,13 +601,13 @@ impl DenoPluginHandler {
     }
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
-      resolve_url_or_path(&importer.unwrap_or(""), resolve_dir_path)
+      resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
         .unwrap_or_else(|_| {
           Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
         });
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
-      if ((&pth).is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
+      if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
         referrer.set_path(&format!(
           "{}{}",
           referrer.path(),
@@ -621,7 +625,7 @@ impl DenoPluginHandler {
       import_kind_to_resolution_mode(kind)
     );
     let result = resolver.resolve(
-      &path,
+      path,
       &referrer,
       Position::new(0, 0),
       import_kind_to_resolution_mode(kind),
@@ -710,7 +714,7 @@ impl DenoPluginHandler {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
-    let _prepared = self
+    self
       .module_load_preparer
       .prepare_module_load(
         graph,
@@ -750,7 +754,7 @@ impl DenoPluginHandler {
     );
 
     let resolve_dir = Path::new(&resolve_dir);
-    let specifier = deno_core::resolve_url_or_path(&specifier, resolve_dir)?;
+    let specifier = deno_core::resolve_url_or_path(specifier, resolve_dir)?;
 
     // let (code, loader) =
     //   if let Some((code, loader)) = self.load_from_graph(&specifier)? {
@@ -813,7 +817,7 @@ impl DenoPluginHandler {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
     let graph = self.module_graph_container.graph();
-    let Some(module) = graph.get(&specifier) else {
+    let Some(module) = graph.get(specifier) else {
       return Ok(None);
     };
 
@@ -862,7 +866,7 @@ impl DenoPluginHandler {
   ) -> Result<Option<(ModuleSpecifier, esbuild_rs::BuiltinLoader)>, AnyError>
   {
     let graph = self.module_graph_container.graph();
-    let Some(module) = graph.get(&specifier) else {
+    let Some(module) = graph.get(specifier) else {
       return Ok(None);
     };
     let (specifier, loader) = match module {

@@ -523,12 +523,10 @@ impl<
             }
             .into(),
           )
+        } else if let Some(ext) = ext {
+          Ok(UrlOrPath::Path(with_known_extension(&path, ext)))
         } else {
-          if let Some(ext) = ext {
-            Ok(UrlOrPath::Path(with_known_extension(&path, ext)))
-          } else {
-            Ok(UrlOrPath::Path(path.join(suggested_file_name.unwrap())))
-          }
+          Ok(UrlOrPath::Path(path.join(suggested_file_name.unwrap())))
         }
       }
       Ok(FileType::File) => {
