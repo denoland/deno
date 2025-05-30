@@ -101,10 +101,31 @@ impl Default for WorkerId {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebWorkerType {
+  // Used only for testing
   Classic,
+  // Regular Web Worker
   Module,
+  // `node:worker_threads` worker, technically
+  // not a web worker, will be cleaned up in the future.
+  Node,
 }
 
+impl<'s> WebWorkerType {
+  pub fn to_v8(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::String> {
+    v8::String::new(
+      scope,
+      match self {
+        WebWorkerType::Classic => "classic",
+        WebWorkerType::Module => "module",
+        WebWorkerType::Node => "node",
+      },
+    )
+    .unwrap()
+  }
+}
 /// Events that are sent to host from child
 /// worker.
 #[allow(clippy::large_enum_variant)]
@@ -747,11 +768,13 @@ impl WebWorker {
           .into();
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
+      let worker_type: v8::Local<v8::Value> =
+        self.worker_type.to_v8(scope).into();
       bootstrap_fn
         .call(
           scope,
           undefined.into(),
-          &[args, name_str, id_str, id, worker_data],
+          &[args, name_str, id_str, id, worker_type, worker_data],
         )
         .unwrap();
 
