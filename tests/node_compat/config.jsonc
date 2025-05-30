@@ -27,7 +27,6 @@
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
       "test-buffer-tostring-range.js",
-      "test-buffer-write.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-child-process-exec-encoding.js",
       "test-child-process-exec-maxbuf.js",
