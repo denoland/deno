@@ -3,11 +3,9 @@ Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/explicit_start_and_end.ts
 
-benchmark       time/iter (avg)        iter/s      (min … max)           p75      p99     p995
---------------- ----------------------------- --------------------- --------------------------
-start and end  [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
-start only     [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
-end only       [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+| benchmark       | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| --------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+[WILDCARD]
 double start    error: TypeError: BenchContext::start() has already been invoked
   t.start();
     ^
