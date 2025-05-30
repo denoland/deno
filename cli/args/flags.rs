@@ -31,7 +31,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::CaData;
+use deno_lib::args::{has_flag_env_var, CaData};
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
@@ -4854,10 +4854,17 @@ fn deploy_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.permissions.allow_all = true;
-  flags.argv = matches
+
+  let mut args: Vec<String> = matches
     .remove_many("args")
     .map(|args| args.collect())
     .unwrap_or_default();
+
+  if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
+    args.insert(0, format!("--endpoint={}", std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()));
+  }
+
+  flags.argv = args;
   flags.subcommand = DenoSubcommand::Deploy;
   Ok(())
 }
