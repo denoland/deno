@@ -794,9 +794,11 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
+  // deno-lint-ignore prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -872,9 +874,11 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
+  // deno-lint-ignore prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
+  // deno-lint-ignore prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -904,9 +908,11 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
+  // deno-lint-ignore prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
