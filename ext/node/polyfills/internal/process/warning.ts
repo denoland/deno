@@ -4,7 +4,7 @@ import { primordials } from "ext:core/mod.js";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 
 const {
-  Error,
+  ErrorPrototype,
   ErrorPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
@@ -27,7 +27,7 @@ export function onWarning(
     (warning?.name && disableWarningSet.has(warning.name))
   ) return;
 
-  if (!ObjectPrototypeIsPrototypeOf(warning, Error)) return;
+  if (!ObjectPrototypeIsPrototypeOf(ErrorPrototype, warning)) return;
 
   const isDeprecation = warning.name === "DeprecationWarning";
   if (isDeprecation && process.noDeprecation) return;
