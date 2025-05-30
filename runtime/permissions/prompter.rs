@@ -1,20 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::fmt::Write;
-use std::io::BufRead;
-use std::io::IsTerminal;
-use std::io::StderrLock;
-use std::io::StdinLock;
-use std::io::Write as IoWrite;
-
-use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
-use crate::is_standalone;
-
 /// Helper function to make control characters visible so users can see the underlying filename.
+#[cfg(not(target_arch = "wasm32"))]
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+  use deno_terminal::colors;
+
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
     return std::borrow::Cow::Borrowed(s);
   }
@@ -35,9 +28,6 @@ fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
-// 10kB of permission prompting should be enough for anyone
-const MAX_PERMISSION_PROMPT_LENGTH: usize = 10 * 1024;
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum PromptResponse {
   Allow,
@@ -45,8 +35,13 @@ pub enum PromptResponse {
   AllowAll,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+type DefaultPrompter = TtyPrompter;
+#[cfg(target_arch = "wasm32")]
+type DefaultPrompter = DeniedPrompter;
+
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
-  Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
+  Lazy::new(|| Mutex::new(Box::new(DefaultPrompter::default())));
 
 static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
@@ -107,12 +102,26 @@ pub trait PermissionPrompter: Send + Sync {
   ) -> PromptResponse;
 }
 
-pub struct TtyPrompter;
+#[derive(Default)]
+pub struct DeniedPrompter;
+
+impl PermissionPrompter for DeniedPrompter {
+  fn prompt(
+    &mut self,
+    _message: &str,
+    _name: &str,
+    _api_name: Option<&str>,
+    _is_unary: bool,
+    _get_stack: Option<GetFormattedStackFn>,
+  ) -> PromptResponse {
+    PromptResponse::Deny
+  }
+}
 
 #[cfg(unix)]
 fn clear_stdin(
-  _stdin_lock: &mut StdinLock,
-  _stderr_lock: &mut StderrLock,
+  _stdin_lock: &mut std::io::StdinLock,
+  _stderr_lock: &mut std::io::StderrLock,
 ) -> Result<(), std::io::Error> {
   use std::mem::MaybeUninit;
 
@@ -163,11 +172,15 @@ fn clear_stdin(
   Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
 fn clear_stdin(
-  stdin_lock: &mut StdinLock,
-  stderr_lock: &mut StderrLock,
+  stdin_lock: &mut std::io::StdinLock,
+  stderr_lock: &mut std::io::StderrLock,
 ) -> Result<(), std::io::Error> {
+  use std::io::BufRead;
+  use std::io::StdinLock;
+  use std::io::Write as IoWrite;
+
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::minwindef::UINT;
   use winapi::shared::minwindef::WORD;
@@ -257,7 +270,7 @@ fn clear_stdin(
   }
 
   fn move_cursor_up(
-    stderr_lock: &mut StderrLock,
+    stderr_lock: &mut std::io::StderrLock,
   ) -> Result<(), std::io::Error> {
     write!(stderr_lock, "\x1B[1A")
   }
@@ -270,7 +283,9 @@ fn clear_stdin(
 }
 
 // Clear n-lines in terminal and move cursor to the beginning of the line.
-fn clear_n_lines(stderr_lock: &mut StderrLock, n: usize) {
+#[cfg(not(target_arch = "wasm32"))]
+fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
+  use std::io::Write;
   write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
 }
 
@@ -289,6 +304,11 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+pub struct TtyPrompter;
+
+#[cfg(not(target_arch = "wasm32"))]
 impl PermissionPrompter for TtyPrompter {
   fn prompt(
     &mut self,
@@ -298,6 +318,16 @@ impl PermissionPrompter for TtyPrompter {
     is_unary: bool,
     get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse {
+    use std::fmt::Write;
+    use std::io::BufRead;
+    use std::io::IsTerminal;
+    use std::io::Write as IoWrite;
+
+    use deno_terminal::colors;
+
+    // 10kB of permission prompting should be enough for anyone
+    const MAX_PERMISSION_PROMPT_LENGTH: usize = 10 * 1024;
+
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
@@ -381,7 +411,7 @@ impl PermissionPrompter for TtyPrompter {
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      let msg = if is_standalone() {
+      let msg = if crate::is_standalone() {
         format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")

@@ -6,6 +6,72 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.5 / 2025.05.30
+
+- fix(ext/node): Buffer write OOB checks (#29524)
+- fix(ext/node): correct `kMaxLength` value of `node:buffer` (#29504)
+- fix(ext/node): fix function error message in `invalidArgTypeHelper` (#29526)
+- fix(ext/node): stub `getFipsCrypto` to `false` (#29485)
+- fix(otel): flush data when terminating signal is received (#29515)
+- fix(vendor): store remote version metadata checksum in vendor folder to ensure
+  lockfile uses that (#29433)
+
+### 2.3.4 / 2025.05.29
+
+- feat(UNSTABLE/byow): add `resize` method to `UnsafeWindowSurface` (#29254)
+- feat(ext/webgpu): implement GPUQueue.onSubmittedWorkDone (#29255)
+- feat(lsp): display JsErrors at their original line (#29221)
+- feat(runtime): add SIGUSR2 handler for low memory notifications (#29295)
+- feat(unstable): --allow-net subdomain wildcards (#29327)
+- feat: use a single 'performance' global (#29323)
+- fix(cli): Correct a small typo in help output (#29395)
+- fix(compile): init dummy stdin after debug env is initialized (#29144)
+- fix(coverage): HTML validation errors in coverage explorer (#29497)
+- fix(coverage): pass DENO_COVERAGE_DIR env var correctly (#29363)
+- fix(ext/console): console.group indents two spaces (#29486)
+- fix(ext/node): Fix `Database#exec` should return undefined (#29368)
+- fix(ext/node): add "internal/http2/util" module (#29474)
+- fix(ext/node): add `fchown` and `fchownSync` to `node:fs` (#29408)
+- fix(ext/node): createInterface doesn't require env permission (#29472)
+- fix(ext/node): emit 'worker' event when a new worker thread is created
+  (#29345)
+- fix(ext/node): fix `getEventListeners` in `node:events` (#29480)
+- fix(ext/node): handle `null` ssl options in `node:https` (#29365)
+- fix(ext/node): ignore some Node.js specific flags (#29461)
+- fix(ext/node): implement `before` and `after` hooks in `node:test` (#29367)
+- fix(ext/node): include `assert.ok` in `node:test` (#29383)
+- fix(ext/node): node:buffer validates INSPECT_MAX_BYTES (#29469)
+- fix(ext/node): prevent stdin double read (#29353)
+- fix(ext/node): return values in node:domain (#29440)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_truncate.ts`
+  (#29422)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/errors.ts`
+  (#29382)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/util.mjs`
+  (#29430)
+- fix(fmt): allow expressions used as key-value pair in css template literals
+  (#29369)
+- fix(lsp): do not warn about unscoped package name (#29463)
+- fix(lsp): don't cache jsxImportSource on lockfile-only changes (#29415)
+- fix(lsp): handle 'deno.config' setting outside of workspace (#29420)
+- fix(lsp): lookup bare workspace specifiers for auto-import (#29304)
+- fix(lsp): lookup mapped npm specifier resolutions for auto-import (#29388)
+- fix(lsp): lookup patched jsr packages for auto-import (#29437)
+- fix(node): do not look up node_module paths when using global resolver
+  (#29398)
+- fix(node): do not require permission checks for require's node_modules stats
+  (#29397)
+- fix(node): use `JsErrorClass` for `code` property on node resolver errors
+  (#29294)
+- fix(task): wildcard match starts at the beginning (#29343)
+- fix: Support virtio vsock only on systems on which it is available (#29268)
+  (#29354)
+- fix: `--frozen` flag missing from several subcommands (#29508)
+- fix: `process.stdin.pause()` (#29330)
+- fix: don't unwrap in global interceptor (#29484)
+- fix: load changed non-remote dynamic imports at runtime (#29413)
+- fix: support numerical properties for deno_errors (#29489)
+
 ### 2.3.3 / 2025.05.16
 
 - fix(check): ignore errors on ambient modules (#29135)

@@ -58,6 +58,12 @@ impl NodeJsErrorCode {
   }
 }
 
+impl From<NodeJsErrorCode> for deno_error::PropertyValue {
+  fn from(value: NodeJsErrorCode) -> Self {
+    deno_error::PropertyValue::String(value.as_str().into())
+  }
+}
+
 pub trait NodeJsErrorCoded {
   fn code(&self) -> NodeJsErrorCode;
 }

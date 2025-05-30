@@ -557,8 +557,7 @@ fn test_html_reporter() {
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
-  assert_contains!(bar_ts_html, "<a name='L1'></a>");
-  assert_contains!(bar_ts_html, "<a href='#L1'>1</a>");
+  assert_contains!(bar_ts_html, "<a href='#L1' id='L1'>1</a>");
 
   let baz_index_html = tempdir
     .join("html")

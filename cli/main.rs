@@ -132,6 +132,9 @@ async fn run_subcommand(
         tools::bundle::bundle(flags, bundle_flags).await
       })
     },
+    DenoSubcommand::Deploy => {
+      spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
+    }
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }

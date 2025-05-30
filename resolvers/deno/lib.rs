@@ -43,6 +43,8 @@ pub mod cjs;
 pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
+pub mod file_fetcher;
+#[cfg(feature = "graph")]
 pub mod graph;
 pub mod import_map;
 pub mod lockfile;

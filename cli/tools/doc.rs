@@ -81,6 +81,7 @@ async fn generate_doc_nodes_for_builtin_types(
         jsr_url_provider: Default::default(),
         locker: None,
         module_analyzer: analyzer,
+        module_info_cacher: Default::default(),
         npm_resolver: None,
         reporter: None,
         resolver: None,

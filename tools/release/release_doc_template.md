@@ -35,8 +35,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 - [ ] Go to the "version_bump" workflow in the CLI repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
-  1. In the drop down, select the minor branch (`v$MINOR_VERSION`) if doing a
-     patch release or the main branch if doing a minor release.
+  1. In the drop down, select the `main` branch.
   1. For the kind of release, select either `patch` or `minor`.
   1. Run the workflow.
 
@@ -82,8 +81,8 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 24 assets on the
-        [GitHub release draft](https://github.com/denoland/deno/releases/v$VERSION).
+  - [ ] There are 24 assets on the v$VERSION
+        [GitHub release draft](https://github.com/denoland/deno/releases/).
   - [ ] There are 25 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 

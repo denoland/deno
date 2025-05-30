@@ -46,6 +46,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
+import { eventTargetData } from "ext:deno_web/02_event.js";
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 
@@ -805,18 +806,7 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    // TODO: kEvents is not defined
-    const root = emitterOrTarget[kEvents].get(type);
-    const listeners = [];
-    let handler = root?.next;
-    while (handler?.listener !== undefined) {
-      const listener = handler.listener?.deref
-        ? handler.listener.deref()
-        : handler.listener;
-      listeners.push(listener);
-      handler = handler.next;
-    }
-    return listeners;
+    return emitterOrTarget[eventTargetData]?.listeners?.[type] || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",

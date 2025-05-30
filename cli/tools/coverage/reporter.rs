@@ -505,7 +505,7 @@ impl HtmlCoverageReporter {
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
-      <html>
+      <html lang='en-US'>
         {head}
         <body>
           <div class='wrapper'>
@@ -530,7 +530,7 @@ impl HtmlCoverageReporter {
         <meta charset='utf-8'>
         <title>{title}</title>
         <style>{style_css}</style>
-        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
       </head>"
     )
   }
@@ -658,7 +658,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
+      .map(|i| format!("<a href='#L{i}' id='L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -667,12 +667,12 @@ impl HtmlCoverageReporter {
           report.found_lines.iter().find(|(line, _)| i == *line)
         {
           if *count == 0 {
-            "<span class='cline-any cline-no'>&nbsp</span>".to_string()
+            "<span class='cline-any cline-no'>&nbsp;</span>".to_string()
           } else {
             format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
-          "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
+          "<span class='cline-any cline-neutral'>&nbsp;</span>".to_string()
         }
       })
       .collect::<Vec<_>>()

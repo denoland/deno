@@ -211,6 +211,12 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     }
   }
 
+  /// Creates an adapter for the lockfile that can be provided to deno_graph.
+  #[cfg(feature = "graph")]
+  pub fn as_deno_graph_locker(&self) -> DenoGraphLocker<'_, TSys> {
+    DenoGraphLocker(self)
+  }
+
   pub fn set_workspace_config(
     &self,
     options: deno_lockfile::SetWorkspaceConfigOptions,
@@ -469,6 +475,69 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     } else {
       Ok(())
     }
+  }
+}
+
+/// An adapter to use the lockfile with `deno_graph`.
+#[cfg(feature = "graph")]
+pub struct DenoGraphLocker<'a, TSys: LockfileSys>(&'a LockfileLock<TSys>);
+
+#[cfg(feature = "graph")]
+impl<TSys: LockfileSys> deno_graph::source::Locker
+  for DenoGraphLocker<'_, TSys>
+{
+  fn get_remote_checksum(
+    &self,
+    specifier: &url::Url,
+  ) -> Option<deno_graph::source::LoaderChecksum> {
+    self
+      .0
+      .lock()
+      .remote()
+      .get(specifier.as_str())
+      .map(|s| deno_graph::source::LoaderChecksum::new(s.clone()))
+  }
+
+  fn has_remote_checksum(&self, specifier: &url::Url) -> bool {
+    self.0.lock().remote().contains_key(specifier.as_str())
+  }
+
+  fn set_remote_checksum(
+    &mut self,
+    specifier: &url::Url,
+    checksum: deno_graph::source::LoaderChecksum,
+  ) {
+    self
+      .0
+      .lock()
+      .insert_remote(specifier.to_string(), checksum.into_string())
+  }
+
+  fn get_pkg_manifest_checksum(
+    &self,
+    package_nv: &PackageNv,
+  ) -> Option<deno_graph::source::LoaderChecksum> {
+    self
+      .0
+      .lock()
+      .content
+      .packages
+      .jsr
+      .get(package_nv)
+      .map(|s| deno_graph::source::LoaderChecksum::new(s.integrity.clone()))
+  }
+
+  fn set_pkg_manifest_checksum(
+    &mut self,
+    package_nv: &PackageNv,
+    checksum: deno_graph::source::LoaderChecksum,
+  ) {
+    // a value would only exist in here if two workers raced
+    // to insert the same package manifest checksum
+    self
+      .0
+      .lock()
+      .insert_package(package_nv.clone(), checksum.into_string());
   }
 }
 

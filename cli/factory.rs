@@ -45,6 +45,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -74,7 +75,9 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
@@ -502,15 +505,17 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      Ok(Arc::new(CliFileFetcher::new(
+      Ok(Arc::new(create_cli_file_fetcher(
+        self.blob_store().clone(),
         self.http_cache()?.clone(),
         self.http_client_provider().clone(),
         self.sys(),
-        self.blob_store().clone(),
-        Some(self.text_only_progress_bar().clone()),
-        !cli_options.no_remote(),
-        cli_options.cache_setting(),
-        log::Level::Info,
+        CreateCliFileFetcherOptions {
+          allow_remote: !cli_options.no_remote(),
+          cache_setting: cli_options.cache_setting(),
+          download_log_level: log::Level::Info,
+          progress_bar: Some(self.text_only_progress_bar().clone()),
+        },
       )))
     })
   }
@@ -930,7 +935,14 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      Ok(Arc::new(RuntimePermissionDescriptorParser::new(self.sys())))
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(
+        self.sys(),
+        if self.cli_options()?.unstable_subdomain_wildcards() {
+          UnstableSubdomainWildcards::Enabled
+        } else {
+          UnstableSubdomainWildcards::Disabled
+        },
+      )))
     })
   }
 

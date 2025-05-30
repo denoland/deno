@@ -845,7 +845,7 @@ function retarget(a, b) {
 
 // Accessors for non-public data
 
-const eventTargetData = Symbol();
+export const eventTargetData = Symbol();
 
 function setEventTargetData(target) {
   target[eventTargetData] = getDefaultTargetData();

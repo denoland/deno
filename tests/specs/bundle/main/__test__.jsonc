@@ -53,6 +53,7 @@
       ]
     },
     "requires_node_builtin": {
+      "tempDir": false,
       "steps": [
         {
           "args": "bundle --output=out.js uses_node_builtin.cjs",
