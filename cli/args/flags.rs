@@ -31,8 +31,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::{has_flag_env_var, CaData};
 use deno_lib::args::UnstableConfig;
+use deno_lib::args::{has_flag_env_var, CaData};
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::PackagesAllowedScripts;
@@ -4861,7 +4861,13 @@ fn deploy_parse(
     .unwrap_or_default();
 
   if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
-    args.insert(0, format!("--endpoint={}", std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()));
+    args.insert(
+      0,
+      format!(
+        "--endpoint={}",
+        std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()
+      ),
+    );
   }
 
   flags.argv = args;
