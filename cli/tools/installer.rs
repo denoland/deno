@@ -36,7 +36,8 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
@@ -380,15 +381,17 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let deps_file_fetcher = CliFileFetcher::new(
+  let deps_file_fetcher = create_cli_file_fetcher(
+    Default::default(),
     deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.sys(),
-    Default::default(),
-    None,
-    true,
-    CacheSetting::ReloadAll,
-    log::Level::Trace,
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::ReloadAll,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
   );
 
   let npmrc = factory.npmrc()?;

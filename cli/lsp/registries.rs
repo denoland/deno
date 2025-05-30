@@ -17,6 +17,8 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use log::error;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
@@ -34,9 +36,9 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
@@ -432,15 +434,17 @@ impl ModuleRegistry {
     // the http cache should always be the global one for registry completions
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       http_cache.clone().into(),
       http_client_provider,
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::RespectHeaders,
-      super::logging::lsp_log_level(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::RespectHeaders,
+        download_log_level: super::logging::lsp_log_level(),
+        progress_bar: None,
+      },
     );
 
     Self {
