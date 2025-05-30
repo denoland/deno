@@ -21,7 +21,7 @@ pub struct SessionOptions {
   pub db: Option<String>,
 }
 
-impl<'a> FromV8<'a> for SessionOptions {
+impl FromV8<'_> for SessionOptions {
   type Error = validators::Error;
 
   fn from_v8(
