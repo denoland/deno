@@ -26,6 +26,8 @@ if (Deno.args.some((a) => a === "--rc")) {
   // Force lockfile update
   await workspace.getCliCrate().cargoUpdate("--workspace");
 
+  await assertDenoBinaryVersion(version);
+
   Deno.exit(0);
 }
 
@@ -52,6 +54,7 @@ for (const crate of workspace.getCliDependencyCrates()) {
 
 // update the lock file
 await workspace.getCliCrate().cargoUpdate("--workspace");
+await assertDenoBinaryVersion(cliCrate.version);
 
 // try to update the Releases.md markdown text
 try {
@@ -138,4 +141,15 @@ async function bumpCiCacheVersion() {
 
   // run the script
   await $`${generateScript}`;
+}
+
+async function assertDenoBinaryVersion(expectedVersion: string) {
+  $.logInfo("Verifying Deno binary version.");
+  const text = await $`cargo run -p deno -- -v`.text();
+  if (text.trim() !== expectedVersion) {
+    $.logError(
+      `Error: Had version ${text.trim()}, but expected ${expectedVersion}`,
+    );
+    Deno.exit(1);
+  }
 }
