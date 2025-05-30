@@ -145,11 +145,10 @@ async function bumpCiCacheVersion() {
 
 async function assertDenoBinaryVersion(expectedVersion: string) {
   $.logStep("Verifying Deno binary version.");
-  const text = await $`cargo run -p deno -- -v`.text();
+  const text = (await $`cargo run -p deno -- -v`.text()).replace("deno ", "");
+  $.logLight("Version:", text);
   if (text.trim() !== expectedVersion) {
-    $.logError(
-      `Error: Had version ${text.trim()}, but expected ${expectedVersion}`,
-    );
+    $.logError("Error: Expected", expectedVersion, "but found", text);
     Deno.exit(1);
   }
 }
