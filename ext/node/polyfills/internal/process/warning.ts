@@ -1,10 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-
+// deno-lint-ignore-file no-process-global
 import { primordials } from "ext:core/mod.js";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 
 const {
+  Error,
   ErrorPrototypeToString,
+  ObjectPrototypeIsPrototypeOf,
   SafeSet,
 } = primordials;
 
@@ -25,7 +27,7 @@ export function onWarning(
     (warning?.name && disableWarningSet.has(warning.name))
   ) return;
 
-  if (!(warning instanceof Error)) return;
+  if (!ObjectPrototypeIsPrototypeOf(warning, Error)) return;
 
   const isDeprecation = warning.name === "DeprecationWarning";
   if (isDeprecation && process.noDeprecation) return;
@@ -39,6 +41,7 @@ export function onWarning(
     msg += `${warning.stack}`;
   } else {
     msg += typeof warning.toString === "function"
+      // deno-lint-ignore prefer-primordials
       ? `${warning.toString()}`
       : ErrorPrototypeToString(warning);
   }
