@@ -4428,3 +4428,66 @@ Deno.test({
     "Cannot read request body as underlying resource unavailable",
   );
 });
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockWebSocketUpgrade() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8001,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (request) => {
+        const { socket, response } = Deno.upgradeWebSocket(request);
+
+        socket.onmessage = (event) => {
+          // Echo the message back to the client
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
+
+        return response;
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8001);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8001,
+    });
+
+    // Send HTTP upgrade request
+    await conn.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: test\r\n\r\n",
+      ),
+    );
+
+    // Read upgrade response
+    const responseData = new Uint8Array(512);
+    const responseRead = await conn.read(responseData);
+    const responseText = new TextDecoder().decode(
+      responseData.subarray(0, responseRead!),
+    );
+    assert(responseText.includes("101 Switching Protocols"));
+
+    await conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
