@@ -22,7 +22,7 @@ if (Deno.args.some((a) => a === "--rc")) {
 
   await cliCrate.setVersion(version);
   await denoRtCrate.setVersion(version);
-  await denoLibCrate.setVersion(version);
+  denoLibCrate.folderPath.join("version.txt").writeTextSync(version);
   // Force lockfile update
   await workspace.getCliCrate().cargoUpdate("--workspace");
 
@@ -43,7 +43,7 @@ if (Deno.args.some((a) => a === "--patch")) {
 }
 
 await denoRtCrate.setVersion(cliCrate.version);
-await denoLibCrate.setVersion(cliCrate.version);
+denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
