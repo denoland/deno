@@ -525,6 +525,13 @@ pub struct NodeCodeTranslator<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  mode: NodeCodeTranslatorMode,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NodeCodeTranslatorMode {
+  Bundling,
+  ModuleLoader,
 }
 
 impl<
@@ -550,9 +557,11 @@ impl<
       TNpmPackageFolderResolver,
       TSys,
     >,
+    mode: NodeCodeTranslatorMode,
   ) -> Self {
     Self {
       module_export_analyzer,
+      mode,
     }
   }
 
@@ -566,9 +575,8 @@ impl<
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-    bundling: bool,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let all_exports = if bundling {
+    let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Bundling) {
       // let the bundler handle it instead of the module loader
       return Ok(source.unwrap());
     } else {

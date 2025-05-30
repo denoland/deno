@@ -117,7 +117,6 @@ pub struct NpmModuleLoader<
       TSys,
     >,
   >,
-  bundling: bool,
 }
 
 impl<
@@ -147,13 +146,11 @@ impl<
       >,
     >,
     sys: TSys,
-    bundling: bool,
   ) -> Self {
     Self {
       cjs_tracker,
       node_code_translator,
       sys,
-      bundling,
     }
   }
 
@@ -198,7 +195,7 @@ impl<
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(code), self.bundling)
+          .translate_cjs_to_esm(specifier, Some(code))
           .await?
           .into_owned()
           .into(),
