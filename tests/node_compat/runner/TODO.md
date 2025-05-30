@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1182 tests out of 3993 have been ported from Node 23.9.0 (29.60% ported, 70.92% remaining).
+1181 tests out of 3993 have been ported from Node 23.9.0 (29.58% ported, 70.95% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2049,6 +2049,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-source-map-api.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-source-map-api.js)
 - [parallel/test-source-map-cjs-require-cache.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-source-map-cjs-require-cache.js)
 - [parallel/test-sqlite-custom-functions.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-custom-functions.js)
+- [parallel/test-sqlite-session.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-session.js)
 - [parallel/test-sqlite.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite.js)
 - [parallel/test-stack-size-limit.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stack-size-limit.js)
 - [parallel/test-startup-empty-regexp-statics.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-startup-empty-regexp-statics.js)

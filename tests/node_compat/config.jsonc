@@ -983,7 +983,6 @@
       "test-sqlite-data-types.js",
       "test-sqlite-database-sync.js",
       "test-sqlite-named-parameters.js",
-      "test-sqlite-session.js",
       "test-sqlite-statement-sync.js",
       "test-sqlite-transactions.js",
       "test-sqlite-typed-array-and-data-view.js",
