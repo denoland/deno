@@ -95,6 +95,7 @@ pub async fn bundle(
     .module_loader;
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().canonicalize()?;
+  let npm_req_resolver = factory.npm_req_resolver()?;
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
@@ -105,7 +106,7 @@ pub async fn bundle(
       .await?
       .clone(),
     permissions: root_permissions.clone(),
-    npm_req_resolver: factory.npm_req_resolver()?.clone(),
+    npm_req_resolver: npm_req_resolver.clone(),
     npm_resolver: npm_resolver.clone(),
     node_resolver: node_resolver.clone(),
     http_cache: factory.http_cache()?.clone(),
@@ -142,6 +143,7 @@ pub async fn bundle(
     }
     resolved
   };
+  let _ = plugin_handler.prepare_module_load(&resolved).await;
 
   let roots = resolved
     .into_iter()
@@ -149,8 +151,6 @@ pub async fn bundle(
       if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
         let referrer =
           ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
-            .unwrap()
-            .join("package.json")
             .unwrap();
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
