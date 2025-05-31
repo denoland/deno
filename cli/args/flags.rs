@@ -289,7 +289,7 @@ pub struct JupyterFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlagsGlobal {
-  pub name: String,
+  pub packages: Vec<String>,
   pub root: Option<String>,
 }
 
@@ -2860,12 +2860,12 @@ Specific version requirements to update to can be specified:
 fn uninstall_subcommand() -> Command {
   command(
     "uninstall",
-    cstr!("Uninstalls a dependency or an executable script in the installation root's bin directory.
+    cstr!("Uninstalls dependencies or an executable script in the installation root's bin directory.
   <p(245)>deno uninstall @std/dotenv chalk</>
   <p(245)>deno uninstall --global file_server</>
 
 To change the installation root, use <c>--root</> flag:
-  <p(245)>deno uninstall --global --root /usr/local serve</>
+  <p(245)>deno uninstall --global --root /usr/local cowsay serve</>
 
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
@@ -2887,13 +2887,12 @@ The installation root is determined, in order of precedence:
         Arg::new("global")
           .long("global")
           .short('g')
-          .help("Remove globally installed package or module")
+          .help("Remove globally installed packages or modules")
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("additional-packages")
           .help("List of additional packages to remove")
-          .conflicts_with("global")
           .num_args(1..)
           .action(ArgAction::Append)
       )
@@ -5227,19 +5226,19 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   let name = matches.remove_one::<String>("name-or-package").unwrap();
+  let packages: Vec<_> = vec![name]
+    .into_iter()
+    .chain(
+      matches
+        .remove_many::<String>("additional-packages")
+        .unwrap_or_default(),
+    )
+    .collect();
 
   let kind = if matches.get_flag("global") {
     let root = matches.remove_one::<String>("root");
-    UninstallKind::Global(UninstallFlagsGlobal { name, root })
+    UninstallKind::Global(UninstallFlagsGlobal { packages, root })
   } else {
-    let packages: Vec<_> = vec![name]
-      .into_iter()
-      .chain(
-        matches
-          .remove_many::<String>("additional-packages")
-          .unwrap_or_default(),
-      )
-      .collect();
     UninstallKind::Local(RemoveFlags { packages })
   };
 
@@ -8934,7 +8933,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: vec!["file_server".to_string()],
             root: None,
           }),
         }),
@@ -8955,7 +8954,29 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: vec!["file_server".to_string()],
+            root: Some("/user/foo/bar".to_string()),
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "-g",
+      "--root",
+      "/user/foo/bar",
+      "cowsay",
+      "file_server"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: vec!["cowsay".to_string(), "file_server".to_string()],
             root: Some("/user/foo/bar".to_string()),
           }),
         }),
