@@ -20,6 +20,7 @@ mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
 mod byow;
+pub mod canvas;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
@@ -96,7 +97,8 @@ deno_core::extension!(
     texture::GPUTexture,
     texture::GPUTextureView,
     byow::UnsafeWindowSurface,
-    surface::GPUCanvasContext,
+    surface::GPUCanvasSurfaceContext,
+    canvas::GPUCanvasContext,
   ],
   esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],

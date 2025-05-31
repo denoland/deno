@@ -2855,6 +2855,7 @@ dependencies = [
 name = "deno_webgpu"
 version = "0.173.0"
 dependencies = [
+ "deno_canvas",
  "deno_core",
  "deno_error",
  "deno_unsync",
