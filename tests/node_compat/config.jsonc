@@ -304,6 +304,7 @@
       "test-buffer-tostring-range.js",
       "test-buffer-tostring-rangeerror.js",
       "test-buffer-tostring.js",
+      "test-buffer-write-fast.js",
       "test-buffer-write.js",
       "test-buffer-writedouble.js",
       "test-buffer-writefloat.js",

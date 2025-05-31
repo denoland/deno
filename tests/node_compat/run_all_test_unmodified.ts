@@ -127,6 +127,9 @@ function getV8Flags(source: string): string[] {
       case "--expose-gc":
         v8Flags.push("--expose-gc");
         break;
+      case "--allow-natives-syntax":
+        v8Flags.push("--allow-natives-syntax");
+        break;
       default:
         break;
     }
