@@ -16,6 +16,7 @@ const {
   ArrayIsArray,
   ArrayPrototypeSlice,
   BigInt,
+  ErrorCaptureStackTrace,
   DataViewPrototypeGetByteLength,
   Float32Array,
   Float64Array,
@@ -86,6 +87,7 @@ import {
   genericNodeError,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -127,6 +129,59 @@ export const constants = {
   MAX_LENGTH: kMaxLength,
   MAX_STRING_LENGTH: kStringMaxLength,
 };
+
+let bufferWarningAlreadyEmitted = false;
+let nodeModulesCheckCounter = 0;
+const bufferWarning = "Buffer() is deprecated due to security and usability " +
+  "issues. Please use the Buffer.alloc(), " +
+  "Buffer.allocUnsafe(), or Buffer.from() methods instead.";
+
+/** Returns true if the call is from dependency */
+function isFromDependency() {
+  // deno-lint-ignore-start prefer-primordials
+  const error = {};
+  const prepareStackTrace = Error.prepareStackTrace;
+  Error.prepareStackTrace = (_, stackTrace) => stackTrace;
+  ErrorCaptureStackTrace(error, isFromDependency);
+  const stackTrace = error.stack;
+  Error.prepareStackTrace = prepareStackTrace;
+  // deno-lint-ignore-end prefer-primordials
+
+  for (const callSite of stackTrace) {
+    const fileName = callSite.getFileName();
+    if (fileName.startsWith("node:") || fileName.startsWith("ext:")) {
+      continue;
+    }
+    if (
+      fileName.includes("registry.npmjs.org") ||
+      fileName.includes("node_modules") ||
+      fileName.startsWith("https://")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function showFlaggedDeprecation() {
+  if (
+    bufferWarningAlreadyEmitted ||
+    ++nodeModulesCheckCounter > 10000 ||
+    (!getOptionValue("--pending-deprecation") &&
+      isFromDependency())
+  ) {
+    // We don't emit a warning, because we either:
+    // - Already did so, or
+    // - Already checked too many times whether a call is coming
+    //   from dependencies and want to stop slowing down things, or
+    // - We aren't running with `--pending-deprecation` enabled,
+    //   and the code is inside `node_modules`.
+    return;
+  }
+
+  process.emitWarning(bufferWarning, "DeprecationWarning", "DEP0005");
+  bufferWarningAlreadyEmitted = true;
+}
 
 ObjectDefineProperty(Buffer.prototype, "parent", {
   __proto__: null,
@@ -173,6 +228,7 @@ function isDetachedBuffer(O) {
 }
 
 export function Buffer(arg, encodingOrOffset, length) {
+  showFlaggedDeprecation();
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
       throw new codes.ERR_INVALID_ARG_TYPE(
