@@ -1020,7 +1020,9 @@ internals.__bootstrapNodeProcess = function (
 
     initializeDebugEnv(nodeDebug);
 
-    process.on("warning", onWarning);
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
 
     // Replace stdin if it is not a terminal
     const newStdin = initStdin();
