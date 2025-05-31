@@ -18,6 +18,7 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
+import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   validateNumber,
   validateObject,
@@ -1018,6 +1019,10 @@ internals.__bootstrapNodeProcess = function (
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
+
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
 
     // Replace stdin if it is not a terminal
     const newStdin = initStdin();
