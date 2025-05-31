@@ -817,8 +817,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
-  let node_code_translator =
-    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+  ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
