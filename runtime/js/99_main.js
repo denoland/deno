@@ -264,7 +264,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (op_worker_get_type() === "module") {
+  if (op_worker_get_type() !== "classic") {
     throw new TypeError("Cannot import scripts in a module worker");
   }
 
@@ -993,6 +993,7 @@ function bootstrapWorkerRuntime(
   name,
   internalName,
   workerId,
+  workerType,
   maybeWorkerMetadata,
   warmup = false,
 ) {
@@ -1023,6 +1024,11 @@ function bootstrapWorkerRuntime(
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
+    core.print(`bootstrapping worker runtime, type ${workerType}\n`, true);
+    if (workerType === "node") {
+      globalThis.WorkerGlobalScope = undefined;
+      globalThis.self = undefined;
+    }
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
       // TODO(bartlomieju): should be readonly?
@@ -1139,6 +1145,7 @@ removeImportedOps();
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
 bootstrapWorkerRuntime(
+  undefined,
   undefined,
   undefined,
   undefined,
