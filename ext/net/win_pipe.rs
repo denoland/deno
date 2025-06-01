@@ -51,7 +51,7 @@ impl NamedPipe {
   pub async fn connect(self: Rc<Self>) -> io::Result<()> {
     let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
     let cancel = RcRef::map(&self, |s| &s.cancel);
-    match inner {
+    match &mut *inner {
       Inner::Server(ref inner) => inner.connect().try_or_cancel(cancel).await,
       Inner::Client(ref inner) => Ok(()),
     }

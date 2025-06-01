@@ -3,10 +3,8 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::op2;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -100,8 +98,8 @@ where
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
-pub fn op_pipe_windows_connect(
+#[op2(async stack_trace)]
+pub async fn op_pipe_windows_connect(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), NetError> {
@@ -112,7 +110,7 @@ pub fn op_pipe_windows_connect(
 
 #[op2(stack_trace)]
 #[smi]
-pub async fn op_pipe_connect<NP>(
+pub fn op_pipe_connect<NP>(
   state: &mut OpState,
   #[serde] args: ConnectArgs,
   #[string] api_name: &str,
@@ -144,7 +142,6 @@ where
   let mut opts = named_pipe::ClientOptions::new();
   opts.read(args.read).write(args.write);
   let pipe = NamedPipe::new_client(path.as_ref(), &opts)?;
-  pipe.connect().await?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
 }
