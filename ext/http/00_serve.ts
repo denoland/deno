@@ -1120,28 +1120,17 @@ function registerDeclarativeServer(exports) {
       [kLoadBalanced]: workerCountWhenMain == null
         ? true
         : workerCountWhenMain > 0,
-      onListen: ({ transport, port, hostname, path, cid }) => {
+      onListen: ({ port, hostname }) => {
         if (workerCountWhenMain != null) {
           const nThreads = workerCountWhenMain > 0
             ? ` with ${workerCountWhenMain + 1} threads`
             : "";
 
-          let target;
-          switch (transport) {
-            case "tcp":
-              target = `http://${formatHostName(hostname)}:${port}/`;
-              break;
-            case "unix":
-              target = path;
-              break;
-            case "vsock":
-              target = `vsock:${cid}:${port}`;
-              break;
-          }
-
           import.meta.log(
             "info",
-            `%cdeno serve%c: Listening on %c${target}%c${nThreads}`,
+            `%cdeno serve%c: Listening on %chttp://${
+              formatHostName(hostname)
+            }:${port}/%c${nThreads}`,
             "color: green",
             "color: inherit",
             "color: yellow",
