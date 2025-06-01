@@ -1,0 +1,5 @@
+{
+  "args": "publish --token 'sadfasdf'",
+  "output": "missing_deno_json.out",
+  "exitCode": 1
+}

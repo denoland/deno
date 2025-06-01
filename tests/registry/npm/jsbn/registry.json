@@ -1,0 +1,52 @@
+{
+  "name": "jsbn",
+  "description": "The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.",
+  "dist-tags": {
+    "latest": "1.1.0"
+  },
+  "versions": {
+    "1.1.0": {
+      "name": "jsbn",
+      "version": "1.1.0",
+      "description": "The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.",
+      "main": "index.js",
+      "scripts": {
+        "test": "mocha test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/andyperlitch/jsbn.git"
+      },
+      "author": {
+        "name": "Tom Wu"
+      },
+      "license": "MIT",
+      "gitHead": "038459dc74668bfb43b45d78b33ffc9c8e7bf34a",
+      "bugs": {
+        "url": "https://github.com/andyperlitch/jsbn/issues"
+      },
+      "_id": "jsbn@1.1.0",
+      "_shasum": "b01307cb29b618a1ed26ec79e911f803c4da0040",
+      "_from": ".",
+      "_npmVersion": "3.10.3",
+      "_nodeVersion": "6.3.1",
+      "dist": {
+        "shasum": "b01307cb29b618a1ed26ec79e911f803c4da0040",
+        "tarball": "http://localhost:4260/jsbn/jsbn-1.1.0.tgz",
+        "integrity": "sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A=="
+      }
+    }
+  },
+  "author": {
+    "name": "Tom Wu"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andyperlitch/jsbn.git"
+  },
+  "homepage": "https://github.com/andyperlitch/jsbn#readme",
+  "bugs": {
+    "url": "https://github.com/andyperlitch/jsbn/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,5 @@
+{
+  "args": "test main.js",
+  "output": "main.out",
+  "flaky": true
+}

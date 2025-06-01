@@ -1,0 +1,60 @@
+{
+  "name": "@vue/shared",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/shared",
+      "version": "3.2.38",
+      "description": "internal utils shared across @vue packages",
+      "main": "index.js",
+      "module": "dist/shared.esm-bundler.js",
+      "types": "dist/shared.d.ts",
+      "sideEffects": false,
+      "buildOptions": {
+        "formats": [
+          "esm-bundler",
+          "cjs"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/shared"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/shared@3.2.38",
+      "dist": {
+        "shasum": "e823f0cb2e85b6bf43430c0d6811b1441c300f3c",
+        "integrity": "sha512-dTyhTIRmGXBjxJE+skC8tTWCGLCVc4wQgRRLt8+O9p5ewBAjoBwtCAkLPrtToSr1xltoe3st21Pv953aOZ7alg==",
+        "tarball": "http://localhost:4260/@vue/shared/shared-3.2.38.tgz",
+        "fileCount": 10,
+        "unpackedSize": 90211
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "internal utils shared across @vue packages",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/shared#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/shared"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

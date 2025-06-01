@@ -1,0 +1,45 @@
+name: start_release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Kind of release'
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        required: true
+
+jobs:
+  build:
+    name: start release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Create Gist URL
+        env:
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_GIST_PAT }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}

@@ -1,0 +1,5 @@
+{
+  "args": "bench pass.ts",
+  "output": "pass.out",
+  "exitCode": 0
+}

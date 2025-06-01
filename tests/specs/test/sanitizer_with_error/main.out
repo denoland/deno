@@ -1,0 +1,18 @@
+running 1 test from ./main.js
+throws ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+throws => ./main.js:1:6
+error: Error: Throws
+  throw new Error("Throws");
+        ^
+    at throws ([WILDCARD]/main.js:5:9)
+
+ FAILURES 
+
+throws => ./main.js:1:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

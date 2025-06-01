@@ -1,0 +1,68 @@
+{
+  "name": "@vue/server-renderer",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/server-renderer",
+      "version": "3.2.38",
+      "description": "@vue/server-renderer",
+      "main": "index.js",
+      "module": "dist/server-renderer.esm-bundler.js",
+      "types": "dist/server-renderer.d.ts",
+      "buildOptions": {
+        "name": "VueServerRenderer",
+        "formats": [
+          "esm-bundler",
+          "esm-browser",
+          "cjs"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/server-renderer"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "peerDependencies": {
+        "vue": "3.2.38"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/compiler-ssr": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/server-renderer@3.2.38",
+      "dist": {
+        "shasum": "01a4c0f218e90b8ad1815074208a1974ded109aa",
+        "integrity": "sha512-pg+JanpbOZ5kEfOZzO2bt02YHd+ELhYP8zPeLU1H0e7lg079NtuuSB8fjLdn58c4Ou8UQ6C1/P+528nXnLPAhA==",
+        "tarball": "http://localhost:4260/@vue/server-renderer/server-renderer-3.2.38.tgz",
+        "fileCount": 12,
+        "unpackedSize": 474625
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/server-renderer",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/server-renderer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/server-renderer"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,75 @@
+{
+  "name": "sprintf-js",
+  "description": "JavaScript sprintf implementation",
+  "dist-tags": {
+    "latest": "1.1.3"
+  },
+  "versions": {
+    "1.1.3": {
+      "name": "sprintf-js",
+      "version": "1.1.3",
+      "description": "JavaScript sprintf implementation",
+      "author": {
+        "name": "Alexandru Mărășteanu",
+        "email": "hello@alexei.ro"
+      },
+      "main": "src/sprintf.js",
+      "scripts": {
+        "test": "mocha test/*.js",
+        "pretest": "npm run lint",
+        "lint": "eslint .",
+        "lint:fix": "eslint --fix ."
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alexei/sprintf.js.git"
+      },
+      "license": "BSD-3-Clause",
+      "devDependencies": {
+        "benchmark": "^2.1.4",
+        "eslint": "^5.10.0",
+        "gulp": "^3.9.1",
+        "gulp-benchmark": "^1.1.1",
+        "gulp-eslint": "^5.0.0",
+        "gulp-header": "^2.0.5",
+        "gulp-mocha": "^6.0.0",
+        "gulp-rename": "^1.4.0",
+        "gulp-sourcemaps": "^2.6.4",
+        "gulp-uglify": "^3.0.1",
+        "mocha": "^5.2.0"
+      },
+      "overrides": {
+        "graceful-fs": "^4.2.11"
+      },
+      "gitHead": "3a0d8c26d291b5bd9f1974877ecc50739921d6f5",
+      "bugs": {
+        "url": "https://github.com/alexei/sprintf.js/issues"
+      },
+      "_id": "sprintf-js@1.1.3",
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.5.1",
+      "dist": {
+        "integrity": "sha512-Oo+0REFV59/rz3gfJNKQiBlwfHaSESl1pcGyABQsnnIfWOFt6JNj5gCog2U6MLZ//IGYD+nA8nI+mTShREReaA==",
+        "shasum": "4914b903a2f8b685d17fdf78a70e917e872e444a",
+        "tarball": "http://localhost:4260/sprintf-js/sprintf-js-1.1.3.tgz",
+        "fileCount": 11,
+        "unpackedSize": 39879
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Alexandru Mărășteanu",
+    "email": "hello@alexei.ro"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexei/sprintf.js.git"
+  },
+  "homepage": "https://github.com/alexei/sprintf.js#readme",
+  "bugs": {
+    "url": "https://github.com/alexei/sprintf.js/issues"
+  },
+  "license": "BSD-3-Clause"
+}

@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "outdated",
+  "exitCode": 1,
+  "output": "error: No deno.json or package.json in \"[WILDLINE]\".\n"
+}

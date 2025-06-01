@@ -1,0 +1,1 @@
+import "./Component.tsx";

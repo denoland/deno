@@ -1,0 +1,21 @@
+Check [WILDCARD]/main.ts
+running 3 tests from ./main.ts
+success ... ok ([WILDCARD])
+fail ... FAILED ([WILDCARD])
+ignored ... ignored ([WILDCARD])
+
+ ERRORS 
+
+fail => ./main.ts:6:6
+error: Error: fail
+    throw new Error("fail");
+          ^
+    at fn ([WILDCARD]/main.ts:9:11)
+
+ FAILURES 
+
+fail => ./main.ts:6:6
+
+FAILED | 1 passed | 1 failed | 1 ignored ([WILDCARD])
+
+error: Test failed

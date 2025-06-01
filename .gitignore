@@ -1,0 +1,45 @@
+*.orig
+*.pyc
+*.swp
+*.symcache
+.env
+
+/.cargo_home/
+/.idea/
+/.vs/
+/.vscode/
+gclient_config.py_entries
+/target/
+/std/hash/_wasm/target
+/tests/wpt/runner/manifest.json
+/third_party/
+/tests/napi/node_modules
+/tests/napi/build
+/tests/napi/third_party_tests/node_modules
+
+# MacOS generated files
+.DS_Store
+.DS_Store?
+
+# Flamegraphs
+/flamebench*.svg
+/flamegraph*.svg
+
+# WPT generated cert files
+/tests/wpt/runner/certs/index.txt*
+/tests/wpt/runner/certs/serial*
+
+/ext/websocket/autobahn/reports
+
+# Coverage files
+/coverage
+
+# JUnit files produced by deno test --junit
+junit.xml
+
+# Jupyter files
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# playwright browser binary cache
+/.ms-playwright

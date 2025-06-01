@@ -1,0 +1,5 @@
+{
+  "args": "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
+  "output": "lock_dynamic_imports.out",
+  "exitCode": 10
+}

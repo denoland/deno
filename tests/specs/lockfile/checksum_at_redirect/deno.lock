@@ -1,0 +1,6 @@
+{
+  "version": "3",
+  "remote": {
+    "http://localhost:4546/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}

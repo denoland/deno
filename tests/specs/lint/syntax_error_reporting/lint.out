@@ -1,0 +1,16 @@
+warn: Unterminated string constant at [WILDCARD]script.ts:1:13
+
+  const foo = 'bar
+              ~~~~
+error[no-unused-vars]: `foo` is never used
+ --> [WILDCARD]script.ts:1:7
+  | 
+1 | const foo = 'bar
+  |       ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
+
+
+Found 1 problem
+Checked 1 file

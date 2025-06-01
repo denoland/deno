@@ -1,0 +1,16 @@
+[submodule "tests/util/std"]
+	path = tests/util/std
+	url = https://github.com/denoland/deno_std
+	shallow = true
+[submodule "tests/wpt/suite"]
+	path = tests/wpt/suite
+	url = https://github.com/web-platform-tests/wpt.git
+	shallow = true
+[submodule "tests/node_compat/runner/suite"]
+	path = tests/node_compat/runner/suite
+	url = https://github.com/denoland/node_test.git
+	shallow = true
+[submodule "cli/bench/testdata/lsp_benchdata"]
+	path = cli/bench/testdata/lsp_benchdata
+	url = https://github.com/denoland/deno_lsp_benchdata.git
+	shallow = true

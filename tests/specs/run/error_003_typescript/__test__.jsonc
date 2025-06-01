@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check error_003_typescript.ts",
+  "output": "error_003_typescript.ts.out",
+  "exitCode": 1
+}

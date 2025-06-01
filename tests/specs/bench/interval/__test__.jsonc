@@ -1,0 +1,5 @@
+{
+  "args": "bench interval.ts",
+  "output": "interval.out",
+  "exitCode": 0
+}

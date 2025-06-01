@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "bad_import": {
+      "args": "run bad_import.ts",
+      "output": "bad_import.out",
+      "exitCode": 1
+    },
+    "good_import": {
+      "args": "run good_import.ts",
+      "output": "good_import.out"
+    }
+  }
+}

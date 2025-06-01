@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload es_private_fields.js",
+  "output": "es_private_fields.js.out"
+}

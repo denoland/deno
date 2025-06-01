@@ -1,0 +1,14 @@
+error: Uncaught (in promise) AggregateError
+    Error: bar <ref *1>
+        at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:2:13
+    Caused by: Error: foo
+        at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:1:13
+    Caused by: [Circular *1]
+    Error: quux <ref *2>
+        at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:6:14
+    Caused by: Error: qux
+        at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:5:13
+    Caused by: [Circular *2]
+throw new AggregateError([bar, quux]);
+      ^
+    at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:9:7

@@ -1,0 +1,57 @@
+{
+  "name": "crypto-js",
+  "description": "JavaScript library of crypto standards.",
+  "dist-tags": {
+    "latest": "4.1.1"
+  },
+  "versions": {
+    "4.1.1": {
+      "name": "crypto-js",
+      "version": "4.1.1",
+      "description": "JavaScript library of crypto standards.",
+      "license": "MIT",
+      "author": {
+        "name": "Evan Vosberg",
+        "url": "http://github.com/evanvosberg"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/brix/crypto-js.git"
+      },
+      "main": "index.js",
+      "dependencies": {},
+      "browser": {
+        "crypto": false
+      },
+      "gitHead": "7c26cc72a618053c294309c22c95a895af39b7b7",
+      "bugs": {
+        "url": "https://github.com/brix/crypto-js/issues"
+      },
+      "_id": "crypto-js@4.1.1",
+      "_nodeVersion": "12.18.3",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-o2JlM7ydqd3Qk9CA0L4NL6mTzU2sdx96a+oOfPu8Mkl/PK51vSyoi8/rQ8NknZtk44vq15lmhAj9CIAGwgeWKw==",
+        "shasum": "9e485bcf03521041bd85844786b83fb7619736cf",
+        "tarball": "http://localhost:4260/crypto-js/crypto-js-4.1.1.tgz",
+        "fileCount": 55,
+        "unpackedSize": 443864
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Evan Vosberg",
+    "url": "http://github.com/evanvosberg"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/brix/crypto-js.git"
+  },
+  "homepage": "http://github.com/brix/crypto-js",
+  "bugs": {
+    "url": "https://github.com/brix/crypto-js/issues"
+  },
+  "license": "MIT"
+}

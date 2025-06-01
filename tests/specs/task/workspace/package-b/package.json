@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "pkg-json-root-2": "echo override $PWD",
+    "package-b-json": "echo 'hi from pkg json'"
+  }
+}

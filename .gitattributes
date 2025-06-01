@@ -1,0 +1,17 @@
+# Use Unix line endings in all text files.
+* text=auto eol=lf
+*.png -text
+
+/tests/testdata/encoding/* -text
+
+# Tell git which symlinks point to files, and which ones point to directories.
+# This is relevant for Windows only, and requires git >= 2.19.2 to work.
+/tests/testdata/symlink_to_subdir symlink=dir
+
+# Tell github these are vendored files.
+# Doesn't include them in the language statistics.
+/cli/tsc/00_typescript.js linguist-vendored
+/cli/dts/* linguist-vendored
+
+# Keep Windows line endings in cross-platform doc check test file
+/tests/testdata/test/markdown_windows.md eol=crlf

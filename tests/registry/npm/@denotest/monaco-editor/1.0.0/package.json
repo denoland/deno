@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/monaco-editor",
+  "version": "1.0.0",
+  "module": "./main.js",
+  "types": "./main.types.d.ts"
+}

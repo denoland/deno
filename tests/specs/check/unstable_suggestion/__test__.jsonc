@@ -1,0 +1,11 @@
+{
+  "steps": [{
+    "args": "check main.ts",
+    "output": "main.out",
+    "exitCode": 1
+  }, {
+    "args": "check no_default_lib.ts",
+    "output": "no_default_lib.out",
+    "exitCode": 1
+  }]
+}

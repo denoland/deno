@@ -1,0 +1,4 @@
+{
+  "args": "info --location https://deno.land",
+  "output": "041_info_flag_location.out"
+}

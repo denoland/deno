@@ -1,0 +1,5 @@
+{
+  "args": "publish --dry-run --no-check",
+  "output": "publish.out",
+  "exitCode": 1
+}

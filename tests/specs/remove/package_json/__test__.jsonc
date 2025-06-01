@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "remove @denotest/add",
+      "output": "rm_add.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('package.json').trim())"
+      ],
+      "output": "rm_add_package.json.out"
+    },
+    {
+      "args": "remove @denotest/esm-basic",
+      "output": "rm_esm_basic.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('package.json').trim())"
+      ],
+      "output": "rm_esm_basic_package.json.out"
+    }
+  ]
+}

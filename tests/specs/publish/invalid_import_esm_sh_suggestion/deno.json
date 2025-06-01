@@ -1,0 +1,10 @@
+{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "imports": {
+    "$echo": "http://localhost:4545/echo.ts"
+  },
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

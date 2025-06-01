@@ -1,0 +1,69 @@
+{
+  "name": "@vue/runtime-dom",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/runtime-dom",
+      "version": "3.2.38",
+      "description": "@vue/runtime-dom",
+      "main": "index.js",
+      "module": "dist/runtime-dom.esm-bundler.js",
+      "types": "dist/runtime-dom.d.ts",
+      "unpkg": "dist/runtime-dom.global.js",
+      "sideEffects": false,
+      "buildOptions": {
+        "name": "VueRuntimeDOM",
+        "formats": [
+          "esm-bundler",
+          "esm-browser",
+          "cjs",
+          "global"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/runtime-dom"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/runtime-core": "3.2.38",
+        "csstype": "^2.6.8"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/runtime-dom@3.2.38",
+      "dist": {
+        "shasum": "fec711f65c2485991289fd4798780aa506469b48",
+        "integrity": "sha512-4PKAb/ck2TjxdMSzMsnHViOrrwpudk4/A56uZjhzvusoEU9xqa5dygksbzYepdZeB5NqtRw5fRhWIiQlRVK45A==",
+        "tarball": "http://localhost:4260/@vue/runtime-dom/runtime-dom-3.2.38.tgz",
+        "fileCount": 14,
+        "unpackedSize": 1250453
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/runtime-dom",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/runtime-dom#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/runtime-dom"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,5 @@
+{
+  "args": "check index.js",
+  "output": "check.out",
+  "exitCode": 1
+}

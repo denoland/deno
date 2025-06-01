@@ -1,0 +1,70 @@
+{
+  "name": "safer-buffer",
+  "dist-tags": {
+    "latest": "2.1.2"
+  },
+  "versions": {
+    "2.1.2": {
+      "name": "safer-buffer",
+      "version": "2.1.2",
+      "description": "Modern Buffer API polyfill without footguns",
+      "main": "safer.js",
+      "scripts": {
+        "browserify-test": "browserify --external tape tests.js > browserify-tests.js && tape browserify-tests.js",
+        "test": "standard && tape tests.js"
+      },
+      "author": {
+        "name": "Nikita Skovoroda",
+        "email": "chalkerx@gmail.com",
+        "url": "https://github.com/ChALkeR"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ChALkeR/safer-buffer.git"
+      },
+      "bugs": {
+        "url": "https://github.com/ChALkeR/safer-buffer/issues"
+      },
+      "devDependencies": {
+        "standard": "^11.0.1",
+        "tape": "^4.9.0"
+      },
+      "files": [
+        "Porting-Buffer.md",
+        "Readme.md",
+        "tests.js",
+        "dangerous.js",
+        "safer.js"
+      ],
+      "gitHead": "e8ac214944eda30e1e6c6b7d7e7f6a21cf7dce7c",
+      "_id": "safer-buffer@2.1.2",
+      "_npmVersion": "5.8.0",
+      "_nodeVersion": "9.11.1",
+      "dist": {
+        "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+        "shasum": "44fa161b0187b9549dd84bb91802f9bd8385cd6a",
+        "tarball": "http://localhost:4260/safer-buffer/safer-buffer-2.1.2.tgz",
+        "fileCount": 7,
+        "unpackedSize": 42299
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Modern Buffer API polyfill without footguns",
+  "homepage": "https://github.com/ChALkeR/safer-buffer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChALkeR/safer-buffer.git"
+  },
+  "author": {
+    "name": "Nikita Skovoroda",
+    "email": "chalkerx@gmail.com",
+    "url": "https://github.com/ChALkeR"
+  },
+  "bugs": {
+    "url": "https://github.com/ChALkeR/safer-buffer/issues"
+  },
+  "license": "MIT"
+}

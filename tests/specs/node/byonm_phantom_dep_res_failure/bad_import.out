@@ -1,0 +1,2 @@
+error: [ERR_MODULE_NOT_FOUND] Cannot find module 'file:///[WILDLINE]/node_modules/package/index.js' imported from 'file:///[WILDLINE]/bad_import.ts'
+    at file:///[WILDLINE]/bad_import.ts:1:16

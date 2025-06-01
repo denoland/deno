@@ -1,0 +1,775 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Deno configuration file Schema",
+  "description": "A JSON representation of a Deno configuration file.",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "compilerOptions": {
+      "type": "object",
+      "description": "Instructs the TypeScript compiler how to compile .ts files.",
+      "additionalProperties": false,
+      "properties": {
+        "allowJs": {
+          "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowJs"
+        },
+        "allowUnreachableCode": {
+          "description": "Disable error reporting for unreachable code.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable error reporting for unreachable code.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnreachableCode"
+        },
+        "allowUnusedLabels": {
+          "description": "Disable error reporting for unused labels.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable error reporting for unused labels.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnusedLabels"
+        },
+        "checkJs": {
+          "description": "Enable error reporting in type-checked JavaScript files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
+        },
+        "emitDecoratorMetadata": {
+          "description": "Emit design-type metadata for decorated declarations in source files.",
+          "type": "boolean",
+          "default": false,
+          "deprecated": true,
+          "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
+        },
+        "erasableSyntaxOnly": {
+          "description": "Do not allow runtime constructs that are not part of ECMAScript.",
+          "type": ["boolean", "null"],
+          "default": false,
+          "markdownDescription": "Do not allow runtime constructs that are not part of ECMAScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#erasableSyntaxOnly"
+        },
+        "exactOptionalPropertyTypes": {
+          "description": "Interpret optional property types as written, rather than adding 'undefined'.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Interpret optional property types as written, rather than adding 'undefined'.\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+        },
+        "experimentalDecorators": {
+          "description": "Enable experimental support for legacy experimental decorators.",
+          "type": "boolean",
+          "default": false,
+          "deprecated": true,
+          "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
+        },
+        "isolatedDeclarations": {
+          "description": "Require sufficient annotation on exports so other tools can trivially generate declaration files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Require sufficient annotation on exports so other tools can trivially generate declaration files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#isolatedDeclarations"
+        },
+        "jsx": {
+          "description": "Specify what JSX code is generated.",
+          "default": "react",
+          "enum": [
+            "preserve",
+            "react",
+            "react-jsx",
+            "react-jsxdev",
+            "react-native",
+            "precompile"
+          ]
+        },
+        "jsxFactory": {
+          "description": "Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'",
+          "type": "string",
+          "default": "React.createElement",
+          "markdownDescription": "Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFactory"
+        },
+        "jsxFragmentFactory": {
+          "description": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.",
+          "type": "string",
+          "default": "React.Fragment",
+          "markdownDescription": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFragmentFactory"
+        },
+        "jsxImportSource": {
+          "description": "Specify module specifier used to import the JSX factory functions when using jsx: 'react-jsx*'.",
+          "type": "string",
+          "default": "react",
+          "markdownDescription": "Specify module specifier used to import the JSX factory functions when using jsx: `react-jsx*`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#jsxImportSource"
+        },
+        "jsxImportSourceTypes": {
+          "description": "Specify module specifier used to import the types for the JSX factory functions when using jsx: 'react-jsx*'. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`.",
+          "type": "string",
+          "default": "@types/react",
+          "markdownDescription": "Specify module specifier used to import the types for the JSX factory functions when using jsx: `react-jsx*`. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`."
+        },
+        "jsxPrecompileSkipElements": {
+          "description": "Specify list of elements that should be exempt from being precompiled when the jsx 'precompile' transform is used.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify list of elements that should be exempt from being precompiled when the jsx `precompile` transform is used."
+        },
+        "lib": {
+          "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
+          "type": "array",
+          "uniqueItems": true,
+          "default": ["deno.window"],
+          "items": {
+            "type": "string",
+            "examples": [
+              "deno.ns",
+              "deno.window",
+              "deno.worker",
+              "deno.unstable",
+              "dom",
+              "dom.iterable",
+              "dom.asynciterable",
+              "webworker",
+              "webworker.importscripts",
+              "webworker.iterable",
+              "webworker.asynciterable",
+              "scripthost",
+              "decorators",
+              "decorators.legacy",
+              "es5",
+              "es2015",
+              "es2016",
+              "es2017",
+              "es2018",
+              "es2019",
+              "es2020",
+              "es2021",
+              "es2022",
+              "es2023",
+              "es2024",
+              "esnext"
+            ]
+          },
+          "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
+        },
+        "noErrorTruncation": {
+          "description": "Do not truncate error messages.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not truncate error messages.\n\nSee more: https://www.typescriptlang.org/tsconfig#noErrorTruncation"
+        },
+        "noFallthroughCasesInSwitch": {
+          "description": "Enable error reporting for fallthrough cases in switch statements.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
+        },
+        "noImplicitAny": {
+          "description": "Enable error reporting for expressions and declarations with an implied `any` type.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
+        },
+        "noImplicitOverride": {
+          "description": "Ensure overriding members in derived classes are marked with an override modifier.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
+        },
+        "noImplicitReturns": {
+          "description": "Enable error reporting for codepaths that do not explicitly return in a function.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting for codepaths that do not explicitly return in a function.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitReturns"
+        },
+        "noImplicitThis": {
+          "description": "Enable error reporting when `this` is given the type `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
+        },
+        "noPropertyAccessFromIndexSignature": {
+          "description": "Enforces using indexed accessors for keys declared using an indexed type.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
+        },
+        "noUncheckedIndexedAccess": {
+          "description": "Add `undefined` to a type when accessed using an index.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
+        },
+        "noUnusedLocals": {
+          "description": "Enable error reporting when a local variables aren't read.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting when a local variables aren't read.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedLocals"
+        },
+        "noUnusedParameters": {
+          "description": "Raise an error when a function parameter isn't read",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "rootDirs": {
+          "description": "Declare many “virtual” directories acting as a single root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Declare many “virtual” directories acting as a single root.\n\nSee more: https://www.typescriptlang.org/tsconfig#rootDirs"
+        },
+        "strict": {
+          "description": "Enable all strict type checking options.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable all strict type checking options.\n\nSee more: https://www.typescriptlang.org/tsconfig#strict"
+        },
+        "strictBindCallApply": {
+          "description": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictBindCallApply"
+        },
+        "strictBuiltinIteratorReturn": {
+          "description": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#strictBuiltinIteratorReturn"
+        },
+        "strictFunctionTypes": {
+          "description": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictFunctionTypes"
+        },
+        "strictNullChecks": {
+          "description": "When type checking, take into account `null` and `undefined`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
+        },
+        "strictPropertyInitialization": {
+          "description": "Check for class properties that are declared but not set in the constructor.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
+        },
+        "types": {
+          "description": "Specify type package names to be included without being referenced in a source file.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig/#types"
+        },
+        "useUnknownInCatchVariables": {
+          "description": "Default catch clause variables as `unknown` instead of `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
+        },
+        "verbatimModuleSyntax": {
+          "description": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.\n\nSee more: https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax"
+        }
+      }
+    },
+    "importMap": {
+      "description": "The location of an import map to be used when resolving modules. If an import map is specified as an `--importmap` flag or using \"imports\" and \"scopes\" properties, they will override this value.",
+      "type": "string"
+    },
+    "imports": {
+      "description": "A map of specifiers to their remapped specifiers.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "The key is the specifier or partial specifier to match, with a value that represents the target specifier.",
+        "type": "string"
+      }
+    },
+    "scopes": {
+      "default": {},
+      "description": "Define a scope which remaps a specifier in only a specified scope",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {
+        "description": "A definition of a scoped remapping.",
+        "type": "object",
+        "additionalProperties": {
+          "description": "The key is the specifier or partial specifier to match within the referring scope, with a value that represents the target specifier.",
+          "type": "string"
+        }
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "description": "List of files, directories or globs that will be ignored by all other configurations. Requires Deno 1.34 or later.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lint": {
+      "description": "Configuration for linter",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugins": {
+          "type": "array",
+          "description": "UNSTABLE: List of plugins to load. These can be paths, npm or jsr specifiers",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "array",
+              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `include`.",
+              "items": {
+                "$ref": "lint-tags.v1.json"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it will be run.",
+              "items": {
+                "$ref": "lint-rules.v1.json"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "include": {
+              "type": "array",
+              "description": "List of rule names that will be run. Even if the same rule is in `exclude` it will be run.",
+              "items": {
+                "$ref": "lint-rules.v1.json"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            }
+          }
+        },
+        "report": {
+          "default": "pretty",
+          "enum": ["pretty", "json", "compact"],
+          "description": "The default report format to use when linting"
+        }
+      }
+    },
+    "fmt": {
+      "description": "Configuration for formatter",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "useTabs": {
+          "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+          "type": "boolean",
+          "default": false
+        },
+        "lineWidth": {
+          "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+          "type": "number",
+          "default": 80
+        },
+        "indentWidth": {
+          "description": "The number of characters for an indent.",
+          "type": "number",
+          "default": 2
+        },
+        "singleQuote": {
+          "type": "boolean",
+          "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+          "default": false
+        },
+        "proseWrap": {
+          "description": "Define how prose should be wrapped in Markdown files.",
+          "default": "always",
+          "enum": ["always", "never", "preserve"]
+        },
+        "semiColons": {
+          "description": "Whether to prefer using semicolons.",
+          "type": "boolean",
+          "default": true
+        },
+        "quoteProps": {
+          "description": "Change when properties in objects are quoted in JavaScript and TypeScript.",
+          "default": "preserve",
+          "enum": ["asNeeded", "consistent", "preserve"]
+        },
+        "newLineKind": {
+          "description": "The newline character to use.",
+          "default": "lf",
+          "enum": ["auto", "crlf", "lf", "system"]
+        },
+        "useBraces": {
+          "description": "Whether to use braces for if statements, for statements, and while statements in JavaScript and TypeScript.",
+          "default": "whenNotSingleLine",
+          "enum": ["maintain", "whenNotSingleLine", "always", "preferNone"]
+        },
+        "bracePosition": {
+          "description": "The position of opening braces for blocks in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "singleBodyPosition": {
+          "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
+          "default": "sameLineUnlessHanging",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "nextControlFlowPosition": {
+          "description": "Where to place the next control flow within a control flow statement in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "trailingCommas": {
+          "description": "Whether to add trailing commas in JavaScript and TypeScript.",
+          "default": "onlyMultiLine",
+          "enum": ["never", "always", "onlyMultiLine"]
+        },
+        "operatorPosition": {
+          "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "jsx.bracketPosition": {
+          "description": "If the end angle bracket of a jsx open element or self closing element should be on the same or next line when the attributes span multiple lines.",
+          "default": "nextLine",
+          "enum": ["maintain", "sameLine", "nextLine"]
+        },
+        "jsx.forceNewLineSurroundingContent": {
+          "description": "Forces newlines surrounding the content of JSX elements.",
+          "default": false,
+          "type": "boolean"
+        },
+        "jsx.multiLineParens": {
+          "description": "Surrounds the top-most JSX element or fragment in parentheses when it spans multiple lines.",
+          "default": "prefer",
+          "enum": ["never", "prefer", "always"]
+        },
+        "typeLiteral.separatorKind": {
+          "description": "The kind of separator to use in type literals.",
+          "default": "semiColon",
+          "enum": ["comma", "semiColon"]
+        },
+        "spaceAround": {
+          "description": "Whether to place spaces around enclosed expressions in JavaScript and TypeScript.",
+          "default": false,
+          "type": "boolean"
+        },
+        "spaceSurroundingProperties": {
+          "description": "Whether to add a space surrounding the properties of single line object-like nodes in JavaScript and TypeScript.",
+          "default": true,
+          "type": "boolean"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "useTabs": {
+              "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+              "type": "boolean",
+              "default": false
+            },
+            "lineWidth": {
+              "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+              "type": "number",
+              "default": 80
+            },
+            "indentWidth": {
+              "description": "The number of characters for an indent.",
+              "type": "number",
+              "default": 2
+            },
+            "singleQuote": {
+              "type": "boolean",
+              "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+              "default": false
+            },
+            "proseWrap": {
+              "description": "Define how prose should be wrapped in Markdown files.",
+              "default": "always",
+              "enum": ["always", "never", "preserve"]
+            },
+            "semiColons": {
+              "description": "Whether to prefer using semicolons.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+    "nodeModulesDir": {
+      "oneOf": [
+        {
+          "description": "Sets the node_modules management mode for npm packages. Alternatively, use the `--node-modules-dir=<MODE>` flag. Requires Deno 2.0-rc.1 or later.",
+          "default": "none",
+          "enum": ["auto", "manual", "none"]
+        },
+        {
+          "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
+          "type": "boolean",
+          "deprecated": false
+        }
+      ]
+    },
+    "vendor": {
+      "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
+      "type": "boolean"
+    },
+    "tasks": {
+      "description": "Configuration for deno task",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_\\-:]*$": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Command to execute for this task name."
+            },
+            {
+              "type": "object",
+              "description": "A definition of a task to execute",
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "description": "Description of a task that will be shown when running `deno task` without a task name"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "The task to execute"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tasks that should be executed before this task"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "test": {
+      "description": "Configuration for deno test",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "publish": {
+      "description": "Configuration for deno publish",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be included in the published package.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be excluded from the published package.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "bench": {
+      "description": "Configuration for deno bench",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "license": {
+      "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
+      "type": ["string"]
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean", "object"],
+      "default": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The path to use for the lock file.",
+          "default": "deno.lock"
+        },
+        "frozen": {
+          "type": "boolean",
+          "description": "Whether to exit with an error if lock file is out of date.",
+          "default": false
+        }
+      }
+    },
+    "unstable": {
+      "type": "array",
+      "description": "List of unstable features to enable.",
+      "items": {
+        "type": "string",
+        "examples": [
+          "broadcast-channel",
+          "bare-node-builtins",
+          "byonm",
+          "cron",
+          "detect-cjs",
+          "ffi",
+          "fs",
+          "fmt-component",
+          "fmt-sql",
+          "http",
+          "kv",
+          "net",
+          "node-globals",
+          "sloppy-imports",
+          "temporal",
+          "unsafe-proto",
+          "webgpu",
+          "worker-options"
+        ]
+      }
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of this JSR or workspace package."
+    },
+    "version": {
+      "type": "string",
+      "description": "The version of this JSR package."
+    },
+    "exports": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "The path to the main module of this JSR package.",
+          "examples": ["./mod.ts", "./index.js"],
+          "pattern": "^\\./.*$"
+        },
+        {
+          "type": "object",
+          "description": "A map of package exports to files in this JSR package.",
+          "propertyNames": {
+            "description": "Package export name",
+            "examples": [".", "./foo", "./bar"],
+            "pattern": "^\\.(/.*)?$"
+          },
+          "patternProperties": {
+            "^\\.(/.*)?$": {
+              "type": "string",
+              "pattern": "^\\./.*$"
+            }
+          },
+          "examples": [{ ".": "./mod.ts" }]
+        }
+      ]
+    },
+    "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
+    },
+    "workspace": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The members of this workspace."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The members of this workspace."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

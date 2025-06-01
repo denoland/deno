@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "document": {
+      "args": "run document.js",
+      "exitCode": 1,
+      "output": "document.out"
+    }
+  }
+}

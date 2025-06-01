@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "conflicting_deps": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run ./a/index.js",
+          "output": "1 + 2 = 3\n"
+        },
+        {
+          "args": "run ./b/index.js",
+          "output": "1 + 2 = 3\n"
+        }
+      ]
+    }
+  }
+}

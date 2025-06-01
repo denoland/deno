@@ -1,0 +1,58 @@
+{
+  "name": "minipass-pipeline",
+  "dist-tags": {
+    "latest": "1.2.4"
+  },
+  "versions": {
+    "1.2.4": {
+      "name": "minipass-pipeline",
+      "version": "1.2.4",
+      "description": "create a pipeline of streams using Minipass",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.9"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "ead0263f019a9ec1eeb6db5da34c62479bb0a967",
+      "_id": "minipass-pipeline@1.2.4",
+      "_nodeVersion": "14.2.0",
+      "_npmVersion": "7.0.0-beta",
+      "dist": {
+        "integrity": "sha512-xuIq7cIOt09RPRJ19gdi4b+RiNvDFYe5JH+ggNvBqGqpQXcru3PcRmOZuHBKWK1Txf9+cQ+HMVN4d6z46LZP7A==",
+        "shasum": "68472f79711c084657c067c5c6ad93cddea8214c",
+        "tarball": "http://localhost:4260/minipass-pipeline/minipass-pipeline-1.2.4.tgz",
+        "fileCount": 4,
+        "unpackedSize": 7004
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "create a pipeline of streams using Minipass",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC"
+}

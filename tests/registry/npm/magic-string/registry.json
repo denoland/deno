@@ -1,0 +1,82 @@
+{
+  "name": "magic-string",
+  "description": "Modify strings, generate sourcemaps",
+  "dist-tags": {
+    "latest": "0.25.9"
+  },
+  "versions": {
+    "0.25.9": {
+      "name": "magic-string",
+      "version": "0.25.9",
+      "description": "Modify strings, generate sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rich-harris/magic-string.git"
+      },
+      "license": "MIT",
+      "author": {
+        "name": "Rich Harris"
+      },
+      "main": "dist/magic-string.cjs.js",
+      "module": "dist/magic-string.es.js",
+      "jsnext:main": "dist/magic-string.es.js",
+      "typings": "index.d.ts",
+      "scripts": {
+        "build": "rollup -c",
+        "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s",
+        "format": "prettier --single-quote --print-width 100 --use-tabs --write src/*.js src/**/*.js",
+        "lint": "eslint src test",
+        "prepare": "npm run build",
+        "prepublishOnly": "rm -rf dist && npm test",
+        "release": "bumpp -x \"npm run changelog\" --all --commit --tag --push && npm publish",
+        "pretest": "npm run lint && npm run build",
+        "test": "mocha",
+        "watch": "rollup -cw"
+      },
+      "dependencies": {
+        "sourcemap-codec": "^1.4.8"
+      },
+      "devDependencies": {
+        "@rollup/plugin-buble": "^0.21.3",
+        "@rollup/plugin-node-resolve": "^13.1.3",
+        "@rollup/plugin-replace": "^4.0.0",
+        "bumpp": "^7.1.1",
+        "conventional-changelog-cli": "^2.2.2",
+        "eslint": "^7.32.0",
+        "mocha": "^9.2.1",
+        "prettier": "^2.5.1",
+        "rollup": "^2.69.0",
+        "source-map": "^0.6.1",
+        "source-map-support": "^0.5.21"
+      },
+      "gitHead": "69336fccbb46e721d58faa5c7a0d0b7ed6ee09d2",
+      "bugs": {
+        "url": "https://github.com/rich-harris/magic-string/issues"
+      },
+      "_id": "magic-string@0.25.9",
+      "_nodeVersion": "16.13.0",
+      "_npmVersion": "8.1.0",
+      "dist": {
+        "integrity": "sha512-RmF0AsMzgt25qzqqLc1+MbHmhdx0ojF2Fvs4XnOqz2ZOBXzzkEwc/dJQZCYHAn7v1jbVOjAZfK8msRn4BxO4VQ==",
+        "shasum": "de7f9faf91ef8a1c91d02c2e5314c8277dbcdd1c",
+        "tarball": "http://localhost:4260/magic-string/magic-string-0.25.9.tgz",
+        "fileCount": 10,
+        "unpackedSize": 373056
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Rich Harris"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/rich-harris/magic-string#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rich-harris/magic-string.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rich-harris/magic-string/issues"
+  }
+}

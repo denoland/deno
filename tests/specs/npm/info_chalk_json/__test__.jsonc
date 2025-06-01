@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --json main.js",
+  "output": "main_info_json.out",
+  "exitCode": 0
+}

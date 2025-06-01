@@ -1,0 +1,6 @@
+{
+  "name": "deno-test-bin",
+  "dependencies": {
+  },
+  "type": "module"
+}

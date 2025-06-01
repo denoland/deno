@@ -1,0 +1,149 @@
+{
+  "name": "lru-cache",
+  "dist-tags": {
+    "latest": "10.4.1"
+  },
+  "versions": {
+    "10.4.1": {
+      "name": "lru-cache",
+      "version": "10.4.1",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "ISC",
+      "_id": "lru-cache@10.4.1",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-lru-cache/issues"
+      },
+      "tap": {
+        "plugin": [
+          "@tapjs/clock"
+        ],
+        "node-arg": [
+          "--expose-gc"
+        ]
+      },
+      "dist": {
+        "shasum": "da9a9cb51aec89fda9b485f5a12b2fdb8f6dbe88",
+        "tarball": "http://localhost:4260/lru-cache/lru-cache-10.4.1.tgz",
+        "fileCount": 17,
+        "integrity": "sha512-8h/JsUc/2+Dm9RPJnBAmObGnUqTMmsIKThxixMLOkrebSihRhTV0wLD/8BSk6OU6Pbj8hiDTbsI3fLjBJSlhDg==",
+        "unpackedSize": 804340
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "exports": {
+          ".": "./src/index.ts",
+          "./min": {
+            "import": {
+              "types": "./dist/esm/index.d.ts",
+              "default": "./dist/esm/index.min.js"
+            },
+            "require": {
+              "types": "./dist/commonjs/index.d.ts",
+              "default": "./dist/commonjs/index.min.js"
+            }
+          }
+        }
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "module": "./dist/esm/index.js",
+      "engines": {
+        "node": "14 >= 14.21 || 16 >= 16.20 || 18 >=18.20 || 20 || >=22"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./min": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.min.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.min.js"
+          }
+        }
+      },
+      "gitHead": "e01135c4270941ac54d00a6b96eefdca31f3a6f6",
+      "scripts": {
+        "snap": "tap",
+        "test": "tap",
+        "build": "npm run prepare",
+        "format": "prettier --write .",
+        "prepare": "tshy && bash fixup.sh",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "profile": "make -C benchmark profile",
+        "typedoc": "typedoc --tsconfig ./.tshy/esm.json ./src/*.ts",
+        "benchmark": "make -C benchmark",
+        "preprofile": "npm run prepare",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prebenchmark": "npm run prepare",
+        "prepublishOnly": "git push origin --follow-tags",
+        "benchmark-results-typedoc": "bash scripts/benchmark-results-typedoc.sh"
+      },
+      "prettier": {
+        "semi": false,
+        "useTabs": false,
+        "tabWidth": 2,
+        "endOfLine": "lf",
+        "printWidth": 70,
+        "arrowParens": "avoid",
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true
+      },
+      "repository": {
+        "url": "git://github.com/isaacs/node-lru-cache.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "A cache object that deletes the least-recently-used items.",
+      "directories": {},
+      "sideEffects": false,
+      "_nodeVersion": "20.13.1",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^20.0.3",
+        "tshy": "^2.0.0",
+        "tslib": "^2.4.0",
+        "marked": "^4.2.12",
+        "mkdirp": "^2.1.5",
+        "esbuild": "^0.17.11",
+        "typedoc": "^0.25.3",
+        "prettier": "^2.6.2",
+        "benchmark": "^2.1.4",
+        "@types/tap": "^15.0.6",
+        "typescript": "^5.2.2",
+        "@types/node": "^20.2.5",
+        "eslint-config-prettier": "^8.5.0"
+      }
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/node-lru-cache/issues"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/node-lru-cache#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/node-lru-cache.git"
+  },
+  "description": "A cache object that deletes the least-recently-used items."
+}

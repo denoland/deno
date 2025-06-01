@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/better-say-hello",
+  "version": "1.0.0",
+  "bin": {
+    "say-hello": "./say-hello.js"
+  }
+}

@@ -1,0 +1,5 @@
+1
+error: Uncaught Error: foo
+reportError(new Error("foo"));
+            ^
+    at [WILDCARD]/report_error.ts:2:13

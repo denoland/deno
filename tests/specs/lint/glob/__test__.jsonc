@@ -1,0 +1,5 @@
+{
+  "args": "lint --ignore=without_config/malformed.js,with_config/ without_config/",
+  "output": "expected_glob.out",
+  "exitCode": 1
+}

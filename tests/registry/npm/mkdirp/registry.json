@@ -1,0 +1,66 @@
+{
+  "name": "mkdirp",
+  "description": "Recursively mkdir, like `mkdir -p`",
+  "dist-tags": {
+    "latest": "1.0.4"
+  },
+  "versions": {
+    "1.0.4": {
+      "name": "mkdirp",
+      "description": "Recursively mkdir, like `mkdir -p`",
+      "version": "1.0.4",
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/node-mkdirp.git"
+      },
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true,
+        "coverage-map": "map.js"
+      },
+      "devDependencies": {
+        "require-inject": "^1.4.4",
+        "tap": "^14.10.7"
+      },
+      "bin": {
+        "mkdirp": "bin/cmd.js"
+      },
+      "license": "MIT",
+      "engines": {
+        "node": ">=10"
+      },
+      "gitHead": "b694079b54a0a59ef150c54b29c7c24e90d642f5",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-mkdirp/issues"
+      },
+      "_id": "mkdirp@1.0.4",
+      "_nodeVersion": "13.10.1",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==",
+        "shasum": "3eb5ed62622756d79a5f0e2a221dfebad75c2f7e",
+        "tarball": "http://localhost:4260/mkdirp/mkdirp-1.0.4.tgz",
+        "fileCount": 12,
+        "unpackedSize": 19088
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/node-mkdirp.git"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/isaacs/node-mkdirp#readme",
+  "bugs": {
+    "url": "https://github.com/isaacs/node-mkdirp/issues"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "name": "cowsay",
+  "description": "cowsay is a configurable talking cow",
+  "dist-tags": {
+    "latest": "1.5.0"
+  },
+  "versions": {
+    "1.5.0": {
+      "name": "cowsay",
+      "version": "1.5.0",
+      "description": "cowsay is a configurable talking cow",
+      "author": {
+        "name": "Fabio Crisci",
+        "email": "piuccio@gmail.com",
+        "url": "https://github.com/piuccio/"
+      },
+      "license": "MIT",
+      "main": "./index",
+      "types": "./index.d.ts",
+      "module": "./build/cowsay.es.js",
+      "browser": "./build/cowsay.umd.js",
+      "bin": {
+        "cowsay": "cli.js",
+        "cowthink": "cli.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/piuccio/cowsay.git"
+      },
+      "scripts": {
+        "prepare": "rollup -c",
+        "test": "tape test/**/*.js | tap-dot"
+      },
+      "dependencies": {
+        "get-stdin": "8.0.0",
+        "string-width": "~2.1.1",
+        "strip-final-newline": "2.0.0",
+        "yargs": "15.4.1"
+      },
+      "devDependencies": {
+        "@rollup/plugin-commonjs": "15.0.0",
+        "@rollup/plugin-node-resolve": "9.0.0",
+        "execa": "5.0.0",
+        "rollup": "2.26.5",
+        "rollup-plugin-string": "3.0.0",
+        "tap-dot": "2.0.0",
+        "tape": "5.0.1"
+      },
+      "preferGlobal": true,
+      "engines": {
+        "node": ">= 4"
+      },
+      "gitHead": "692127f8c29f071cc081a5bf41cb51c4b012ef18",
+      "bugs": {
+        "url": "https://github.com/piuccio/cowsay/issues"
+      },
+      "_id": "cowsay@1.5.0",
+      "_nodeVersion": "12.18.3",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-8Ipzr54Z8zROr/62C8f0PdhQcDusS05gKTS87xxdji8VbWefWly0k8BwGK7+VqamOrkv3eGsCkPtvlHzrhWsCA==",
+        "shasum": "4a2a453b8b59383c7d7a50e44d765c5de0bf615f",
+        "tarball": "http://localhost:4260/cowsay/cowsay-1.5.0.tgz",
+        "fileCount": 202,
+        "unpackedSize": 277259
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Fabio Crisci",
+    "email": "piuccio@gmail.com",
+    "url": "https://github.com/piuccio/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/piuccio/cowsay.git"
+  },
+  "homepage": "https://github.com/piuccio/cowsay",
+  "bugs": {
+    "url": "https://github.com/piuccio/cowsay/issues"
+  },
+  "license": "MIT"
+}

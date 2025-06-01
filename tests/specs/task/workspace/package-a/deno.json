@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "echo-package-b": "echo 'bye'"
+  }
+}

@@ -1,0 +1,3 @@
+error: Expected a JavaScript or TypeScript module, but identified a Css module. Importing these types of modules is currently not supported.
+  Specifier: file:///[WILDLINE]/app.css
+    at file:///[WILDLINE]/exists.ts:2:8

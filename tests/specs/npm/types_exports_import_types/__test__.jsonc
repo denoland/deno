@@ -1,0 +1,5 @@
+{
+  "args": "check --all types_exports_import_types/main.ts",
+  "output": "types_exports_import_types/main.out",
+  "exitCode": 1
+}

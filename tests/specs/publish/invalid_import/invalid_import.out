@@ -1,0 +1,31 @@
+[# notice that the remote module is not downloaded here. This is so we do not need to add an --allow-import permission here]
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
+Checking for slow types in the public API...
+error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
+ --> [WILDCARD]mod.ts:1:8
+  | 
+1 | import "http://localhost:4545/welcome.ts";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the specifier
+  | 
+  = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
+
+  info: the import was resolved to 'http://localhost:4545/welcome.ts'
+  info: this specifier is not allowed to be imported on jsr
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
+  docs: https://jsr.io/go/invalid-external-import
+
+error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
+ --> [WILDCARD]mod.ts:2:8
+  | 
+2 | import "$echo";
+  |        ^^^^^^^ the specifier
+  | 
+  = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
+
+  info: the import was resolved to 'http://localhost:4545/echo.ts'
+  info: this specifier is not allowed to be imported on jsr
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
+  docs: https://jsr.io/go/invalid-external-import
+
+error: Found 2 problems

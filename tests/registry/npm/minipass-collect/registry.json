@@ -1,0 +1,73 @@
+{
+  "name": "minipass-collect",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "minipass-collect",
+      "version": "2.0.1",
+      "description": "A Minipass stream that collects all the data into a single chunk",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^16.3.8"
+      },
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "engines": {
+        "node": ">=16 || 14 >=14.17"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-collect.git"
+      },
+      "_id": "minipass-collect@2.0.1",
+      "gitHead": "a0a97f9e714fd60a3a14373c09f486309b5cc371",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-collect/issues"
+      },
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.8.1",
+      "dist": {
+        "integrity": "sha512-D7V8PO9oaz7PWGLbCACuI1qEOsq7UKfLotx/C0Aet43fCUB/wfQ7DYeq2oR/svFJGYDHPr38SHATeaj/ZoKHKw==",
+        "shasum": "1621bc77e12258a12c60d34e2276ec5c20680863",
+        "tarball": "http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4963
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that collects all the data into a single chunk",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/minipass-collect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-collect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-collect/issues"
+  }
+}

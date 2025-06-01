@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A worker_ids_are_sequential.ts",
+  "output": "worker_ids_are_sequential.ts.out",
+  "exitCode": 0
+}

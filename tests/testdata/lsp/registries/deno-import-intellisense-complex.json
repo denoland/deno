@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "registries": [
+    {
+      "schema": "/:module([a-zA-Z0-9_]*)@:version/:path*",
+      "variables": [
+        {
+          "key": "module",
+          "url": "http://localhost:4545/lsp/registries/complex.json"
+        },
+        {
+          "key": "version",
+          "url": "http://localhost:4545/lsp/registries/complex_${module}.json"
+        },
+        {
+          "key": "path",
+          "url": "http://localhost:4545/lsp/registries/complex_${module}_${version}.json"
+        }
+      ]
+    }
+  ]
+}

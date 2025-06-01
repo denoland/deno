@@ -1,0 +1,56 @@
+{
+  "name": "picocolors",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "picocolors",
+      "version": "1.0.0",
+      "main": "./picocolors.js",
+      "types": "./picocolors.d.ts",
+      "browser": {
+        "./picocolors.js": "./picocolors.browser.js"
+      },
+      "sideEffects": false,
+      "description": "The tiniest and the fastest library for terminal output formatting with ANSI colors",
+      "author": {
+        "name": "Alexey Raspopov"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alexeyraspopov/picocolors.git"
+      },
+      "license": "ISC",
+      "gitHead": "228cea3fa726857785b8c069cccc58e9743cd71d",
+      "bugs": {
+        "url": "https://github.com/alexeyraspopov/picocolors/issues"
+      },
+      "_id": "picocolors@1.0.0",
+      "_nodeVersion": "16.10.0",
+      "_npmVersion": "7.24.0",
+      "dist": {
+        "integrity": "sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==",
+        "shasum": "cb5bdc74ff3f51892236eaf79d68bc44564ab81c",
+        "tarball": "http://localhost:4260/picocolors/picocolors-1.0.0.tgz",
+        "fileCount": 7,
+        "unpackedSize": 5655
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "The tiniest and the fastest library for terminal output formatting with ANSI colors",
+  "author": {
+    "name": "Alexey Raspopov"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/alexeyraspopov/picocolors#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexeyraspopov/picocolors.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexeyraspopov/picocolors/issues"
+  }
+}

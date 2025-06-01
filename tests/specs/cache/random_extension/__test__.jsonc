@@ -1,0 +1,4 @@
+{
+  "args": "cache --reload --check=all http://localhost:4545/subdir/no_js_ext@1.0.0",
+  "output": "cache_random_extension.out"
+}

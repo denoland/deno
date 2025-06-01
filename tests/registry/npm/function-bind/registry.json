@@ -1,0 +1,85 @@
+{
+  "name": "function-bind",
+  "description": "Implementation of Function.prototype.bind",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "function-bind",
+      "version": "1.1.1",
+      "description": "Implementation of Function.prototype.bind",
+      "author": {
+        "name": "Raynos",
+        "email": "raynos2@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/Raynos/function-bind.git"
+      },
+      "main": "index",
+      "bugs": {
+        "url": "https://github.com/Raynos/function-bind/issues",
+        "email": "raynos2@gmail.com"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "@ljharb/eslint-config": "^12.2.1",
+        "covert": "^1.1.0",
+        "eslint": "^4.5.0",
+        "jscs": "^3.0.7",
+        "tape": "^4.8.0"
+      },
+      "license": "MIT",
+      "scripts": {
+        "pretest": "npm run lint",
+        "test": "npm run tests-only",
+        "posttest": "npm run coverage -- --quiet",
+        "tests-only": "node test",
+        "coverage": "covert test/*.js",
+        "lint": "npm run jscs && npm run eslint",
+        "jscs": "jscs *.js */*.js",
+        "eslint": "eslint *.js */*.js"
+      },
+      "testling": {
+        "files": "test/index.js",
+        "browsers": [
+          "ie/8..latest",
+          "firefox/16..latest",
+          "firefox/nightly",
+          "chrome/22..latest",
+          "chrome/canary",
+          "opera/12..latest",
+          "opera/next",
+          "safari/5.1..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2..latest"
+        ]
+      },
+      "gitHead": "1213f807066d1cb8d39a0592d5118f4b1f03de4a",
+      "_id": "function-bind@1.1.1",
+      "_npmVersion": "5.3.0",
+      "_nodeVersion": "8.4.0",
+      "dist": {
+        "integrity": "sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A==",
+        "shasum": "a56899d3ea3c9bab874bb9773b7c5ede92f4895d",
+        "tarball": "http://localhost:4260/function-bind/function-bind-1.1.1.tgz"
+      }
+    }
+  },
+  "author": {
+    "name": "Raynos",
+    "email": "raynos2@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Raynos/function-bind.git"
+  },
+  "homepage": "https://github.com/Raynos/function-bind",
+  "bugs": {
+    "url": "https://github.com/Raynos/function-bind/issues",
+    "email": "raynos2@gmail.com"
+  },
+  "license": "MIT"
+}

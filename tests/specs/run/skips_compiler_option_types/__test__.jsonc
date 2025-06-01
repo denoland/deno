@@ -1,0 +1,6 @@
+{
+  // this was previously downloading the "types" from the compilerOptions
+  // even for deno run with no type checking
+  "args": "run main.ts",
+  "output": "main.out"
+}

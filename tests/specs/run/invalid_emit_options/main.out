@@ -1,0 +1,4 @@
+error: compilerOptions should be an object at 'file:///[WILDLINE]/deno.json'
+
+Caused by:
+    invalid type: integer `1234`, expected a string

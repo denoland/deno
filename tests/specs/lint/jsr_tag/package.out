@@ -1,0 +1,12 @@
+error[verbatim-module-syntax]: All import identifiers are used in types
+ --> [WILDCARD]mod.ts:1:1
+  | 
+1 | import { MyType } from "./type.ts";
+  | ^^^^^^
+  = hint: Change `import` to `import type` and optionally add an explicit side effect import
+
+  docs: https://docs.deno.com/lint/rules/verbatim-module-syntax
+
+
+Found 1 problem (1 fixable via --fix)
+Checked 2 files

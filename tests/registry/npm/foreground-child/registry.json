@@ -1,0 +1,151 @@
+{
+  "name": "foreground-child",
+  "description": "Run a child as if it's the foreground process. Give it stdio. Exit when it exits.",
+  "dist-tags": {
+    "latest": "3.2.1"
+  },
+  "versions": {
+    "3.2.1": {
+      "name": "foreground-child",
+      "version": "3.2.1",
+      "description": "Run a child as if it's the foreground process. Give it stdio. Exit when it exits.",
+      "main": "./dist/commonjs/index.js",
+      "types": "./dist/commonjs/index.d.ts",
+      "exports": {
+        "./watchdog": {
+          "import": {
+            "source": "./src/watchdog.ts",
+            "types": "./dist/esm/watchdog.d.ts",
+            "default": "./dist/esm/watchdog.js"
+          },
+          "require": {
+            "source": "./src/watchdog.ts",
+            "types": "./dist/commonjs/watchdog.d.ts",
+            "default": "./dist/commonjs/watchdog.js"
+          }
+        },
+        "./proxy-signals": {
+          "import": {
+            "source": "./src/proxy-signals.ts",
+            "types": "./dist/esm/proxy-signals.d.ts",
+            "default": "./dist/esm/proxy-signals.js"
+          },
+          "require": {
+            "source": "./src/proxy-signals.ts",
+            "types": "./dist/commonjs/proxy-signals.d.ts",
+            "default": "./dist/commonjs/proxy-signals.js"
+          }
+        },
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "source": "./src/index.ts",
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "source": "./src/index.ts",
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "engines": {
+        "node": ">=14"
+      },
+      "dependencies": {
+        "cross-spawn": "^7.0.0",
+        "signal-exit": "^4.0.1"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "tap",
+        "snap": "tap",
+        "format": "prettier --write . --log-level warn",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts"
+      },
+      "prettier": {
+        "experimentalTernaries": true,
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "tap": {
+        "typecheck": true
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tapjs/foreground-child.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "devDependencies": {
+        "@types/cross-spawn": "^6.0.2",
+        "@types/node": "^18.15.11",
+        "@types/tap": "^15.0.8",
+        "prettier": "^3.3.2",
+        "tap": "^19.2.5",
+        "tshy": "^1.15.1",
+        "typedoc": "^0.24.2",
+        "typescript": "^5.0.2"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "tshy": {
+        "exports": {
+          "./watchdog": "./src/watchdog.ts",
+          "./proxy-signals": "./src/proxy-signals.ts",
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "type": "module",
+      "_id": "foreground-child@3.2.1",
+      "gitHead": "132a0178990aa4f53a6208bc3bdb90369b35e434",
+      "bugs": {
+        "url": "https://github.com/tapjs/foreground-child/issues"
+      },
+      "_nodeVersion": "20.13.1",
+      "_npmVersion": "10.7.0",
+      "dist": {
+        "integrity": "sha512-PXUUyLqrR2XCWICfv6ukppP96sdFwWbNEnfEMt7jNsISjMsvaLNinAHNDYyvkyU+SZG2BTSbT5NjG+vZslfGTA==",
+        "shasum": "767004ccf3a5b30df39bed90718bab43fe0a59f7",
+        "tarball": "http://localhost:4260/foreground-child/foreground-child-3.2.1.tgz",
+        "fileCount": 37,
+        "unpackedSize": 68184
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tapjs/foreground-child.git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/tapjs/foreground-child#readme",
+  "bugs": {
+    "url": "https://github.com/tapjs/foreground-child/issues"
+  }
+}

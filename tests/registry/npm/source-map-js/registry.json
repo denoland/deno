@@ -1,0 +1,70 @@
+{
+  "name": "source-map-js",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "source-map-js",
+      "description": "Generates and consumes source maps",
+      "version": "1.0.2",
+      "author": {
+        "name": "Valentin 7rulnik Semirulnik",
+        "email": "v7rulnik@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/7rulnik/source-map-js.git"
+      },
+      "main": "./source-map.js",
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "license": "BSD-3-Clause",
+      "scripts": {
+        "test": "npm run build && node test/run-tests.js",
+        "build": "webpack --color",
+        "toc": "doctoc --title '## Table of Contents' README.md && doctoc --title '## Table of Contents' CONTRIBUTING.md"
+      },
+      "devDependencies": {
+        "clean-publish": "^3.1.0",
+        "doctoc": "^0.15.0",
+        "webpack": "^1.12.0"
+      },
+      "clean-publish": {
+        "cleanDocs": true
+      },
+      "typings": "source-map.d.ts",
+      "gitHead": "04907d5b2dc88bef63e5399452fa6a696f90bf66",
+      "bugs": {
+        "url": "https://github.com/7rulnik/source-map-js/issues"
+      },
+      "_id": "source-map-js@1.0.2",
+      "_nodeVersion": "14.17.0",
+      "_npmVersion": "6.14.13",
+      "dist": {
+        "integrity": "sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==",
+        "shasum": "adbc361d9c62df380125e7f161f71c826f1e490c",
+        "tarball": "http://localhost:4260/source-map-js/source-map-js-1.0.2.tgz",
+        "fileCount": 16,
+        "unpackedSize": 147831
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Generates and consumes source maps",
+  "homepage": "https://github.com/7rulnik/source-map-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/7rulnik/source-map-js.git"
+  },
+  "author": {
+    "name": "Valentin 7rulnik Semirulnik",
+    "email": "v7rulnik@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/7rulnik/source-map-js/issues"
+  },
+  "license": "BSD-3-Clause"
+}

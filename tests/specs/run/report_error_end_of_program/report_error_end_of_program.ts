@@ -1,0 +1,1 @@
+reportError(new Error("foo"));

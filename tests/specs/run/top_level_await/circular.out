@@ -1,0 +1,10 @@
+timeout loop 0
+timeout loop 1
+timeout loop 2
+timeout loop 3
+timeout loop 4
+timeout loop 5
+error: Top-level await promise never resolved
+const mod = await import("./tla3/b.js");
+            ^
+    at <anonymous> ([WILDCARD]/top_level_await/circular.js:5:13)

@@ -1,0 +1,73 @@
+{
+  "name": "p-limit",
+  "description": "Run multiple promise-returning & async functions with limited concurrency",
+  "dist-tags": {
+    "latest": "2.3.0"
+  },
+  "versions": {
+    "2.3.0": {
+      "name": "p-limit",
+      "version": "2.3.0",
+      "description": "Run multiple promise-returning & async functions with limited concurrency",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/p-limit.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd-check"
+      },
+      "dependencies": {
+        "p-try": "^2.0.0"
+      },
+      "devDependencies": {
+        "ava": "^1.2.1",
+        "delay": "^4.1.0",
+        "in-range": "^1.0.0",
+        "random-int": "^1.0.0",
+        "time-span": "^2.0.0",
+        "tsd-check": "^0.3.0",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "a11f02bc5c04490b7c3de2663d866c211fb915ea",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/p-limit/issues"
+      },
+      "_id": "p-limit@2.3.0",
+      "_nodeVersion": "10.19.0",
+      "_npmVersion": "6.13.4",
+      "dist": {
+        "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
+        "shasum": "3dd33c647a214fdfffd835933eb086da0dc21db1",
+        "tarball": "http://localhost:4260/p-limit/p-limit-2.3.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 7390
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/p-limit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/p-limit.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/p-limit/issues"
+  },
+  "license": "MIT"
+}

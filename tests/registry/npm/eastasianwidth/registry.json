@@ -1,0 +1,57 @@
+{
+  "name": "eastasianwidth",
+  "description": "Get East Asian Width from a character.",
+  "dist-tags": {
+    "latest": "0.2.0"
+  },
+  "versions": {
+    "0.2.0": {
+      "name": "eastasianwidth",
+      "version": "0.2.0",
+      "description": "Get East Asian Width from a character.",
+      "main": "eastasianwidth.js",
+      "files": [
+        "eastasianwidth.js"
+      ],
+      "scripts": {
+        "test": "mocha"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/komagata/eastasianwidth.git"
+      },
+      "author": {
+        "name": "Masaki Komagata"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "mocha": "~1.9.0"
+      },
+      "gitHead": "b89f04d44dc786885615e94cd6e2ba1ef7866fa4",
+      "bugs": {
+        "url": "https://github.com/komagata/eastasianwidth/issues"
+      },
+      "_id": "eastasianwidth@0.2.0",
+      "_npmVersion": "5.5.1",
+      "_nodeVersion": "8.9.1",
+      "dist": {
+        "integrity": "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==",
+        "shasum": "696ce2ec0aa0e6ea93a397ffcf24aa7840c827cb",
+        "tarball": "http://localhost:4260/eastasianwidth/eastasianwidth-0.2.0.tgz"
+      },
+      "directories": {}
+    }
+  },
+  "author": {
+    "name": "Masaki Komagata"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/komagata/eastasianwidth.git"
+  },
+  "homepage": "https://github.com/komagata/eastasianwidth#readme",
+  "bugs": {
+    "url": "https://github.com/komagata/eastasianwidth/issues"
+  },
+  "license": "MIT"
+}

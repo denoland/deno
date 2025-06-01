@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "envs": {
+    "PATH": "",
+    "DENO_TEST_JUPYTER_PATH": "$PWD"
+  },
+  "steps": [{
+    "args": "jupyter --install",
+    "output": "install_command.out",
+    "exitCode": 0
+  }, {
+    "args": "jupyter --install",
+    "output": "already_installed.out",
+    "exitCode": 1
+  }, {
+    "args": "jupyter --install --name devdeno",
+    "output": "install_name.out",
+    "exitCode": 0
+  }, {
+    "args": "jupyter --install --force",
+    "output": "install_command.out",
+    "exitCode": 0
+  }]
+}

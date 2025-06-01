@@ -1,0 +1,68 @@
+{
+  "name": "@vue/reactivity",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/reactivity",
+      "version": "3.2.38",
+      "description": "@vue/reactivity",
+      "main": "index.js",
+      "module": "dist/reactivity.esm-bundler.js",
+      "types": "dist/reactivity.d.ts",
+      "unpkg": "dist/reactivity.global.js",
+      "jsdelivr": "dist/reactivity.global.js",
+      "sideEffects": false,
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/reactivity"
+      },
+      "buildOptions": {
+        "name": "VueReactivity",
+        "formats": [
+          "esm-bundler",
+          "esm-browser",
+          "cjs",
+          "global"
+        ]
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/reactivity@3.2.38",
+      "dist": {
+        "shasum": "d576fdcea98eefb96a1f1ad456e289263e87292e",
+        "integrity": "sha512-6L4myYcH9HG2M25co7/BSo0skKFHpAN8PhkNPM4xRVkyGl1K5M3Jx4rp5bsYhvYze2K4+l+pioN4e6ZwFLUVtw==",
+        "tarball": "http://localhost:4260/@vue/reactivity/reactivity-3.2.38.tgz",
+        "fileCount": 14,
+        "unpackedSize": 256441
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/reactivity",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/reactivity#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/reactivity"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

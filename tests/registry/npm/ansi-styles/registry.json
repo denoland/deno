@@ -1,0 +1,119 @@
+{
+  "name": "ansi-styles",
+  "description": "ANSI escape codes for styling strings in the terminal",
+  "dist-tags": {
+    "latest": "6.1.0"
+  },
+  "versions": {
+    "4.3.0": {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "description": "ANSI escape codes for styling strings in the terminal",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/ansi-styles.git"
+      },
+      "funding": "https://github.com/chalk/ansi-styles?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd",
+        "screenshot": "svg-term --command='node screenshot' --out=screenshot.svg --padding=3 --width=55 --height=3 --at=1000 --no-cursor"
+      },
+      "dependencies": {
+        "color-convert": "^2.0.1"
+      },
+      "devDependencies": {
+        "@types/color-convert": "^1.9.0",
+        "ava": "^2.3.0",
+        "svg-term-cli": "^2.1.1",
+        "tsd": "^0.11.0",
+        "xo": "^0.25.3"
+      },
+      "gitHead": "2d02d5bd070f733179007f0904eb5fb41090395a",
+      "bugs": {
+        "url": "https://github.com/chalk/ansi-styles/issues"
+      },
+      "_id": "ansi-styles@4.3.0",
+      "_nodeVersion": "14.11.0",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+        "shasum": "edd803628ae71c04c85ae7a0906edad34b648937",
+        "tarball": "http://localhost:4260/ansi-styles/ansi-styles-4.3.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 16978
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "6.1.0": {
+      "name": "ansi-styles",
+      "version": "6.1.0",
+      "description": "ANSI escape codes for styling strings in the terminal",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/ansi-styles.git"
+      },
+      "funding": "https://github.com/chalk/ansi-styles?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "type": "module",
+      "exports": "./index.js",
+      "engines": {
+        "node": ">=12"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd",
+        "screenshot": "svg-term --command='node screenshot' --out=screenshot.svg --padding=3 --width=55 --height=3 --at=1000 --no-cursor"
+      },
+      "devDependencies": {
+        "ava": "^3.15.0",
+        "svg-term-cli": "^2.1.1",
+        "tsd": "^0.14.0",
+        "xo": "^0.38.2"
+      },
+      "gitHead": "cd0b0cb59337bfd7d3669b2d0fcde7ff661a83a6",
+      "bugs": {
+        "url": "https://github.com/chalk/ansi-styles/issues"
+      },
+      "_id": "ansi-styles@6.1.0",
+      "_nodeVersion": "12.22.1",
+      "_npmVersion": "6.14.10",
+      "dist": {
+        "integrity": "sha512-VbqNsoz55SYGczauuup0MFUyXNQviSpFTj1RQtFzmQLk18qbVSpTFFGMT293rmDaQuKCT6InmbuEyUne4mTuxQ==",
+        "shasum": "87313c102b8118abd57371afab34618bf7350ed3",
+        "tarball": "http://localhost:4260/ansi-styles/ansi-styles-6.1.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 15535
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/ansi-styles.git"
+  },
+  "homepage": "https://github.com/chalk/ansi-styles#readme",
+  "bugs": {
+    "url": "https://github.com/chalk/ansi-styles/issues"
+  },
+  "license": "MIT"
+}

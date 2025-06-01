@@ -1,0 +1,111 @@
+{
+  "name": "pathval",
+  "description": "Object value retrieval given a string path",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "pathval",
+      "description": "Object value retrieval given a string path",
+      "version": "1.1.1",
+      "license": "MIT",
+      "author": {
+        "name": "Veselin Todorov",
+        "email": "hi@vesln.com"
+      },
+      "main": "./index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/pathval.git"
+      },
+      "scripts": {
+        "build": "browserify --standalone pathval -o pathval.js",
+        "lint": "eslint --ignore-path .gitignore .",
+        "lint:fix": "npm run lint -- --fix",
+        "prepublish": "npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest": "npm run lint",
+        "test": "npm run test:node && npm run test:browser && npm run upload-coverage",
+        "test:browser": "karma start --singleRun=true",
+        "test:node": "nyc mocha",
+        "upload-coverage": "lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"
+      },
+      "config": {
+        "ghooks": {
+          "commit-msg": "validate-commit-msg"
+        }
+      },
+      "eslintConfig": {
+        "extends": [
+          "strict/es5"
+        ],
+        "env": {
+          "es6": true
+        },
+        "globals": {
+          "HTMLElement": false
+        },
+        "rules": {
+          "complexity": 0,
+          "max-statements": 0
+        }
+      },
+      "devDependencies": {
+        "browserify": "^17.0.0",
+        "browserify-istanbul": "^3.0.1",
+        "coveralls": "^3.1.0",
+        "eslint": "^7.13.0",
+        "eslint-config-strict": "^14.0.1",
+        "eslint-plugin-filenames": "^1.3.2",
+        "ghooks": "^2.0.4",
+        "karma": "^5.2.3",
+        "karma-browserify": "^7.0.0",
+        "karma-coverage": "^2.0.3",
+        "karma-mocha": "^2.0.1",
+        "karma-phantomjs-launcher": "^1.0.4",
+        "karma-sauce-launcher": "^4.3.3",
+        "lcov-result-merger": "^3.1.0",
+        "mocha": "^8.2.1",
+        "nyc": "^15.1.0",
+        "phantomjs-prebuilt": "^2.1.16",
+        "semantic-release": "^17.2.2",
+        "simple-assert": "^1.0.0",
+        "travis-after-all": "^1.4.5",
+        "validate-commit-msg": "^2.14.0"
+      },
+      "engines": {
+        "node": "*"
+      },
+      "gitHead": "db6c3e39c39859564704b7f37149082689f1b172",
+      "bugs": {
+        "url": "https://github.com/chaijs/pathval/issues"
+      },
+      "_id": "pathval@1.1.1",
+      "_nodeVersion": "14.9.0",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-Dp6zGqpTdETdR63lehJYPeIOqpiNBNtc7BpWSLrOje7UaIsE5aY92r/AunQA7rsXvet3lrJ3JnZX29UPTKXyKQ==",
+        "shasum": "8534e77a77ce7ac5a2512ea21e0fdb8fcf6c3d8d",
+        "tarball": "http://localhost:4260/pathval/pathval-1.1.1.tgz",
+        "fileCount": 6,
+        "unpackedSize": 15830
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Veselin Todorov",
+    "email": "hi@vesln.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/pathval.git"
+  },
+  "homepage": "https://github.com/chaijs/pathval",
+  "bugs": {
+    "url": "https://github.com/chaijs/pathval/issues"
+  },
+  "license": "MIT"
+}

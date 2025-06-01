@@ -1,0 +1,10 @@
+{
+    "name": "@denotest/special-chars-in-bin-name",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "main.mjs",
+    "bin": {
+      "\\foo\"": "main.mjs"
+    }
+  }
+  

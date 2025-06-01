@@ -1,0 +1,65 @@
+{
+  "name": "camelcase",
+  "dist-tags": {
+    "latest": "5.3.1"
+  },
+  "description": "Convert a dash/dot/underscore/space separated string to camelCase or PascalCase: `foo-bar` → `fooBar`",
+  "versions": {
+    "5.3.1": {
+      "name": "camelcase",
+      "version": "5.3.1",
+      "description": "Convert a dash/dot/underscore/space separated string to camelCase or PascalCase: `foo-bar` → `fooBar`",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/camelcase.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.1",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "cbe5a519ec6745adbb5283d5ee8c5c9889050d74",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/camelcase/issues"
+      },
+      "_id": "camelcase@5.3.1",
+      "_nodeVersion": "8.15.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==",
+        "shasum": "e3c9b31569e106811df242f715725a1f4c494320",
+        "tarball": "http://localhost:4260/camelcase/camelcase-5.3.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 7447
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/camelcase#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/camelcase.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/camelcase/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,67 @@
+{
+  "name": "require-from-string",
+  "description": "Require module from string",
+  "dist-tags": {
+    "latest": "2.0.2"
+  },
+  "versions": {
+    "2.0.2": {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "description": "Require module from string",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/floatdrop/require-from-string.git"
+      },
+      "author": {
+        "name": "Vsevolod Strukchinsky",
+        "email": "floatdrop@gmail.com",
+        "url": "github.com/floatdrop"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "scripts": {
+        "test": "mocha"
+      },
+      "files": [
+        "index.js"
+      ],
+      "dependencies": {},
+      "devDependencies": {
+        "mocha": "*"
+      },
+      "gitHead": "d1575a49065eb7a49b86b4de963f04f1a14dfd60",
+      "bugs": {
+        "url": "https://github.com/floatdrop/require-from-string/issues"
+      },
+      "_id": "require-from-string@2.0.2",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "9.5.0",
+      "dist": {
+        "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
+        "shasum": "89a7fdd938261267318eafe14f9c32e598c36909",
+        "tarball": "http://localhost:4260/require-from-string/require-from-string-2.0.2.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3422
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/floatdrop/require-from-string#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/floatdrop/require-from-string.git"
+  },
+  "author": {
+    "name": "Vsevolod Strukchinsky",
+    "email": "floatdrop@gmail.com",
+    "url": "github.com/floatdrop"
+  },
+  "bugs": {
+    "url": "https://github.com/floatdrop/require-from-string/issues"
+  },
+  "license": "MIT"
+}

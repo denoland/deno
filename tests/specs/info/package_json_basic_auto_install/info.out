@@ -1,0 +1,8 @@
+local: [WILDCARD]main.ts
+type: TypeScript
+dependencies: 2 unique
+size: [WILDCARD]
+
+file:///[WILDCARD]/main.ts (63B)
+└─┬ file:///[WILDCARD]/lib.ts (166B)
+  └── npm:/@denotest/esm-basic@1.0.0 (471B)

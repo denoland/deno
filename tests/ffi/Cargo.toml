@@ -1,0 +1,17 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "test_ffi"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+test_util.workspace = true

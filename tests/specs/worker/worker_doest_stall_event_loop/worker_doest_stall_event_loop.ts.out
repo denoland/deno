@@ -1,0 +1,6 @@
+worker!
+before import
+module start
+module finish
+after import
+worker.terminate

@@ -1,0 +1,55 @@
+{
+  "name": "scheduler",
+  "description": "Cooperative scheduler for the browser environment.",
+  "dist-tags": {
+    "latest": "0.23.0"
+  },
+  "versions": {
+    "0.23.0": {
+      "name": "scheduler",
+      "version": "0.23.0",
+      "description": "Cooperative scheduler for the browser environment.",
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/facebook/react.git",
+        "directory": "packages/scheduler"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/facebook/react/issues"
+      },
+      "dependencies": {
+        "loose-envify": "^1.1.0"
+      },
+      "browserify": {
+        "transform": [
+          "loose-envify"
+        ]
+      },
+      "gitHead": "be229c5655074642ee664f532f2e7411dd7dccc7",
+      "_id": "scheduler@0.23.0",
+      "_nodeVersion": "17.1.0",
+      "_npmVersion": "8.1.2",
+      "dist": {
+        "integrity": "sha512-CtuThmgHNg7zIZWAXi3AsyIzA3n4xx7aNyjwC2VJldO2LMVDhFK+63xGqq6CsJH4rTAt6/M+N4GhZiDYPx9eUw==",
+        "shasum": "ba8041afc3d30eb206a487b6b384002e4e61fdfe",
+        "tarball": "http://localhost:4260/scheduler/scheduler-0.23.0.tgz",
+        "fileCount": 17,
+        "unpackedSize": 93383
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebook/react.git",
+    "directory": "packages/scheduler"
+  },
+  "homepage": "https://reactjs.org/",
+  "bugs": {
+    "url": "https://github.com/facebook/react/issues"
+  },
+  "license": "MIT"
+}

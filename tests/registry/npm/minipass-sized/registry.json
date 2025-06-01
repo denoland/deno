@@ -1,0 +1,76 @@
+{
+  "name": "minipass-sized",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "minipass-sized",
+      "version": "1.0.3",
+      "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.4"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "main": "index.js",
+      "directories": {
+        "test": "test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-sized.git"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "4314081d97c5f3f4bd4c23e380e81fd7392aaa2c",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-sized/issues"
+      },
+      "_id": "minipass-sized@1.0.3",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-MbkQQ2CTiBMlA2Dm/5cY+9SWFEN8pzzOXi6rlM5Xxq0Yqbda5ZQy9sU75a673FE9ZK0Zsbr6Y5iP6u9nktfg2g==",
+        "shasum": "70ee5a7c5052070afacfbc22977ea79def353b70",
+        "tarball": "http://localhost:4260/minipass-sized/minipass-sized-1.0.3.tgz",
+        "fileCount": 7,
+        "unpackedSize": 123865
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+  "homepage": "https://github.com/isaacs/minipass-sized#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-sized.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-sized/issues"
+  },
+  "license": "ISC"
+}

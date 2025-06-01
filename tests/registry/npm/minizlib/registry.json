@@ -1,0 +1,71 @@
+{
+  "name": "minizlib",
+  "description": "A small fast zlib stream built on [minipass](http://npm.im/minipass) and Node.js's zlib binding.",
+  "dist-tags": {
+    "latest": "2.1.2"
+  },
+  "versions": {
+    "2.1.2": {
+      "name": "minizlib",
+      "version": "2.1.2",
+      "description": "A small fast zlib stream built on [minipass](http://npm.im/minipass) and Node.js's zlib binding.",
+      "main": "index.js",
+      "dependencies": {
+        "minipass": "^3.0.0",
+        "yallist": "^4.0.0"
+      },
+      "scripts": {
+        "test": "tap test/*.js --100 -J",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --all; git push origin --tags"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minizlib.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "tap": "^14.6.9"
+      },
+      "engines": {
+        "node": ">= 8"
+      },
+      "gitHead": "433c0caa0a3ba92a31623025c4ac386836649b09",
+      "bugs": {
+        "url": "https://github.com/isaacs/minizlib/issues"
+      },
+      "_id": "minizlib@2.1.2",
+      "_nodeVersion": "14.8.0",
+      "_npmVersion": "7.0.0-beta.4",
+      "dist": {
+        "integrity": "sha512-bAxsR8BVfj60DWXHE3u30oHzfl4G7khkSuPW+qvpd7jFRHm7dLxOjUk1EHACJ/hxLY8phGJ0YhYHZo7jil7Qdg==",
+        "shasum": "e90d3466ba209b932451508a11ce3d3632145931",
+        "tarball": "http://localhost:4260/minizlib/minizlib-2.1.2.tgz",
+        "fileCount": 5,
+        "unpackedSize": 17309
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/isaacs/minizlib#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minizlib.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minizlib/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "dep_and_workspace_dep": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "publish --dry-run --no-check --log-level=debug",
+        "cwd": "subtract",
+        "output": "publish-subtract.out"
+      }]
+    },
+    "bare_specifier": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "publish --dry-run --no-check --log-level=debug",
+        "cwd": "subtract-2",
+        "output": "publish-subtract2.out"
+      }]
+    }
+  }
+}

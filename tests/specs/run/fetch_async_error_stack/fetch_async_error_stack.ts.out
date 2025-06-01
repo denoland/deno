@@ -1,0 +1,5 @@
+error: Uncaught (in promise) TypeError: error sending request for url (https://nonexistent.deno.land/): client error[WILDCARD]
+await fetch("https://nonexistent.deno.land/");
+^[WILDCARD]
+    at async fetch (ext:[WILDCARD])
+    at async file:///[WILDCARD]/fetch_async_error_stack.ts:1:1

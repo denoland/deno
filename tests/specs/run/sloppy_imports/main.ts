@@ -1,0 +1,16 @@
+import * as a from "./a.js";
+import * as b from "./b";
+import * as c from "./c";
+import * as d from "./d";
+import * as e from "./e";
+import * as e2 from "./e.js";
+import * as f from "./f";
+import * as g from "./dir";
+console.log(a.A);
+console.log(b.B);
+console.log(c.C);
+console.log(d.D);
+console.log(e.E);
+console.log(e2.E);
+console.log(f.F);
+console.log(g.G);

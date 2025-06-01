@@ -1,0 +1,4 @@
+error: Uncaught (in worker "") Requires import access to "example.com:443", run again with the --allow-import flag
+    at data:application/javascript;base64,aW1wb3J0ICJodHRwczovL2V4YW1wbGUuY29tL3NvbWUvZmlsZS50cyI7:1:8
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at Worker.#pollControl[WILDCARD]

@@ -1,0 +1,65 @@
+{
+  "name": "which-module",
+  "description": "Find the module object for something that was require()d",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "which-module",
+      "version": "2.0.0",
+      "description": "Find the module object for something that was require()d",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "standard",
+        "test": "nyc ava",
+        "coverage": "nyc report --reporter=text-lcov | coveralls",
+        "release": "standard-version"
+      },
+      "files": [
+        "index.js"
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nexdrew/which-module.git"
+      },
+      "author": {
+        "name": "nexdrew"
+      },
+      "license": "ISC",
+      "bugs": {
+        "url": "https://github.com/nexdrew/which-module/issues"
+      },
+      "devDependencies": {
+        "ava": "^0.19.1",
+        "coveralls": "^2.13.1",
+        "nyc": "^10.3.0",
+        "standard": "^10.0.2",
+        "standard-version": "^4.0.0"
+      },
+      "gitHead": "7f78f42d0761133263c3947a3b24dde324a467ce",
+      "_id": "which-module@2.0.0",
+      "_shasum": "d9ef07dce77b9902b8a3a8fa4b31c3e3f7e6e87a",
+      "_from": ".",
+      "_npmVersion": "4.2.0",
+      "_nodeVersion": "7.9.0",
+      "dist": {
+        "shasum": "d9ef07dce77b9902b8a3a8fa4b31c3e3f7e6e87a",
+        "tarball": "http://localhost:4260/which-module/which-module-2.0.0.tgz",
+        "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q=="
+      }
+    }
+  },
+  "homepage": "https://github.com/nexdrew/which-module#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nexdrew/which-module.git"
+  },
+  "author": {
+    "name": "nexdrew"
+  },
+  "bugs": {
+    "url": "https://github.com/nexdrew/which-module/issues"
+  },
+  "license": "ISC"
+}

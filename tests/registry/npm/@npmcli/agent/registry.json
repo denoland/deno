@@ -1,0 +1,97 @@
+{
+  "name": "@npmcli/agent",
+  "description": "the http/https agent used by the npm cli",
+  "dist-tags": {
+    "latest": "2.2.2"
+  },
+  "versions": {
+    "2.2.2": {
+      "name": "@npmcli/agent",
+      "version": "2.2.2",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "@npmcli/agent@2.2.2",
+      "bugs": {
+        "url": "https://github.com/npm/agent/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "967604918e62f620a648c7975461c9c9e74fc5d5",
+        "tarball": "http://localhost:4260/@npmcli/agent/agent-2.2.2.tgz",
+        "fileCount": 8,
+        "integrity": "sha512-OrcNPXdpSl9UX7qPVRWbmWMCSXrcDa2M9DvrbOTj7ao1S4PlqVFYv9/yLKMkrJKZ/V5A/kDBC690or307i26Og==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/@npmcli%2fagent@2.2.2",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 17739
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^16.14.0 || >=18.0.0"
+      },
+      "gitHead": "47b9043b041c5ab982810fe16ea1c16e9ad9024e",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "gencerts": "bash scripts/create-cert.sh",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/agent.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.5.0",
+      "description": "the http/https agent used by the npm cli",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.21.3",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "20.11.1",
+      "dependencies": {
+        "lru-cache": "^10.0.1",
+        "agent-base": "^7.1.0",
+        "http-proxy-agent": "^7.0.0",
+        "https-proxy-agent": "^7.0.1",
+        "socks-proxy-agent": "^8.0.3"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "nock": "^13.2.7",
+        "semver": "^7.5.4",
+        "simple-socks": "^3.1.0",
+        "minipass-fetch": "^3.0.3",
+        "@npmcli/template-oss": "4.21.3",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/agent.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/agent#readme",
+  "bugs": {
+    "url": "https://github.com/npm/agent/issues"
+  }
+}

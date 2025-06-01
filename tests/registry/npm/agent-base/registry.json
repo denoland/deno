@@ -1,0 +1,85 @@
+{
+  "name": "agent-base",
+  "description": "Turn a function into an `http.Agent` instance",
+  "dist-tags": {
+    "latest": "7.1.1"
+  },
+  "versions": {
+    "7.1.1": {
+      "name": "agent-base",
+      "version": "7.1.1",
+      "description": "Turn a function into an `http.Agent` instance",
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/TooTallNate/proxy-agents.git",
+        "directory": "packages/agent-base"
+      },
+      "author": {
+        "name": "Nathan Rajlich",
+        "email": "nathan@tootallnate.net",
+        "url": "http://n8.io/"
+      },
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.3.4"
+      },
+      "devDependencies": {
+        "@types/debug": "^4.1.7",
+        "@types/jest": "^29.5.1",
+        "@types/node": "^14.18.45",
+        "@types/semver": "^7.3.13",
+        "@types/ws": "^6.0.4",
+        "async-listen": "^3.0.0",
+        "jest": "^29.5.0",
+        "ts-jest": "^29.1.0",
+        "typescript": "^5.0.4",
+        "ws": "^3.3.3",
+        "tsconfig": "0.0.0"
+      },
+      "engines": {
+        "node": ">= 14"
+      },
+      "scripts": {
+        "build": "tsc",
+        "test": "jest --env node --verbose --bail",
+        "lint": "eslint . --ext .ts",
+        "pack": "node ../../scripts/pack.mjs"
+      },
+      "bugs": {
+        "url": "https://github.com/TooTallNate/proxy-agents/issues"
+      },
+      "_id": "agent-base@7.1.1",
+      "_integrity": "sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==",
+      "_resolved": "/tmp/49926a570127159653e7b70d101bcbba/agent-base-7.1.1.tgz",
+      "_from": "file:agent-base-7.1.1.tgz",
+      "_nodeVersion": "20.11.1",
+      "_npmVersion": "10.2.4",
+      "dist": {
+        "integrity": "sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==",
+        "shasum": "bdbded7dfb096b751a2a087eeeb9664725b2e317",
+        "tarball": "http://localhost:4260/agent-base/agent-base-7.1.1.tgz",
+        "fileCount": 12,
+        "unpackedSize": 31249
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TooTallNate/proxy-agents.git",
+    "directory": "packages/agent-base"
+  },
+  "homepage": "https://github.com/TooTallNate/proxy-agents#readme",
+  "bugs": {
+    "url": "https://github.com/TooTallNate/proxy-agents/issues"
+  },
+  "license": "MIT"
+}

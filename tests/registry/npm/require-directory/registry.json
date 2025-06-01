@@ -1,0 +1,65 @@
+{
+  "name": "require-directory",
+  "description": "Recursively iterates over specified directory, require()'ing each file, and returning a nested hash structure containing those modules.",
+  "dist-tags": {
+    "latest": "2.1.1"
+  },
+  "versions": {
+    "2.1.1": {
+      "author": {
+        "name": "Troy Goode",
+        "email": "troygoode@gmail.com",
+        "url": "http://github.com/troygoode/"
+      },
+      "name": "require-directory",
+      "version": "2.1.1",
+      "description": "Recursively iterates over specified directory, require()'ing each file, and returning a nested hash structure containing those modules.",
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/troygoode/node-require-directory.git"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "http://github.com/troygoode/node-require-directory/issues/"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "devDependencies": {
+        "jshint": "^2.6.0",
+        "mocha": "^2.1.0"
+      },
+      "scripts": {
+        "test": "mocha",
+        "lint": "jshint index.js test/test.js"
+      },
+      "gitHead": "cc71c23dd0c16cefd26855303c16ca1b9b50a36d",
+      "_id": "require-directory@2.1.1",
+      "_shasum": "8c64ad5fd30dab1c976e2344ffe7f792a6a6df42",
+      "_from": ".",
+      "_npmVersion": "2.5.1",
+      "_nodeVersion": "0.12.0",
+      "dist": {
+        "shasum": "8c64ad5fd30dab1c976e2344ffe7f792a6a6df42",
+        "tarball": "http://localhost:4260/require-directory/require-directory-2.1.1.tgz",
+        "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q=="
+      },
+      "directories": {}
+    }
+  },
+  "author": {
+    "name": "Troy Goode",
+    "email": "troygoode@gmail.com",
+    "url": "http://github.com/troygoode/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/troygoode/node-require-directory.git"
+  },
+  "homepage": "https://github.com/troygoode/node-require-directory/",
+  "bugs": {
+    "url": "http://github.com/troygoode/node-require-directory/issues/"
+  },
+  "license": "MIT"
+}

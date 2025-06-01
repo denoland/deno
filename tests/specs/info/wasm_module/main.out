@@ -1,0 +1,10 @@
+Download http://localhost:4545/wasm/math_with_import.wasm
+Download http://localhost:4545/wasm/math.ts
+local: [WILDLINE]main.js
+type: JavaScript
+dependencies: 2 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/main.js ([WILDLINE])
+└─┬ http://localhost:4545/wasm/math_with_import.wasm ([WILDLINE])
+  └── http://localhost:4545/wasm/math.ts ([WILDLINE])

@@ -1,0 +1,6 @@
+TS2345 [ERROR]: Argument of type 'number' is not assignable to parameter of type 'string'.
+console.log(compressToEncodedURIComponent(123));
+                                          ~~~
+    at file:///[WILDLINE]
+
+error: Type checking failed.

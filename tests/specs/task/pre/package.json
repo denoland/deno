@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "test": "echo 'test'",
+    "pretest": "echo 'pretest'"
+  }
+}

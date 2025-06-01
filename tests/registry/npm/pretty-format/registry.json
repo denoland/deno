@@ -1,0 +1,67 @@
+{
+  "name": "pretty-format",
+  "description": "Stringify any JavaScript value.",
+  "dist-tags": {
+    "latest": "3.8.0"
+  },
+  "versions": {
+    "3.8.0": {
+      "name": "pretty-format",
+      "version": "3.8.0",
+      "description": "Stringify any JavaScript value.",
+      "license": "MIT",
+      "main": "index.js",
+      "author": {
+        "name": "James Kyle",
+        "email": "me@thejameskyle.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/thejameskyle/pretty-format.git"
+      },
+      "bugs": {
+        "url": "https://github.com/thejameskyle/pretty-format/issues"
+      },
+      "scripts": {
+        "test": "jest",
+        "perf": "node perf/test.js"
+      },
+      "jest": {
+        "testEnvironment": "node",
+        "verbose": true
+      },
+      "devDependencies": {
+        "chalk": "^1.1.3",
+        "jest": "^15.1.1",
+        "left-pad": "^1.1.1",
+        "react": "15.3.0"
+      },
+      "gitHead": "556f97f5ba896f15bf8e07e191636d31828f63a8",
+      "_id": "pretty-format@3.8.0",
+      "_shasum": "bfbed56d5e9a776645f4b1ff7aa1a3ac4fa3c385",
+      "_from": ".",
+      "_npmVersion": "3.8.6",
+      "_nodeVersion": "5.12.0",
+      "dist": {
+        "shasum": "bfbed56d5e9a776645f4b1ff7aa1a3ac4fa3c385",
+        "tarball": "http://localhost:4260/pretty-format/pretty-format-3.8.0.tgz",
+        "integrity": "sha512-WuxUnVtlWL1OfZFQFuqvnvs6MiAGk9UNsBostyBOB0Is9wb5uRESevA6rnl/rkksXaGX3GzZhPup5d6Vp1nFew=="
+      },
+      "directories": {}
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jestjs/jest.git",
+    "directory": "packages/pretty-format"
+  },
+  "author": {
+    "name": "James Kyle",
+    "email": "me@thejameskyle.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/jestjs/jest#readme",
+  "bugs": {
+    "url": "https://github.com/jestjs/jest/issues"
+  }
+}

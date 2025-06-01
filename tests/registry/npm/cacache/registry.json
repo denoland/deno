@@ -1,0 +1,108 @@
+{
+  "name": "cacache",
+  "description": "Fast, fault-tolerant, cross-platform, disk-based, data-agnostic, content-addressable cache.",
+  "dist-tags": {
+    "latest": "18.0.3"
+  },
+  "versions": {
+    "18.0.3": {
+      "name": "cacache",
+      "version": "18.0.3",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "cacache@18.0.3",
+      "bugs": {
+        "url": "https://github.com/npm/cacache/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "864e2c18414e1e141ae8763f31e46c2cb96d1b21",
+        "tarball": "http://localhost:4260/cacache/cacache-18.0.3.tgz",
+        "fileCount": 17,
+        "integrity": "sha512-qXCd4rh6I07cnDqh8V48/94Tc/WSfj+o3Gn6NZ0aZovS255bUx8O13uKxRFd2eWG0xgsco7+YItQNPaa5E85hg==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/cacache@18.0.3",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 63516
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^16.14.0 || >=18.0.0"
+      },
+      "gitHead": "f9ebcea7e36403d37cd46da1567f40302b950ea7",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "coverage": "tap",
+        "postlint": "template-oss-check",
+        "postsnap": "npm run lintfix --",
+        "posttest": "npm run lint",
+        "npmclilint": "npmcli-lint",
+        "test-docker": "docker run -it --rm --name pacotest -v \"$PWD\":/tmp -w /tmp node:latest npm test",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/cacache.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "Fast, fault-tolerant, cross-platform, disk-based, data-agnostic, content-addressable cache.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.22.0",
+        "windowsCI": false,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.1.0",
+      "dependencies": {
+        "tar": "^6.1.11",
+        "glob": "^10.2.2",
+        "ssri": "^10.0.0",
+        "p-map": "^4.0.0",
+        "minipass": "^7.0.3",
+        "lru-cache": "^10.0.1",
+        "@npmcli/fs": "^3.1.0",
+        "fs-minipass": "^3.0.0",
+        "minipass-flush": "^1.0.5",
+        "unique-filename": "^3.0.0",
+        "minipass-collect": "^2.0.1",
+        "minipass-pipeline": "^1.2.4"
+      },
+      "cache-version": {
+        "index": "5",
+        "content": "2"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/cacache.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/cacache#readme",
+  "bugs": {
+    "url": "https://github.com/npm/cacache/issues"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "bcrypt-pbkdf",
+  "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "bcrypt-pbkdf",
+      "version": "1.0.2",
+      "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+      },
+      "main": "index.js",
+      "dependencies": {
+        "tweetnacl": "^0.14.3"
+      },
+      "devDependencies": {},
+      "license": "BSD-3-Clause",
+      "gitHead": "15fa7399a1090ba70d855764f7ace23003bf45f3",
+      "bugs": {
+        "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+      },
+      "_id": "bcrypt-pbkdf@1.0.2",
+      "scripts": {},
+      "_shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "0.12.18",
+      "dist": {
+        "shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+        "tarball": "http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz",
+        "fileCount": 5,
+        "unpackedSize": 28994,
+        "integrity": "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "license": "BSD-3-Clause",
+  "homepage": "https://github.com/joyent/node-bcrypt-pbkdf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+  }
+}

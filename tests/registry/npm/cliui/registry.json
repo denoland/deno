@@ -1,0 +1,94 @@
+{
+  "name": "cliui",
+  "description": "easily create complex multi-column command-line-interfaces",
+  "dist-tags": {
+    "latest": "6.0.0"
+  },
+  "versions": {
+    "6.0.0": {
+      "name": "cliui",
+      "version": "6.0.0",
+      "description": "easily create complex multi-column command-line-interfaces",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "standard",
+        "test": "nyc mocha",
+        "coverage": "nyc --reporter=text-lcov mocha | coveralls"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/yargs/cliui.git"
+      },
+      "config": {
+        "blanket": {
+          "pattern": [
+            "index.js"
+          ],
+          "data-cover-never": [
+            "node_modules",
+            "test"
+          ],
+          "output-reporter": "spec"
+        }
+      },
+      "standard": {
+        "ignore": [
+          "**/example/**"
+        ],
+        "globals": [
+          "it"
+        ]
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "string-width": "^4.2.0",
+        "strip-ansi": "^6.0.0",
+        "wrap-ansi": "^6.2.0"
+      },
+      "devDependencies": {
+        "chai": "^4.2.0",
+        "chalk": "^3.0.0",
+        "coveralls": "^3.0.3",
+        "mocha": "^6.2.2",
+        "nyc": "^14.1.1",
+        "standard": "^12.0.1"
+      },
+      "engine": {
+        "node": ">=8"
+      },
+      "gitHead": "7761da3e8cddd1f49024252a6b0195a94565b357",
+      "bugs": {
+        "url": "https://github.com/yargs/cliui/issues"
+      },
+      "_id": "cliui@6.0.0",
+      "_nodeVersion": "13.0.0",
+      "_npmVersion": "6.12.0",
+      "dist": {
+        "integrity": "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==",
+        "shasum": "511d702c0c4e41ca156d7d0e96021f23e13225b1",
+        "tarball": "http://localhost:4260/cliui/cliui-6.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 14873
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/yargs/cliui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yargs/cliui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yargs/cliui/issues"
+  }
+}

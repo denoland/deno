@@ -1,0 +1,28 @@
+{
+  "name": "electron-to-chromium",
+  "dist-tags": {
+    "latest": "1.4.348"
+  },
+  "versions": {
+    "1.4.348": {
+      "name": "electron-to-chromium",
+      "version": "1.4.348",
+      "devDependencies": {
+        "ava": "^5.1.1",
+        "codecov": "^3.8.2",
+        "compare-versions": "^6.0.0-rc.1",
+        "node-fetch": "^3.3.0",
+        "nyc": "^15.1.0",
+        "shelljs": "^0.8.5"
+      },
+      "dist": {
+        "integrity": "sha512-gM7TdwuG3amns/1rlgxMbeeyNoBFPa+4Uu0c7FeROWh4qWmvSOnvcslKmWy51ggLKZ2n/F/4i2HJ+PVNxH9uCQ==",
+        "shasum": "f49379dc212d79f39112dd026f53e371279e433d",
+        "tarball": "http://localhost:4260/electron-to-chromium/electron-to-chromium-1.4.348.tgz",
+        "fileCount": 13,
+        "unpackedSize": 220360
+      }
+    }
+  },
+  "modified": "2023-03-31T18:02:22.694Z"
+}

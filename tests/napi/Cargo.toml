@@ -1,0 +1,23 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "test_napi"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libuv-sys-lite.workspace = true
+napi-sys = { workspace = true, features = ["napi7"] }
+
+[dev-dependencies]
+test_util.workspace = true
+
+[build-dependencies]
+napi-build.workspace = true

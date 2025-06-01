@@ -1,0 +1,171 @@
+name: promote_to_release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Kind of release'
+        type: choice
+        options:
+          - rc
+          - lts
+        required: true
+      commitHash:
+        description: Commit to promote to release
+        required: true
+
+jobs:
+  # Handle Windows binary patching and re-signing in a separate job
+  promote-to-release-windows:
+    name: Promote Windows to Release
+    runs-on: windows-latest
+    if: github.repository == 'denoland/deno'
+    permissions:
+      contents: write
+      id-token: write # Required for GitHub OIDC with Azure for code signing
+    environment:
+      name: build
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - name: Install deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Download Windows binaries
+        run: |
+          $CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"
+          Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"
+          Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"
+          Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
+          Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
+
+      - name: Run patchver for Windows
+        shell: pwsh
+        run: |
+          deno install -A -n patchver https://deno.land/x/patchver@0.2.0/cli.ts
+          $CHANNEL="${{github.event.inputs.releaseKind}}"
+          # Patch deno.exe
+          Move-Item -Path "deno.exe" -Destination "deno_original.exe"
+          patchver "deno_original.exe" "deno.exe" $CHANNEL
+          # Patch denort.exe
+          Move-Item -Path "denort.exe" -Destination "denort_original.exe"
+          patchver "denort_original.exe" "denort.exe" $CHANNEL
+
+          # Rename files to match expected pattern
+          Move-Item -Path "deno.exe" -Destination "deno-x86_64-pc-windows-msvc-$CHANNEL.exe"
+          Move-Item -Path "denort.exe" -Destination "denort-x86_64-pc-windows-msvc-$CHANNEL.exe"
+
+      - name: Authenticate with Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: Code sign deno.exe
+        uses: azure/trusted-signing-action@v0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: deno-cli-code-signing
+          certificate-profile-name: deno-cli-code-signing-cert
+          files-folder: .
+          files-folder-filter: deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+
+      - name: Verify signature
+        shell: pwsh
+        run: |
+          $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $SignToolPath = $SignTool.FullName
+          & $SignToolPath verify /pa /v "deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe"
+
+      - name: Create archives
+        run: |
+          Compress-Archive -Path "deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force
+          Compress-Archive -Path "denort-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force
+
+      - name: Upload Windows archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: |
+            deno-x86_64-pc-windows-msvc.zip
+            denort-x86_64-pc-windows-msvc.zip
+
+  # Handle all other binaries on macOS
+  promote-to-release:
+    name: Promote to Release
+    runs-on: macOS-latest
+    if: github.repository == 'denoland/deno'
+    needs: promote-to-release-windows
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          project_id: denoland
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          export_environment_variables: true
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
+
+      - name: Install deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install rust-codesign
+        run: |-
+          ./tools/install_prebuilt.js rcodesign
+          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+
+      - name: Promote to Release (non-Windows)
+        env:
+          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
+          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
+        run: |
+          deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}
+
+      - name: Download Windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binaries
+          path: .
+
+      - name: Create version file
+        run: |
+          # Unzip a binary to get the version
+          unzip -o deno-x86_64-apple-darwin.zip
+          DENO_VERSION=$(./deno -V | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          echo "v${DENO_VERSION}" > release-${{github.event.inputs.releaseKind}}-latest.txt
+          rm -f ./deno
+
+      - name: Upload archives to dl.deno.land
+        run: |
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
+          gsutil -h "Cache-Control: no-cache" cp release-${{github.event.inputs.releaseKind}}-latest.txt gs://dl.deno.land/release-${{github.event.inputs.releaseKind}}-latest.txt

@@ -1,0 +1,140 @@
+{
+  "name": "signal-exit",
+  "description": "when you want to fire an event no matter how a process exits.",
+  "dist-tags": {
+    "latest": "4.1.0"
+  },
+  "versions": {
+    "4.1.0": {
+      "name": "signal-exit",
+      "version": "4.1.0",
+      "description": "when you want to fire an event no matter how a process exits.",
+      "main": "./dist/cjs/index.js",
+      "module": "./dist/mjs/index.js",
+      "browser": "./dist/mjs/browser.js",
+      "types": "./dist/mjs/index.d.ts",
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/mjs/index.d.ts",
+            "default": "./dist/mjs/index.js"
+          },
+          "require": {
+            "types": "./dist/cjs/index.d.ts",
+            "default": "./dist/cjs/index.js"
+          }
+        },
+        "./signals": {
+          "import": {
+            "types": "./dist/mjs/signals.d.ts",
+            "default": "./dist/mjs/signals.js"
+          },
+          "require": {
+            "types": "./dist/cjs/signals.d.ts",
+            "default": "./dist/cjs/signals.js"
+          }
+        },
+        "./browser": {
+          "import": {
+            "types": "./dist/mjs/browser.d.ts",
+            "default": "./dist/mjs/browser.js"
+          },
+          "require": {
+            "types": "./dist/cjs/browser.d.ts",
+            "default": "./dist/cjs/browser.js"
+          }
+        }
+      },
+      "engines": {
+        "node": ">=14"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tapjs/signal-exit.git"
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "devDependencies": {
+        "@types/cross-spawn": "^6.0.2",
+        "@types/node": "^18.15.11",
+        "@types/signal-exit": "^3.0.1",
+        "@types/tap": "^15.0.8",
+        "c8": "^7.13.0",
+        "prettier": "^2.8.6",
+        "tap": "^16.3.4",
+        "ts-node": "^10.9.1",
+        "typedoc": "^0.23.28",
+        "typescript": "^5.0.2"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "preprepare": "rm -rf dist",
+        "prepare": "tsc -p tsconfig.json && tsc -p tsconfig-esm.json && bash ./scripts/fixup.sh",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "c8 tap",
+        "snap": "c8 tap",
+        "format": "prettier --write . --loglevel warn",
+        "typedoc": "typedoc --tsconfig tsconfig-esm.json ./src/*.ts"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "tap": {
+        "coverage": false,
+        "jobs": 1,
+        "node-arg": [
+          "--no-warnings",
+          "--loader",
+          "ts-node/esm"
+        ],
+        "ts": false
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "458776d9cf8be89712aa1f7b45bb2163ce15ef4a",
+      "bugs": {
+        "url": "https://github.com/tapjs/signal-exit/issues"
+      },
+      "_id": "signal-exit@4.1.0",
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.7.2",
+      "dist": {
+        "integrity": "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==",
+        "shasum": "952188c1cbd546070e2dd20d0f41c0ae0530cb04",
+        "tarball": "http://localhost:4260/signal-exit/signal-exit-4.1.0.tgz",
+        "fileCount": 29,
+        "unpackedSize": 76966
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/tapjs/signal-exit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tapjs/signal-exit.git"
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "bugs": {
+    "url": "https://github.com/tapjs/signal-exit/issues"
+  },
+  "license": "ISC"
+}

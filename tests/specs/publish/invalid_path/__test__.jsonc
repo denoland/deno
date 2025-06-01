@@ -1,0 +1,5 @@
+{
+  "args": "publish --token 'sadfasdf'",
+  "output": "invalid_path.out",
+  "exitCode": 1
+}

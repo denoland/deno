@@ -1,0 +1,88 @@
+{
+  "name": "exponential-backoff",
+  "description": "A utility that allows retrying a function with an exponential delay between attempts.",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "exponential-backoff",
+      "version": "3.1.1",
+      "author": {
+        "name": "Sami Sayegh"
+      },
+      "license": "Apache-2.0",
+      "_id": "exponential-backoff@3.1.1",
+      "bugs": {
+        "url": "https://github.com/coveo/exponential-backoff/issues"
+      },
+      "dist": {
+        "shasum": "64ac7526fe341ab18a39016cd22c787d01e00bf6",
+        "tarball": "http://localhost:4260/exponential-backoff/exponential-backoff-3.1.1.tgz",
+        "fileCount": 33,
+        "integrity": "sha512-dX7e/LHVJ6W3DE1MHWi9S1EYzDESENfLrYohG2G++ovZrYOkm4Knwa0mc1cn84xJOR4KEU0WSchhLbd0UklbHw==",
+        "unpackedSize": 37269
+      },
+      "jest": {
+        "testRegex": "\\.spec\\.ts$",
+        "transform": {
+          "^.+\\.ts$": "ts-jest"
+        },
+        "moduleFileExtensions": [
+          "ts",
+          "js"
+        ]
+      },
+      "main": "dist/backoff.js",
+      "husky": {
+        "hooks": {
+          "pre-commit": "lint-staged"
+        }
+      },
+      "types": "dist/backoff.d.ts",
+      "gitHead": "47b552aa6007a1320e851118d638a476cf765516",
+      "scripts": {
+        "test": "jest",
+        "build": "tsc",
+        "test:watch": "jest --watch"
+      },
+      "repository": {
+        "url": "git+https://github.com/coveo/exponential-backoff.git",
+        "type": "git"
+      },
+      "_npmVersion": "9.3.1",
+      "description": "A utility that allows retrying a function with an exponential delay between attempts.",
+      "directories": {},
+      "lint-staged": {
+        "*.{ts,json,md}": [
+          "prettier --write",
+          "git add"
+        ]
+      },
+      "_nodeVersion": "18.14.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "jest": "^24.9.0",
+        "husky": "^3.0.9",
+        "ts-jest": "^24.1.0",
+        "prettier": "^1.18.2",
+        "typescript": "^3.6.4",
+        "@types/jest": "^24.0.18",
+        "@types/node": "^10.14.21",
+        "lint-staged": "^9.4.2"
+      }
+    }
+  },
+  "author": {
+    "name": "Sami Sayegh"
+  },
+  "repository": {
+    "url": "git+https://github.com/coveo/exponential-backoff.git",
+    "type": "git"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/coveo/exponential-backoff#readme",
+  "bugs": {
+    "url": "https://github.com/coveo/exponential-backoff/issues"
+  }
+}

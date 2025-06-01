@@ -1,0 +1,8 @@
+{
+  "envs": {
+    "DYLD_FALLBACK_LIBRARY_PATH": "",
+    "LD_LIBRARY_PATH": ""
+  },
+  "args": "run --allow-run --deny-run=deno --allow-read main.ts",
+  "output": "main.out"
+}

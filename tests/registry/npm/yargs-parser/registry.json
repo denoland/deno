@@ -1,0 +1,71 @@
+{
+  "name": "yargs-parser",
+  "description": "the mighty option parser used by yargs",
+  "dist-tags": {
+    "latest": "18.1.3"
+  },
+  "versions": {
+    "18.1.3": {
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "description": "the mighty option parser used by yargs",
+      "main": "index.js",
+      "scripts": {
+        "fix": "standard --fix",
+        "test": "c8 --reporter=text --reporter=html  mocha test/*.js",
+        "posttest": "standard",
+        "coverage": "c8 report --check-coverage check-coverage --lines=100 --branches=97 --statements=100"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/yargs/yargs-parser.git"
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "devDependencies": {
+        "c8": "^7.0.1",
+        "chai": "^4.2.0",
+        "mocha": "^7.0.0",
+        "standard": "^14.3.1"
+      },
+      "dependencies": {
+        "camelcase": "^5.0.0",
+        "decamelize": "^1.2.0"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "bugs": {
+        "url": "https://github.com/yargs/yargs-parser/issues"
+      },
+      "_id": "yargs-parser@18.1.3",
+      "_nodeVersion": "10.19.0",
+      "_npmVersion": "6.13.4",
+      "dist": {
+        "integrity": "sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==",
+        "shasum": "be68c4975c6b2abf469236b0c870362fab09a7b0",
+        "tarball": "http://localhost:4260/yargs-parser/yargs-parser-18.1.3.tgz",
+        "fileCount": 6,
+        "unpackedSize": 71482
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/yargs/yargs-parser#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yargs/yargs-parser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yargs/yargs-parser/issues"
+  }
+}

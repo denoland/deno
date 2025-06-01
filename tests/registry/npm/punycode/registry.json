@@ -1,0 +1,79 @@
+{
+  "name": "punycode",
+  "description": "A robust Punycode converter that fully complies to RFC 3492 and RFC 5891, and works on nearly all JavaScript platforms.",
+  "dist-tags": {
+    "latest": "2.1.1"
+  },
+  "versions": {
+    "2.1.1": {
+      "name": "punycode",
+      "version": "2.1.1",
+      "description": "A robust Punycode converter that fully complies to RFC 3492 and RFC 5891, and works on nearly all JavaScript platforms.",
+      "main": "punycode.js",
+      "jsnext:main": "punycode.es6.js",
+      "module": "punycode.es6.js",
+      "engines": {
+        "node": ">=6"
+      },
+      "license": "MIT",
+      "author": {
+        "name": "Mathias Bynens",
+        "url": "https://mathiasbynens.be/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/bestiejs/punycode.js.git"
+      },
+      "bugs": {
+        "url": "https://github.com/bestiejs/punycode.js/issues"
+      },
+      "files": [
+        "LICENSE-MIT.txt",
+        "punycode.js",
+        "punycode.es6.js"
+      ],
+      "scripts": {
+        "test": "mocha tests",
+        "prepublish": "node scripts/prepublish.js"
+      },
+      "devDependencies": {
+        "codecov": "^1.0.1",
+        "istanbul": "^0.4.1",
+        "mocha": "^2.5.3"
+      },
+      "jspm": {
+        "map": {
+          "./punycode.js": {
+            "node": "@node/punycode"
+          }
+        }
+      },
+      "gitHead": "68df855dc42d1086ada161331b3074468e8d848d",
+      "_id": "punycode@2.1.1",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.11.1",
+      "dist": {
+        "integrity": "sha512-XRsRjdf+j5ml+y/6GKHPZbrF/8p2Yga0JPtdqTIY2Xe5ohJPD9saDJJLPvp9+NSBprVvevdXZybnj2cv8OEd0A==",
+        "shasum": "b58b010ac40c22c5657616c8d2c2c02c7bf479ec",
+        "tarball": "http://localhost:4260/punycode/punycode-2.1.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 32434
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Mathias Bynens",
+    "url": "https://mathiasbynens.be/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bestiejs/punycode.js.git"
+  },
+  "homepage": "https://mths.be/punycode",
+  "bugs": {
+    "url": "https://github.com/bestiejs/punycode.js/issues"
+  },
+  "license": "MIT"
+}

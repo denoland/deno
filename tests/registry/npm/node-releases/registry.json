@@ -1,0 +1,23 @@
+{
+  "name": "node-releases",
+  "dist-tags": {
+    "latest": "2.0.10"
+  },
+  "versions": {
+    "2.0.10": {
+      "name": "node-releases",
+      "version": "2.0.10",
+      "devDependencies": {
+        "semver": "^7.3.5"
+      },
+      "dist": {
+        "integrity": "sha512-5GFldHPXVG/YZmFzJvKK2zDSzPKhEp0+ZR5SVaoSag9fsL5YgHbUHDfnG5494ISANDcK4KwPXAx2xqVEydmd7w==",
+        "shasum": "c311ebae3b6a148c89b1813fd7c4d3c024ef537f",
+        "tarball": "http://localhost:4260/node-releases/node-releases-2.0.10.tgz",
+        "fileCount": 5,
+        "unpackedSize": 26375
+      }
+    }
+  },
+  "modified": "2023-02-16T04:28:15.119Z"
+}

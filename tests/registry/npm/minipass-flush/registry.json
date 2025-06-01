@@ -1,0 +1,74 @@
+{
+  "name": "minipass-flush",
+  "dist-tags": {
+    "latest": "1.0.5"
+  },
+  "versions": {
+    "1.0.5": {
+      "name": "minipass-flush",
+      "version": "1.0.5",
+      "description": "A Minipass stream that calls a flush function before emitting 'end'",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.9"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-flush.git"
+      },
+      "engines": {
+        "node": ">= 8"
+      },
+      "gitHead": "9625266c18ca9d14bb13f85dfcdf8cb67763b14e",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-flush/issues"
+      },
+      "_id": "minipass-flush@1.0.5",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-JmQSYYpPUqX5Jyn1mXaRwOda1uQ8HP5KAT/oDSLCzt1BYRhQU0/hDtsB1ufZfEEzMZ9aAVmsBw8+FWsIXlClWw==",
+        "shasum": "82e7135d7e89a50ffe64610a787953c4c4cbb373",
+        "tarball": "http://localhost:4260/minipass-flush/minipass-flush-1.0.5.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3771
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that calls a flush function before emitting 'end'",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/minipass-flush#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-flush.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-flush/issues"
+  }
+}

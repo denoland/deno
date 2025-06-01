@@ -1,0 +1,11 @@
+Check [WILDCARD]/unhandled_rejection.ts
+error: (in promise) Error: rejection
+  reject(new Error("rejection"));
+         ^
+    at [WILDCARD]/unhandled_rejection.ts:2:10
+    at new Promise (<anonymous>)
+    at [WILDCARD]/unhandled_rejection.ts:1:1
+This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+error: Bench failed

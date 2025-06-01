@@ -1,0 +1,359 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+import {
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+  assertThrows,
+  unreachable,
+} from "@std/assert";
+
+Deno.test("fragment", () => {
+  assertThrows(() => new WebSocketStream("ws://localhost:4242/#"));
+  assertThrows(() => new WebSocketStream("ws://localhost:4242/#foo"));
+});
+
+Deno.test("duplicate protocols", () => {
+  assertThrows(() =>
+    new WebSocketStream("ws://localhost:4242", {
+      protocols: ["foo", "foo"],
+    })
+  );
+});
+
+Deno.test(
+  "connect & close custom valid code",
+  { sanitizeOps: false },
+  async () => {
+    const ws = new WebSocketStream("ws://localhost:4242");
+    await ws.opened;
+    ws.close({ code: 1000 });
+    await ws.closed;
+  },
+);
+
+Deno.test(
+  "connect & close custom invalid reason",
+  { sanitizeOps: false },
+  async () => {
+    const ws = new WebSocketStream("ws://localhost:4242");
+    await ws.opened;
+    assertThrows(() => ws.close({ code: 1000, reason: "".padEnd(124, "o") }));
+    ws.close();
+    await ws.closed;
+  },
+);
+
+Deno.test("echo string", { sanitizeOps: false }, async () => {
+  const ws = new WebSocketStream("ws://localhost:4242");
+  const { readable, writable } = await ws.opened;
+  await writable.getWriter().write("foo");
+  const res = await readable.getReader().read();
+  assertEquals(res.value, "foo");
+  ws.close();
+  await ws.closed;
+});
+
+// TODO(mmastrac): This fails -- perhaps it isn't respecting the TLS settings?
+Deno.test("echo string tls", { ignore: true }, async () => {
+  const ws = new WebSocketStream("wss://localhost:4243");
+  const { readable, writable } = await ws.opened;
+  await writable.getWriter().write("foo");
+  const res = await readable.getReader().read();
+  assertEquals(res.value, "foo");
+  ws.close();
+  await ws.closed;
+});
+
+Deno.test("websocket error", { sanitizeOps: false }, async () => {
+  const ws = new WebSocketStream("wss://localhost:4242");
+  await Promise.all([
+    // TODO(mmastrac): this exception should be tested
+    assertRejects(
+      () => ws.opened,
+      // Deno.errors.UnexpectedEof,
+      // "tls handshake eof",
+    ),
+    // TODO(mmastrac): this exception should be tested
+    assertRejects(
+      () => ws.closed,
+      // Deno.errors.UnexpectedEof,
+      // "tls handshake eof",
+    ),
+  ]);
+});
+
+Deno.test("echo uint8array", { sanitizeOps: false }, async () => {
+  const ws = new WebSocketStream("ws://localhost:4242");
+  const { readable, writable } = await ws.opened;
+  const uint = new Uint8Array([102, 111, 111]);
+  await writable.getWriter().write(uint);
+  const res = await readable.getReader().read();
+  assertEquals(res.value, uint);
+  ws.close();
+  await ws.closed;
+});
+
+Deno.test("aborting immediately throws an AbortError", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort();
+  // TODO(mmastrac): this exception should be tested
+  await assertRejects(
+    () => wss.opened,
+    // (error: Error) => {
+    //   assert(error instanceof DOMException);
+    //   assertEquals(error.name, "AbortError");
+    // },
+  );
+  // TODO(mmastrac): this exception should be tested
+  await assertRejects(
+    () => wss.closed,
+    // (error: Error) => {
+    //   assert(error instanceof DOMException);
+    //   assertEquals(error.name, "AbortError");
+    // },
+  );
+});
+
+Deno.test("aborting immediately with a reason throws that reason", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  const abortReason = new Error();
+  controller.abort(abortReason);
+  // TODO(mmastrac): this exception should be tested
+  await assertRejects(
+    () => wss.opened,
+    // (error: Error) => assertEquals(error, abortReason),
+  );
+  // TODO(mmastrac): this exception should be tested
+  await assertRejects(
+    () => wss.closed,
+    // (error: Error) => assertEquals(error, abortReason),
+  );
+});
+
+Deno.test("aborting immediately with a primitive as reason throws that primitive", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort("Some string");
+  await wss.opened.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
+  await wss.closed.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
+});
+
+Deno.test("headers", { sanitizeOps: false }, async () => {
+  const listener = Deno.listen({ port: 4512 });
+  const promise = (async () => {
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    assertEquals(request.headers.get("x-some-header"), "foo");
+    const { response, socket } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => socket.close();
+      socket.onclose = () => resolve();
+    });
+    await respondWith(response);
+    await p;
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4512", {
+    headers: [["x-some-header", "foo"]],
+  });
+  await ws.opened;
+  await promise;
+  await ws.closed;
+  listener.close();
+});
+
+Deno.test("forbidden headers", async () => {
+  const forbiddenHeaders = [
+    "sec-websocket-accept",
+    "sec-websocket-extensions",
+    "sec-websocket-key",
+    "sec-websocket-protocol",
+    "sec-websocket-version",
+    "upgrade",
+    "connection",
+  ];
+
+  const listener = Deno.listen({ port: 4512 });
+  const promise = (async () => {
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    for (const [key] of request.headers) {
+      assertNotEquals(key, "foo");
+    }
+    const { response, socket } = Deno.upgradeWebSocket(request);
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => socket.close();
+      socket.onclose = () => resolve();
+    });
+    await respondWith(response);
+    await p;
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4512", {
+    headers: forbiddenHeaders.map((header) => [header, "foo"]),
+  });
+  await ws.opened;
+  await promise;
+  await ws.closed;
+  listener.close();
+});
+
+Deno.test("sync close with empty stream", { sanitizeOps: false }, async () => {
+  const listener = Deno.listen({ port: 4512 });
+  const promise = (async () => {
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    const { response, socket } = Deno.upgradeWebSocket(request);
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => {
+        socket.send("first message");
+        socket.send("second message");
+      };
+      socket.onclose = () => resolve();
+    });
+    await respondWith(response);
+    await p;
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4512");
+  const { readable } = await ws.opened;
+  const reader = readable.getReader();
+  const firstMessage = await reader.read();
+  assertEquals(firstMessage.value, "first message");
+  const secondMessage = await reader.read();
+  assertEquals(secondMessage.value, "second message");
+  ws.close({ code: 1000 });
+  await ws.closed;
+  await promise;
+  listener.close();
+});
+
+Deno.test(
+  "sync close with unread messages in stream",
+  { sanitizeOps: false },
+  async () => {
+    const listener = Deno.listen({ port: 4512 });
+    const promise = (async () => {
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const { request, respondWith } = (await httpConn.nextRequest())!;
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      const p = new Promise<void>((resolve) => {
+        socket.onopen = () => {
+          socket.send("first message");
+          socket.send("second message");
+          socket.send("third message");
+          socket.send("fourth message");
+        };
+        socket.onclose = () => resolve();
+      });
+      await respondWith(response);
+      await p;
+    })();
+
+    const ws = new WebSocketStream("ws://localhost:4512");
+    const { readable } = await ws.opened;
+    const reader = readable.getReader();
+    const firstMessage = await reader.read();
+    assertEquals(firstMessage.value, "first message");
+    const secondMessage = await reader.read();
+    assertEquals(secondMessage.value, "second message");
+    ws.close({ code: 1000 });
+    await ws.closed;
+    await promise;
+    listener.close();
+  },
+);
+
+// TODO(mmastrac): Failed on CI, disabled
+Deno.test("async close with empty stream", { ignore: true }, async () => {
+  const listener = Deno.listen({ port: 4512 });
+  const promise = (async () => {
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    const { response, socket } = Deno.upgradeWebSocket(request);
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => {
+        socket.send("first message");
+        socket.send("second message");
+      };
+      socket.onclose = () => resolve();
+    });
+    await respondWith(response);
+    await p;
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4512");
+  const { readable } = await ws.opened;
+  const reader = readable.getReader();
+  const firstMessage = await reader.read();
+  assertEquals(firstMessage.value, "first message");
+  const secondMessage = await reader.read();
+  assertEquals(secondMessage.value, "second message");
+  setTimeout(() => {
+    ws.close({ code: 1000 });
+  }, 0);
+  await ws.closed;
+  await promise;
+  listener.close();
+});
+
+// TODO(mmastrac): Failed on CI, disabled
+Deno.test(
+  "async close with unread messages in stream",
+  { ignore: true },
+  async () => {
+    const listener = Deno.listen({ port: 4512 });
+    const promise = (async () => {
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const { request, respondWith } = (await httpConn.nextRequest())!;
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      const p = new Promise<void>((resolve) => {
+        socket.onopen = () => {
+          socket.send("first message");
+          socket.send("second message");
+          socket.send("third message");
+          socket.send("fourth message");
+        };
+        socket.onclose = () => resolve();
+      });
+      await respondWith(response);
+      await p;
+    })();
+
+    const ws = new WebSocketStream("ws://localhost:4512");
+    const { readable } = await ws.opened;
+    const reader = readable.getReader();
+    const firstMessage = await reader.read();
+    assertEquals(firstMessage.value, "first message");
+    const secondMessage = await reader.read();
+    assertEquals(secondMessage.value, "second message");
+    setTimeout(() => {
+      ws.close({ code: 1000 });
+    }, 0);
+    await ws.closed;
+    await promise;
+    listener.close();
+  },
+);

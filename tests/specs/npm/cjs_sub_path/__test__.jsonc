@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read cjs_sub_path/main.js",
+  "output": "cjs_sub_path/main.out"
+}

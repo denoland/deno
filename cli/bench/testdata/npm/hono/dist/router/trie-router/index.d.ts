@@ -1,0 +1,1 @@
+export { TrieRouter } from './router';

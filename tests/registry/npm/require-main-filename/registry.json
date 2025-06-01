@@ -1,0 +1,64 @@
+{
+  "name": "require-main-filename",
+  "description": "shim for require.main.filename() that works in as many environments as possible",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "description": "shim for require.main.filename() that works in as many environments as possible",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "standard",
+        "test": "tap --coverage test.js",
+        "release": "standard-version"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/yargs/require-main-filename.git"
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "bugs": {
+        "url": "https://github.com/yargs/require-main-filename/issues"
+      },
+      "devDependencies": {
+        "chai": "^4.0.0",
+        "standard": "^10.0.3",
+        "standard-version": "^4.0.0",
+        "tap": "^11.0.0"
+      },
+      "gitHead": "1acaf42e8ababa22c191319b319f25df833ffd79",
+      "_id": "require-main-filename@2.0.0",
+      "_npmVersion": "6.5.0",
+      "_nodeVersion": "11.8.0",
+      "dist": {
+        "integrity": "sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==",
+        "shasum": "d0b329ecc7cc0f61649f62215be69af54aa8989b",
+        "tarball": "http://localhost:4260/require-main-filename/require-main-filename-2.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 3928
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/yargs/require-main-filename#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/yargs/require-main-filename.git"
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "bugs": {
+    "url": "https://github.com/yargs/require-main-filename/issues"
+  },
+  "license": "ISC"
+}

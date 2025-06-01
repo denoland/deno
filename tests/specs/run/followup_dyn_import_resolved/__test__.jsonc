@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read followup_dyn_import_resolves/main.ts",
+  "output": "followup_dyn_import_resolves/main.ts.out"
+}

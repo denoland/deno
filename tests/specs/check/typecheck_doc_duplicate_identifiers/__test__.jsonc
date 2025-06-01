@@ -1,0 +1,5 @@
+{
+  "args": "check --doc --config ../../../config/deno.json mod.ts",
+  "exitCode": 0,
+  "output": "mod.out"
+}

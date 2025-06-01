@@ -1,0 +1,2 @@
+[WILDCARD]error: Module not found "file:///[WILDCARD]/bad-module.ts".
+    at file:///[WILDCARD]/error_004_missing_module.ts:1:28

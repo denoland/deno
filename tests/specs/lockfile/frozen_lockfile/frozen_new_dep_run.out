@@ -1,0 +1,12 @@
+Download http://localhost:4260/@denotest%2fsubtract
+error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+changes:
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "npm:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/subtract@1": "1.0.0"
+10 | -    }
+11 | +    },
+12 | +    "@denotest/subtract@1.0.0": {
+13 | +      "integrity": "[WILDCARD]",
+14 | +      "tarball": "http://localhost:4260/@denotest/subtract/1.0.0.tgz"
+15 | +    }

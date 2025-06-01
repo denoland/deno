@@ -1,0 +1,26 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/different-nested-dep@*": "1.0.0"
+  },
+  "npm": {
+    "@denotest/different-nested-dep-child@1.0.0": {},
+    "@denotest/different-nested-dep@1.0.0": {
+      "integrity": "sha512-lsB/nZ3X5zTVihQ0YeX97wQcYMoUfvnOc2wf5Y83N6OtqOJEoekRqXnudMZptyPNam02M6JRZVKxg4E6arKc1Q==",
+      "dependencies": [
+        "@denotest/different-nested-dep-child"
+      ],
+      "tarball": "http://localhost:4260/@denotest/different-nested-dep/1.0.0.tgz"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/different-nested-dep@*"
+      ]
+    },
+    "patches": {
+      "npm:@denotest/different-nested-dep-child@1.0.0": {}
+    }
+  }
+}

@@ -1,0 +1,6 @@
+// ensures we don't reparse a source file when transpiling
+// because it should have already been parsed by module analysis
+{
+  "args": "run --log-level=debug main.ts",
+  "output": "main.out"
+}

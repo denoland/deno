@@ -1,0 +1,18 @@
+Check [WILDCARD]/main.ts
+Check [WILDCARD]/main.ts$2-5.ts
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const a: string = 1;
+      ^
+    at file://[WILDCARD]/main.ts:8:7
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+    const b: number = "1";
+          ^
+    at file://[WILDCARD]/main.ts$2-5.ts:2:11
+
+Found 2 errors.
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

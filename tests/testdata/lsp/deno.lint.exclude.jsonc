@@ -1,0 +1,16 @@
+{
+  "lint": {
+    "exclude": [
+      "ignored.ts"
+    ],
+    "rules": {
+      "exclude": [
+        "camelcase"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ],
+      "tags": []
+    }
+  }
+}

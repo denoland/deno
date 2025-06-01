@@ -1,0 +1,3 @@
+DANGER: TLS certificate validation is disabled for all hostnames
+[WILDCARD]
+Hello

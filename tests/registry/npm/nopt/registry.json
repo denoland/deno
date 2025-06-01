@@ -1,0 +1,92 @@
+{
+  "name": "nopt",
+  "description": "Option parsing for Node, supporting types, shorthands, etc. Used by npm.",
+  "dist-tags": {
+    "latest": "7.2.1"
+  },
+  "versions": {
+    "7.2.1": {
+      "name": "nopt",
+      "version": "7.2.1",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "nopt@7.2.1",
+      "bugs": {
+        "url": "https://github.com/npm/nopt/issues"
+      },
+      "bin": {
+        "nopt": "bin/nopt.js"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "1cac0eab9b8e97c9093338446eddd40b2c8ca1e7",
+        "tarball": "http://localhost:4260/nopt/nopt-7.2.1.tgz",
+        "fileCount": 8,
+        "integrity": "sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/nopt@7.2.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 26203
+      },
+      "main": "lib/nopt.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "6d33cd7a772c9594d42417c69e7adeb497b16b03",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/nopt.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "Option parsing for Node, supporting types, shorthands, etc. Used by npm.",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.22.0",
+        "windowsCI": false,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.1.0",
+      "dependencies": {
+        "abbrev": "^2.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/nopt.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/nopt#readme",
+  "bugs": {
+    "url": "https://github.com/npm/nopt/issues"
+  }
+}

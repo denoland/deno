@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "cache --allow-import --lock --frozen=false main.ts",
+    "output": "main.cache.out"
+  }, {
+    "args": [
+      "eval",
+      "console.log(Deno.readTextFileSync('deno.lock').trim())"
+    ],
+    "output": "deno.lock.out"
+  }]
+}

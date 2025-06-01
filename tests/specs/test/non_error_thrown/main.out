@@ -1,0 +1,40 @@
+running 6 tests from [WILDLINE]/main.ts
+foo ... FAILED ([WILDLINE])
+bar ... FAILED ([WILDLINE])
+baz ... FAILED ([WILDLINE])
+qux ... FAILED ([WILDLINE])
+quux ... FAILED ([WILDLINE])
+quuz ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+foo => [WILDLINE]/main.ts:1:6
+error: undefined
+
+bar => [WILDLINE]/main.ts:5:6
+error: null
+
+baz => [WILDLINE]/main.ts:9:6
+error: 123
+
+qux => [WILDLINE]/main.ts:13:6
+error: "Hello, world!"
+
+quux => [WILDLINE]/main.ts:17:6
+error: [ 1, 2, 3 ]
+
+quuz => [WILDLINE]/main.ts:21:6
+error: { a: "Hello, world!", b: [ 1, 2, 3 ] }
+
+ FAILURES 
+
+foo => [WILDLINE]/main.ts:1:6
+bar => [WILDLINE]/main.ts:5:6
+baz => [WILDLINE]/main.ts:9:6
+qux => [WILDLINE]/main.ts:13:6
+quux => [WILDLINE]/main.ts:17:6
+quuz => [WILDLINE]/main.ts:21:6
+
+FAILED | 0 passed | 6 failed ([WILDLINE])
+
+error: Test failed

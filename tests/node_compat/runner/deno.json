@@ -1,0 +1,7 @@
+{
+  "importMap": "../../../import_map.json",
+  "tasks": {
+    "setup": "deno run --allow-read --allow-write ./setup.ts",
+    "test": "deno test -A ../test.ts --"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "name": "make-fetch-happen",
+  "description": "Opinionated, caching, retrying fetch client",
+  "dist-tags": {
+    "latest": "13.0.1"
+  },
+  "versions": {
+    "13.0.1": {
+      "name": "make-fetch-happen",
+      "version": "13.0.1",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "make-fetch-happen@13.0.1",
+      "bugs": {
+        "url": "https://github.com/npm/make-fetch-happen/issues"
+      },
+      "tap": {
+        "color": 1,
+        "files": "test/*.js",
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "timeout": 60,
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "273ba2f78f45e1f3a6dca91cede87d9fa4821e36",
+        "tarball": "http://localhost:4260/make-fetch-happen/make-fetch-happen-13.0.1.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-cKTUFc/rbKUd/9meOvgrpJ2WrNzymt6jfRDdwg5UCnVzv9dTpEj9JS5m3wtziXVCjluIXyL8pcaukYqezIzZQA==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/make-fetch-happen@13.0.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 52787
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^16.14.0 || >=18.0.0"
+      },
+      "gitHead": "0b3ba78667f9984e42a32a73adde2ebd7ea1b671",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/make-fetch-happen.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.6.0",
+      "description": "Opinionated, caching, retrying fetch client",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.21.4",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "20.12.2",
+      "dependencies": {
+        "ssri": "^10.0.0",
+        "cacache": "^18.0.0",
+        "minipass": "^7.0.2",
+        "proc-log": "^4.2.0",
+        "is-lambda": "^1.0.1",
+        "negotiator": "^0.6.3",
+        "@npmcli/agent": "^2.0.0",
+        "promise-retry": "^2.0.1",
+        "minipass-fetch": "^3.0.0",
+        "minipass-flush": "^1.0.5",
+        "minipass-pipeline": "^1.2.4",
+        "http-cache-semantics": "^4.1.1"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "nock": "^13.2.4",
+        "safe-buffer": "^5.2.1",
+        "standard-version": "^9.3.2",
+        "@npmcli/template-oss": "4.21.4",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/make-fetch-happen.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/make-fetch-happen#readme",
+  "bugs": {
+    "url": "https://github.com/npm/make-fetch-happen/issues"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/types-nested-js-dts",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "types": "./index.d.mts"
+    }
+  }
+}

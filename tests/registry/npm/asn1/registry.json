@@ -1,0 +1,66 @@
+{
+  "name": "asn1",
+  "description": "Contains parsers and serializers for ASN.1 (currently BER only)",
+  "dist-tags": {
+    "latest": "0.2.6"
+  },
+  "versions": {
+    "0.2.6": {
+      "author": {
+        "name": "Joyent",
+        "url": "joyent.com"
+      },
+      "name": "asn1",
+      "description": "Contains parsers and serializers for ASN.1 (currently BER only)",
+      "version": "0.2.6",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/joyent/node-asn1.git"
+      },
+      "main": "lib/index.js",
+      "dependencies": {
+        "safer-buffer": "~2.1.0"
+      },
+      "devDependencies": {
+        "istanbul": "^0.3.6",
+        "faucet": "0.0.1",
+        "tape": "^3.5.0",
+        "eslint": "2.13.1",
+        "eslint-plugin-joyent": "~1.3.0"
+      },
+      "scripts": {
+        "test": "tape ./test/ber/*.test.js"
+      },
+      "license": "MIT",
+      "gitHead": "c80ab61a3ba35d77deb0a44b9c2bb7abc246dc09",
+      "bugs": {
+        "url": "https://github.com/joyent/node-asn1/issues"
+      },
+      "_id": "asn1@0.2.6",
+      "_nodeVersion": "12.22.7",
+      "_npmVersion": "6.14.13",
+      "dist": {
+        "integrity": "sha512-ix/FxPn0MDjeyJ7i/yoHGFt/EX6LyNbxSEhPPXODPL+KB0VPk86UYfL0lMdy+KCnv+fmvIzySwaK5COwqVbWTQ==",
+        "shasum": "0d3a7bb6e64e02a90c0303b31f292868ea09a08d",
+        "tarball": "http://localhost:4260/asn1/asn1-0.2.6.tgz",
+        "fileCount": 10,
+        "unpackedSize": 19757
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Joyent",
+    "url": "joyent.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joyent/node-asn1.git"
+  },
+  "homepage": "https://github.com/joyent/node-asn1#readme",
+  "bugs": {
+    "url": "https://github.com/joyent/node-asn1/issues"
+  },
+  "license": "MIT"
+}

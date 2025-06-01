@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-read main.js",
+  "output": "[WILDCARD]",
+  "exitCode": 123
+}

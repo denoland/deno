@@ -1,0 +1,92 @@
+{
+  "name": "ssri",
+  "description": "Standard Subresource Integrity library -- parses, serializes, generates, and verifies integrity metadata according to the SRI spec.",
+  "dist-tags": {
+    "latest": "10.0.6"
+  },
+  "versions": {
+    "10.0.6": {
+      "name": "ssri",
+      "version": "10.0.6",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "ssri@10.0.6",
+      "bugs": {
+        "url": "https://github.com/npm/ssri/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "a8aade2de60ba2bce8688e3fa349bad05c7dc1e5",
+        "tarball": "http://localhost:4260/ssri/ssri-10.0.6.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-MGrFH9Z4NP9Iyhqn16sDtBpRRNJ0Y2hNa6D65h736fVSaPCHr4DM4sWUNvVaSuC+0OBGhwsrydQwmgfg5LncqQ==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/ssri@10.0.6",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 38738
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "422a99ed3c5f17abcdc5fea50add6c05dd2e1703",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "coverage": "tap",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "prerelease": "npm t",
+        "postrelease": "npm publish",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/ssri.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "Standard Subresource Integrity library -- parses, serializes, generates, and verifies integrity metadata according to the SRI spec.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.22.0",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.1.0",
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/ssri.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/ssri#readme",
+  "bugs": {
+    "url": "https://github.com/npm/ssri/issues"
+  }
+}

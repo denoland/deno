@@ -1,0 +1,5 @@
+{
+  "args": "lint --json main.ts",
+  "output": "expected_from_stdin_json.out",
+  "exitCode": 1
+}

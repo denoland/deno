@@ -1,0 +1,81 @@
+{
+  "name": "unique-slug",
+  "description": "Generate a unique character string suitible for use in files and URLs.",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "unique-slug",
+      "version": "4.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "unique-slug@4.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/unique-slug/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "6bae6bb16be91351badd24cdce741f892a6532e3",
+        "tarball": "http://localhost:4260/unique-slug/unique-slug-4.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-WrcA6AyEfqDX5bWige/4NQfPZMtASNVxdmWR76WESYQVAACSgWcR6e9i0mofqqBxYFtL4oAxPIptY73/0YE1DQ==",
+        "unpackedSize": 2579
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "a1e990fea3f416b231fd0ffebc9f55bfa7359fcc",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/unique-slug.git",
+        "type": "git"
+      },
+      "_npmVersion": "8.19.2",
+      "description": "Generate a unique character string suitible for use in files and URLs.",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.5.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.10.0",
+      "dependencies": {
+        "imurmurhash": "^0.1.4"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.5.1",
+        "@npmcli/eslint-config": "^3.1.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/unique-slug.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/unique-slug#readme",
+  "bugs": {
+    "url": "https://github.com/npm/unique-slug/issues"
+  }
+}

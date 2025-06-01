@@ -1,0 +1,182 @@
+{
+  "name": "preact-render-to-string",
+  "description": "Render JSX to an HTML string, with support for Preact components.",
+  "dist-tags": {
+    "latest": "6.4.0"
+  },
+  "versions": {
+    "6.4.0": {
+      "name": "preact-render-to-string",
+      "amdName": "preactRenderToString",
+      "version": "6.4.0",
+      "description": "Render JSX to an HTML string, with support for Preact components.",
+      "main": "dist/index.js",
+      "umd:main": "dist/index.umd.js",
+      "module": "dist/index.module.js",
+      "jsnext:main": "dist/index.module.js",
+      "types": "src/index.d.ts",
+      "exports": {
+        ".": {
+          "types": "./src/index.d.ts",
+          "browser": "./dist/index.module.js",
+          "umd": "./dist/index.umd.js",
+          "import": "./dist/index.mjs",
+          "require": "./dist/index.js"
+        },
+        "./jsx": {
+          "types": "./jsx.d.ts",
+          "browser": "./dist/jsx.module.js",
+          "umd": "./dist/jsx.umd.js",
+          "import": "./dist/jsx.mjs",
+          "require": "./dist/jsx.js"
+        },
+        "./package.json": "./package.json"
+      },
+      "scripts": {
+        "bench": "BABEL_ENV=test node -r @babel/register benchmarks index.js",
+        "bench:v8": "BABEL_ENV=test microbundle benchmarks/index.js -f modern --alias benchmarkjs-pretty=benchmarks/lib/benchmark-lite.js --external none --target node --no-compress --no-sourcemap --raw -o benchmarks/.v8.mjs && v8 --module benchmarks/.v8.mjs",
+        "build": "npm run -s transpile && npm run -s transpile:jsx && npm run -s copy-typescript-definition",
+        "postbuild": "node ./config/node-13-exports.js && node ./config/node-commonjs.js && node ./config/node-verify-exports.js",
+        "transpile": "microbundle src/index.js -f es,cjs,umd --target web --external preact",
+        "transpile:jsx": "microbundle src/jsx.js -o dist/jsx.js --target web --external preact && microbundle dist/jsx.js -o dist/jsx.js -f cjs --external preact",
+        "copy-typescript-definition": "copyfiles -f src/*.d.ts dist",
+        "test": "eslint src test && tsc && npm run test:mocha && npm run test:mocha:compat && npm run test:mocha:debug && npm run bench",
+        "test:mocha": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js test/*.test.js",
+        "test:mocha:compat": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/compat/*.test.js'",
+        "test:mocha:debug": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/debug/index.test.js'",
+        "format": "prettier src/**/*.{d.ts,js} test/**/*.js --write",
+        "prepublishOnly": "npm run build",
+        "release": "npm run build && git commit -am $npm_package_version && git tag $npm_package_version && git push && git push --tags && npm publish"
+      },
+      "eslintConfig": {
+        "extends": "developit",
+        "rules": {
+          "react/prefer-stateless-function": 0,
+          "react/jsx-no-bind": 0,
+          "react/no-danger": 0,
+          "jest/valid-expect": 0,
+          "new-cap": 0,
+          "curly": "off",
+          "brace-style": "off",
+          "indent": "off"
+        },
+        "settings": {
+          "react": {
+            "version": "16.8"
+          }
+        }
+      },
+      "babel": {
+        "env": {
+          "test": {
+            "presets": [
+              [
+                "@babel/preset-env",
+                {
+                  "targets": {
+                    "node": true
+                  }
+                }
+              ]
+            ],
+            "plugins": [
+              [
+                "@babel/plugin-transform-react-jsx",
+                {
+                  "pragma": "h"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "minify": {
+        "compress": {
+          "reduce_funcs": false
+        }
+      },
+      "author": {
+        "name": "Jason Miller",
+        "email": "jason@developit.ca"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/developit/preact-render-to-string.git"
+      },
+      "bugs": {
+        "url": "https://github.com/developit/preact-render-to-string/issues"
+      },
+      "peerDependencies": {
+        "preact": ">=10"
+      },
+      "devDependencies": {
+        "@babel/plugin-transform-react-jsx": "^7.22.15",
+        "@babel/preset-env": "^7.23.2",
+        "@babel/register": "^7.22.15",
+        "@changesets/changelog-github": "^0.4.1",
+        "@changesets/cli": "^2.18.0",
+        "benchmarkjs-pretty": "^2.0.1",
+        "chai": "^4.3.10",
+        "copyfiles": "^2.4.1",
+        "eslint": "^7.16.0",
+        "eslint-config-developit": "^1.2.0",
+        "husky": "^4.3.6",
+        "lint-staged": "^10.5.3",
+        "microbundle": "^0.15.1",
+        "mocha": "^10.2.0",
+        "baseline-rts": "npm:preact-render-to-string@latest",
+        "preact": "^10.13.0",
+        "prettier": "^2.2.1",
+        "sinon": "^9.2.2",
+        "sinon-chai": "^3.5.0",
+        "typescript": "^5.0.0"
+      },
+      "dependencies": {
+        "pretty-format": "^3.8.0"
+      },
+      "prettier": {
+        "singleQuote": true,
+        "trailingComma": "none",
+        "useTabs": true,
+        "tabWidth": 2
+      },
+      "lint-staged": {
+        "**/*.{js,jsx,ts,tsx,yml}": [
+          "prettier --write"
+        ]
+      },
+      "husky": {
+        "hooks": {
+          "pre-commit": "lint-staged"
+        }
+      },
+      "gitHead": "797c82fd7a8cb49c2cfd1f5c3f5e94a44b473956",
+      "_id": "preact-render-to-string@6.4.0",
+      "_nodeVersion": "18.15.0",
+      "_npmVersion": "9.5.0",
+      "dist": {
+        "integrity": "sha512-pzDwezZaLbK371OiJjXDsZJwVOALzFX5M1wEh2Kr0pEApq5AV6bRH/DFbA/zNA7Lck/duyREPQLLvzu2G6hEQQ==",
+        "shasum": "03cdd661d35e9ac76bed9f0e37ccceb42cae5fa5",
+        "tarball": "http://localhost:4260/preact-render-to-string/preact-render-to-string-6.4.0.tgz",
+        "fileCount": 37,
+        "unpackedSize": 438403
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Jason Miller",
+    "email": "jason@developit.ca"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/developit/preact-render-to-string",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/developit/preact-render-to-string.git"
+  },
+  "bugs": {
+    "url": "https://github.com/developit/preact-render-to-string/issues"
+  }
+}

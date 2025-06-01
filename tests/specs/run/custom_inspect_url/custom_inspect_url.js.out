@@ -1,0 +1,47 @@
+[
+  URL {
+    href: "https://example.com/path",
+    origin: "https://example.com",
+    protocol: "https:",
+    username: "",
+    password: "",
+    host: "example.com",
+    hostname: "example.com",
+    port: "",
+    pathname: "/path",
+    hash: "",
+    search: ""
+  }
+]
+{
+  url: URL {
+    href: "https://example.com/path",
+    origin: "https://example.com",
+    protocol: "https:",
+    username: "",
+    password: "",
+    host: "example.com",
+    hostname: "example.com",
+    port: "",
+    pathname: "/path",
+    hash: "",
+    search: ""
+  }
+}
+{
+  url: [
+    URL {
+      href: "https://example.com/path",
+      origin: "https://example.com",
+      protocol: "https:",
+      username: "",
+      password: "",
+      host: "example.com",
+      hostname: "example.com",
+      port: "",
+      pathname: "/path",
+      hash: "",
+      search: ""
+    }
+  ]
+}

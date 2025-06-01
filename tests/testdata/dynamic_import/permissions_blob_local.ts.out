@@ -1,0 +1,5 @@
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDCARD]local_file.ts", run again with the --allow-read flag
+    at blob:null/[WILDCARD]:1:8
+await import(URL.createObjectURL(blob));
+^
+    at async file://[WILDCARD]/permissions_blob_local.ts:6:1

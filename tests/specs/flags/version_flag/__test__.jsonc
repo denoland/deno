@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "uppercase_v": {
+      "args": "-V",
+      "output": "[WILDCARD]"
+    },
+    "lowercase_v": {
+      "args": "-v",
+      "output": "[WILDCARD]"
+    },
+    "long_version": {
+      "args": "--version",
+      "output": "[WILDCARD]"
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "name": "glob",
+  "dist-tags": {
+    "latest": "10.4.4"
+  },
+  "versions": {
+    "10.4.4": {
+      "name": "glob",
+      "version": "10.4.4",
+      "author": {
+        "url": "https://blog.izs.me/",
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "ISC",
+      "_id": "glob@10.4.4",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-glob/issues"
+      },
+      "bin": {
+        "glob": "dist/esm/bin.mjs"
+      },
+      "tap": {
+        "before": "test/00-setup.ts"
+      },
+      "dist": {
+        "shasum": "d60943feb6f8140522117e6576a923b715718380",
+        "tarball": "http://localhost:4260/glob/glob-10.4.4.tgz",
+        "fileCount": 65,
+        "integrity": "sha512-XsOKvHsu38Xe19ZQupE6N/HENeHQBA05o3hV8labZZT2zYDg1+emxWHnc/Bm9AcCMPXfD6jt+QC7zC5JSFyumw==",
+        "unpackedSize": 475328
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "main": true,
+        "exports": {
+          ".": "./src/index.ts",
+          "./package.json": "./package.json"
+        }
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "module": "./dist/esm/index.js",
+      "engines": {
+        "node": "14 >=14.21 || 16 >=16.20 || 18 || 20 || >=22"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "source": "./src/index.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "source": "./src/index.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "78275168e1bbc7a61e372af1ba58307c27faf0cb",
+      "scripts": {
+        "prof": "bash prof.sh",
+        "snap": "tap",
+        "test": "tap",
+        "bench": "bash benchmark.sh",
+        "format": "prettier --write . --log-level warn",
+        "prepare": "tshy",
+        "preprof": "npm run prepare",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts",
+        "prebench": "npm run prepare",
+        "profclean": "rm -f v8.log profile.txt",
+        "benchclean": "node benchclean.cjs",
+        "prepublish": "npm run benchclean",
+        "preversion": "npm test",
+        "test-regen": "npm run profclean && TEST_REGEN=1 node --no-warnings --loader ts-node/esm test/00-setup.ts",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "prettier": {
+        "semi": false,
+        "useTabs": false,
+        "tabWidth": 2,
+        "endOfLine": "lf",
+        "printWidth": 75,
+        "arrowParens": "avoid",
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "experimentalTernaries": true
+      },
+      "repository": {
+        "url": "git://github.com/isaacs/node-glob.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "the most correct and second fastest glob implementation in JavaScript",
+      "directories": {},
+      "_nodeVersion": "20.13.1",
+      "dependencies": {
+        "minipass": "^7.1.2",
+        "jackspeak": "^3.1.2",
+        "minimatch": "^9.0.4",
+        "path-scurry": "^1.11.1",
+        "foreground-child": "^3.1.0",
+        "package-json-from-dist": "^1.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^19.0.0",
+        "tshy": "^1.14.0",
+        "memfs": "^3.4.13",
+        "mkdirp": "^3.0.1",
+        "rimraf": "^5.0.7",
+        "typedoc": "^0.25.12",
+        "prettier": "^3.2.5",
+        "@types/node": "^20.11.30",
+        "sync-content": "^1.0.2"
+      }
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/node-glob/issues"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://blog.izs.me/"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/node-glob#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/node-glob.git"
+  },
+  "description": "the most correct and second fastest glob implementation in JavaScript"
+}

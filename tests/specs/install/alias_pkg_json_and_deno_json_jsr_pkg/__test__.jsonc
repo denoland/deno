@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run --allow-read=. verify.ts",
+    "output": "verify.out"
+  }]
+}

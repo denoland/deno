@@ -1,0 +1,91 @@
+Check [WILDCARD]/main.ts
+running 10 tests from ./main.ts
+test 0 ... FAILED ([WILDCARD])
+test 1 ... FAILED ([WILDCARD])
+test 2 ... FAILED ([WILDCARD])
+test 3 ... FAILED ([WILDCARD])
+test 4 ... FAILED ([WILDCARD])
+test 5 ... FAILED ([WILDCARD])
+test 6 ... FAILED ([WILDCARD])
+test 7 ... FAILED ([WILDCARD])
+test 8 ... FAILED ([WILDCARD])
+test 9 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 0 => ./main.ts:1:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:2:9
+
+test 1 => ./main.ts:4:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:5:9
+
+test 2 => ./main.ts:7:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:8:9
+
+test 3 => ./main.ts:10:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:11:9
+
+test 4 => ./main.ts:13:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:14:9
+
+test 5 => ./main.ts:16:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:17:9
+
+test 6 => ./main.ts:19:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:20:9
+
+test 7 => ./main.ts:22:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:23:9
+
+test 8 => ./main.ts:25:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:26:9
+
+test 9 => ./main.ts:28:6
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/main.ts:29:9
+
+ FAILURES 
+
+test 0 => ./main.ts:1:6
+test 1 => ./main.ts:4:6
+test 2 => ./main.ts:7:6
+test 3 => ./main.ts:10:6
+test 4 => ./main.ts:13:6
+test 5 => ./main.ts:16:6
+test 6 => ./main.ts:19:6
+test 7 => ./main.ts:22:6
+test 8 => ./main.ts:25:6
+test 9 => ./main.ts:28:6
+
+FAILED | 0 passed | 10 failed ([WILDCARD])
+
+error: Test failed

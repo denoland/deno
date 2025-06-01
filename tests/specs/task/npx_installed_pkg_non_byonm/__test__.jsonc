@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "commandName": "npm",
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task say",
+    "output": "main.out"
+  }]
+}

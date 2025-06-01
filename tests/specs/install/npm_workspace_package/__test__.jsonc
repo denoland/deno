@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "tests": {
+    "use_workspace": {
+      "steps": [
+        {
+          "args": "install",
+          "output": ""
+        }
+      ]
+    },
+    "dont_use_workspace": {
+      "steps": [
+        {
+          "args": "run -A edit-import.ts ./b/deno.json @test/a2 npm:@test/a@2.0.0",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "Download http://localhost:4260/@test%2fa\nerror: npm package '@test/a' does not exist.\n",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

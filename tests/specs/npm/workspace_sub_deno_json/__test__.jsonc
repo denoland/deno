@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "member": {
+      "args": "run --allow-read --node-modules-dir=auto member/main.ts",
+      "output": "member.out"
+    },
+    "member_with_deno_json": {
+      "args": "run --allow-read --node-modules-dir=auto member_with_deno_json/main.ts",
+      "output": "member.out"
+    },
+    "non_member": {
+      "args": "run --allow-read non_member/main.ts",
+      "output": "non_member.out"
+    }
+  }
+}

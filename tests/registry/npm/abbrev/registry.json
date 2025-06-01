@@ -1,0 +1,78 @@
+{
+  "name": "abbrev",
+  "description": "Like ruby's abbrev module, but in js",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "abbrev",
+      "version": "2.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "abbrev@2.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/abbrev-js/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "cf59829b8b4f03f89dda2771cb7f3653828c89bf",
+        "tarball": "http://localhost:4260/abbrev/abbrev-2.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ==",
+        "unpackedSize": 4827
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "6eaa998b4291757a34d55d815290314c4776a30a",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/abbrev-js.git",
+        "type": "git"
+      },
+      "_npmVersion": "9.0.1",
+      "description": "Like ruby's abbrev module, but in js",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.8.0",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.12.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.8.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/abbrev-js.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/abbrev-js#readme",
+  "bugs": {
+    "url": "https://github.com/npm/abbrev-js/issues"
+  }
+}

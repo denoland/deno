@@ -1,0 +1,66 @@
+{
+  "name": "decamelize",
+  "description": "Convert a camelized string into a lowercased one with a custom separator: unicornRainbow → unicorn_rainbow",
+  "dist-tags": {
+    "latest": "1.2.0"
+  },
+  "versions": {
+    "1.2.0": {
+      "name": "decamelize",
+      "version": "1.2.0",
+      "description": "Convert a camelized string into a lowercased one with a custom separator: unicornRainbow → unicorn_rainbow",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/decamelize.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "files": [
+        "index.js"
+      ],
+      "devDependencies": {
+        "ava": "*",
+        "xo": "*"
+      },
+      "gitHead": "95980ab6fb44c40eaca7792bdf93aff7c210c805",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/decamelize/issues"
+      },
+      "_id": "decamelize@1.2.0",
+      "_shasum": "f6534d15148269b20352e7bee26f501f9a191290",
+      "_from": ".",
+      "_npmVersion": "3.8.0",
+      "_nodeVersion": "4.3.0",
+      "dist": {
+        "shasum": "f6534d15148269b20352e7bee26f501f9a191290",
+        "tarball": "http://localhost:4260/decamelize/decamelize-1.2.0.tgz",
+        "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA=="
+      },
+      "directories": {}
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/decamelize#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/decamelize.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/decamelize/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,34 @@
+name: post_publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-dl-version:
+    name: update dl.deno.land version
+    runs-on: ubuntu-latest
+    if: github.repository == 'denoland/deno'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          project_id: denoland
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          export_environment_variables: true
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
+
+      - name: Upload version file to dl.deno.land
+        run: |
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          (deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt

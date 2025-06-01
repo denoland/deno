@@ -1,0 +1,75 @@
+{
+  "name": "has",
+  "description": "Object.prototype.hasOwnProperty.call shortcut",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "has",
+      "description": "Object.prototype.hasOwnProperty.call shortcut",
+      "version": "1.0.3",
+      "author": {
+        "name": "Thiago de Arruda",
+        "email": "tpadilha84@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/tarruda/has.git"
+      },
+      "bugs": {
+        "url": "https://github.com/tarruda/has/issues"
+      },
+      "license": "MIT",
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "https://github.com/tarruda/has/blob/master/LICENSE-MIT"
+        }
+      ],
+      "main": "./src",
+      "dependencies": {
+        "function-bind": "^1.1.1"
+      },
+      "devDependencies": {
+        "@ljharb/eslint-config": "^12.2.1",
+        "eslint": "^4.19.1",
+        "tape": "^4.9.0"
+      },
+      "engines": {
+        "node": ">= 0.4.0"
+      },
+      "scripts": {
+        "lint": "eslint .",
+        "pretest": "npm run lint",
+        "test": "tape test"
+      },
+      "gitHead": "4edf96f2dec87ad6b6e68482e8f6d7c8eb7e07e6",
+      "_id": "has@1.0.3",
+      "_npmVersion": "6.1.0",
+      "_nodeVersion": "10.3.0",
+      "dist": {
+        "integrity": "sha512-f2dvO0VU6Oej7RkWJGrehjbzMAjFp5/VKPp5tTpWIV4JHHZK1/BxbFRtf/siA2SWTe09caDmVtYYzWEIbBS4zw==",
+        "shasum": "722d7cbfc1f6aa8241f16dd814e011e1f41e8796",
+        "tarball": "http://localhost:4260/has/has-1.0.3.tgz",
+        "fileCount": 5,
+        "unpackedSize": 2770
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Thiago de Arruda",
+    "email": "tpadilha84@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tarruda/has.git"
+  },
+  "homepage": "https://github.com/tarruda/has",
+  "bugs": {
+    "url": "https://github.com/tarruda/has/issues"
+  },
+  "license": "MIT"
+}

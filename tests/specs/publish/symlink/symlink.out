@@ -1,0 +1,15 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+warning[unsupported-file-type]: unsupported file type 'symlink'
+ --> [WILDCARD]symlink
+  = hint: remove the file, or add it to 'publish.exclude' in the config file
+
+  info: only files and directories are supported
+  info: the file was ignored and will not be published
+  docs: https://jsr.io/go/unsupported-file-type
+
+Simulating publish of @foo/bar@1.0.0 with files:
+   [WILDCARD]deno.json (87B)
+   [WILDCARD]mod.ts (56B)
+Success Dry run complete

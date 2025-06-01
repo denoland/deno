@@ -1,0 +1,57 @@
+{
+  "tests": {
+    "info": {
+      "args": "info main.ts",
+      "output": "info.out"
+    },
+    "cache": {
+      "args": "cache main.ts",
+      "output": "cache.out",
+      "exitCode": 1
+    },
+    "check": {
+      "args": "check main.ts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "compile": {
+      "args": "compile main.ts",
+      "output": "compile.out",
+      "exitCode": 1
+    },
+    "doc": {
+      "args": "doc doc.ts",
+      "output": "doc.out",
+      "exitCode": 0
+    },
+    "doc_allowed": {
+      "args": "doc --allow-import doc.ts",
+      "output": "doc_allowed.out",
+      "exitCode": 0
+    },
+    "run": {
+      "args": "run main.ts",
+      "output": "run.out",
+      "exitCode": 1
+    },
+    "run_allow_all": {
+      "args": "run --quiet --allow-all success.ts",
+      "output": "3\n",
+      "exitCode": 0
+    },
+    "serve": {
+      "args": "serve main.ts",
+      "output": "serve.out",
+      "exitCode": 1
+    },
+    "builtin_host": {
+      "args": "run --quiet builtin_host.ts",
+      "output": "3\n"
+    },
+    "builtin_host_replaced": {
+      "args": "run --quiet --allow-import=other.host builtin_host.ts",
+      "output": "[WILDCARD]Requires import access[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

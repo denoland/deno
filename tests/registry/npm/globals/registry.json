@@ -1,0 +1,83 @@
+{
+  "name": "globals",
+  "description": "Global identifiers from different JavaScript environments",
+  "dist-tags": {
+    "latest": "13.17.0"
+  },
+  "versions": {
+    "13.17.0": {
+      "name": "globals",
+      "version": "13.17.0",
+      "description": "Global identifiers from different JavaScript environments",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/globals.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "dependencies": {
+        "type-fest": "^0.20.2"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "tsd": "^0.14.0",
+        "xo": "^0.36.1"
+      },
+      "xo": {
+        "ignores": [
+          "get-browser-globals.js"
+        ],
+        "rules": {
+          "node/no-unsupported-features/es-syntax": "off"
+        }
+      },
+      "tsd": {
+        "compilerOptions": {
+          "resolveJsonModule": true
+        }
+      },
+      "types": "./index.d.ts",
+      "gitHead": "1a1f7e863300f5685c66263086765b8cdcdc3665",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/globals/issues"
+      },
+      "_id": "globals@13.17.0",
+      "_nodeVersion": "14.19.3",
+      "_npmVersion": "8.3.2",
+      "dist": {
+        "integrity": "sha512-1C+6nQRb1GwGMKm2dH/E7enFAMxGTmGI7/dEdhy/DNelv85w9B72t3uc5frtMNXIbzrarJJ/lTCjcaZwbLJmyw==",
+        "shasum": "902eb1e680a41da93945adbdcb5a9f361ba69bd4",
+        "tarball": "http://localhost:4260/globals/globals-13.17.0.tgz",
+        "fileCount": 6,
+        "unpackedSize": 46315
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/globals.git"
+  },
+  "homepage": "https://github.com/sindresorhus/globals#readme",
+  "bugs": {
+    "url": "https://github.com/sindresorhus/globals/issues"
+  },
+  "license": "MIT"
+}

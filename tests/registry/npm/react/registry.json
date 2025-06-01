@@ -1,0 +1,67 @@
+{
+  "name": "react",
+  "description": "React is a JavaScript library for building user interfaces.",
+  "dist-tags": {
+    "latest": "18.2.0"
+  },
+  "versions": {
+    "18.2.0": {
+      "name": "react",
+      "description": "React is a JavaScript library for building user interfaces.",
+      "version": "18.2.0",
+      "bugs": {
+        "url": "https://github.com/facebook/react/issues"
+      },
+      "license": "MIT",
+      "main": "index.js",
+      "exports": {
+        ".": {
+          "react-server": "./react.shared-subset.js",
+          "default": "./index.js"
+        },
+        "./package.json": "./package.json",
+        "./jsx-runtime": "./jsx-runtime.js",
+        "./jsx-dev-runtime": "./jsx-dev-runtime.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/facebook/react.git",
+        "directory": "packages/react"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "dependencies": {
+        "loose-envify": "^1.1.0"
+      },
+      "browserify": {
+        "transform": [
+          "loose-envify"
+        ]
+      },
+      "gitHead": "be229c5655074642ee664f532f2e7411dd7dccc7",
+      "_id": "react@18.2.0",
+      "_nodeVersion": "17.1.0",
+      "_npmVersion": "8.1.2",
+      "dist": {
+        "integrity": "sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ==",
+        "shasum": "555bd98592883255fa00de14f1151a917b5d77d5",
+        "tarball": "http://localhost:4260/react/react-18.2.0.tgz",
+        "fileCount": 20,
+        "unpackedSize": 316108
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebook/react.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://reactjs.org/",
+  "bugs": {
+    "url": "https://github.com/facebook/react/issues"
+  },
+  "license": "MIT"
+}

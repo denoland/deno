@@ -1,0 +1,4 @@
+{
+  "args": "run -A --reload dynamic_import_reload_same_package/main.ts",
+  "output": "dynamic_import_reload_same_package/main.out"
+}

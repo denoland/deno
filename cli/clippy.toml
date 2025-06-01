@@ -1,0 +1,11 @@
+disallowed-methods = [
+  { path = "reqwest::Client::new", reason = "create an HttpClient via an HttpClientProvider instead" },
+  { path = "std::process::exit", reason = "use deno_runtime::exit instead" },
+]
+disallowed-types = [
+  { path = "reqwest::Client", reason = "use crate::http_util::HttpClient instead" },
+  { path = "sys_traits::impls::RealSys", reason = "use crate::sys::CliSys instead" },
+]
+ignore-interior-mutability = [
+  "lsp_types::Uri",
+]

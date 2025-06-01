@@ -1,0 +1,67 @@
+{
+  "name": "yallist",
+  "description": "Yet Another Linked List",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "yallist",
+      "version": "4.0.0",
+      "description": "Yet Another Linked List",
+      "main": "yallist.js",
+      "directories": {
+        "test": "test"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "tap": "^12.1.0"
+      },
+      "scripts": {
+        "test": "tap test/*.js --100",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --all; git push origin --tags"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/yallist.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "gitHead": "1649cc57394b5affeca2c573943ebe3ed7d39119",
+      "bugs": {
+        "url": "https://github.com/isaacs/yallist/issues"
+      },
+      "_id": "yallist@4.0.0",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==",
+        "shasum": "9bb92790d9c0effec63be73519e11a35019a3a72",
+        "tarball": "http://localhost:4260/yallist/yallist-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 14752
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/isaacs/yallist#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/yallist.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/yallist/issues"
+  },
+  "license": "BlueOak-1.0.0"
+}

@@ -1,0 +1,4 @@
+{
+  // will cause a warning
+  "nodeModulesDir": "auto"
+}

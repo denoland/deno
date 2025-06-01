@@ -1,0 +1,22 @@
+running 1 test from ./main.ts
+aggregate ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+aggregate => ./main.ts:[WILDCARD]
+error: AggregateError
+    Error: Error 1
+        at [WILDCARD]/main.ts:2:18
+    Error: Error 2
+        at [WILDCARD]/main.ts:3:18
+  throw new AggregateError([error1, error2]);
+        ^
+    at [WILDCARD]/main.ts:5:9
+
+ FAILURES 
+
+aggregate => ./main.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

@@ -1,0 +1,4 @@
+{
+  "args": "bench --quiet before_unload_prevent_default.ts",
+  "output": "before_unload_prevent_default.out"
+}

@@ -1,0 +1,165 @@
+{
+  "name": "strip-ansi",
+  "description": "Strip ANSI escape codes from a string",
+  "dist-tags": {
+    "latest": "7.0.1",
+    "version6": "6.0.1"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "strip-ansi",
+      "version": "4.0.0",
+      "description": "Strip ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/strip-ansi.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=4"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "files": [
+        "index.js"
+      ],
+      "dependencies": {
+        "ansi-regex": "^3.0.0"
+      },
+      "devDependencies": {
+        "ava": "*",
+        "xo": "*"
+      },
+      "gitHead": "c299056a42b31d7a479d6a89b41318b2a2462cc7",
+      "bugs": {
+        "url": "https://github.com/chalk/strip-ansi/issues"
+      },
+      "_id": "strip-ansi@4.0.0",
+      "_shasum": "a8479022eb1ac368a871389b635262c505ee368f",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.8.3",
+      "dist": {
+        "shasum": "a8479022eb1ac368a871389b635262c505ee368f",
+        "tarball": "http://localhost:4260/strip-ansi/strip-ansi-4.0.0.tgz",
+        "integrity": "sha512-4XaJ2zQdCzROZDivEVIDPkcQn8LMFSa8kj8Gxb/Lnwzv9A8VctNZ+lfivC/sV3ivW8ElJTERXZoPBRrZKkNKow=="
+      },
+      "directories": {}
+    },
+    "7.0.1": {
+      "name": "strip-ansi",
+      "version": "7.0.1",
+      "description": "Strip ANSI escape codes from a string",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/strip-ansi.git"
+      },
+      "funding": "https://github.com/chalk/strip-ansi?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "type": "module",
+      "exports": "./index.js",
+      "engines": {
+        "node": ">=12"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "ansi-regex": "^6.0.1"
+      },
+      "devDependencies": {
+        "ava": "^3.15.0",
+        "tsd": "^0.17.0",
+        "xo": "^0.44.0"
+      },
+      "gitHead": "dd40fa7ced678f14dfb43eb9b62b8e7313fb7011",
+      "bugs": {
+        "url": "https://github.com/chalk/strip-ansi/issues"
+      },
+      "_id": "strip-ansi@7.0.1",
+      "_nodeVersion": "14.17.5",
+      "_npmVersion": "7.20.3",
+      "dist": {
+        "integrity": "sha512-cXNxvT8dFNRVfhVME3JAe98mkXDYN2O1l7jmcwMnOslDeESg1rF/OZMtK0nRAhiari1unG5cD4jG3rapUAkLbw==",
+        "shasum": "61740a08ce36b61e50e65653f07060d000975fb2",
+        "tarball": "http://localhost:4260/strip-ansi/strip-ansi-7.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4090
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "6.0.1": {
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "description": "Strip ANSI escape codes from a string",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/strip-ansi.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "ansi-regex": "^5.0.1"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "tsd": "^0.10.0",
+        "xo": "^0.25.3"
+      },
+      "readme": "# strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](https://travis-ci.org/chalk/strip-ansi)\n\n> Strip [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code) from a string\n\n\n## Install\n\n```\n$ npm install strip-ansi\n```\n\n\n## Usage\n\n```js\nconst stripAnsi = require('strip-ansi');\n\nstripAnsi('\\u001B[4mUnicorn\\u001B[0m');\n//=> 'Unicorn'\n\nstripAnsi('\\u001B]8;;https://github.com\\u0007Click\\u001B]8;;\\u0007');\n//=> 'Click'\n```\n\n\n## strip-ansi for enterprise\n\nAvailable as part of the Tidelift Subscription.\n\nThe maintainers of strip-ansi and thousands of other packages are working with Tidelift to deliver commercial support and maintenance for the open source dependencies you use to build your applications. Save time, reduce risk, and improve code health, while paying the maintainers of the exact dependencies you use. [Learn more.](https://tidelift.com/subscription/pkg/npm-strip-ansi?utm_source=npm-strip-ansi&utm_medium=referral&utm_campaign=enterprise&utm_term=repo)\n\n\n## Related\n\n- [strip-ansi-cli](https://github.com/chalk/strip-ansi-cli) - CLI for this module\n- [strip-ansi-stream](https://github.com/chalk/strip-ansi-stream) - Streaming version of this module\n- [has-ansi](https://github.com/chalk/has-ansi) - Check if a string has ANSI escape codes\n- [ansi-regex](https://github.com/chalk/ansi-regex) - Regular expression for matching ANSI escape codes\n- [chalk](https://github.com/chalk/chalk) - Terminal string styling done right\n\n\n## Maintainers\n\n- [Sindre Sorhus](https://github.com/sindresorhus)\n- [Josh Junon](https://github.com/qix-)\n\n",
+      "readmeFilename": "readme.md",
+      "gitHead": "59533da99981f9d550de1ae0eb9d1a93c2383be3",
+      "bugs": {
+        "url": "https://github.com/chalk/strip-ansi/issues"
+      },
+      "_id": "strip-ansi@6.0.1",
+      "_nodeVersion": "16.9.1",
+      "_npmVersion": "7.5.4",
+      "dist": {
+        "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+        "shasum": "9e26c63d30f53443e9489495b2105d37b67a85d9",
+        "tarball": "http://localhost:4260/strip-ansi/strip-ansi-6.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4029
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/strip-ansi.git"
+  },
+  "homepage": "https://github.com/chalk/strip-ansi#readme",
+  "bugs": {
+    "url": "https://github.com/chalk/strip-ansi/issues"
+  },
+  "license": "MIT"
+}

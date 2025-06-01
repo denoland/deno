@@ -1,0 +1,14 @@
+{
+  "name": "@denotest/types-directory-import",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./dist/preact.mjs"
+    },
+    "./hooks": {
+      "types": "./hooks/src/index.d.ts",
+      "import": "./hooks/dist/hooks.mjs"
+    }
+  }
+}

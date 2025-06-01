@@ -1,0 +1,5 @@
+{
+  "args": "task --quiet echo",
+  "output": "echo.out",
+  "exitCode": 0
+}

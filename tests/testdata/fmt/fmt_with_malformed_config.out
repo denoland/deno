@@ -1,0 +1,4 @@
+error: Failed to parse "fmt" configuration
+
+Caused by:
+    unknown field `dont_know_this_field`, expected one of `useTabs`, `lineWidth`, `indentWidth`, `singleQuote`, `proseWrap`, `semiColons`, `quoteProps`, `newLineKind`, `useBraces`, `bracePosition`, `singleBodyPosition`, `nextControlFlowPosition`, `trailingCommas`, `operatorPosition`, `jsx.bracketPosition`, `jsx.forceNewLinesSurroundingContent`, `jsx.multiLineParens`, `typeLiteral.separatorKind`, `spaceAround`, `spaceSurroundingProperties`, `options`, `include`, `exclude`, `files`

@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/a",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/esm-basic": "*"
+  },
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "name": "proc-log",
+  "description": "just emit 'log' events on the process object",
+  "dist-tags": {
+    "latest": "4.2.0"
+  },
+  "versions": {
+    "3.0.0": {
+      "name": "proc-log",
+      "version": "3.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "proc-log@3.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/proc-log/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "fb05ef83ccd64fd7b20bbe9c8c1070fc08338dd8",
+        "tarball": "http://localhost:4260/proc-log/proc-log-3.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-++Vn7NS4Xf9NacaU9Xq3URUuqZETPsf8L4j5/ckhaRYsfPeRyzGw+iDjFhV/Jr3uNmTvvddEJFWh5R1gRgUH8A==",
+        "unpackedSize": 5215
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "a3318aac6541572d897f404c1db7d905016c5cfe",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "postsnap": "eslint index.js test/*.js --fix",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/proc-log.git",
+        "type": "git"
+      },
+      "_npmVersion": "8.19.2",
+      "description": "just emit 'log' events on the process object",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.5.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.10.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.5.1",
+        "@npmcli/eslint-config": "^3.0.1"
+      }
+    },
+    "4.2.0": {
+      "name": "proc-log",
+      "version": "4.2.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "proc-log@4.2.0",
+      "bugs": {
+        "url": "https://github.com/npm/proc-log/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "b6f461e4026e75fdfe228b265e9f7a00779d7034",
+        "tarball": "http://localhost:4260/proc-log/proc-log-4.2.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-g8+OnU/L2v+wyiVK+D5fA34J7EH8jZ8DDlvwhRCMxmMj7UCBvxiO1mGeN+36JXIKF4zevU4kRBd8lVgG9vLelA==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/proc-log@4.2.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 12261
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "953e6035670f9afe2ec93f6286d76db2828854d6",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "postsnap": "eslint index.js test/*.js --fix",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/proc-log.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.5.2",
+      "description": "just emit 'log' events on the process object",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.21.3",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "20.12.1",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.21.3",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/proc-log.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/proc-log#readme",
+  "bugs": {
+    "url": "https://github.com/npm/proc-log/issues"
+  }
+}

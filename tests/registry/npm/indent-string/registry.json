@@ -1,0 +1,65 @@
+{
+  "name": "indent-string",
+  "description": "Indent each line in a string",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "indent-string",
+      "version": "4.0.0",
+      "description": "Indent each line in a string",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/indent-string.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "99280aa24669a3fab303bb231d6caafd7d5029d3",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/indent-string/issues"
+      },
+      "_id": "indent-string@4.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.1",
+      "dist": {
+        "integrity": "sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==",
+        "shasum": "624f8f4497d619b2d9768531d58f4122854d7251",
+        "tarball": "http://localhost:4260/indent-string/indent-string-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4398
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/indent-string#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/indent-string.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/indent-string/issues"
+  },
+  "license": "MIT"
+}

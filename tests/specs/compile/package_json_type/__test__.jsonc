@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --output main main.js",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --output main.exe main.js",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }]
+}

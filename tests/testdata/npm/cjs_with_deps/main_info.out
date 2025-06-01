@@ -1,0 +1,22 @@
+local: [WILDCARD]main.js
+type: JavaScript
+dependencies: 14 unique
+size: [WILDCARD]
+
+file:///[WILDCARD]/npm/cjs_with_deps/main.js ([WILDCARD])
+├─┬ npm:/chalk@4.1.2 ([WILDCARD])
+│ ├─┬ npm:/ansi-styles@4.3.0 ([WILDCARD])
+│ │ └─┬ npm:/color-convert@2.0.1 ([WILDCARD])
+│ │   └── npm:/color-name@1.1.4 ([WILDCARD])
+│ └─┬ npm:/supports-color@7.2.0 ([WILDCARD])
+│   └── npm:/has-flag@4.0.0 ([WILDCARD])
+└─┬ npm:/chai@4.3.6 ([WILDCARD])
+  ├── npm:/assertion-error@1.1.0 ([WILDCARD])
+  ├── npm:/check-error@1.0.2 ([WILDCARD])
+  ├─┬ npm:/deep-eql@3.0.1 ([WILDCARD])
+  │ └── npm:/type-detect@4.0.8 ([WILDCARD])
+  ├── npm:/get-func-name@2.0.0 ([WILDCARD])
+  ├─┬ npm:/loupe@2.3.4 ([WILDCARD])
+  │ └── npm:/get-func-name@2.0.0 ([WILDCARD])
+  ├── npm:/pathval@1.1.1 ([WILDCARD])
+  └── npm:/type-detect@4.0.8 ([WILDCARD])

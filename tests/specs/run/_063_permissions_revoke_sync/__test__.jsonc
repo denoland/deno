@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read=foo,bar 063_permissions_revoke_sync.ts",
+  "output": "063_permissions_revoke.ts.out"
+}

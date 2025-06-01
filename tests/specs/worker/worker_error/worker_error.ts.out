@@ -1,0 +1,5 @@
+[WILDCARD]error: Uncaught (in worker "bar") (in promise) Error: foo[WILDCARD]
+    at foo ([WILDCARD])
+    at [WILDCARD]
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at Worker.#pollControl [WILDCARD]

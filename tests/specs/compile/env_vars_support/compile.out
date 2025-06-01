@@ -1,0 +1,14 @@
+Warning Parsing failed within the specified environment file: environment.env at index: 3 of the value: c:\path
+Check [WILDCARD]main.ts
+Compile [WILDCARD]main.ts to out[WILDCARD]
+Warning Environment variables from the file "environment.env" were embedded in the generated executable file
+
+Embedded Files
+
+out[WILDLINE]
+└── main.ts ([WILDLINE])
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+

@@ -1,0 +1,21 @@
+cover [WILDCARD]/coverage/complex.ts ... 60.000% (21/35)
+  55 | export function unused(
+  56 |   foo: string,
+  57 |   bar: string,
+  58 |   baz: string,
+-----|-----
+  61 |   return complex(
+  62 |     foo,
+  63 |     bar,
+  64 |     baz,
+-----|-----
+  66 | }
+-----|-----
+  74 | export function ƒ(): number {
+-----|-----
+  78 |   return (
+  79 |     0
+-----|-----
+  81 | }
+-----|-----
+  84 | console.log("%s", () => 1);

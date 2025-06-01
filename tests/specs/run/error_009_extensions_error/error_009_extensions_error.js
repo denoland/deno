@@ -1,0 +1,2 @@
+// Missing arg.
+new Event();

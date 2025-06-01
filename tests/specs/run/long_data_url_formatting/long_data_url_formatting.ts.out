@@ -1,0 +1,8 @@
+[WILDCARD]Trace: foo
+    at data:application/typescript,console.trace("foo")......stack); throw error;:1:9
+Error: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    at data:application/typescript,console.trace("foo")......stack); throw error;:1:37
+error: Uncaught (in promise) Error: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+console.trace("foo"); const error = new Error("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); console.log(error.stack); throw error;
+                                    ^
+    at data:application/typescript,console.trace("foo")......stack); throw error;:1:37

@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "lint main.ts",
+    "output": "Checked 1 file\n"
+  }, {
+    "args": "lint --unstable-sloppy-imports main.ts",
+    "output": "Checked 1 file\n"
+  }, {
+    "args": [
+      "eval",
+      "Deno.renameSync('file.js', 'file.ts')"
+    ],
+    "output": ""
+  }, {
+    "args": "lint --unstable-sloppy-imports main.ts",
+    "output": "fail_js_to_ts.out",
+    "exitCode": 1
+  }]
+}

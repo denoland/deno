@@ -1,0 +1,19 @@
+Check [WILDCARD]/main.ts$8-13.js
+Check [WILDCARD]/main.ts$14-19.jsx
+Check [WILDCARD]/main.ts$20-25.ts
+Check [WILDCARD]/main.ts$26-31.tsx
+Check [WILDCARD]/main.ts$42-47.ts
+running 0 tests from ./main.ts
+running 1 test from ./main.ts$8-13.js
+[WILDCARD]/main.ts$8-13.js ... ok ([WILDCARD]s)
+running 1 test from ./main.ts$14-19.jsx
+[WILDCARD]/main.ts$14-19.jsx ... ok ([WILDCARD]s)
+running 1 test from ./main.ts$20-25.ts
+[WILDCARD]/main.ts$20-25.ts ... ok ([WILDCARD]s)
+running 1 test from ./main.ts$26-31.tsx
+[WILDCARD]/main.ts$26-31.tsx ... ok ([WILDCARD]s)
+running 1 test from ./main.ts$42-47.ts
+[WILDCARD]/main.ts$42-47.ts ... ok ([WILDCARD]s)
+
+ok | 5 passed | 0 failed ([WILDCARD]s)
+

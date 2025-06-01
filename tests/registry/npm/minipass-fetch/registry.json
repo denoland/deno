@@ -1,0 +1,104 @@
+{
+  "name": "minipass-fetch",
+  "description": "An implementation of window.fetch in Node.js using Minipass streams",
+  "dist-tags": {
+    "latest": "3.0.5"
+  },
+  "versions": {
+    "3.0.5": {
+      "name": "minipass-fetch",
+      "version": "3.0.5",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "MIT",
+      "_id": "minipass-fetch@3.0.5",
+      "bugs": {
+        "url": "https://github.com/npm/minipass-fetch/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "coverage-map": "map.js",
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "f0f97e40580affc4a35cc4a1349f05ae36cb1e4c",
+        "tarball": "http://localhost:4260/minipass-fetch/minipass-fetch-3.0.5.tgz",
+        "fileCount": 11,
+        "integrity": "sha512-2N8elDQAtSnFV0Dk7gt15KHsS0Fyz6CbYZ360h0WTYV1Ty46li3rAXVOQj1THMNLdmrD9Vt5pBPtWtVkpwGBqg==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/minipass-fetch@3.0.5",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 46849
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "d523a93cc86c79cbf28a30c77938ad71e54bc814",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "test:tls-fixtures": "./test/fixtures/tls/setup.sh",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/minipass-fetch.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "An implementation of window.fetch in Node.js using Minipass streams",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.22.0",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.1.0",
+      "dependencies": {
+        "minipass": "^7.0.3",
+        "minizlib": "^2.1.2",
+        "minipass-sized": "^1.0.3"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "nock": "^13.2.4",
+        "parted": "^0.1.1",
+        "encoding": "^0.1.13",
+        "form-data": "^4.0.0",
+        "abort-controller": "^3.0.0",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0",
+        "string-to-arraybuffer": "^1.0.2",
+        "@ungap/url-search-params": "^0.2.2",
+        "abortcontroller-polyfill": "~1.7.3"
+      },
+      "optionalDependencies": {
+        "encoding": "^0.1.13"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/minipass-fetch.git",
+    "type": "git"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/npm/minipass-fetch#readme",
+  "bugs": {
+    "url": "https://github.com/npm/minipass-fetch/issues"
+  }
+}

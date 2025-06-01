@@ -1,0 +1,4 @@
+function test() {
+  // this comment should be in output
+  return 1 + 1;
+}

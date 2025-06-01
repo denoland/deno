@@ -1,0 +1,122 @@
+{
+  "name": "minimatch",
+  "dist-tags": {
+    "latest": "9.0.5"
+  },
+  "versions": {
+    "9.0.5": {
+      "name": "minimatch",
+      "version": "9.0.5",
+      "author": {
+        "url": "http://blog.izs.me",
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "ISC",
+      "_id": "minimatch@9.0.5",
+      "bugs": {
+        "url": "https://github.com/isaacs/minimatch/issues"
+      },
+      "dist": {
+        "shasum": "d74f9dd6b57d83d8e98cfb82133b03978bc929e5",
+        "tarball": "http://localhost:4260/minimatch/minimatch-9.0.5.tgz",
+        "fileCount": 53,
+        "integrity": "sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==",
+        "unpackedSize": 435003
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "exports": {
+          ".": "./src/index.ts",
+          "./package.json": "./package.json"
+        }
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "engines": {
+        "node": ">=16 || 14 >=14.17"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "0de7f45232cad5e3e49e4eb7cd9b6e124ed04b84",
+      "scripts": {
+        "snap": "tap",
+        "test": "tap",
+        "format": "prettier --write . --loglevel warn",
+        "prepare": "tshy",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "typedoc": "typedoc --tsconfig tsconfig-esm.json ./src/*.ts",
+        "benchmark": "node benchmark/index.js",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "prettier": {
+        "semi": false,
+        "useTabs": false,
+        "tabWidth": 2,
+        "endOfLine": "lf",
+        "printWidth": 80,
+        "arrowParens": "avoid",
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true
+      },
+      "repository": {
+        "url": "git://github.com/isaacs/minimatch.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "a glob matcher in javascript",
+      "directories": {},
+      "_nodeVersion": "20.13.1",
+      "dependencies": {
+        "brace-expansion": "^2.0.1"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^18.7.2",
+        "tshy": "^1.12.0",
+        "mkdirp": "1",
+        "ts-node": "^10.9.1",
+        "typedoc": "^0.23.21",
+        "prettier": "^2.8.2",
+        "@types/tap": "^15.0.8",
+        "typescript": "^4.9.3",
+        "@types/node": "^18.15.11",
+        "@types/brace-expansion": "^1.1.0",
+        "eslint-config-prettier": "^8.6.0"
+      }
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minimatch/issues"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/minimatch#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/minimatch.git"
+  },
+  "description": "a glob matcher in javascript"
+}

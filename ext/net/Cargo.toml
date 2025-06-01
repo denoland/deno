@@ -1,0 +1,36 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_net"
+version = "0.198.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Networking for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_features.workspace = true
+deno_permissions.workspace = true
+deno_tls.workspace = true
+hickory-proto.workspace = true
+hickory-resolver.workspace = true
+pin-project.workspace = true
+quinn = { workspace = true, features = ["runtime-tokio", "rustls", "ring"] }
+rustls-tokio-stream.workspace = true
+serde.workspace = true
+sha2.workspace = true
+socket2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+web-transport-proto.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true

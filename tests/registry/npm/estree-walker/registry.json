@@ -1,0 +1,70 @@
+{
+  "name": "estree-walker",
+  "description": "Traverse an ESTree-compliant AST",
+  "dist-tags": {
+    "latest": "2.0.2"
+  },
+  "versions": {
+    "2.0.2": {
+      "name": "estree-walker",
+      "description": "Traverse an ESTree-compliant AST",
+      "version": "2.0.2",
+      "private": false,
+      "author": {
+        "name": "Rich Harris"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Rich-Harris/estree-walker.git"
+      },
+      "type": "commonjs",
+      "main": "./dist/umd/estree-walker.js",
+      "module": "./dist/esm/estree-walker.js",
+      "exports": {
+        "require": "./dist/umd/estree-walker.js",
+        "import": "./dist/esm/estree-walker.js"
+      },
+      "types": "types/index.d.ts",
+      "scripts": {
+        "prepublishOnly": "npm run build && npm test",
+        "build": "tsc && rollup -c",
+        "test": "uvu test"
+      },
+      "devDependencies": {
+        "@types/estree": "0.0.42",
+        "rollup": "^2.10.9",
+        "typescript": "^3.7.5",
+        "uvu": "^0.5.1"
+      },
+      "gitHead": "3ac96d685ddedb1701009945d9911fa41d60b0ce",
+      "bugs": {
+        "url": "https://github.com/Rich-Harris/estree-walker/issues"
+      },
+      "_id": "estree-walker@2.0.2",
+      "_nodeVersion": "12.18.3",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w==",
+        "shasum": "52f010178c2a4c117a7757cfe942adb7d2da4cac",
+        "tarball": "http://localhost:4260/estree-walker/estree-walker-2.0.2.tgz",
+        "fileCount": 17,
+        "unpackedSize": 50243
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Rich Harris"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Rich-Harris/estree-walker#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rich-Harris/estree-walker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Rich-Harris/estree-walker/issues"
+  }
+}

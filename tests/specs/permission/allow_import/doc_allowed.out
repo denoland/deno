@@ -1,0 +1,10 @@
+Download http://localhost:4545/add.ts
+Defined in http://localhost:4545/add.ts:1:1
+
+function add(a: number, b: number): number
+
+Defined in file:///[WILDLINE]/doc.ts:3:1
+
+class Test
+
+

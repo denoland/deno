@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add jsr:@denotest/add",
+      "output": "add.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('./deno.json').trim())"
+      ],
+      "output": "deno.json.out"
+    }
+  ]
+}

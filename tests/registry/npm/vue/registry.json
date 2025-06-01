@@ -1,0 +1,97 @@
+{
+  "name": "vue",
+  "description": "The progressive JavaScript framework for building modern web UI.",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "vue",
+      "version": "3.2.38",
+      "description": "The progressive JavaScript framework for building modern web UI.",
+      "main": "index.js",
+      "module": "dist/vue.runtime.esm-bundler.js",
+      "types": "dist/vue.d.ts",
+      "unpkg": "dist/vue.global.js",
+      "jsdelivr": "dist/vue.global.js",
+      "exports": {
+        ".": {
+          "import": {
+            "node": "./index.mjs",
+            "default": "./dist/vue.runtime.esm-bundler.js"
+          },
+          "require": "./index.js",
+          "types": "./dist/vue.d.ts"
+        },
+        "./server-renderer": {
+          "import": "./server-renderer/index.mjs",
+          "require": "./server-renderer/index.js",
+          "types": "./server-renderer/index.d.ts"
+        },
+        "./compiler-sfc": {
+          "import": "./compiler-sfc/index.mjs",
+          "require": "./compiler-sfc/index.js",
+          "types": "./compiler-sfc/index.d.ts"
+        },
+        "./dist/*": "./dist/*",
+        "./package.json": "./package.json",
+        "./macros": "./macros.d.ts",
+        "./macros-global": "./macros-global.d.ts",
+        "./ref-macros": "./ref-macros.d.ts"
+      },
+      "buildOptions": {
+        "name": "Vue",
+        "formats": [
+          "esm-bundler",
+          "esm-bundler-runtime",
+          "cjs",
+          "global",
+          "global-runtime",
+          "esm-browser",
+          "esm-browser-runtime"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/compiler-dom": "3.2.38",
+        "@vue/runtime-dom": "3.2.38",
+        "@vue/compiler-sfc": "3.2.38",
+        "@vue/server-renderer": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "vue@3.2.38",
+      "dist": {
+        "shasum": "cda3a414631745b194971219318a792dbbccdec0",
+        "integrity": "sha512-hHrScEFSmDAWL0cwO4B6WO7D3sALZPbfuThDsGBebthrNlDxdJZpGR3WB87VbjpPh96mep1+KzukYEhpHDFa8Q==",
+        "tarball": "http://localhost:4260/vue/vue-3.2.38.tgz",
+        "fileCount": 33,
+        "unpackedSize": 2582962
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git"
+  },
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/vue#readme",
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

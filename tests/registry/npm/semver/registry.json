@@ -1,0 +1,111 @@
+{
+  "name": "semver",
+  "description": "The semantic version parser used by npm.",
+  "dist-tags": {
+    "latest": "7.6.2"
+  },
+  "versions": {
+    "7.6.2": {
+      "name": "semver",
+      "version": "7.6.2",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "semver@7.6.2",
+      "bugs": {
+        "url": "https://github.com/npm/node-semver/issues"
+      },
+      "bin": {
+        "semver": "bin/semver.js"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "timeout": 30,
+        "coverage-map": "map.js"
+      },
+      "dist": {
+        "shasum": "1e3b34759f896e8f14d6134732ce798aeb0c6e13",
+        "tarball": "http://localhost:4260/semver/semver-7.6.2.tgz",
+        "fileCount": 52,
+        "integrity": "sha512-FNAIBWCx9qcRhoHcgcJ0gvU7SN1lYU2ZXuSfl04bSC5OpvDHFyJCjdNHomPXxjQlCBU67YW64PzY7/VIEH7F2w==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/semver@7.6.2",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 95424
+      },
+      "main": "index.js",
+      "engines": {
+        "node": ">=10"
+      },
+      "gitHead": "eb1380b1ecd74f6572831294d55ef4537dfe1a2a",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/node-semver.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "The semantic version parser used by npm.",
+      "directories": {},
+      "templateOSS": {
+        "engines": ">=10",
+        "publish": "true",
+        "version": "4.22.0",
+        "distPaths": [
+          "classes/",
+          "functions/",
+          "internal/",
+          "ranges/",
+          "index.js",
+          "preload.js",
+          "range.bnf"
+        ],
+        "allowPaths": [
+          "/classes/",
+          "/functions/",
+          "/internal/",
+          "/ranges/",
+          "/index.js",
+          "/preload.js",
+          "/range.bnf",
+          "/benchmarks"
+        ],
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.1.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "benchmark": "^2.1.4",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/node-semver.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/node-semver#readme",
+  "bugs": {
+    "url": "https://github.com/npm/node-semver/issues"
+  }
+}

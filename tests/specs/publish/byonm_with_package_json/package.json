@@ -1,0 +1,8 @@
+{
+  "name": "@scope/pkg",
+  "module": "src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "@denotest/add": "1"
+  }
+}

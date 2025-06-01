@@ -1,0 +1,73 @@
+{
+  "name": "color-convert",
+  "description": "Plain color conversion functions",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "color-convert",
+      "description": "Plain color conversion functions",
+      "version": "2.0.1",
+      "author": {
+        "name": "Heather Arthur",
+        "email": "fayearthur@gmail.com"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Qix-/color-convert.git"
+      },
+      "scripts": {
+        "pretest": "xo",
+        "test": "node test/basic.js"
+      },
+      "engines": {
+        "node": ">=7.0.0"
+      },
+      "xo": {
+        "rules": {
+          "default-case": 0,
+          "no-inline-comments": 0,
+          "operator-linebreak": 0
+        }
+      },
+      "devDependencies": {
+        "chalk": "^2.4.2",
+        "xo": "^0.24.0"
+      },
+      "dependencies": {
+        "color-name": "~1.1.4"
+      },
+      "gitHead": "e1cb7846258e1d7aa25873814684d4fbbbca53ed",
+      "bugs": {
+        "url": "https://github.com/Qix-/color-convert/issues"
+      },
+      "_id": "color-convert@2.0.1",
+      "_nodeVersion": "12.4.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+        "shasum": "72d3a68d598c9bdb3af2ad1e84f21d896abd4de3",
+        "tarball": "http://localhost:4260/color-convert/color-convert-2.0.1.tgz",
+        "fileCount": 7,
+        "unpackedSize": 27189
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Heather Arthur",
+    "email": "fayearthur@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qix-/color-convert.git"
+  },
+  "homepage": "https://github.com/Qix-/color-convert#readme",
+  "bugs": {
+    "url": "https://github.com/Qix-/color-convert/issues"
+  },
+  "license": "MIT"
+}

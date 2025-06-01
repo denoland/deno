@@ -1,0 +1,12 @@
+error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+changes:
+ 4 | -    "jsr:@denotest/add@1": "1.0.0"
+ 5 | -  },
+ 6 | -  "jsr": {
+ 4 | +    "jsr:@denotest/add@0.2.0": "0.2.0",
+ 5 | +    "jsr:@denotest/add@1": "1.0.0"
+ 6 | +  },
+ 7 | +  "jsr": {
+ 8 | +    "@denotest/add@0.2.0": {
+ 9 | +      "integrity": "[WILDCARD]"
+10 | +    },

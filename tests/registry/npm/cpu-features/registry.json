@@ -1,0 +1,76 @@
+{
+  "name": "cpu-features",
+  "dist-tags": {
+    "latest": "0.0.4"
+  },
+  "versions": {
+    "0.0.4": {
+      "name": "cpu-features",
+      "version": "0.0.4",
+      "author": {
+        "name": "Brian White",
+        "email": "mscdex@mscdex.net"
+      },
+      "description": "A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)",
+      "main": "./lib/index",
+      "dependencies": {
+        "buildcheck": "0.0.3",
+        "nan": "^2.15.0"
+      },
+      "devDependencies": {
+        "@mscdex/eslint-config": "^1.1.0",
+        "eslint": "^7.0.0"
+      },
+      "scripts": {
+        "install": "node buildcheck.js > buildcheck.gypi && node-gyp rebuild",
+        "test": "node test/test.js",
+        "lint": "eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js lib test",
+        "lint:fix": "npm run lint -- --fix"
+      },
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "https://github.com/mscdex/cpu-features/raw/master/LICENSE"
+        }
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mscdex/cpu-features.git"
+      },
+      "_resolved": "",
+      "_integrity": "",
+      "_from": "https://github.com/mscdex/cpu-features/tarball/v0.0.4",
+      "bugs": {
+        "url": "https://github.com/mscdex/cpu-features/issues"
+      },
+      "_id": "cpu-features@0.0.4",
+      "_nodeVersion": "10.22.1",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-fKiZ/zp1mUwQbnzb9IghXtHtDoTMtNeb8oYGx6kX2SYfhnG0HNdBEBIzB9b5KlXu5DQPhfy3mInbBxFcgwAr3A==",
+        "shasum": "0023475bb4f4c525869c162e4108099e35bf19d8",
+        "tarball": "http://localhost:4260/cpu-features/cpu-features-0.0.4.tgz",
+        "fileCount": 124,
+        "unpackedSize": 441166
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A simple binding to Google's cpu_features library for obtaining information about installed CPU(s)",
+  "homepage": "https://github.com/mscdex/cpu-features#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mscdex/cpu-features.git"
+  },
+  "author": {
+    "name": "Brian White",
+    "email": "mscdex@mscdex.net"
+  },
+  "bugs": {
+    "url": "https://github.com/mscdex/cpu-features/issues"
+  }
+}

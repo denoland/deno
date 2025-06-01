@@ -1,0 +1,191 @@
+[WILDCARD]
+running 69 tests from ./test.js
+sync pass todo ... ok ([WILDLINE])
+sync pass todo with message ... ok ([WILDLINE])
+sync fail todo ... ok ([WILDLINE])
+todo thrown sub test ...
+  test ... ok ([WILDLINE])
+todo thrown sub test ... ok ([WILDLINE])
+sync fail todo with message ... ok ([WILDLINE])
+sync skip pass ... ok ([WILDLINE])
+sync skip pass with message ... ok ([WILDLINE])
+skip thrown sub test ...
+  test ... ok ([WILDLINE])
+skip thrown sub test ... ok ([WILDLINE])
+sync pass ...
+------- output -------
+DIAGNOSTIC: this test should pass
+----- output end -----
+sync pass ... ok ([WILDLINE])
+sync throw fail ... FAILED ([WILDLINE])
+async skip pass ... ok ([WILDLINE])
+async pass ... ok ([WILDLINE])
+async throw fail ... FAILED ([WILDLINE])
+nested test ...
+  nested 1 ...
+    nested 2 ... ok ([WILDLINE])
+  nested 1 ... ok ([WILDLINE])
+nested test ... ok ([WILDLINE])
+async skip fail ... ok ([WILDLINE])
+async assertion fail ... FAILED ([WILDLINE])
+resolve pass ... ok ([WILDLINE])
+reject fail ... FAILED ([WILDLINE])
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub suite 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 1 ... ok ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... ok ([WILDLINE])
+suite ... ok ([WILDLINE])
+describe ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub describe 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 1 ... ok ([WILDLINE])
+  sub describe 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 2 ... ok ([WILDLINE])
+describe ... ok ([WILDLINE])
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... FAILED ([WILDLINE])
+  sub suite 1 ...
+    nested test 2 ... FAILED ([WILDLINE])
+    nested test 1 ... ok ([WILDLINE])
+  sub suite 1 ... FAILED (due to 1 failed step) ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... FAILED ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... FAILED (due to 1 failed step) ([WILDLINE])
+suite ... FAILED (due to 3 failed steps) ([WILDLINE])
+assertions available via text context ... ok ([WILDLINE])
+unhandled rejection - passes but warns ...
+Uncaught error from ./test.js FAILED
+unhandled rejection - passes but warns ... cancelled ([WILDLINE])
+async unhandled rejection - passes but warns ... cancelled ([WILDLINE])
+immediate throw - passes but warns ... cancelled ([WILDLINE])
+immediate reject - passes but warns ... cancelled ([WILDLINE])
+immediate resolve pass ... cancelled ([WILDLINE])
+subtest sync throw fail ... cancelled ([WILDLINE])
+sync throw non-error fail ... cancelled ([WILDLINE])
+level 0a ... cancelled ([WILDLINE])
+top level ... cancelled ([WILDLINE])
+invalid subtest - pass but subtest fails ... cancelled ([WILDLINE])
+sync skip option ... ignored ([WILDLINE])
+sync skip option with message ... cancelled ([WILDLINE])
+sync skip option is false fail ... cancelled ([WILDLINE])
+noop ... cancelled ([WILDLINE])
+functionOnly ... cancelled ([WILDLINE])
+<anonymous> ... cancelled ([WILDLINE])
+test with only a name provided ... cancelled ([WILDLINE])
+noop ... cancelled ([WILDLINE])
+noop ... ignored ([WILDLINE])
+test with a name and options provided ... ignored ([WILDLINE])
+functionAndOptions ... ignored ([WILDLINE])
+escaped skip message ... cancelled ([WILDLINE])
+escaped todo message ... cancelled ([WILDLINE])
+escaped diagnostic ... cancelled ([WILDLINE])
+callback pass ... cancelled ([WILDLINE])
+callback fail ... cancelled ([WILDLINE])
+sync t is this in test ... cancelled ([WILDLINE])
+async t is this in test ... cancelled ([WILDLINE])
+callback t is this in test ... cancelled ([WILDLINE])
+callback also returns a Promise ... cancelled ([WILDLINE])
+callback throw ... cancelled ([WILDLINE])
+callback called twice ... cancelled ([WILDLINE])
+callback called twice in different ticks ... cancelled ([WILDLINE])
+callback called twice in future tick ... cancelled ([WILDLINE])
+callback async throw ... cancelled ([WILDLINE])
+callback async throw after done ... cancelled ([WILDLINE])
+custom inspect symbol fail ... cancelled ([WILDLINE])
+custom inspect symbol that throws fail ... cancelled ([WILDLINE])
+subtest sync throw fails ... cancelled ([WILDLINE])
+timed out async test ... cancelled ([WILDLINE])
+timed out callback test ... cancelled ([WILDLINE])
+large timeout async test is ok ... cancelled ([WILDLINE])
+large timeout callback test is ok ... cancelled ([WILDLINE])
+successful thenable ... cancelled ([WILDLINE])
+rejected thenable ... cancelled ([WILDLINE])
+unfinished test with uncaughtException ... cancelled ([WILDLINE])
+unfinished test with unhandledRejection ... cancelled ([WILDLINE])
+
+ ERRORS 
+
+sync throw fail => [WILDLINE]
+error: Error: thrown from sync throw fail
+  throw new Error("thrown from sync throw fail");
+        ^
+    at [WILDCARD]
+
+async throw fail => [WILDLINE]
+error: Error: thrown from async throw fail
+  throw new Error("thrown from async throw fail");
+        ^
+    at [WILDCARD]
+
+async assertion fail => [WILDLINE]
+error: AssertionError: Values are not strictly equal:
+
+
+    [Diff] Actual / Expected
+
+
+-   true
++   false
+
+    at [WILDCARD]
+
+reject fail => [WILDLINE]
+error: Error: rejected from reject fail
+  return Promise.reject(new Error("rejected from reject fail"));
+                        ^
+    at [WILDCARD]
+
+suite ... test 2 => [WILDLINE]
+error: Error: thrown from test 2
+    throw new Error("thrown from test 2");
+          ^
+    at [WILDCARD]
+
+suite ... sub suite 1 ... nested test 2 => [WILDLINE]
+error: Error: thrown from nested test 2
+      throw new Error("thrown from nested test 2");
+            ^
+    at [WILDCARD]
+
+suite ... sub suite 2 ... nested test 1 => [WILDLINE]
+error: Error: thrown from nested test 1
+      throw new Error("thrown from nested test 1");
+            ^
+    at [WILDCARD]
+
+./test.js (uncaught error)
+error: (in promise) Error: rejected from unhandled rejection fail
+  Promise.reject(new Error("rejected from unhandled rejection fail"));
+                 ^
+    at [WILDCARD]
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+sync throw fail => [WILDLINE]
+async throw fail => [WILDLINE]
+async assertion fail => [WILDLINE]
+reject fail => [WILDLINE]
+suite ... test 2 => [WILDLINE]
+suite ... sub suite 1 ... nested test 2 => [WILDLINE]
+suite ... sub suite 2 ... nested test 1 => [WILDLINE]
+./test.js (uncaught error)
+
+FAILED | 17 passed (23 steps) | 49 failed (5 steps) | 4 ignored ([WILDLINE])
+
+error: Test failed

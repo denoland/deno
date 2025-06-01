@@ -1,0 +1,5 @@
+Available tasks:
+- echo (package.json)
+    deno eval 'console.log(1)'
+- bin (package.json)
+    @denotest/bin hi && cli-esm testing this out && npx cli-cjs test

@@ -1,0 +1,2905 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { ImportMap } from \"deco/blocks/app.ts\";\nimport { buildImportMap } from \"deco/blocks/utils.tsx\";\nimport { notUndefined } from \"deco/engine/core/utils.ts\";\nimport { type App, AppModule, context, type FnContext } from \"deco/mod.ts\";\nimport { Markdown } from \"./components/Markdown.tsx\";\nimport manifest, { Manifest } from \"./manifest.gen.ts\";\n\n/**\n * @title App\n */\nexport interface DynamicApp {\n  importUrl: string;\n  name: string;\n  importMap?: ImportMap;\n}\n\nexport interface State {\n  enableAdmin?: boolean;\n  apps: DynamicApp[];\n}\n\nconst DENY_DYNAMIC_IMPORT = Deno.env.get(\"DENY_DYNAMIC_IMPORT\") === \"true\";\n\n/**\n * @title Deco Hub\n * @description Unlock apps and integrations on deco.cx\n * @category Tool\n * @logo https://raw.githubusercontent.com/deco-cx/apps/main/decohub/logo.png\n */\nconst ADMIN_APP = \"decohub/apps/admin.ts\";\nconst FILES_APP = \"decohub/apps/files.ts\";\nexport default async function App(\n  state: State,\n): Promise<App<Manifest, State>> {\n  const resolvedAdminImport = import.meta.resolve(\"../admin/mod.ts\");\n  const resolvedFilesImport = import.meta.resolve(\"../files/mod.ts\");\n  const baseImportMap = buildImportMap(manifest);\n  const appModules = DENY_DYNAMIC_IMPORT ? [] : await Promise.all(\n    (state?.apps ?? []).filter(Boolean).map(async (app) => {\n      const appMod = await import(app.importUrl).catch((err) => {\n        console.error(\"error when importing app\", app.name, app.importUrl, err);\n        return null;\n      });\n      if (!appMod) {\n        return null;\n      }\n      return {\n        module: appMod,\n        importUrl: app.importUrl,\n        importMap: app.importMap,\n        name: app.name,\n      };\n    }),\n  );\n  const [dynamicApps, enhancedImportMap] = appModules.filter(notUndefined)\n    .reduce(\n      ([apps, importmap], app) => {\n        const appTs = `${app.name}.ts`;\n        const appName = `${manifest.name}/apps/${appTs}`;\n        return [{\n          ...apps,\n          [appName]: app.module,\n        }, {\n          ...importmap,\n          ...app.importMap ?? {},\n          imports: {\n            ...importmap?.imports ?? {},\n            ...app.importMap?.imports ?? {},\n            [appName]: app.importUrl,\n          },\n        }];\n      },\n      [{} as Record<string, AppModule>, baseImportMap],\n    );\n  return {\n    manifest: {\n      ...manifest,\n      apps: {\n        // build apps based on name\n        ...dynamicApps,\n        ...manifest.apps,\n        ...context.play || state.enableAdmin // this is an optimization to not include the admin code for everyone in case of play is not being used.\n          ? {\n            [ADMIN_APP]: await import(\n              resolvedAdminImport\n            ),\n            [FILES_APP]: await import(\n              resolvedFilesImport\n            ),\n          }\n          : {},\n      },\n    } as Manifest,\n    state,\n    ...context.play || state.enableAdmin\n      ? {\n        importMap: {\n          ...enhancedImportMap,\n          imports: {\n            ...enhancedImportMap?.imports ?? {},\n            [ADMIN_APP]: ADMIN_APP,\n            [FILES_APP]: FILES_APP,\n          },\n        },\n      }\n      : {},\n  };\n}\n\nexport type AppContext = FnContext<State, Manifest>;\n\nexport const Preview = await Markdown(\n  new URL(\"./README.md\", import.meta.url).href,\n);\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 201
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 202
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 203
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 204
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/range",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 13,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 205
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 22,
+          "character": 0
+        },
+        "end": {
+          "line": 22,
+          "character": 0
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 206
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 207
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 208
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 209
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 210
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 111,
+          "character": 38
+        }
+      }
+    },
+    "id": 211
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 33,
+        "character": 31
+      }
+    },
+    "id": 212
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 43,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 213
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 214
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 215
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 216
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 217
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 0
+        }
+      }
+    },
+    "id": 218
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 219
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 0
+        }
+      }
+    },
+    "id": 220
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 31,
+        "character": 33
+      }
+    },
+    "id": 221
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 114,
+          "character": 0
+        }
+      }
+    },
+    "id": 222
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 223
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 0
+        }
+      }
+    },
+    "id": 224
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 225
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentHighlight",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 226
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 227
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    },
+    "id": 228
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentHighlight",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 229
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 230
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 62,
+          "character": 12
+        }
+      }
+    },
+    "id": 231
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 9
+        },
+        "end": {
+          "line": 0,
+          "character": 9
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 232
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 91,
+          "character": 8
+        }
+      }
+    },
+    "id": 233
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 14
+        },
+        "end": {
+          "line": 0,
+          "character": 14
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 234
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 14
+      }
+    },
+    "id": 235
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 236
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 237
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 238
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 13
+      }
+    },
+    "id": 239
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 0
+        }
+      }
+    },
+    "id": 240
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 41
+      }
+    },
+    "id": 241
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 41
+      }
+    },
+    "id": 242
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentHighlight",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 41
+      }
+    },
+    "id": 245
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 41
+      }
+    },
+    "id": 246
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentHighlight",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 0,
+        "character": 41
+      }
+    },
+    "id": 247
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 267
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 0
+        }
+      }
+    },
+    "id": 268
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 41
+        },
+        "end": {
+          "line": 0,
+          "character": 41
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 269
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 270
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 271
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 272
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 273
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 55
+        },
+        "end": {
+          "line": 5,
+          "character": 55
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 274
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 5,
+              "character": 55
+            },
+            "end": {
+              "line": 5,
+              "character": 55
+            }
+          },
+          "rangeLength": 0,
+          "text": "\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 0
+        },
+        "end": {
+          "line": 6,
+          "character": 0
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 275
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 276
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 277
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 278
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 279
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 0
+            },
+            "end": {
+              "line": 6,
+              "character": 0
+            }
+          },
+          "rangeLength": 0,
+          "text": "i"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 6,
+        "character": 1
+      },
+      "context": {
+        "triggerKind": 1
+      }
+    },
+    "id": 280
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 281
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 4
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 1
+            },
+            "end": {
+              "line": 6,
+              "character": 1
+            }
+          },
+          "rangeLength": 0,
+          "text": "m"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 5
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 2
+            },
+            "end": {
+              "line": 6,
+              "character": 2
+            }
+          },
+          "rangeLength": 0,
+          "text": "p"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 6
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 3
+            },
+            "end": {
+              "line": 6,
+              "character": 3
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 283
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 284
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 285
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 286
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 4
+        },
+        "end": {
+          "line": 6,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 287
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 288
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 4
+        },
+        "end": {
+          "line": 6,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 0
+              },
+              "end": {
+                "line": 6,
+                "character": 4
+              }
+            },
+            "message": "Cannot find name 'impo'.",
+            "code": 2304,
+            "severity": 1,
+            "source": "deno-ts"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 289
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 7
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 4
+            },
+            "end": {
+              "line": 6,
+              "character": 4
+            }
+          },
+          "rangeLength": 0,
+          "text": "r"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 8
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 5
+            },
+            "end": {
+              "line": 6,
+              "character": 5
+            }
+          },
+          "rangeLength": 0,
+          "text": "t"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 9
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 6
+            },
+            "end": {
+              "line": 6,
+              "character": 6
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 10
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 7
+            },
+            "end": {
+              "line": 6,
+              "character": 7
+            }
+          },
+          "rangeLength": 0,
+          "text": "{}"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 290
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 11
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 8
+            },
+            "end": {
+              "line": 6,
+              "character": 8
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 12
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 9
+            },
+            "end": {
+              "line": 6,
+              "character": 9
+            }
+          },
+          "rangeLength": 0,
+          "text": "AppFunc"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 291
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 16
+        },
+        "end": {
+          "line": 6,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 292
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 293
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 13
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 16
+            },
+            "end": {
+              "line": 6,
+              "character": 16
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 294
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 295
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 296
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 297
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 298
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 14
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 18
+            },
+            "end": {
+              "line": 6,
+              "character": 18
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 299
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 15
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 19
+            },
+            "end": {
+              "line": 6,
+              "character": 19
+            }
+          },
+          "rangeLength": 0,
+          "text": "f"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 6,
+        "character": 20
+      },
+      "context": {
+        "triggerKind": 1
+      }
+    },
+    "id": 300
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 16
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 20
+            },
+            "end": {
+              "line": 6,
+              "character": 20
+            }
+          },
+          "rangeLength": 0,
+          "text": "r"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 17
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 21
+            },
+            "end": {
+              "line": 6,
+              "character": 21
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 18
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 22
+            },
+            "end": {
+              "line": 6,
+              "character": 22
+            }
+          },
+          "rangeLength": 0,
+          "text": "m"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 19
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 23
+            },
+            "end": {
+              "line": 6,
+              "character": 23
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 302
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 20
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 24
+            },
+            "end": {
+              "line": 6,
+              "character": 24
+            }
+          },
+          "rangeLength": 0,
+          "text": "\"\""
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 6,
+        "character": 25
+      },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "\""
+      }
+    },
+    "id": 303
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 305
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 25
+        },
+        "end": {
+          "line": 6,
+          "character": 25
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 24
+              },
+              "end": {
+                "line": 6,
+                "character": 26
+              }
+            },
+            "message": "Relative import path \"\" not prefixed with / or ./ or ../ and not in import map from \"file:///decohub/mod.ts\"",
+            "code": "resolver-error",
+            "severity": 1,
+            "source": "deno"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 306
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 307
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 308
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 309
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 310
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 25
+        },
+        "end": {
+          "line": 6,
+          "character": 25
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 24
+              },
+              "end": {
+                "line": 6,
+                "character": 26
+              }
+            },
+            "message": "Relative import path \"\" not prefixed with / or ./ or ../ and not in import map from \"file:///decohub/mod.ts\"",
+            "code": "resolver-error",
+            "severity": 1,
+            "source": "deno"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 0
+              },
+              "end": {
+                "line": 6,
+                "character": 26
+              }
+            },
+            "message": "'AppFunc' is declared but its value is never read.",
+            "code": 6133,
+            "severity": 4,
+            "tags": [
+              1
+            ],
+            "source": "deno-ts"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 311
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 21
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 25
+            },
+            "end": {
+              "line": 6,
+              "character": 25
+            }
+          },
+          "rangeLength": 0,
+          "text": "d"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 22
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 26
+            },
+            "end": {
+              "line": 6,
+              "character": 26
+            }
+          },
+          "rangeLength": 0,
+          "text": "e"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 23
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 27
+            },
+            "end": {
+              "line": 6,
+              "character": 27
+            }
+          },
+          "rangeLength": 0,
+          "text": "c"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 313
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 24
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 28
+            },
+            "end": {
+              "line": 6,
+              "character": 28
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 25
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 29
+            },
+            "end": {
+              "line": 6,
+              "character": 29
+            }
+          },
+          "rangeLength": 0,
+          "text": "/"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 6,
+        "character": 30
+      },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "/"
+      }
+    },
+    "id": 315
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 26
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 30
+            },
+            "end": {
+              "line": 6,
+              "character": 30
+            }
+          },
+          "rangeLength": 0,
+          "text": "b"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 316
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 27
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 31
+            },
+            "end": {
+              "line": 6,
+              "character": 31
+            }
+          },
+          "rangeLength": 0,
+          "text": "l"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 28
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 32
+            },
+            "end": {
+              "line": 6,
+              "character": 32
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 29
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 33
+            },
+            "end": {
+              "line": 6,
+              "character": 33
+            }
+          },
+          "rangeLength": 0,
+          "text": "c"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 30
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 34
+            },
+            "end": {
+              "line": 6,
+              "character": 34
+            }
+          },
+          "rangeLength": 0,
+          "text": "k"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 318
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 31
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 35
+            },
+            "end": {
+              "line": 6,
+              "character": 35
+            }
+          },
+          "rangeLength": 0,
+          "text": "s"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 32
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 36
+            },
+            "end": {
+              "line": 6,
+              "character": 36
+            }
+          },
+          "rangeLength": 0,
+          "text": "/"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "position": {
+        "line": 6,
+        "character": 37
+      },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "/"
+      }
+    },
+    "id": 319
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 321
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 37
+        },
+        "end": {
+          "line": 6,
+          "character": 37
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 24
+              },
+              "end": {
+                "line": 6,
+                "character": 38
+              }
+            },
+            "message": "Uncached or missing remote URL: https://denopkg.com/deco-cx/deco@1.57.17/blocks/",
+            "data": {
+              "specifier": "https://denopkg.com/deco-cx/deco@1.57.17/blocks/"
+            },
+            "code": "no-cache",
+            "severity": 1,
+            "source": "deno"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 322
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 323
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 324
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 325
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 326
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 37
+        },
+        "end": {
+          "line": 6,
+          "character": 37
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 24
+              },
+              "end": {
+                "line": 6,
+                "character": 38
+              }
+            },
+            "message": "Uncached or missing remote URL: https://denopkg.com/deco-cx/deco@1.57.17/blocks/",
+            "data": {
+              "specifier": "https://denopkg.com/deco-cx/deco@1.57.17/blocks/"
+            },
+            "code": "no-cache",
+            "severity": 1,
+            "source": "deno"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 0
+              },
+              "end": {
+                "line": 6,
+                "character": 38
+              }
+            },
+            "message": "'AppFunc' is declared but its value is never read.",
+            "code": 6133,
+            "severity": 4,
+            "tags": [
+              1
+            ],
+            "source": "deno-ts"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 327
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 33
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 37
+            },
+            "end": {
+              "line": 6,
+              "character": 37
+            }
+          },
+          "rangeLength": 0,
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 34
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 38
+            },
+            "end": {
+              "line": 6,
+              "character": 38
+            }
+          },
+          "rangeLength": 0,
+          "text": "p"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 35
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 39
+            },
+            "end": {
+              "line": 6,
+              "character": 39
+            }
+          },
+          "rangeLength": 0,
+          "text": "p"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 329
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 40
+        },
+        "end": {
+          "line": 6,
+          "character": 40
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 24
+              },
+              "end": {
+                "line": 6,
+                "character": 41
+              }
+            },
+            "message": "Uncached or missing remote URL: https://denopkg.com/deco-cx/deco@1.57.17/blocks/app",
+            "data": {
+              "specifier": "https://denopkg.com/deco-cx/deco@1.57.17/blocks/app"
+            },
+            "code": "no-cache",
+            "severity": 1,
+            "source": "deno"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 330
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 331
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 332
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 333
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 334
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 36
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 25
+            },
+            "end": {
+              "line": 6,
+              "character": 40
+            }
+          },
+          "rangeLength": 15,
+          "text": "deco/blocks/app.ts"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 335
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 336
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 337
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 338
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 339
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 44
+        },
+        "end": {
+          "line": 6,
+          "character": 44
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 0
+              },
+              "end": {
+                "line": 6,
+                "character": 44
+              }
+            },
+            "message": "'AppFunc' is declared but its value is never read.",
+            "code": 6133,
+            "severity": 4,
+            "tags": [
+              1
+            ],
+            "source": "deno-ts"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 340
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts",
+        "version": 37
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 6,
+              "character": 44
+            },
+            "end": {
+              "line": 6,
+              "character": 44
+            }
+          },
+          "rangeLength": 0,
+          "text": ";"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 45
+        },
+        "end": {
+          "line": 6,
+          "character": 45
+        }
+      },
+      "context": {
+        "diagnostics": [],
+        "triggerKind": 2
+      }
+    },
+    "id": 341
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 342
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 343
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 344
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 345
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didSave",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 346
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 45
+        },
+        "end": {
+          "line": 6,
+          "character": 45
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 0
+              },
+              "end": {
+                "line": 6,
+                "character": 45
+              }
+            },
+            "message": "'AppFunc' is declared but its value is never read.",
+            "code": 6133,
+            "severity": 4,
+            "tags": [
+              1
+            ],
+            "source": "deno-ts"
+          }
+        ],
+        "triggerKind": 2
+      }
+    },
+    "id": 347
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      }
+    },
+    "id": 348
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "file:///decohub/mod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 108,
+          "character": 1
+        }
+      }
+    },
+    "id": 349
+  }
+]

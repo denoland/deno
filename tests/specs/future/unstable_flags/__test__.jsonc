@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      // Notice `--unstable-*` flags are not needed anymore
+      "args": "run -A --config ../../../config/deno.json main.js",
+      "output": "main.out"
+    },
+    {
+      // Notice `--unstable-*` flags are not needed anymore
+      "args": "run -A --config ../../../config/deno.json worker.js",
+      "output": "main.out"
+    }
+  ]
+}

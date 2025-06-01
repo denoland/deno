@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "package": "*",
+    "@types/package": "*"
+  }
+}

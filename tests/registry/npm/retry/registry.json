@@ -1,0 +1,75 @@
+{
+  "name": "retry",
+  "description": "Abstraction for exponential and custom retry strategies for failed operations.",
+  "dist-tags": {
+    "latest": "0.12.0"
+  },
+  "versions": {
+    "0.12.0": {
+      "author": {
+        "name": "Tim Koschützki",
+        "email": "tim@debuggable.com",
+        "url": "http://debuggable.com/"
+      },
+      "name": "retry",
+      "description": "Abstraction for exponential and custom retry strategies for failed operations.",
+      "license": "MIT",
+      "version": "0.12.0",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/tim-kos/node-retry.git"
+      },
+      "directories": {
+        "lib": "./lib"
+      },
+      "main": "index",
+      "engines": {
+        "node": ">= 4"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "fake": "0.2.0",
+        "istanbul": "^0.4.5",
+        "tape": "^4.8.0"
+      },
+      "scripts": {
+        "test": "istanbul cover ./node_modules/tape/bin/tape ./test/integration/*.js",
+        "release:major": "env SEMANTIC=major npm run release",
+        "release:minor": "env SEMANTIC=minor npm run release",
+        "release:patch": "env SEMANTIC=patch npm run release",
+        "release": "npm version ${SEMANTIC:-patch} -m \"Release %s\" && git push && git push --tags && npm publish"
+      },
+      "gitHead": "f802d9edc2fdbca727d3e368234b6d714db06f8e",
+      "bugs": {
+        "url": "https://github.com/tim-kos/node-retry/issues"
+      },
+      "_id": "retry@0.12.0",
+      "_shasum": "1b42a6266a21f07421d1b0b54b7dc167b01c013b",
+      "_from": ".",
+      "_npmVersion": "4.1.2",
+      "_nodeVersion": "6.10.0",
+      "dist": {
+        "shasum": "1b42a6266a21f07421d1b0b54b7dc167b01c013b",
+        "tarball": "http://localhost:4260/retry/retry-0.12.0.tgz",
+        "fileCount": 17,
+        "unpackedSize": 32210,
+        "integrity": "sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow=="
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Tim Koschützki",
+    "email": "tim@debuggable.com",
+    "url": "http://debuggable.com/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tim-kos/node-retry.git"
+  },
+  "homepage": "https://github.com/tim-kos/node-retry",
+  "bugs": {
+    "url": "https://github.com/tim-kos/node-retry/issues"
+  },
+  "license": "MIT"
+}

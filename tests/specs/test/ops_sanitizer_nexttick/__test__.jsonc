@@ -1,0 +1,4 @@
+{
+  "args": "test --no-check ops_sanitizer_nexttick.ts",
+  "output": "ops_sanitizer_nexttick.out"
+}
