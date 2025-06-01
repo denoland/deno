@@ -5097,12 +5097,6 @@ declare namespace Deno {
      * @category HTTP Server
      */
     fetch: ServeHandler<Addr>;
-    /**
-     * The callback which is called when the server starts listening.
-     *
-     * @category HTTP Server
-     */
-    onListen?: (localAddr: Addr) => void;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
