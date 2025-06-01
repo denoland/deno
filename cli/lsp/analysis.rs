@@ -462,7 +462,7 @@ impl<'a> TsResponseImportMapper<'a> {
         return Some(result);
       }
     } else if let Some(dep_name) =
-      scoped_resolver.file_url_to_package_json_dep(specifier)
+      scoped_resolver.file_url_to_npm_dep_key(specifier)
     {
       return Some(dep_name);
     }

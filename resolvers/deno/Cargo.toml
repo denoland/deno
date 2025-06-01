@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.36.0"
+version = "0.37.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
-graph = ["deno_graph", "node_resolver/graph"]
+graph = ["deno_graph", "node_resolver/graph", "http", "deno_permissions"]
 sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
 
 [dependencies]
@@ -33,11 +33,13 @@ deno_media_type.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
+deno_permissions = { workspace = true, optional = true }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
 dissimilar.workspace = true
 futures.workspace = true
+http = { workspace = true, optional = true }
 import_map.workspace = true
 indexmap.workspace = true
 log.workspace = true

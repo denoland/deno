@@ -421,7 +421,6 @@ pub fn op_zlib_close_if_pending(
 }
 
 #[op2(fast)]
-#[smi]
 pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {

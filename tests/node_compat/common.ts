@@ -167,6 +167,9 @@ export async function runNodeCompatTestCase(
         v8Flags.push("--expose-gc");
         knownGlobals.push("gc");
         break;
+      case "--allow-natives-syntax":
+        v8Flags.push("--allow-natives-syntax");
+        break;
       default:
         break;
     }
