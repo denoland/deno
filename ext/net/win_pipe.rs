@@ -53,7 +53,7 @@ impl NamedPipe {
     let cancel = RcRef::map(&self, |s| &s.cancel);
     match &mut *inner {
       Inner::Server(ref inner) => inner.connect().try_or_cancel(cancel).await,
-      Inner::Client(ref inner) => Ok(()),
+      Inner::Client(_) => Ok(()),
     }
   }
 
