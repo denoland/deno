@@ -5,7 +5,11 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   internalRidSymbol,
 } = core;
-import { op_pipe_connect, op_pipe_listen } from "ext:core/ops";
+import {
+  op_pipe_connect,
+  op_pipe_listen,
+  op_pipe_windows_connect,
+} from "ext:core/ops";
 const {
   Error,
   ObjectDefineProperty,
@@ -14,6 +18,7 @@ const {
   SetPrototypeAdd,
   SetPrototypeDelete,
   SetPrototypeForEach,
+  PromiseThen,
 } = primordials;
 import {
   readableStreamForRidUnrefable,
@@ -146,6 +151,51 @@ class Pipe {
   }
 }
 
+class WindowsPipe extends Pipe {
+  readonly #promise: Promise<void>;
+  #connected: boolean = false;
+  #connectError: unknown;
+
+  constructor(rid: number, promise: Promise<void>) {
+    super(rid);
+    this.#promise = promise;
+    core.refOpPromise(promise);
+
+    PromiseThen(promise, () => {
+      this.#connected = true;
+    }, (err) => {
+      this.#connectError = err;
+    });
+  }
+
+  ref() {
+    core.refOpPromise(this.#promise);
+    super.ref();
+  }
+
+  unref() {
+    core.unrefOpPromise(this.#promise);
+    super.unref();
+  }
+
+  async connect(): Promise<void> {
+    await this.#promise;
+  }
+
+  get connected(): boolean {
+    return this.#connected;
+  }
+
+  async read(buffer): Promise<number> {
+    await this.#promise;
+    return super.read(buffer);
+  }
+
+  async write(buffer): Promise<number> {
+    await this.#promise;
+    return super.write(buffer);
+  }
+}
 async function connect(opts: Options | WindowsConnectOptions) {
   let rid: number;
   switch (opts.kind) {
@@ -168,7 +218,7 @@ function listen(opts: WindowsListenOptions | UnixListenOptions) {
       return new Pipe(rid);
     case "windows":
       rid = op_pipe_listen(opts, "Deno.pipe.listen");
-      return new Pipe(rid);
+      return new WindowsPipe(rid, op_pipe_windows_connect(rid));
     default:
       throw new Error(`Unsupported kind: ${opts.kind}`);
   }

@@ -100,6 +100,16 @@ where
   Ok(rid)
 }
 
+#[op2(async, stack_trace)]
+pub fn op_pipe_windows_connect(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), NetError> {
+  let pipe = state.resource_table.get::<NamedPipe>(rid)?;
+  pipe.connect().await?;
+  Ok(())
+}
+
 #[op2(stack_trace)]
 #[smi]
 pub async fn op_pipe_connect<NP>(

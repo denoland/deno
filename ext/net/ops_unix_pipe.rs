@@ -115,3 +115,8 @@ where
   let rid = state.resource_table.add(pipe);
   Ok(rid)
 }
+
+#[op2(fast)]
+pub fn op_pipe_windows_connect() {
+  unreachable!();
+}

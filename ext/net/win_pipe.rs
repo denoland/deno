@@ -26,7 +26,7 @@ enum Inner {
 }
 
 impl NamedPipe {
-  pub async fn new_server(
+  pub fn new_server(
     addr: impl AsRef<OsStr>,
     options: &named_pipe::ServerOptions,
   ) -> io::Result<NamedPipe> {
@@ -48,11 +48,11 @@ impl NamedPipe {
     })
   }
 
-  pub async fn connect(&self) -> io::Result<()> {
-    match &self.inner {
-      Inner::Server(ref inner) => {
-        inner.connect().try_or_cancel(&self.cancel).await
-      }
+  pub async fn connect(self: Rc<Self>) -> io::Result<()> {
+    let mut inner = RcRef::map(&self, |s| &s.inner).borrow_mut().await;
+    let cancel = RcRef::map(&self, |s| &s.cancel);
+    match inner {
+      Inner::Server(ref inner) => inner.connect().try_or_cancel(cancel).await,
       Inner::Client(ref inner) => Ok(()),
     }
   }
