@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use deno_core::op2;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use tokio::net::windows::named_pipe;
@@ -97,7 +96,7 @@ where
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(async)]
 pub async fn op_pipe_windows_connect(
   state: &mut OpState,
   #[smi] rid: ResourceId,
