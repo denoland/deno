@@ -46,6 +46,8 @@ const {
   PromisePrototypeCatch,
   RangeError,
   ReflectConstruct,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -212,9 +214,14 @@ class WebTransport {
       this.#anticipatedConcurrentIncomingUnidirectionalStreams =
         options.anticipatedConcurrentIncomingUnidirectionalStreams;
 
+      let hostname = parsedURL.hostname;
+      if (StringPrototypeStartsWith(hostname, "[")) {
+        hostname = StringPrototypeSlice(hostname, 1, -1);
+      }
+
       promise = PromisePrototypeThen(
         connectQuic({
-          hostname: parsedURL.hostname,
+          hostname,
           port: Number(parsedURL.port) || 443,
           keepAliveInterval: 4e3,
           maxIdleTimeout: 10e3,
