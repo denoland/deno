@@ -1106,6 +1106,16 @@ impl CliOptions {
         full_paths.push(pkg_json.path.clone());
       }
     }
+
+    // If the user specified an env file, we should watch it.
+    if let Some(env_file_names) = &self.flags.env_file {
+      full_paths.extend(
+        env_file_names
+          .iter()
+          .map(|name| self.initial_cwd.join(name)),
+      );
+    }
+
     full_paths
   }
 
