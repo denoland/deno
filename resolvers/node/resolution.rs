@@ -25,9 +25,11 @@ use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
+use crate::errors::FinalizeResolutionErrorKind;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
+use crate::errors::LegacyResolveErrorKind;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -349,6 +351,7 @@ impl<
       url,
       resolved_kind,
       resolution_mode,
+      resolution_kind,
       Some(&referrer),
     )?;
     let maybe_cache_resolution = || {
@@ -439,6 +442,7 @@ impl<
     resolved: MaybeTypesResolvedUrl,
     resolved_method: ResolvedMethod,
     resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
     maybe_referrer: Option<&UrlOrPathRef>,
   ) -> Result<UrlOrPath, FinalizeResolutionError> {
     let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
@@ -498,20 +502,7 @@ impl<
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        let ext = ["js", "mjs", "cjs"]
-          .into_iter()
-          .find(|ext| self.sys.is_file(&with_known_extension(&path, ext)));
-        let suggested_file_name =
-          if resolution_mode == ResolutionMode::Import || ext.is_none() {
-            ["index.mjs", "index.js", "index.cjs"]
-              .into_iter()
-              .find(|e| self.sys.is_file(&path.join(e)))
-          } else {
-            None
-          };
-        if resolution_mode == ResolutionMode::Import
-          || (ext.is_none() && suggested_file_name.is_none())
-        {
+        if resolution_mode == ResolutionMode::Import {
           let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
             .into_iter()
             .find(|e| self.sys.is_file(&path.join(e)));
@@ -523,10 +514,31 @@ impl<
             }
             .into(),
           )
-        } else if let Some(ext) = ext {
-          Ok(UrlOrPath::Path(with_known_extension(&path, ext)))
         } else {
-          Ok(UrlOrPath::Path(path.join(suggested_file_name.unwrap())))
+          // prefer the file over the directory
+          let path_with_ext = with_known_extension(&path, "js");
+          if self.sys.is_file(&path_with_ext) {
+            Ok(UrlOrPath::Path(path_with_ext))
+          } else {
+            Ok(
+              self
+                .legacy_index_resolve(
+                  &path,
+                  maybe_referrer,
+                  resolution_mode,
+                  resolution_kind,
+                )
+                .map(|url| url.0.into_url_or_path())
+                .map_err(|err| match err.into_kind() {
+                  LegacyResolveErrorKind::TypesNotFound(err) => {
+                    FinalizeResolutionErrorKind::TypesNotFound(err)
+                  }
+                  LegacyResolveErrorKind::ModuleNotFound(err) => {
+                    FinalizeResolutionErrorKind::ModuleNotFound(err)
+                  }
+                })?,
+            )
+          }
         }
       }
       Ok(FileType::File) => {
@@ -537,39 +549,28 @@ impl<
             .unwrap_or(UrlOrPath::Path(path)),
         )
       }
-      Err(e)
-        if e.kind() == std::io::ErrorKind::NotFound
-          && resolution_mode == ResolutionMode::Require =>
-      {
-        if let Some(ext) = ["js", "mjs", "cjs"]
-          .into_iter()
-          .find(|ext| self.sys.is_file(&with_known_extension(&path, ext)))
-        {
-          Ok(UrlOrPath::Path(with_known_extension(&path, ext)))
-        } else {
-          Err(
-            ModuleNotFoundError {
-              suggested_ext: self
-                .module_not_found_ext_suggestion(&path, resolved_method),
-              specifier: UrlOrPath::Path(path),
-              maybe_referrer: maybe_referrer.map(|r| r.display()),
-              typ: "module",
+      _ => {
+        if let Err(e) = maybe_file_type {
+          if resolution_mode == ResolutionMode::Require
+            && e.kind() == std::io::ErrorKind::NotFound
+          {
+            let file_with_ext = with_known_extension(&path, "js");
+            if self.sys.is_file(&file_with_ext) {
+              return Ok(UrlOrPath::Path(file_with_ext));
             }
-            .into(),
-          )
+          }
         }
-      }
 
-      _ => Err(
-        ModuleNotFoundError {
-          suggested_ext: self
-            .module_not_found_ext_suggestion(&path, resolved_method),
-          specifier: UrlOrPath::Path(path),
-          maybe_referrer: maybe_referrer.map(|r| r.display()),
-          typ: "module",
-        }
-        .into(),
-      ),
+        Err(
+          ModuleNotFoundError {
+            suggested_ext: self
+              .module_not_found_ext_suggestion(&path, resolved_method),
+            specifier: UrlOrPath::Path(path),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+          }
+          .into(),
+        )
+      }
     }
   }
 
@@ -640,6 +641,7 @@ impl<
       resolved_url,
       resolved_method,
       resolution_mode,
+      resolution_kind,
       maybe_referrer.as_ref(),
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -1930,6 +1932,7 @@ impl<
         }
       }
     } else {
+      // Node only resolves index.js and not index.cjs/mjs
       vec!["index.js"]
     };
     for index_file_name in index_file_names {
@@ -1956,7 +1959,6 @@ impl<
       Err(
         ModuleNotFoundError {
           specifier: UrlOrPath::Path(directory.join("index.js")),
-          typ: "module",
           maybe_referrer: maybe_referrer.map(|r| r.display()),
           suggested_ext: None,
         }
