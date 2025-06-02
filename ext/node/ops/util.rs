@@ -88,8 +88,8 @@ pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_node_call_is_from_dependency<'a>(
-  scope: &mut v8::HandleScope<'a>,
+pub fn op_node_call_is_from_dependency(
+  scope: &mut v8::HandleScope,
 ) -> bool {
   // non internal call site should appear in < 20 frames
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
@@ -117,5 +117,5 @@ pub fn op_node_call_is_from_dependency<'a>(
       break;
     }
   }
-  return false;
+  false
 }
