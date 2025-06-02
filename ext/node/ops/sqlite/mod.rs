@@ -3,6 +3,7 @@
 mod database;
 mod session;
 mod statement;
+mod validators;
 
 pub use database::DatabaseSync;
 use rusqlite::ffi as libsqlite3_sys;

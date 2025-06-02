@@ -20,10 +20,12 @@ use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
+use super::validators;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use crate::ops::sqlite::SqliteResultExt;
+
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
@@ -177,6 +179,18 @@ fn open_db(
   Ok(conn)
 }
 
+fn database_constructor(
+  _: &mut v8::HandleScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), validators::Error> {
+  // TODO(littledivy): use `IsConstructCall()`
+  if args.new_target().is_undefined() {
+    return Err(validators::Error::ConstructCallRequired);
+  }
+
+  Ok(())
+}
+
 // Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
@@ -187,6 +201,7 @@ impl DatabaseSync {
   // To use an in-memory database, the `location` should be special
   // name ":memory:".
   #[constructor]
+  #[validate(database_constructor)]
   #[cppgc]
   fn new(
     state: &mut OpState,
