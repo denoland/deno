@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1177 tests out of 3993 have been ported from Node 23.9.0 (29.48% ported, 71.05% remaining).
+1178 tests out of 3993 have been ported from Node 23.9.0 (29.50% ported, 71.02% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -292,7 +292,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
 - [parallel/test-buffer-resizable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-resizable.js)
-- [parallel/test-buffer-write-fast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-write-fast.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
 - [parallel/test-child-process-advanced-serialization-splitted-length-field.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-splitted-length-field.js)
@@ -651,7 +650,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dns-channel-cancel-promise.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel-promise.js)
 - [parallel/test-dns-channel-cancel.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel.js)
 - [parallel/test-dns-channel-timeout.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-timeout.js)
-- [parallel/test-dns-default-order-ipv4.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv4.js)
 - [parallel/test-dns-default-order-ipv6.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv6.js)
 - [parallel/test-dns-default-order-verbatim.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-verbatim.js)
 - [parallel/test-dns-get-server.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-get-server.js)

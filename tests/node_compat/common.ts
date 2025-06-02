@@ -151,6 +151,7 @@ export async function runNodeCompatTestCase(
   signal?: AbortSignal,
 ) {
   const v8Flags = ["--stack-size=4000"];
+  const nodeOptions = [] as string[];
   const testSource = await Deno.readTextFile(testCase);
   const envVars: Record<string, string> = {};
   const knownGlobals: string[] = [];
@@ -166,6 +167,12 @@ export async function runNodeCompatTestCase(
       case "--expose-gc":
         v8Flags.push("--expose-gc");
         knownGlobals.push("gc");
+        break;
+      case "--no-warnings":
+        nodeOptions.push("--no-warnings");
+        break;
+      case "--allow-natives-syntax":
+        v8Flags.push("--allow-natives-syntax");
         break;
       default:
         break;
@@ -187,6 +194,7 @@ export async function runNodeCompatTestCase(
     args,
     env: {
       TEST_SERIAL_ID: String(testSerialId++),
+      NODE_OPTIONS: nodeOptions.join(" "),
       ...envVars,
     },
     cwd,
