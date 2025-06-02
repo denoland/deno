@@ -103,8 +103,7 @@ export function getaddrinfo(
       }
     }
 
-    // TODO(cmorten): needs work
-    // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
+    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
     if (order === DNS_ORDER_IPV4_FIRST) {
       addresses.sort((a: string, b: string): number => {
         if (isIPv4(a)) {
