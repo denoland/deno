@@ -421,6 +421,12 @@ declare var TextEncoder: {
 };
 
 /** @category Encoding */
+interface TextEncoderCommon {
+  /** Returns "utf-8". */
+  readonly encoding: string;
+}
+
+/** @category Encoding */
 interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
@@ -1627,5 +1633,4 @@ declare var WebTransportError: {
 type WebTransportCongestionControl = "default" | "low-latency" | "throughput";
 
 /** @category Platform */
-type WebTransportErrorSource = "session" | "stream";
 type WebTransportErrorSource = "session" | "stream";
