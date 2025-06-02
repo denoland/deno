@@ -36,6 +36,7 @@ struct DatabaseSyncOptions {
   open: bool,
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
+  #[serde(default = "false_fn")]
   read_only: bool,
   #[serde(default = "false_fn")]
   allow_extension: bool,
