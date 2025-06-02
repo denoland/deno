@@ -231,10 +231,48 @@ type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
 
-/** @category Events */
+/**
+ * Options for configuring an event listener via addEventListener.
+ *
+ * This interface extends EventListenerOptions and provides additional configuration
+ * options to control event listener behavior.
+ *
+ * @example
+ * ```ts
+ * eventTarget.addEventListener('message', handler, {
+ *   once: true,
+ *   passive: true,
+ *   signal: controller.signal
+ * });
+ * ```
+ *
+ * @category Events */
 interface AddEventListenerOptions extends EventListenerOptions {
+  /**
+   * When set to true, the listener will automatically be removed after it has been invoked once.
+   */
   once?: boolean;
+
+  /**
+   * When set to true, indicates that the listener will never call preventDefault().
+   * This provides a performance optimization opportunity for event processing.
+   * If a passive listener attempts to call preventDefault(), the call will be ignored
+   * and a warning may be generated.
+   */
   passive?: boolean;
+
+  /**
+   * An AbortSignal that can be used to remove the event listener when aborted.
+   *
+   * @example
+   * ```ts
+   * const controller = new AbortController();
+   * eventTarget.addEventListener('message', handler, { signal: controller.signal });
+   *
+   * // Later, to remove the listener:
+   * controller.abort();
+   * ```
+   */
   signal?: AbortSignal;
 }
 
@@ -381,12 +419,6 @@ declare var TextEncoder: {
   readonly prototype: TextEncoder;
   new (): TextEncoder;
 };
-
-/** @category Encoding */
-interface TextEncoderCommon {
-  /** Returns "utf-8". */
-  readonly encoding: string;
-}
 
 /** @category Encoding */
 interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
@@ -1595,4 +1627,5 @@ declare var WebTransportError: {
 type WebTransportCongestionControl = "default" | "low-latency" | "throughput";
 
 /** @category Platform */
+type WebTransportErrorSource = "session" | "stream";
 type WebTransportErrorSource = "session" | "stream";
