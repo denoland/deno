@@ -495,11 +495,61 @@ impl DenoPeriodicReader {
   }
 }
 
+mod tunnel_client {
+  use deno_net::tunnel::get_tunnel;
+  use deno_net::tunnel::TunnelListener;
+  use http_body_util::BodyExt;
+  use http_body_util::Full;
+  use hyper_util::rt::tokio::TokioIo;
+  use opentelemetry_http::Bytes;
+  use opentelemetry_http::HttpError;
+  use opentelemetry_http::Request;
+  use opentelemetry_http::Response;
+  use opentelemetry_http::ResponseExt;
+  use opentelemetry_sdk::runtime::Runtime;
+
+  use super::OtelSharedRuntime;
+
+  #[derive(Debug, Clone)]
+  pub struct TunnelClient {
+    listener: TunnelListener,
+  }
+
+  impl TunnelClient {
+    pub fn new() -> Option<Self> {
+      let listener = get_tunnel()?;
+      Some(Self {
+        listener: listener.clone(),
+      })
+    }
+  }
+
+  #[async_trait::async_trait]
+  impl opentelemetry_http::HttpClient for TunnelClient {
+    async fn send(
+      &self,
+      request: Request<Vec<u8>>,
+    ) -> Result<Response<Bytes>, HttpError> {
+      let stream = self.listener.create_stream().await?;
+      let io = TokioIo::new(stream);
+      let (mut send_request, c) =
+        hyper::client::conn::http1::handshake(io).await?;
+      OtelSharedRuntime.spawn(Box::pin(async move {
+        let _ = c.await;
+      }));
+      let (parts, body) = request.into_parts();
+      let request = Request::from_parts(parts, Full::<Bytes>::from(body));
+      let response = send_request.send_request(request).await?;
+      let (parts, body) = response.into_parts();
+      let body = body.collect().await?.to_bytes();
+      let response = Response::from_parts(parts, body);
+      Ok(response.error_for_status()?)
+    }
+  }
+}
+
 mod hyper_client {
   use std::fmt::Debug;
-  use std::pin::Pin;
-  use std::task::Poll;
-  use std::task::{self};
 
   use deno_tls::create_client_config;
   use deno_tls::load_certs;
@@ -509,8 +559,6 @@ mod hyper_client {
   use deno_tls::TlsKeys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
-  use hyper::body::Body as HttpBody;
-  use hyper::body::Frame;
   use hyper_rustls::HttpsConnector;
   use hyper_util::client::legacy::connect::HttpConnector;
   use hyper_util::client::legacy::Client;
@@ -525,7 +573,7 @@ mod hyper_client {
   // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
   #[derive(Debug, Clone)]
   pub struct HyperClient {
-    inner: Client<HttpsConnector<HttpConnector>, Body>,
+    inner: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
   }
 
   impl HyperClient {
@@ -570,42 +618,12 @@ mod hyper_client {
       request: Request<Vec<u8>>,
     ) -> Result<Response<Bytes>, HttpError> {
       let (parts, body) = request.into_parts();
-      let request = Request::from_parts(parts, Body(Full::from(body)));
-      let mut response = self.inner.request(request).await?;
-      let headers = std::mem::take(response.headers_mut());
-
-      let mut http_response = Response::builder()
-        .status(response.status())
-        .body(response.into_body().collect().await?.to_bytes())?;
-      *http_response.headers_mut() = headers;
-
-      Ok(http_response.error_for_status()?)
-    }
-  }
-
-  #[pin_project::pin_project]
-  pub struct Body(#[pin] Full<Bytes>);
-
-  impl HttpBody for Body {
-    type Data = Bytes;
-    type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-    #[inline]
-    fn poll_frame(
-      self: Pin<&mut Self>,
-      cx: &mut task::Context<'_>,
-    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-      self.project().0.poll_frame(cx).map_err(Into::into)
-    }
-
-    #[inline]
-    fn is_end_stream(&self) -> bool {
-      self.0.is_end_stream()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> hyper::body::SizeHint {
-      self.0.size_hint()
+      let request = Request::from_parts(parts, Full::from(body));
+      let response = self.inner.request(request).await?;
+      let (parts, body) = response.into_parts();
+      let body = body.collect().await?.to_bytes();
+      let response = Response::from_parts(parts, body);
+      Ok(response.error_for_status()?)
     }
   }
 }
@@ -705,10 +723,17 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = hyper_client::HyperClient::new()?;
+  let tunnel_client = tunnel_client::TunnelClient::new();
+  let hyper_client = hyper_client::HyperClient::new()?;
 
-  let span_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
+  let span_exporter = HttpExporterBuilder::default();
+
+  let span_exporter = if let Some(tunnel_client) = &tunnel_client {
+    span_exporter.with_http_client(tunnel_client.clone())
+  } else {
+    span_exporter.with_http_client(hyper_client.clone())
+  };
+  let span_exporter = span_exporter
     .with_protocol(protocol)
     .build_span_exporter()?;
   let mut span_processor =
@@ -730,8 +755,13 @@ pub fn init(
       ));
     }
   };
-  let metric_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
+  let metric_exporter = HttpExporterBuilder::default();
+  let metric_exporter = if let Some(tunnel_client) = &tunnel_client {
+    metric_exporter.with_http_client(tunnel_client.clone())
+  } else {
+    metric_exporter.with_http_client(hyper_client.clone())
+  };
+  let metric_exporter = metric_exporter
     .with_protocol(protocol)
     .build_metrics_exporter(temporality)?;
   let metric_reader = DenoPeriodicReader::new(metric_exporter);
@@ -740,10 +770,14 @@ pub fn init(
     .with_resource(resource.clone())
     .build();
 
-  let log_exporter = HttpExporterBuilder::default()
-    .with_http_client(client)
-    .with_protocol(protocol)
-    .build_log_exporter()?;
+  let log_exporter = HttpExporterBuilder::default();
+  let log_exporter = if let Some(tunnel_client) = tunnel_client {
+    log_exporter.with_http_client(tunnel_client)
+  } else {
+    log_exporter.with_http_client(hyper_client)
+  };
+  let log_exporter =
+    log_exporter.with_protocol(protocol).build_log_exporter()?;
   let log_processor =
     BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
   log_processor.set_resource(&resource);

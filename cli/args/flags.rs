@@ -1084,6 +1084,10 @@ impl Flags {
     }
   }
 
+  pub fn tunnel_config(&self) -> Option<String> {
+    std::env::var("DENO_UNSTABLE_TUNNEL_HOST").ok()
+  }
+
   /// Extract the paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.

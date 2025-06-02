@@ -1,0 +1,9 @@
+Tunneling to localhost:[WILDCARD]...
+Connected! Your endpoint is https://localhost:[WILDCARD]
+HTTP/1.1 200 OK
+content-type: application/json
+vary: Accept-Encoding
+content-length: 188
+date: [WILDCARD]
+
+{"method":"GET","url":"https://localhost/","headers":{"host":"localhost"},"remoteAddr":{"transport":"tcp","hostname":"1.2.3.4","port":80},"serveAddr":{"hostname":"localhost","port":[WILDCARD]}}

@@ -1058,6 +1058,9 @@ where
     NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
+    NetworkStream::Tunnel(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
   }
 }
 

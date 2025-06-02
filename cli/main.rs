@@ -507,7 +507,7 @@ pub fn main() {
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
-    let flags = resolve_flags_and_init(args)?;
+    let flags = resolve_flags_and_init(args).await?;
 
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
@@ -527,7 +527,7 @@ pub fn main() {
   }
 }
 
-fn resolve_flags_and_init(
+async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
   let mut flags = match flags_from_vec(args) {
@@ -548,6 +548,17 @@ fn resolve_flags_and_init(
 
   load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
+
+  // Tunnel is initialized before OTEL since
+  // OTEL data is submitted via the tunnel.
+  if let Some(host) = flags.tunnel_config() {
+    if let Err(err) =
+      initialize_tunnel(host, &flags.ca_stores, &flags.ca_data).await
+    {
+      init_logging(None, None);
+      exit_for_error(AnyError::from(err))
+    }
+  }
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
@@ -738,4 +749,62 @@ fn wait_for_start(
 
     Ok(Some((unconfigured, args)))
   })
+}
+
+#[allow(clippy::print_stderr)]
+async fn initialize_tunnel(
+  host: String,
+  maybe_ca_stores: &Option<Vec<String>>,
+  maybe_ca_data: &Option<deno_lib::args::CaData>,
+) -> Result<(), deno_core::anyhow::Error> {
+  use deno_lib::args::get_root_cert_store;
+
+  eprintln!(
+    "{}{}{}",
+    colors::green("Tunneling to "),
+    colors::bold(colors::green(&host)),
+    colors::green("..."),
+  );
+
+  let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
+    return Ok(());
+  };
+  let Some((hostname, _)) = host.split_once(':') else {
+    return Ok(());
+  };
+
+  let root_cert_store = get_root_cert_store(
+    None,
+    maybe_ca_stores.to_owned(),
+    maybe_ca_data.to_owned(),
+  )?;
+
+  let (tunnel, metadata) =
+    deno_runtime::deno_net::tunnel::TunnelListener::connect(
+      addr,
+      hostname,
+      Some(root_cert_store),
+    )
+    .await?;
+
+  for (k, v) in metadata.env {
+    std::env::set_var(k, v);
+  }
+
+  let addr = tunnel.local_addr()?;
+
+  let endpoint = if addr.port() == 443 {
+    format!("https://{}", addr.hostname())
+  } else {
+    format!("https://{}:{}", addr.hostname(), addr.port())
+  };
+  eprintln!(
+    "{}{}",
+    colors::green("Connected! Your endpoint is "),
+    colors::bold(colors::green(endpoint))
+  );
+
+  deno_runtime::deno_net::tunnel::set_tunnel(tunnel);
+
+  Ok(())
 }
