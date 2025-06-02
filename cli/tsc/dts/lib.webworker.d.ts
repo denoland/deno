@@ -35,6 +35,28 @@ and limitations under the License.
  * });
  * ```
  */
+/**
+ * Options that can be specified when adding an event listener via addEventListener.
+ *
+ * This interface extends EventListenerOptions and provides additional configuration
+ * options for controlling event listener behavior in a worker context.
+ *
+ * @example
+ * ```ts
+ * // Register a message event handler that automatically removes itself after one invocation
+ * worker.addEventListener('message', handleMessageOnce, { once: true });
+ *
+ * // Register a message event handler that doesn't block the runtime while processing events
+ * worker.addEventListener('message', handleMessage, { passive: true });
+ *
+ * // Register a message event handler that can be removed via an AbortController
+ * const controller = new AbortController();
+ * worker.addEventListener('message', handleMessage, { signal: controller.signal });
+ *
+ * // Later, to remove the listener:
+ * controller.abort();
+ * ```
+ */
 interface AddEventListenerOptions extends EventListenerOptions {
     /**
      * When set to true, the listener will be automatically removed after being invoked once.

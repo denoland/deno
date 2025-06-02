@@ -218,10 +218,76 @@ declare var EventTarget: {
 
 /** @category Events */
 interface EventListener {
+  /**
+   * The EventListener interface represents a callback function to be called
+   * whenever an event of a specific type occurs on a target object.
+   *
+   * This is a basic event listener, represented by a simple function
+   * that receives an Event object as its only parameter.
+   *
+   * @example
+   * ```ts
+   * // Create an event listener function
+   * const handleEvent = (event: Event) => {
+   *   console.log(`Event of type "${event.type}" occurred`);
+   *   console.log(`Event phase: ${event.eventPhase}`);
+   *
+   *   // Access event properties
+   *   if (event.cancelable) {
+   *     event.preventDefault();
+   *   }
+   * };
+   *
+   * // Attach the event listener to a target
+   * const target = new EventTarget();
+   * target.addEventListener('custom', handleEvent);
+   *
+   * // Or create a listener inline
+   * target.addEventListener('message', (event) => {
+   *   console.log('Message received:', event);
+   * });
+   * ```
+   *
+   * @category Events
+   */
   (evt: Event): void;
 }
 
-/** @category Events */
+/**
+ * The EventListenerObject interface represents an object that can handle events
+ * dispatched by an EventTarget object.
+ *
+ * This interface provides an alternative to using a function as an event listener.
+ * When implementing an object with this interface, the handleEvent() method
+ * will be called when the event is triggered.
+ *
+ * @example
+ * ```ts
+ * // Creating an object that implements EventListenerObject
+ * const myEventListener = {
+ *   handleEvent(event) {
+ *     console.log(`Event of type ${event.type} occurred`);
+ *
+ *     // You can use 'this' to access other methods or properties
+ *     this.additionalProcessing(event);
+ *   },
+ *
+ *   additionalProcessing(event) {
+ *     // Additional event handling logic
+ *     console.log('Additional processing for:', event);
+ *   }
+ * };
+ *
+ * // Using with any EventTarget (server or client contexts)
+ * const target = new EventTarget();
+ * target.addEventListener('message', myEventListener);
+ *
+ * // Later, to remove it:
+ * target.removeEventListener('message', myEventListener);
+ * ```
+ *
+ * @category Events
+ */
 interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
@@ -419,12 +485,6 @@ declare var TextEncoder: {
   readonly prototype: TextEncoder;
   new (): TextEncoder;
 };
-
-/** @category Encoding */
-interface TextEncoderCommon {
-  /** Returns "utf-8". */
-  readonly encoding: string;
-}
 
 /** @category Encoding */
 interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
@@ -1629,6 +1689,11 @@ declare var WebTransportError: {
   new (message?: string, options?: WebTransportErrorOptions): WebTransportError;
 };
 
+/** @category Platform */
+type WebTransportCongestionControl = "default" | "low-latency" | "throughput";
+
+/** @category Platform */
+type WebTransportErrorSource = "session" | "stream";
 /** @category Platform */
 type WebTransportCongestionControl = "default" | "low-latency" | "throughput";
 
