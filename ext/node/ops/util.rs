@@ -86,3 +86,36 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
 pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
   buffer.has_buffer()
 }
+
+#[op2(fast)]
+pub fn op_node_call_is_from_dependency<'a>(
+  scope: &mut v8::HandleScope<'a>,
+) -> bool {
+  // non internal call site should appear in < 20 frames
+  let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
+    return false;
+  };
+  for i in 0..stack_trace.get_frame_count() {
+    let Some(frame) = stack_trace.get_frame(scope, i) else {
+      continue;
+    };
+    if !frame.is_user_javascript() {
+      continue;
+    }
+    let Some(script) = frame.get_script_name(scope) else {
+      continue;
+    };
+    let name = script.to_rust_string_lossy(scope);
+    if name.starts_with("node:") || name.starts_with("ext:") {
+      continue;
+    } else if name.contains("node_modules")
+      || name.contains("registry.npmjs.org")
+      || name.starts_with("https://")
+    {
+      return true;
+    } else {
+      break;
+    }
+  }
+  return false;
+}

@@ -57,7 +57,12 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { op_is_ascii, op_is_utf8, op_transcode } from "ext:core/ops";
+import {
+  op_is_ascii,
+  op_is_utf8,
+  op_node_call_is_from_dependency,
+  op_transcode,
+} from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -136,39 +141,12 @@ const bufferWarning = "Buffer() is deprecated due to security and usability " +
   "issues. Please use the Buffer.alloc(), " +
   "Buffer.allocUnsafe(), or Buffer.from() methods instead.";
 
-/** Returns true if the call is from dependency */
-function isFromDependency() {
-  // deno-lint-ignore-start prefer-primordials
-  const error = {};
-  const prepareStackTrace = Error.prepareStackTrace;
-  Error.prepareStackTrace = (_, stackTrace) => stackTrace;
-  ErrorCaptureStackTrace(error, isFromDependency);
-  const stackTrace = error.stack;
-  Error.prepareStackTrace = prepareStackTrace;
-  // deno-lint-ignore-end prefer-primordials
-
-  for (const callSite of stackTrace) {
-    const fileName = callSite.getFileName();
-    if (fileName.startsWith("node:") || fileName.startsWith("ext:")) {
-      continue;
-    }
-    if (
-      fileName.includes("registry.npmjs.org") ||
-      fileName.includes("node_modules") ||
-      fileName.startsWith("https://")
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function showFlaggedDeprecation() {
   if (
     bufferWarningAlreadyEmitted ||
     ++nodeModulesCheckCounter > 10000 ||
     (!getOptionValue("--pending-deprecation") &&
-      isFromDependency())
+      op_node_call_is_from_dependency())
   ) {
     // We don't emit a warning, because we either:
     // - Already did so, or
