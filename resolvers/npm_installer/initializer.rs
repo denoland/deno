@@ -10,6 +10,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_unsync::sync::TaskQueue;
 use parking_lot::Mutex;
 use thiserror::Error;
 
@@ -32,7 +33,7 @@ enum SyncState<TSys: LockfileSys> {
 pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
   patch_packages: Arc<WorkspaceNpmPatchPackages>,
-  queue: tokio::sync::Mutex<()>,
+  queue: TaskQueue,
   sync_state: Mutex<SyncState<TSys>>,
 }
 
@@ -45,7 +46,7 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
     Self {
       npm_resolution,
       patch_packages,
-      queue: tokio::sync::Mutex::new(()),
+      queue: Default::default(),
       sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
     }
   }
@@ -68,7 +69,7 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
     }
 
     // only allow one task in here at a time
-    let _guard = self.queue.lock().await;
+    let _guard = self.queue.acquire().await;
 
     let snapshot_option = {
       let mut sync_state = self.sync_state.lock();
