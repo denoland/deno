@@ -238,6 +238,7 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
+  #[undefined]
   fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
@@ -262,6 +263,7 @@ impl DatabaseSync {
   // Closes the database connection. An exception is thrown if the
   // database is not open.
   #[fast]
+  #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
