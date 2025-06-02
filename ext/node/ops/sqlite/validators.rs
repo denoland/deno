@@ -5,6 +5,7 @@
 pub enum Error {
   #[class(type)]
   #[error("{0}")]
+  #[allow(dead_code)]
   InvalidArgType(&'static str),
   #[class(type)]
   #[error("Cannot call constructor without `new`")]
