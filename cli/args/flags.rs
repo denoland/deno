@@ -31,6 +31,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::has_flag_env_var;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
@@ -475,6 +476,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
+  Deploy,
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1408,6 +1410,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m)?,
+      "deploy" => deploy_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -1683,6 +1686,12 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand());
+
+      let cmd = if std::env::var("DENO_DEPLOY_SUBCOMMAND").is_ok() {
+        cmd.subcommand(deploy_subcommand())
+      } else {
+        cmd
+      };
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -2185,6 +2194,16 @@ Generate html reports from lcov:
           .value_hint(ValueHint::AnyPath),
       )
   })
+}
+
+fn deploy_subcommand() -> Command {
+  Command::new("deploy").arg(
+    Arg::new("args")
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .trailing_var_arg(true)
+      .allow_hyphen_values(true),
+  )
 }
 
 fn doc_subcommand() -> Command {
@@ -4821,6 +4840,32 @@ fn coverage_parse(
     exclude,
     r#type,
   });
+  Ok(())
+}
+
+fn deploy_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.permissions.allow_all = true;
+
+  let mut args: Vec<String> = matches
+    .remove_many("args")
+    .map(|args| args.collect())
+    .unwrap_or_default();
+
+  if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
+    args.insert(
+      0,
+      format!(
+        "--endpoint={}",
+        std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()
+      ),
+    );
+  }
+
+  flags.argv = args;
+  flags.subcommand = DenoSubcommand::Deploy;
   Ok(())
 }
 

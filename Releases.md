@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.5 / 2025.05.30
+
+- fix(ext/node): Buffer write OOB checks (#29524)
+- fix(ext/node): correct `kMaxLength` value of `node:buffer` (#29504)
+- fix(ext/node): fix function error message in `invalidArgTypeHelper` (#29526)
+- fix(ext/node): stub `getFipsCrypto` to `false` (#29485)
+- fix(otel): flush data when terminating signal is received (#29515)
+- fix(vendor): store remote version metadata checksum in vendor folder to ensure
+  lockfile uses that (#29433)
+
 ### 2.3.4 / 2025.05.29
 
 - feat(UNSTABLE/byow): add `resize` method to `UnsafeWindowSurface` (#29254)
