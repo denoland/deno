@@ -64,6 +64,7 @@ impl Session {
 impl Session {
   // Closes the session.
   #[fast]
+  #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
     let db_rc = self.db.upgrade().ok_or_else(|| {
       SqliteError::create_enhanced_error::<()>(
