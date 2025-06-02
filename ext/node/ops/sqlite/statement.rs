@@ -703,11 +703,13 @@ impl StatementSync {
   }
 
   #[fast]
+  #[undefined]
   fn set_allow_bare_named_parameters(&self, enabled: bool) {
     self.allow_bare_named_params.set(enabled);
   }
 
   #[fast]
+  #[undefined]
   fn set_read_big_ints(&self, enabled: bool) {
     self.use_big_ints.set(enabled);
   }

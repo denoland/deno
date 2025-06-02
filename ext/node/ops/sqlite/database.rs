@@ -20,10 +20,12 @@ use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
+use super::validators;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use crate::ops::sqlite::SqliteResultExt;
+
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
@@ -34,6 +36,7 @@ struct DatabaseSyncOptions {
   open: bool,
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
+  #[serde(default = "false_fn")]
   read_only: bool,
   #[serde(default = "false_fn")]
   allow_extension: bool,
@@ -177,6 +180,18 @@ fn open_db(
   Ok(conn)
 }
 
+fn database_constructor(
+  _: &mut v8::HandleScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), validators::Error> {
+  // TODO(littledivy): use `IsConstructCall()`
+  if args.new_target().is_undefined() {
+    return Err(validators::Error::ConstructCallRequired);
+  }
+
+  Ok(())
+}
+
 // Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
@@ -187,6 +202,7 @@ impl DatabaseSync {
   // To use an in-memory database, the `location` should be special
   // name ":memory:".
   #[constructor]
+  #[validate(database_constructor)]
   #[cppgc]
   fn new(
     state: &mut OpState,
@@ -222,6 +238,7 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
+  #[undefined]
   fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
@@ -246,6 +263,7 @@ impl DatabaseSync {
   // Closes the database connection. An exception is thrown if the
   // database is not open.
   #[fast]
+  #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);

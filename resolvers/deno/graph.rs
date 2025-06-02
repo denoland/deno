@@ -1,7 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
+use boxed_error::Boxed;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
+use deno_graph::Module;
+use deno_graph::Resolution;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -27,6 +32,40 @@ pub type FoundPackageJsonDepFlagRc =
 /// found during resolution.
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
+
+#[derive(Debug, deno_error::JsError, Boxed)]
+pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveWithGraphErrorKind {
+  #[error(transparent)]
+  #[class(inherit)]
+  CouldNotResolve(#[from] CouldNotResolveError),
+  #[error(transparent)]
+  #[class(inherit)]
+  ResolvePkgFolderFromDenoModule(
+    #[from] npm::managed::ResolvePkgFolderFromDenoModuleError,
+  ),
+  #[error(transparent)]
+  #[class(inherit)]
+  Resolution(#[from] deno_graph::ResolutionError),
+  #[error(transparent)]
+  #[class(inherit)]
+  Resolve(#[from] ResolveError),
+  #[error(transparent)]
+  #[class(inherit)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(inherit)]
+#[error("Could not resolve '{reference}'")]
+pub struct CouldNotResolveError {
+  reference: deno_semver::npm::NpmPackageNvReference,
+  #[source]
+  #[inherit]
+  source: node_resolver::errors::PackageSubpathResolveError,
+}
 
 impl FoundPackageJsonDepFlag {
   #[inline(always)]
@@ -87,6 +126,7 @@ pub struct DenoResolver<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  sys: TSys,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
   warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
   on_warning: Option<OnMappedResolutionDiagnosticFn>,
@@ -130,15 +170,90 @@ impl<
       TNpmPackageFolderResolver,
       TSys,
     >,
+    sys: TSys,
     found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
     on_warning: Option<OnMappedResolutionDiagnosticFn>,
   ) -> Self {
     Self {
       resolver,
+      sys,
       found_package_json_dep_flag,
       warned_pkgs: Default::default(),
       on_warning,
     }
+  }
+
+  pub fn resolve_with_graph(
+    &self,
+    graph: &deno_graph::ModuleGraph,
+    raw_specifier: &str,
+    referrer: &Url,
+    referrer_range_start: deno_graph::Position,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<Url, ResolveWithGraphError> {
+    let resolution = match graph.get(referrer) {
+      Some(Module::Js(module)) => module
+        .dependencies
+        .get(raw_specifier)
+        .map(|d| &d.maybe_code)
+        .unwrap_or(&Resolution::None),
+      _ => &Resolution::None,
+    };
+
+    let specifier = match resolution {
+      Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
+      Resolution::Err(err) => {
+        return Err(
+          ResolveWithGraphErrorKind::Resolution((**err).clone()).into(),
+        );
+      }
+      Resolution::None => Cow::Owned(self.resolve(
+        raw_specifier,
+        referrer,
+        referrer_range_start,
+        resolution_mode,
+        resolution_kind,
+      )?),
+    };
+
+    let specifier = match graph.get(&specifier) {
+      Some(Module::Npm(module)) => {
+        let node_and_npm_resolver =
+          self.resolver.node_and_npm_resolver.as_ref().unwrap();
+        let package_folder = node_and_npm_resolver
+          .npm_resolver
+          .as_managed()
+          .unwrap() // byonm won't create a Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        node_and_npm_resolver
+          .node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            resolution_kind,
+          )
+          .map_err(|source| CouldNotResolveError {
+            reference: module.nv_reference.clone(),
+            source,
+          })?
+          .into_url()?
+      }
+      Some(Module::Node(module)) => module.specifier.clone(),
+      Some(Module::Js(module)) => module.specifier.clone(),
+      Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::Wasm(module)) => module.specifier.clone(),
+      Some(Module::External(module)) => {
+        node_resolver::resolve_specifier_into_node_modules(
+          &self.sys,
+          &module.specifier,
+        )
+      }
+      None => specifier.into_owned(),
+    };
+    Ok(specifier)
   }
 
   pub fn resolve(
