@@ -376,6 +376,14 @@ impl<
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
+              PackageJsonDepValue::JsrReq(req) => Url::parse(&format!(
+                "jsr:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))
+              .map_err(|e| {
+                DenoResolveErrorKind::PackageJsonDepValueUrlParse(e).into_box()
+              }),
             })
         }
       },

@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
-use dashmap::DashMap;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -230,7 +229,6 @@ pub struct NodeResolver<
   sys: NodeResolutionSys<TSys>,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
   typescript_version: Option<Version>,
-  package_resolution_lookup_cache: Option<DashMap<Url, String>>,
 }
 
 impl<
@@ -262,14 +260,6 @@ impl<
       sys,
       conditions_from_resolution_mode: options.conditions_from_resolution_mode,
       typescript_version: options.typescript_version,
-      package_resolution_lookup_cache: None,
-    }
-  }
-
-  pub fn with_package_resolution_lookup_cache(self) -> Self {
-    Self {
-      package_resolution_lookup_cache: Some(Default::default()),
-      ..self
     }
   }
 
@@ -300,9 +290,7 @@ impl<
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
-    let mut specifier_is_url = false;
     if let Ok(url) = Url::parse(specifier) {
-      specifier_is_url = true;
       if url.scheme() == "data" {
         return Ok(NodeResolution::Module(UrlOrPath::Url(url)));
       }
@@ -347,21 +335,6 @@ impl<
 
     let url_or_path =
       self.finalize_resolution(url, resolved_kind, Some(&referrer))?;
-    let maybe_cache_resolution = || {
-      let package_resolution_lookup_cache =
-        self.package_resolution_lookup_cache.as_ref()?;
-      if specifier_is_url
-        || specifier.starts_with("./")
-        || specifier.starts_with("../")
-        || specifier.starts_with("/")
-      {
-        return None;
-      }
-      let url = url_or_path.clone().into_url().ok()?;
-      package_resolution_lookup_cache.insert(url, specifier.to_string());
-      Some(())
-    };
-    maybe_cache_resolution();
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -524,17 +497,6 @@ impl<
         .into(),
       ),
     }
-  }
-
-  pub fn lookup_package_specifier_for_resolution(
-    &self,
-    url: &Url,
-  ) -> Option<String> {
-    self
-      .package_resolution_lookup_cache
-      .as_ref()?
-      .get(url)
-      .map(|r| r.value().clone())
   }
 
   fn module_not_found_ext_suggestion(

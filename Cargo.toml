@@ -53,6 +53,9 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+[patch.crates-io]
+deno_package_json = { git = "https://github.com/denoland/deno_package_json.git", branch = "0-7-0-jsr-dep-value" }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.350.0" }

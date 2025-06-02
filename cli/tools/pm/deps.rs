@@ -376,6 +376,27 @@ fn add_deps_from_package_json(
           })
         }
         deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
+        deno_package_json::PackageJsonDepValue::JsrReq(req) => {
+          let alias = k.as_str();
+          let alias = (alias != req.name).then(|| alias.to_string());
+          if !filter.should_include(alias.as_deref(), req, DepKind::Jsr) {
+            continue;
+          }
+          let id = DepId(deps.len());
+          deps.push(Dep {
+            id,
+            kind: DepKind::Jsr,
+            location: DepLocation::PackageJson(
+              package_json.clone(),
+              KeyPath::from_parts([
+                package_dep_kind.into(),
+                KeyPart::String(k.clone()),
+              ]),
+            ),
+            req: req.clone(),
+            alias,
+          })
+        }
       }
     }
   }

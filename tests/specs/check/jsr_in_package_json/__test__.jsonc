@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_none": {
+      "cwd": "node_modules_none",
+      "args": "check --quiet main.ts",
+      "output": ""
+    },
+    "node_modules_manual_install": {
+      "cwd": "node_modules_manual",
+      "args": "install --quiet",
+      "output": ""
+    },
+    "node_modules_manual_check": {
+      "cwd": "node_modules_manual",
+      "args": "check --quiet main.ts",
+      "output": ""
+    },
+  }
+}

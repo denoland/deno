@@ -174,6 +174,9 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
+            PackageJsonDepValue::JsrReq(_) => {
+              // skip
+            }
           }
         }
 

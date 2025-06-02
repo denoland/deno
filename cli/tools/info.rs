@@ -126,6 +126,13 @@ pub async fn info(
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?)
           }
+          deno_package_json::PackageJsonDepValue::JsrReq(req) => {
+            Some(ModuleSpecifier::parse(&format!(
+              "jsr:{}{}",
+              req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?)
+          }
         },
       }
     } else {
