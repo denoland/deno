@@ -650,7 +650,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dns-channel-cancel-promise.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel-promise.js)
 - [parallel/test-dns-channel-cancel.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel.js)
 - [parallel/test-dns-channel-timeout.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-timeout.js)
-- [parallel/test-dns-default-order-ipv4.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv4.js)
 - [parallel/test-dns-default-order-ipv6.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv6.js)
 - [parallel/test-dns-default-order-verbatim.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-verbatim.js)
 - [parallel/test-dns-get-server.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-get-server.js)

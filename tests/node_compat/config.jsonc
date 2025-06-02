@@ -470,6 +470,7 @@
       "test-diagnostics-channel-tracing-channel-sync-error.js",
       "test-diagnostics-channel-tracing-channel-sync.js",
       "test-diagnostics-channel-udp.js",
+      "test-dns-default-order-ipv4.js",
       "test-dns-lookup.js",
       "test-dns-memory-error.js",
       "test-dns-multi-channel.js",
