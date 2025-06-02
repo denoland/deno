@@ -510,19 +510,21 @@ fn create_command(
     }
 
     let detached = args.detached;
-    command.pre_exec(move || {
-      if detached {
-        libc::setsid();
-      }
-      for &(src, dst) in &fds_to_dup {
-        if src >= 0 && dst >= 0 {
-          let _fd = libc::dup2(src, dst);
-          libc::close(src);
+    if detached || !fds_to_dup.is_empty() || args.gid.is_some() {
+      command.pre_exec(move || {
+        if detached {
+          libc::setsid();
         }
-      }
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
+        for &(src, dst) in &fds_to_dup {
+          if src >= 0 && dst >= 0 {
+            let _fd = libc::dup2(src, dst);
+            libc::close(src);
+          }
+        }
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      });
+    }
 
     Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
   }
