@@ -1010,7 +1010,6 @@ fn op_spawn_sync(
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
 
-  eprintln!("command: {:?}", command.get_program(), command.get_args().into_iter().collect::<Vec<_>>());
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().to_string(),
     error: Box::new(e.into()),
