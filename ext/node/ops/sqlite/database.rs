@@ -36,7 +36,6 @@ const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
-  #[serde(default = "false_fn")]
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
