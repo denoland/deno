@@ -12253,8 +12253,7 @@
                 "import() must reject when there is a cross-origin module (without CORS)",
                 "import() must reject with a different error object for each import when there is a cross-origin module (without CORS)",
                 "import() must reject when there is a cross-origin module dependency (without CORS)",
-                "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)",
-                "import() fetch errors must be cached"
+                "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)"
               ],
               "dynamic-imports-script-error.html": false,
               "dynamic-imports.html": true,

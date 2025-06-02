@@ -964,7 +964,7 @@ impl Config {
     let mut folders = vec![];
     for root_url in root_urls {
       let root_uri = url_to_uri(&root_url).unwrap();
-      let name = root_url.path_segments().and_then(|s| s.last());
+      let name = root_url.path_segments().and_then(|mut s| s.next_back());
       let name = name.unwrap_or_default().to_string();
       folders.push((
         Arc::new(root_url),
@@ -1691,7 +1691,7 @@ impl ConfigData {
           .fetch_bypass_permissions(import_map_url)
           .await;
 
-        let value_result = fetch_result.and_then(|f| {
+        let value_result = fetch_result.map_err(AnyError::from).and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
         });
         match value_result {

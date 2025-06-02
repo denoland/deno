@@ -31,6 +31,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::has_flag_env_var;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
@@ -475,6 +476,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
+  Deploy,
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1408,6 +1410,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m)?,
+      "deploy" => deploy_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -1684,6 +1687,12 @@ pub fn clap_root() -> Command {
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand());
 
+      let cmd = if std::env::var("DENO_DEPLOY_SUBCOMMAND").is_ok() {
+        cmd.subcommand(deploy_subcommand())
+      } else {
+        cmd
+      };
+
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
     })
@@ -1748,6 +1757,7 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .args(lock_args())
       .args(default_registry_args())
   })
 }
@@ -1781,13 +1791,15 @@ You can remove multiple dependencies at once:
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.arg(
-      Arg::new("packages")
-        .help("List of packages to remove")
-        .required_unless_present("help")
-        .num_args(1..)
-        .action(ArgAction::Append),
-    )
+    cmd
+      .arg(
+        Arg::new("packages")
+          .help("List of packages to remove")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
   })
 }
 
@@ -1882,7 +1894,6 @@ Future runs of this module will trigger no downloads or compilation unless --rel
           .required_unless_present("help")
           .value_hint(ValueHint::FilePath),
       )
-      .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(env_file_arg())
@@ -1970,7 +1981,6 @@ Unless --reload is specified, this command will not re-download already cached d
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
-        .arg(frozen_lockfile_arg())
         .arg(allow_import_arg())
       }
     )
@@ -2186,6 +2196,16 @@ Generate html reports from lcov:
   })
 }
 
+fn deploy_subcommand() -> Command {
+  Command::new("deploy").arg(
+    Arg::new("args")
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .trailing_var_arg(true)
+      .allow_hyphen_values(true),
+  )
+}
+
 fn doc_subcommand() -> Command {
   command("doc",
       cstr!("Show documentation for a module.
@@ -2213,8 +2233,7 @@ Show documentation for runtime built-ins:
       cmd
         .arg(import_map_arg())
         .arg(reload_arg())
-        .arg(lock_arg())
-        .arg(no_lock_arg())
+        .args(lock_args())
         .arg(no_npm_arg())
         .arg(no_remote_arg())
         .arg(allow_import_arg())
@@ -2594,8 +2613,7 @@ The following information is shown:
       .arg(no_config_arg())
       .arg(no_remote_arg())
       .arg(no_npm_arg())
-      .arg(lock_arg())
-      .arg(no_lock_arg())
+      .args(lock_args())
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
@@ -2798,8 +2816,7 @@ Specific version requirements to update to can be specified:
                       "If a version requirement is specified, the matching packages will be updated to the given requirement."),
           )
       )
-      .arg(no_lock_arg())
-      .arg(lock_arg())
+      .args(lock_args())
       .arg(
         Arg::new("latest")
           .long("latest")
@@ -2880,6 +2897,7 @@ The installation root is determined, in order of precedence:
           .num_args(1..)
           .action(ArgAction::Append)
       )
+      .args(lock_args())
   })
 }
 
@@ -3175,7 +3193,7 @@ Evaluate a task from string:
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
-      .arg(frozen_lockfile_arg())
+      .args(lock_args())
       .arg(
         Arg::new("cwd")
           .long("cwd")
@@ -3549,8 +3567,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
-    .arg(lock_arg())
-    .arg(no_lock_arg())
+    .args(lock_args())
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
 }
@@ -3964,7 +3981,6 @@ fn runtime_args(
 
 fn runtime_misc_args(app: Command) -> Command {
   app
-    .arg(frozen_lockfile_arg())
     .arg(cached_only_arg())
     .arg(location_arg())
     .arg(v8_flags_arg())
@@ -4099,19 +4115,6 @@ fn cached_only_arg() -> Arg {
     .long("cached-only")
     .action(ArgAction::SetTrue)
     .help("Require that remote dependencies are already cached")
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
-}
-
-fn frozen_lockfile_arg() -> Arg {
-  Arg::new("frozen")
-    .long("frozen")
-    .alias("frozen-lockfile")
-    .value_parser(value_parser!(bool))
-    .value_name("BOOLEAN")
-    .num_args(0..=1)
-    .require_equals(true)
-    .default_missing_value("true")
-    .help("Error out if lockfile is out of date")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -4329,25 +4332,34 @@ fn script_arg() -> Arg {
     .value_hint(ValueHint::FilePath)
 }
 
-fn lock_arg() -> Arg {
-  Arg::new("lock")
-    .long("lock")
-    .value_name("FILE")
-    .default_missing_value("./deno.lock")
-    .help("Check the specified lock file. (If value is not provided, defaults to \"./deno.lock\")")
-    .num_args(0..=1)
-    .value_parser(value_parser!(String))
-    .value_hint(ValueHint::FilePath)
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
-}
-
-fn no_lock_arg() -> Arg {
-  Arg::new("no-lock")
-    .long("no-lock")
-    .action(ArgAction::SetTrue)
-    .help("Disable auto discovery of the lock file")
-    .conflicts_with("lock")
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+fn lock_args() -> [Arg; 3] {
+  [
+    Arg::new("lock")
+      .long("lock")
+      .value_name("FILE")
+      .default_missing_value("./deno.lock")
+      .help("Check the specified lock file. (If value is not provided, defaults to \"./deno.lock\")")
+      .num_args(0..=1)
+      .value_parser(value_parser!(String))
+      .value_hint(ValueHint::FilePath)
+      .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+    Arg::new("no-lock")
+      .long("no-lock")
+      .action(ArgAction::SetTrue)
+      .help("Disable auto discovery of the lock file")
+      .conflicts_with("lock")
+      .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+    Arg::new("frozen")
+      .long("frozen")
+      .alias("frozen-lockfile")
+      .value_parser(value_parser!(bool))
+      .value_name("BOOLEAN")
+      .num_args(0..=1)
+      .require_equals(true)
+      .default_missing_value("true")
+      .help("Error out if lockfile is out of date")
+      .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+  ]
 }
 
 fn config_arg() -> Arg {
@@ -4544,6 +4556,7 @@ fn add_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
+  lock_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -4571,6 +4584,7 @@ fn add_parse_inner(
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  lock_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
   });
@@ -4664,7 +4678,6 @@ fn cache_parse(
 ) -> clap::error::Result<()> {
   compile_args_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-  frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
   allow_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
@@ -4680,7 +4693,6 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
-  frozen_lockfile_arg_parse(flags, matches);
   let files = match matches.remove_many::<String>("file") {
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
@@ -4831,6 +4843,32 @@ fn coverage_parse(
   Ok(())
 }
 
+fn deploy_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.permissions.allow_all = true;
+
+  let mut args: Vec<String> = matches
+    .remove_many("args")
+    .map(|args| args.collect())
+    .unwrap_or_default();
+
+  if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
+    args.insert(
+      0,
+      format!(
+        "--endpoint={}",
+        std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()
+      ),
+    );
+  }
+
+  flags.argv = args;
+  flags.subcommand = DenoSubcommand::Deploy;
+  Ok(())
+}
+
 fn doc_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -4838,8 +4876,7 @@ fn doc_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches)?;
-  lock_arg_parse(flags, matches);
-  no_lock_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   allow_import_parse(flags, matches)?;
@@ -5188,6 +5225,7 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  lock_args_parse(flags, matches);
   let name = matches.remove_one::<String>("name-or-package").unwrap();
 
   let kind = if matches.get_flag("global") {
@@ -5273,7 +5311,6 @@ fn repl_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_without_check_parse(flags, matches)?;
   cached_only_arg_parse(flags, matches);
-  frozen_lockfile_arg_parse(flags, matches);
   permission_args_parse(flags, matches)?;
   inspect_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
@@ -5414,7 +5451,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
-  frozen_lockfile_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
@@ -5645,10 +5682,9 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
         } else {
           if current.is_empty() {
             return Err(
-              std::io::Error::new(
-                std::io::ErrorKind::Other,
-                String::from("Empty values are not allowed"),
-              )
+              std::io::Error::other(String::from(
+                "Empty values are not allowed",
+              ))
               .into(),
             );
           }
@@ -5659,11 +5695,8 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
         }
       } else {
         return Err(
-          std::io::Error::new(
-            std::io::ErrorKind::Other,
-            String::from("Empty values are not allowed"),
-          )
-          .into(),
+          std::io::Error::other(String::from("Empty values are not allowed"))
+            .into(),
         );
       }
     } else {
@@ -5673,11 +5706,8 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
 
   if current.is_empty() {
     return Err(
-      std::io::Error::new(
-        std::io::ErrorKind::Other,
-        String::from("Empty values are not allowed"),
-      )
-      .into(),
+      std::io::Error::other(String::from("Empty values are not allowed"))
+        .into(),
     );
   }
 
@@ -5838,7 +5868,6 @@ fn runtime_args_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_parse(flags, matches)?;
   cached_only_arg_parse(flags, matches);
-  frozen_lockfile_arg_parse(flags, matches);
   if include_perms {
     permission_args_parse(flags, matches)?;
   }
@@ -5926,12 +5955,6 @@ fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn frozen_lockfile_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(&v) = matches.get_one::<bool>("frozen") {
-    flags.frozen_lockfile = Some(v);
-  }
-}
-
 fn ext_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ext = matches.remove_one::<String>("ext");
 }
@@ -5983,20 +6006,15 @@ fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  lock_arg_parse(flags, matches);
-  no_lock_arg_parse(flags, matches);
-}
-
-fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.contains_id("lock") {
     let lockfile = matches.remove_one::<String>("lock").unwrap();
     flags.lock = Some(lockfile);
   }
-}
-
-fn no_lock_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if matches.get_flag("no-lock") {
     flags.no_lock = true;
+  }
+  if let Some(&v) = matches.get_one::<bool>("frozen") {
+    flags.frozen_lockfile = Some(v);
   }
 }
 
@@ -6033,18 +6051,15 @@ fn node_modules_and_vendor_dir_arg_parse(
 fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   if urlstr.is_empty() {
     return Err(
-      std::io::Error::new(
-        std::io::ErrorKind::Other,
-        String::from("Missing url. Check for extra commas."),
-      )
+      std::io::Error::other(String::from(
+        "Missing url. Check for extra commas.",
+      ))
       .into(),
     );
   }
   match Url::from_str(&urlstr) {
     Ok(_) => Ok(urlstr),
-    Err(e) => {
-      Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
-    }
+    Err(e) => Err(std::io::Error::other(e.to_string()).into()),
   }
 }
 
@@ -6131,6 +6146,8 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
+  flags.unstable_config.subdomain_wildcards =
+    matches.get_flag("unstable-subdomain-wildcards");
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
@@ -8883,7 +8900,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "uninstall"]);
     assert!(r.is_err(),);
 
-    let r = flags_from_vec(svec!["deno", "uninstall", "@std/load"]);
+    let r = flags_from_vec(svec!["deno", "uninstall", "--frozen", "@std/load"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8892,6 +8909,7 @@ mod tests {
             packages: vec!["@std/load".to_string()],
           }),
         }),
+        frozen_lockfile: Some(true),
         ..Flags::default()
       }
     );
@@ -11528,55 +11546,66 @@ mod tests {
         }
       };
 
-      let r = flags_from_vec(svec!["deno", cmd, "@david/which"]);
-      assert_eq!(
-        r.unwrap(),
-        mk_flags(AddFlags {
-          packages: svec!["@david/which"],
-          dev: false,
-          default_registry: None,
-        }) // default is false
-      );
-
-      let r = flags_from_vec(svec!["deno", cmd, "@david/which", "@luca/hello"]);
-      assert_eq!(
-        r.unwrap(),
-        mk_flags(AddFlags {
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "@david/which"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["@david/which"],
+            dev: false, // default is false
+            default_registry: None,
+          })
+        );
+      }
+      {
+        let r = flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--frozen",
+          "@david/which",
+          "@luca/hello"
+        ]);
+        let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
           default_registry: None,
-        })
-      );
-
-      let r = flags_from_vec(svec!["deno", cmd, "--dev", "npm:chalk"]);
-      assert_eq!(
-        r.unwrap(),
-        mk_flags(AddFlags {
-          packages: svec!["npm:chalk"],
-          dev: true,
-          default_registry: None,
-        }),
-      );
-
-      let r = flags_from_vec(svec!["deno", cmd, "--npm", "chalk"]);
-      assert_eq!(
-        r.unwrap(),
-        mk_flags(AddFlags {
-          packages: svec!["chalk"],
-          dev: false,
-          default_registry: Some(DefaultRegistry::Npm),
-        }),
-      );
-
-      let r = flags_from_vec(svec!["deno", cmd, "--jsr", "@std/fs"]);
-      assert_eq!(
-        r.unwrap(),
-        mk_flags(AddFlags {
-          packages: svec!["@std/fs"],
-          dev: false,
-          default_registry: Some(DefaultRegistry::Jsr),
-        })
-      )
+        });
+        expected_flags.frozen_lockfile = Some(true);
+        assert_eq!(r.unwrap(), expected_flags);
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--dev", "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: true,
+            default_registry: None,
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--npm", "chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["chalk"],
+            dev: false,
+            default_registry: Some(DefaultRegistry::Npm),
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--jsr", "@std/fs"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["@std/fs"],
+            dev: false,
+            default_registry: Some(DefaultRegistry::Jsr),
+          }),
+        );
+      }
     }
   }
 
@@ -11596,14 +11625,20 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "remove", "@david/which", "@luca/hello"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "remove",
+      "--frozen",
+      "@david/which",
+      "@luca/hello"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
         }),
+        frozen_lockfile: Some(true),
         ..Flags::default()
       }
     );

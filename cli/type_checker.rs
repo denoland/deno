@@ -140,6 +140,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
+  #[allow(clippy::result_large_err)]
   pub fn check(
     &self,
     graph: ModuleGraph,
@@ -174,6 +175,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
+  #[allow(clippy::result_large_err)]
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
@@ -249,6 +251,7 @@ impl TypeChecker {
 
   /// Groups the roots based on the compiler options, which includes the
   /// resolved TsConfig and resolved compilerOptions.types
+  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -375,6 +378,7 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -444,6 +448,7 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
 
 impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     group_key: &'a CheckGroupKey<'a>,

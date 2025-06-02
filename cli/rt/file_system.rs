@@ -582,7 +582,7 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
     &self,
     path: &Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     if self.0.is_path_within(path) {
       let entries = self.0.read_dir_with_metadata(path)?;
@@ -708,6 +708,21 @@ impl sys_traits::FsFileAsRaw for FsFileAdapter {
     match self {
       Self::Real(file) => file.fs_file_as_raw_fd(),
       Self::Vfs(_) => None,
+    }
+  }
+}
+
+impl sys_traits::FsFileMetadata for FsFileAdapter {
+  #[inline]
+  fn fs_file_metadata(&self) -> std::io::Result<BoxedFsMetadataValue> {
+    match self {
+      Self::Real(file) => file.fs_file_metadata(),
+      Self::Vfs(file) => Ok(BoxedFsMetadataValue::new(FileBackedVfsMetadata {
+        file_type: sys_traits::FileType::File,
+        name: file.file.name.clone(),
+        len: file.file.offset.len,
+        mtime: file.file.mtime,
+      })),
     }
   }
 }
@@ -890,9 +905,18 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 }
 
 impl sys_traits::EnvCurrentDir for DenoRtSys {
+  #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
     sys_traits::impls::RealSys.env_current_dir()
+  }
+}
+
+impl sys_traits::EnvHomeDir for DenoRtSys {
+  #[inline]
+  fn env_home_dir(&self) -> Option<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_home_dir()
   }
 }
 
@@ -935,10 +959,7 @@ impl VfsRoot {
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
-            return Err(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              "circular symlinks",
-            ));
+            return Err(std::io::Error::other("circular symlinks"));
           }
           path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
         }
@@ -1277,6 +1298,7 @@ impl FileBackedVfsMetadata {
       },
     }
   }
+
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
     FsStat {
@@ -1368,16 +1390,23 @@ impl FileBackedVfs {
     )
   }
 
-  pub fn read_dir_with_metadata<'a>(
-    &'a self,
+  pub fn read_dir_with_metadata(
+    &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
-    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
-      parent_path: path.to_path_buf(),
-      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
-    }))
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(move |entry| FileBackedVfsDirEntry {
+          parent_path: path.to_path_buf(),
+          metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
+        })
+        .collect::<Vec<_>>()
+        .into_iter(),
+    )
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
@@ -1388,10 +1417,9 @@ impl FileBackedVfs {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
       }
-      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "not a symlink",
-      )),
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => {
+        Err(std::io::Error::other("not a symlink"))
+      }
     }
   }
 
@@ -1467,20 +1495,14 @@ impl FileBackedVfs {
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a file",
-      )),
+      VfsEntryRef::File(_) => Err(std::io::Error::other("path is a file")),
     }
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
-      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a directory",
-      )),
+      VfsEntryRef::Dir(_) => Err(std::io::Error::other("path is a directory")),
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => Ok(file),
     }

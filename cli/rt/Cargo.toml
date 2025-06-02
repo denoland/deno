@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.3.3"
+version = "2.3.5"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -45,7 +45,7 @@ node_resolver.workspace = true
 
 async-trait.workspace = true
 bincode.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
 serde.workspace = true
