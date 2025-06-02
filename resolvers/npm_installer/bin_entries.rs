@@ -429,11 +429,11 @@ fn make_executable_if_exists(
     Err(err) => return Err(err.into()),
   };
   let metadata = file.fs_file_metadata()?;
-  let attributes = metadata.file_attributes()?;
-  if attributes & 0o111 == 0 {
+  let mode = metadata.mode()?;
+  if mode & 0o111 == 0 {
     // if the original file is not executable, make it executable
     file
-      .fs_file_set_permissions(attributes | 0o111)
+      .fs_file_set_permissions(mode | 0o111)
       .map_err(|source| BinEntriesError::Permissions {
         path: path.to_path_buf(),
         source,
