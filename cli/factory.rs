@@ -1023,7 +1023,6 @@ impl CliFactory {
     &self,
   ) -> Result<CliModuleLoaderFactory, AnyError> {
     let cli_options = self.cli_options()?;
-    let node_resolver = self.node_resolver().await?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let node_code_translator = self.node_code_translator().await?;
