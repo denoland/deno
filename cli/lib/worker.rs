@@ -600,7 +600,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
+    let origin_storage_dir: Option<PathBuf> = maybe_storage_key.as_ref().map(|key| {
       shared
         .options
         .origin_data_folder_path

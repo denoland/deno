@@ -1394,7 +1394,6 @@
   },
   "windowsIgnore": {
     "parallel": [
-      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-console-log-throw-primitive.js",
       "test-console-no-swallow-stack-overflow.js",

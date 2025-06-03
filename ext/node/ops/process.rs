@@ -18,7 +18,7 @@ fn kill(pid: i32, sig: i32) -> i32 {
 fn kill(pid: i32, _sig: i32) -> i32 {
   match libuv_subprocess_windows::process_kill(pid, _sig) {
     Ok(_) => 0,
-    Err(e) => e.raw_os_error().unwrap(),
+    Err(e) => e.as_uv_error(),
   }
 }
 
