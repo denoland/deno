@@ -254,11 +254,11 @@ interface EventListener {
 }
 
 /**
- * The EventListenerObject interface represents an object that can handle events
- * dispatched by an EventTarget object.
+ * The `EventListenerObject` interface represents an object that can handle events
+ * dispatched by an `EventTarget` object.
  *
  * This interface provides an alternative to using a function as an event listener.
- * When implementing an object with this interface, the handleEvent() method
+ * When implementing an object with this interface, the `handleEvent()` method
  * will be called when the event is triggered.
  *
  * @example
