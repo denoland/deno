@@ -294,6 +294,7 @@
       "test-buffer-readfloat.js",
       "test-buffer-readint.js",
       "test-buffer-readuint.js",
+      "test-buffer-resizable.js",
       "test-buffer-safe-unsafe.js",
       "test-buffer-set-inspect-max-bytes.js",
       "test-buffer-sharedarraybuffer.js",
