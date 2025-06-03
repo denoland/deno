@@ -92,6 +92,7 @@ pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
   buffer.has_buffer()
 }
 
+/// Checks if the current call site is from a dependency package.
 #[op2(fast)]
 pub fn op_node_call_is_from_dependency<
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
@@ -124,14 +125,11 @@ pub fn op_node_call_is_from_dependency<
       let Ok(specifier) = url::Url::parse(&name) else {
         continue;
       };
-      if state.borrow::<NodeResolverRc<
+      return state.borrow::<NodeResolverRc<
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TSys,
-      >>().in_npm_package(&specifier) {
-        return true;
-      }
-      break;
+      >>().in_npm_package(&specifier);
     }
   }
   false
