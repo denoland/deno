@@ -343,8 +343,9 @@ ObjectSetPrototypeOf(Buffer, Uint8Array);
 // Refs: https://esdiscuss.org/topic/isconstructor#content-11
 const of = (...items) => {
   const newObj = createBuffer(items.length);
-  for (let k = 0; k < items.length; k++)
+  for (let k = 0; k < items.length; k++) {
     newObj[k] = items[k];
+  }
   return newObj;
 };
 Buffer.of = of;
