@@ -1320,6 +1320,7 @@ fn write_initialized_file(
   text: &str,
 ) -> Result<(), JsErrorBox> {
   if text.is_empty() {
+    // one less syscall
     create_initialized_file(sys, path)
   } else {
     sys.fs_write(path, text).map_err(|err| {
@@ -1336,14 +1337,16 @@ fn create_initialized_file(
   sys: &impl FsOpen,
   path: &Path,
 ) -> Result<(), JsErrorBox> {
-  let open_options = sys_traits::OpenOptions::new_write();
-  sys.fs_open(path, &open_options).map(|_| ()).map_err(|err| {
-    JsErrorBox::generic(format!(
-      "Failed to create '{}': {}",
-      path.display(),
-      err
-    ))
-  })
+  sys
+    .fs_open(path, &sys_traits::OpenOptions::new_write())
+    .map(|_| ())
+    .map_err(|err| {
+      JsErrorBox::generic(format!(
+        "Failed to create '{}': {}",
+        path.display(),
+        err
+      ))
+    })
 }
 
 fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {

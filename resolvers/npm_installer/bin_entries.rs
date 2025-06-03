@@ -419,8 +419,10 @@ fn make_executable_if_exists(
   sys: &impl FsOpen,
   path: &Path,
 ) -> Result<bool, BinEntriesError> {
-  let mut open_options = sys_traits::OpenOptions::new_write();
-  open_options.read();
+  let mut open_options = sys_traits::OpenOptions::new();
+  open_options.read = true;
+  open_options.write = true;
+  open_options.truncate = false; // ensure false
   let mut file = match sys.fs_open(path, &open_options) {
     Ok(file) => file,
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
