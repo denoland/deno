@@ -75,10 +75,13 @@ impl NpmProcessState {
         match self {
           FdOrPath::Fd(fd) => {
             #[cfg(target_arch = "wasm32")]
-            return Err(std::io::Error::new(
-              ErrorKind::Unsupported,
-              "Cannot pass fd for npm process state to Wasm. Use a file path instead.",
-            ));
+            {
+              let _fd = fd;
+              return Err(std::io::Error::new(
+                ErrorKind::Unsupported,
+                "Cannot pass fd for npm process state to Wasm. Use a file path instead.",
+              ));
+            }
             #[cfg(all(unix, not(target_arch = "wasm32")))]
             return Ok(
               // SAFETY: Assume valid file descriptor

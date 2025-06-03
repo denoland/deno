@@ -46,6 +46,7 @@ use sys_traits::FsWrite;
 use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::SetupBinEntrySys;
 use crate::flag::LaxSingleProcessFsFlag;
+use crate::flag::LaxSingleProcessFsFlagSys;
 use crate::fs::clone_dir_recursive;
 use crate::fs::symlink_dir;
 use crate::fs::CloneDirRecursiveSys;
@@ -71,10 +72,10 @@ pub trait LocalNpmInstallSys:
   NpmCacheSys
   + CloneDirRecursiveSys
   + SetupBinEntrySys
+  + LaxSingleProcessFsFlagSys
   + sys_traits::EnvVar
   + sys_traits::FsSymlinkDir
   + sys_traits::FsCreateJunction
-  + sys_traits::SystemTimeNow
 {
 }
 
@@ -325,7 +326,7 @@ impl<
               let cache_folder =
                 self.npm_cache.package_folder_for_nv(&package.id.nv);
 
-              let handle = deno_unsync::spawn_blocking({
+              let handle = crate::rt::spawn_blocking({
                 let package_path = package_path.clone();
                 let sys = self.sys.clone();
                 move || {
@@ -464,7 +465,7 @@ impl<
           async move {
             let from_path = patch_pkg.target_dir.clone();
             let sys = self.sys.clone();
-            deno_unsync::spawn_blocking({
+            crate::rt::spawn_blocking({
               move || {
                 clone_dir_recrusive_except_node_modules_child(
                   &sys, &from_path, &target,
@@ -511,7 +512,7 @@ impl<
         cache_futures.push(
           async move {
             let sys = self.sys.clone();
-            deno_unsync::spawn_blocking(move || {
+            crate::rt::spawn_blocking(move || {
               clone_dir_recursive(&sys, &source_path, &package_path)
                 .map_err(JsErrorBox::from_err)?;
               // write out a file that indicates this folder has been initialized

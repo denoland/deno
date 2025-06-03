@@ -808,8 +808,8 @@ jobs:
       - name: Cargo check (deno_resolver)
         run: cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph
         if: '!(matrix.skip)'
-      - name: Cargo check (deno_npm_cache)
-        run: cargo check --target wasm32-unknown-unknown -p deno_npm_cache
+      - name: Cargo check (deno_npm_installer)
+        run: cargo check --target wasm32-unknown-unknown -p deno_npm_installer
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
