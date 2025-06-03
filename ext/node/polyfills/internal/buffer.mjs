@@ -171,9 +171,12 @@ FastBuffer.prototype.constructor = Buffer;
 Buffer.prototype = FastBuffer.prototype;
 
 ObjectDefineProperty(Buffer, SymbolSpecies, {
+  __proto__: null,
   enumerable: false,
   configurable: true,
-  get() { return FastBuffer; }
+  get() {
+    return FastBuffer;
+  },
 });
 
 ObjectDefineProperty(Buffer.prototype, "parent", {
