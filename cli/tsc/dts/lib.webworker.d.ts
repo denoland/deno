@@ -72,7 +72,7 @@ interface AddEventListenerOptions extends EventListenerOptions {
     passive?: boolean;
 
     /**
-     * An AbortSignal that can be used to remove the event listener by calling abort()
+     * An `AbortSignal` that can be used to remove the event listener by calling `abort()`
      * on the controller that created the signal.
      *
      * @example
