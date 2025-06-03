@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
@@ -44,10 +45,13 @@ pub async fn ensure_esbuild(
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
   let target = esbuild_platform();
-  let esbuild_path = deno_dir
+  let mut esbuild_path = deno_dir
     .dl_folder_path()
     .join(format!("esbuild-{}", ESBUILD_VERSION))
     .join(format!("esbuild-{}", target));
+  if cfg!(windows) {
+    esbuild_path.set_extension("exe");
+  }
 
   if esbuild_path.exists() {
     return Ok(esbuild_path);
@@ -69,15 +73,25 @@ pub async fn ensure_esbuild(
       tarball_cache.ensure_package(&nv, dist).await?;
     }
 
-    let path = package_folder.join("bin/esbuild");
+    let path = if cfg!(windows) {
+      package_folder.join("esbuild.exe")
+    } else {
+      package_folder.join("bin").join("esbuild")
+    };
 
     std::fs::create_dir_all(esbuild_path.parent().unwrap())?;
-    std::fs::copy(&path, &esbuild_path)?;
+    std::fs::copy(&path, &esbuild_path).with_context(|| {
+      format!(
+        "failed to copy esbuild binary from {} to {}",
+        path.display(),
+        esbuild_path.display()
+      )
+    })?;
 
     if !existed {
       std::fs::remove_dir_all(&package_folder)?;
     }
-    Ok(esbuild_path)
+    return Ok(esbuild_path);
   } else {
     anyhow::bail!(
       "could not get fetch esbuild binary; download it manually and copy it to {}",
