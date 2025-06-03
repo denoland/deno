@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1178 tests out of 3993 have been ported from Node 23.9.0 (29.50% ported, 71.02% remaining).
+1181 tests out of 3993 have been ported from Node 23.9.0 (29.58% ported, 70.95% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -282,10 +282,8 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-blocklist-clone.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-constructor-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-deprecation-error.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
 - [parallel/test-buffer-constructor-node-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules.js)
-- [parallel/test-buffer-constructor-outside-node-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-outside-node-modules.js)
 - [parallel/test-buffer-fill.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-fill.js)
 - [parallel/test-buffer-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-inspect.js)
 - [parallel/test-buffer-pending-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pending-deprecation.js)
