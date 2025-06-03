@@ -10,16 +10,15 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-
-#[derive(Default)]
-pub struct BinEntries<'a> {
-  /// Packages that have colliding bin names
-  collisions: HashSet<&'a NpmPackageId>,
-  seen_names: HashMap<String, &'a NpmPackageId>,
-  /// The bin entries
-  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
-  sorted: bool,
-}
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsFileMetadata;
+use sys_traits::FsFileSetPermissions;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsSymlinkFile;
+use sys_traits::FsWrite;
 
 /// Returns the name of the default binary for the given package.
 /// This is the package name without the organization (`@org/`), if any.
@@ -58,7 +57,6 @@ pub enum BinEntriesError {
     #[inherit]
     source: std::io::Error,
   },
-  #[cfg(unix)]
   #[class(inherit)]
   #[error("Setting permissions on '{path}'")]
   Permissions {
@@ -76,7 +74,6 @@ pub enum BinEntriesError {
     #[inherit]
     source: Box<Self>,
   },
-  #[cfg(unix)]
   #[class(inherit)]
   #[error("Setting permissions on '{path}'")]
   RemoveBinSymlink {
@@ -90,9 +87,25 @@ pub enum BinEntriesError {
   Io(#[from] std::io::Error),
 }
 
-impl<'a> BinEntries<'a> {
-  pub fn new() -> Self {
-    Self::default()
+pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
+  /// Packages that have colliding bin names
+  collisions: HashSet<&'a NpmPackageId>,
+  seen_names: HashMap<String, &'a NpmPackageId>,
+  /// The bin entries
+  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
+  sorted: bool,
+  sys: &'a TSys,
+}
+
+impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
+  pub fn new(sys: &'a TSys) -> Self {
+    Self {
+      collisions: Default::default(),
+      seen_names: Default::default(),
+      entries: Default::default(),
+      sorted: false,
+      sys,
+    }
   }
 
   /// Add a new bin entry (package with a bin field)
@@ -215,27 +228,30 @@ impl<'a> BinEntries<'a> {
     filter: impl FnMut(&NpmResolutionPackage) -> bool,
     mut handler: impl FnMut(&EntrySetupOutcome<'_>),
   ) -> Result<(), BinEntriesError> {
-    if !self.entries.is_empty() && !bin_node_modules_dir_path.exists() {
-      std::fs::create_dir_all(bin_node_modules_dir_path).map_err(|source| {
-        BinEntriesError::Creating {
+    if !self.entries.is_empty()
+      && !self.sys.fs_exists_no_err(bin_node_modules_dir_path)
+    {
+      self
+        .sys
+        .fs_create_dir_all(bin_node_modules_dir_path)
+        .map_err(|source| BinEntriesError::Creating {
           path: bin_node_modules_dir_path.to_path_buf(),
           source,
-        }
-      })?;
+        })?;
     }
 
     self.for_each_entry(
       snapshot,
       |_package_path, _script| {
-        #[cfg(unix)]
-        {
+        if !sys_traits::impls::is_windows() {
           let path = _package_path.join(_script);
-          make_executable_if_exists(&path)?;
+          make_executable_if_exists(self.sys, &path)?;
         }
         Ok(())
       },
       |package, extra, package_path, name, script| {
         let outcome = set_up_bin_entry(
+          self.sys,
           package,
           extra,
           name,
@@ -345,7 +361,14 @@ fn sort_by_depth(
   });
 }
 
+#[sys_traits::auto_impl]
+pub trait SetupBinEntrySys:
+  FsOpen + FsWrite + FsSymlinkFile + FsRemoveFile + FsCreateDirAll + FsMetadata
+{
+}
+
 pub fn set_up_bin_entry<'a>(
+  sys: &impl SetupBinEntrySys,
   package: &'a NpmResolutionPackage,
   #[allow(unused_variables)] extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
@@ -353,14 +376,12 @@ pub fn set_up_bin_entry<'a>(
   #[allow(unused_variables)] package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
-  #[cfg(windows)]
-  {
-    set_up_bin_shim(package, bin_name, bin_node_modules_dir_path)?;
+  if sys_traits::impls::is_windows() {
+    set_up_bin_shim(sys, package, bin_name, bin_node_modules_dir_path)?;
     Ok(EntrySetupOutcome::Success)
-  }
-  #[cfg(unix)]
-  {
+  } else {
     symlink_bin_entry(
+      sys,
       package,
       extra,
       bin_name,
@@ -371,50 +392,54 @@ pub fn set_up_bin_entry<'a>(
   }
 }
 
-#[cfg(windows)]
 fn set_up_bin_shim(
+  sys: &impl FsWrite,
   package: &NpmResolutionPackage,
   bin_name: &str,
   bin_node_modules_dir_path: &Path,
 ) -> Result<(), BinEntriesError> {
-  use std::fs;
   let mut cmd_shim = bin_node_modules_dir_path.join(bin_name);
 
   cmd_shim.set_extension("cmd");
   let shim = format!("@deno run -A npm:{}/{bin_name} %*", package.id.nv);
-  fs::write(&cmd_shim, shim).map_err(|err| BinEntriesError::SetUpBin {
-    name: bin_name.to_string(),
-    path: cmd_shim.clone(),
-    source: Box::new(err.into()),
-  })?;
+  sys
+    .fs_write(&cmd_shim, shim)
+    .map_err(|err| BinEntriesError::SetUpBin {
+      name: bin_name.to_string(),
+      path: cmd_shim.clone(),
+      source: Box::new(err.into()),
+    })?;
 
   Ok(())
 }
 
-#[cfg(unix)]
 /// Make the file at `path` executable if it exists.
 /// Returns `true` if the file exists, `false` otherwise.
-fn make_executable_if_exists(path: &Path) -> Result<bool, BinEntriesError> {
-  use std::io;
-  use std::os::unix::fs::PermissionsExt;
-  let mut perms = match std::fs::metadata(path) {
-    Ok(metadata) => metadata.permissions(),
-    Err(err) => {
-      if err.kind() == io::ErrorKind::NotFound {
-        return Ok(false);
-      }
-      return Err(err.into());
+fn make_executable_if_exists(
+  sys: &impl FsOpen,
+  path: &Path,
+) -> Result<bool, BinEntriesError> {
+  let mut open_options = sys_traits::OpenOptions::new();
+  open_options.read = true;
+  open_options.write = true;
+  open_options.truncate = false; // ensure false
+  let mut file = match sys.fs_open(path, &open_options) {
+    Ok(file) => file,
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      return Ok(false);
     }
+    Err(err) => return Err(err.into()),
   };
-  if perms.mode() & 0o111 == 0 {
+  let metadata = file.fs_file_metadata()?;
+  let mode = metadata.mode()?;
+  if mode & 0o111 == 0 {
     // if the original file is not executable, make it executable
-    perms.set_mode(perms.mode() | 0o111);
-    std::fs::set_permissions(path, perms).map_err(|source| {
-      BinEntriesError::Permissions {
+    file
+      .fs_file_set_permissions(mode | 0o111)
+      .map_err(|source| BinEntriesError::Permissions {
         path: path.to_path_buf(),
         source,
-      }
-    })?;
+      })?;
   }
 
   Ok(true)
@@ -446,8 +471,8 @@ impl EntrySetupOutcome<'_> {
   }
 }
 
-#[cfg(unix)]
 fn symlink_bin_entry<'a>(
+  sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile),
   package: &'a NpmResolutionPackage,
   extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
@@ -455,8 +480,6 @@ fn symlink_bin_entry<'a>(
   package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
-  use std::io;
-  use std::os::unix::fs::symlink;
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
@@ -464,7 +487,7 @@ fn symlink_bin_entry<'a>(
     pathdiff::diff_paths(to, from)
   }
 
-  let found = make_executable_if_exists(&original).map_err(|source| {
+  let found = make_executable_if_exists(sys, &original).map_err(|source| {
     BinEntriesError::SetUpBin {
       name: bin_name.to_string(),
       path: original.to_path_buf(),
@@ -484,22 +507,22 @@ fn symlink_bin_entry<'a>(
   let original_relative =
     relative_path(bin_node_modules_dir_path, &original).unwrap_or(original);
 
-  if let Err(err) = symlink(&original_relative, &link) {
-    if err.kind() == io::ErrorKind::AlreadyExists {
+  if let Err(err) = sys.fs_symlink_file(&original_relative, &link) {
+    if err.kind() == std::io::ErrorKind::AlreadyExists {
       // remove and retry
-      std::fs::remove_file(&link).map_err(|source| {
+      sys.fs_remove_file(&link).map_err(|source| {
         BinEntriesError::RemoveBinSymlink {
           path: link.clone(),
           source,
         }
       })?;
-      symlink(&original_relative, &link).map_err(|source| {
-        BinEntriesError::SetUpBin {
+      sys
+        .fs_symlink_file(&original_relative, &link)
+        .map_err(|source| BinEntriesError::SetUpBin {
           name: bin_name.to_string(),
           path: original_relative.to_path_buf(),
           source: Box::new(source.into()),
-        }
-      })?;
+        })?;
       return Ok(EntrySetupOutcome::Success);
     }
     return Err(BinEntriesError::SetUpBin {
