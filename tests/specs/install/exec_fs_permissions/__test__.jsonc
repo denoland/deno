@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  "if": "unix",
   "steps": [{
     "args": "install",
     "output": "[WILDCARD]"
