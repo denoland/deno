@@ -320,9 +320,9 @@ interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
 
   /**
-   * When set to true, indicates that the listener will never call preventDefault().
+   * When set to true, indicates that the listener will never call `preventDefault()`.
    * This provides a performance optimization opportunity for event processing.
-   * If a passive listener attempts to call preventDefault(), the call will be ignored
+   * If a passive listener attempts to call `preventDefault()`, the call will be ignored
    * and a warning may be generated.
    */
   passive?: boolean;
