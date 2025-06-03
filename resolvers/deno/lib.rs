@@ -29,13 +29,11 @@ use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
-use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use self::npm::NpmResolver;
+use self::npm::NpmResolverSys;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
@@ -43,9 +41,14 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
+pub mod file_fetcher;
+#[cfg(feature = "graph")]
 pub mod graph;
+pub mod import_map;
+pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
 mod sync;
@@ -112,11 +115,11 @@ pub enum DenoResolveErrorKind {
 }
 
 #[derive(Debug)]
-pub struct NodeAndNpmReqResolver<
+pub struct NodeAndNpmResolvers<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  TSys: NpmResolverSys,
 > {
   pub node_resolver: NodeResolverRc<
     TInNpmPackageChecker,
@@ -124,6 +127,7 @@ pub struct NodeAndNpmReqResolver<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  pub npm_resolver: NpmResolver<TSys>,
   pub npm_req_resolver: NpmReqResolverRc<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -132,15 +136,8 @@ pub struct NodeAndNpmReqResolver<
   >,
 }
 
-pub trait DenoResolverSys:
-  FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
-{
-}
-
-impl<T> DenoResolverSys for T where
-  T: FsCanonicalize + FsMetadata + FsRead + FsReadDir + std::fmt::Debug
-{
-}
+#[sys_traits::auto_impl]
+pub trait DenoResolverSys: NpmResolverSys {}
 
 pub struct DenoResolverOptions<
   'a,
@@ -151,7 +148,7 @@ pub struct DenoResolverOptions<
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_and_req_resolver: Option<
-    NodeAndNpmReqResolver<
+    NodeAndNpmResolvers<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
@@ -169,13 +166,13 @@ pub struct DenoResolverOptions<
 }
 
 #[allow(clippy::disallowed_types)]
-pub type DenoResolverRc<
+pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
 > = crate::sync::MaybeArc<
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -183,9 +180,9 @@ pub type DenoResolverRc<
   >,
 >;
 
-/// Helper type for a DenoResolverRc that has the implementations
+/// Helper type for a RawDenoResolverRc that has the implementations
 /// used by the Deno CLI.
-pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+pub type DefaultRawDenoResolverRc<TSys> = RawDenoResolverRc<
   npm::DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
@@ -195,7 +192,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
-pub struct DenoResolver<
+pub struct RawDenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
@@ -203,7 +200,7 @@ pub struct DenoResolver<
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   node_and_npm_resolver: Option<
-    NodeAndNpmReqResolver<
+    NodeAndNpmResolvers<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
@@ -222,7 +219,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   >
-  DenoResolver<
+  RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -399,9 +396,10 @@ impl<
       }
     }
 
-    let Some(NodeAndNpmReqResolver {
+    let Some(NodeAndNpmResolvers {
       node_resolver,
       npm_req_resolver,
+      ..
     }) = &self.node_and_npm_resolver
     else {
       return Ok(DenoResolution {

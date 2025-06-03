@@ -247,7 +247,7 @@ impl LscBackend {
 
     let body = http_body_util::BodyDataStream::new(res.into_body())
       .into_stream()
-      .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+      .map_err(std::io::Error::other);
     let body = CacheResponseResource::lsc(body);
 
     Ok(Some((meta, Some(body))))

@@ -56,7 +56,7 @@ pub struct StandaloneData {
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
-  cli_args: Cow<Vec<OsString>>,
+  cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
   let data = find_section()?;
 

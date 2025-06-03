@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
@@ -79,4 +80,9 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
     libc::S_IFSOCK => HandleType::Tcp,
     _ => HandleType::Unknown,
   }
+}
+
+#[op2(fast)]
+pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
+  buffer.has_buffer()
 }

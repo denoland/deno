@@ -240,6 +240,13 @@ Deno.test("crc32()", () => {
   assertThrows(() => crc32({}), TypeError);
 });
 
+Deno.test("crc32 doesn't overflow", () => {
+  let checksum = 0;
+  checksum = crc32(Buffer.from("H4sIAAAAAAAACg==", "base64"), checksum);
+  checksum = crc32("aaa", checksum);
+  assertEquals(checksum, 1466848669);
+});
+
 Deno.test("BrotliCompress", async () => {
   const deffered = Promise.withResolvers<void>();
   // @ts-ignore: BrotliCompress is not typed

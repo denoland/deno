@@ -264,6 +264,79 @@ export class SourceCode {
   }
 
   /**
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getAllComments() {
+    materializeComments(this.#ctx);
+    return this.#ctx.comments;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsBefore(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const before = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] <= node.range[0]) {
+        before.push(comment);
+      }
+    }
+
+    return before;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsAfter(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const after = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] >= node.range[1]) {
+        after.push(comment);
+      }
+    }
+
+    return after;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsInside(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const inside = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (
+        comment.range[0] >= node.range[0] && comment.range[1] <= node.range[1]
+      ) {
+        inside.push(comment);
+      }
+    }
+
+    return inside;
+  }
+
+  /**
    * @returns {string}
    */
   #getSource() {
@@ -342,6 +415,34 @@ export class Context {
       end,
       fixes,
     );
+  }
+}
+
+/**
+ * @param {AstContext} ctx
+ */
+function materializeComments(ctx) {
+  const { buf, commentsOffset, comments, strTable } = ctx;
+
+  let offset = commentsOffset;
+  const count = readU32(buf, offset);
+  offset += 4;
+
+  if (comments.length === count) return;
+
+  while (offset < buf.length && comments.length < count) {
+    const kind = buf[offset];
+    offset++;
+    const spanId = readU32(buf, offset);
+    offset += 4;
+    const strId = readU32(buf, offset);
+    offset += 4;
+
+    comments.push({
+      type: kind === 0 ? "Line" : "Block",
+      range: readSpan(ctx, spanId),
+      value: getString(strTable, strId),
+    });
   }
 }
 
@@ -489,6 +590,7 @@ class FacadeNode {
 
 /** @type {Set<number>} */
 const appliedGetters = new Set();
+let hasCommenstGetter = false;
 
 /**
  * Add getters for all potential properties found in the message.
@@ -512,6 +614,16 @@ function setNodeGetters(ctx) {
           i,
           getNode,
         );
+      },
+    });
+  }
+
+  if (!hasCommenstGetter) {
+    hasCommenstGetter = true;
+    Object.defineProperty(FacadeNode.prototype, "comments", {
+      get() {
+        materializeComments(ctx);
+        return ctx.comments;
       },
     });
   }
@@ -994,6 +1106,7 @@ function createAstContext(buf, token) {
 
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
+  const commentsOffset = readU32(buf, buf.length - 28);
   const propsOffset = readU32(buf, buf.length - 24);
   const spansOffset = readU32(buf, buf.length - 20);
   const typeMapOffset = readU32(buf, buf.length - 16);
@@ -1060,7 +1173,9 @@ function createAstContext(buf, token) {
     rootOffset,
     spansOffset,
     propsOffset,
+    commentsOffset,
     nodes: new Map(),
+    comments: [],
     strTableOffset,
     strByProp,
     strByType,

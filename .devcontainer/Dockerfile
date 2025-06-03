@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/vscode/devcontainers/rust:1-bullseye
+FROM mcr.microsoft.com/devcontainers/rust:1
 
 # Install cmake
 RUN apt-get update \

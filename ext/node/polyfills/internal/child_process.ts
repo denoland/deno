@@ -1220,6 +1220,10 @@ function toDenoArgs(args: string[]): string[] {
     if (flagInfo === undefined) {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
+      } else if (arg === "--expose-internals") {
+        // internals are always exposed in Deno.
+      } else if (arg === "--permission") {
+        // ignore --permission flag
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);

@@ -234,7 +234,7 @@ declare namespace Deno {
      * @category Errors */
     export class AlreadyExists extends Error {}
     /**
-     * Raised when an operation to returns data that is invalid for the
+     * Raised when an operation returns data that is invalid for the
      * operation being performed.
      *
      * @category Errors */
@@ -248,7 +248,7 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system reports an `EINTR` error. In
      * many cases, this underlying IO error will be handled internally within
-     * Deno, or result in an @{link BadResource} error instead.
+     * Deno, or result in an {@link BadResource} error instead.
      *
      * @category Errors */
     export class Interrupted extends Error {}
@@ -3442,24 +3442,6 @@ declare namespace Deno {
    */
   export function truncateSync(name: string, len?: number): void;
 
-  /** @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
   /**
    * Additional information for FsEvent objects with the "other" kind.
    *
@@ -5671,7 +5653,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type FromNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? Uint8Array
+    NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5696,7 +5678,7 @@ declare namespace Deno {
    */
   export type FromNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? Uint8Array
+  > = T extends NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -6185,7 +6167,7 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
-    /** A HTTP proxy to use for new connections. */
+    /** An alternative transport (a proxy) to use for new connections. */
     proxy?: Proxy;
     /** Sets the maximum number of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
@@ -6213,17 +6195,38 @@ declare namespace Deno {
   }
 
   /**
-   * The definition of a proxy when specifying
+   * The definition for alternative transports (or proxies) in
    * {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * Supported proxies:
+   *  - HTTP/HTTPS proxy: this uses the HTTP CONNECT method to tunnel HTTP
+   *    requests through a different server.
+   *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
+   *    through a different server.
+   *  - Unix domain socket: this sends all requests to a local Unix domain
+   *    socket rather than a TCP socket. *Not supported on Windows.*
    *
    * @category Fetch
    */
-  export interface Proxy {
-    /** The string URL of the proxy server to use. */
+  export type Proxy = {
+    transport?: "http" | "https" | "socks5";
+    /**
+     * The string URL of the proxy server to use.
+     *
+     * For `http` and `https` transports, the URL must start with `http://` or
+     * `https://` respectively, or be a plain hostname.
+     *
+     * For `socks` transport, the URL must start with `socks5://` or
+     * `socks5h://`.
+     */
     url: string;
     /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
-  }
+  } | {
+    transport: "unix";
+    /** The path to the unix domain socket to use. */
+    path: string;
+  };
 
   /**
    * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}

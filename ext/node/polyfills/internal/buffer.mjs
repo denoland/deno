@@ -113,13 +113,15 @@ float32Array[0] = -1; // 0xBF800000
 // check this with `os.endianness()` because that is determined at compile time.
 export const bigEndian = uInt8Float32Array[3] === 0;
 
-export const kMaxLength = 2147483647;
+export const kMaxLength = NumberMAX_SAFE_INTEGER;
 export const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
 const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 
-export const INSPECT_MAX_BYTES = 50;
+let INSPECT_MAX_BYTES_ = 50;
+
+export const INSPECT_MAX_BYTES = INSPECT_MAX_BYTES_;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
@@ -382,25 +384,14 @@ const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
-  if (isUint8Array(a)) {
-    a = BufferFrom(
-      a,
-      TypedArrayPrototypeGetByteOffset(a),
-      TypedArrayPrototypeGetByteLength(a),
-    );
+  if (!isUint8Array(a)) {
+    throw new codes.ERR_INVALID_ARG_TYPE("buf1", ["Buffer", "Uint8Array"], a);
   }
-  if (isUint8Array(b)) {
-    b = BufferFrom(
-      b,
-      TypedArrayPrototypeGetByteOffset(b),
-      TypedArrayPrototypeGetByteLength(b),
-    );
+
+  if (!isUint8Array(b)) {
+    throw new ERR_INVALID_ARG_TYPE("buf2", ["Buffer", "Uint8Array"], b);
   }
-  if (!BufferIsBuffer(a) || !BufferIsBuffer(b)) {
-    throw new TypeError(
-      'The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array',
-    );
-  }
+
   if (a === b) {
     return 0;
   }
@@ -622,17 +613,17 @@ Buffer.prototype[customInspectSymbol] =
   Buffer.prototype.inspect =
     function inspect() {
       let str = "";
-      const max = INSPECT_MAX_BYTES;
       str = StringPrototypeTrim(
         StringPrototypeReplace(
           // deno-lint-ignore prefer-primordials
-          this.toString("hex", 0, max),
+          this.toString("hex", 0, INSPECT_MAX_BYTES_),
           SPACER_PATTERN,
           "$1 ",
         ),
       );
-      if (this.length > max) {
-        str += " ... ";
+      if (this.length > INSPECT_MAX_BYTES_) {
+        const remaining = this.length - INSPECT_MAX_BYTES_;
+        str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
       }
       return "<Buffer " + str + ">";
     };
@@ -803,6 +794,15 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -874,6 +874,15 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -899,6 +908,15 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   offset = offset || 0;
   const maxLength = MathMin(length || Infinity, this.length - offset);
   const buf = offset || maxLength < this.length
@@ -975,9 +993,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  if (length === undefined) {
-    length = maxLength;
-  } else {
+  if (length !== undefined) {
     // Convert length to non-negative integer.
     length = +length;
     if (length > 0) {
@@ -1002,7 +1018,6 @@ function _base64Slice(buf, start, end) {
     return forgivingBase64Encode(buf.slice(start, end));
   }
 }
-
 const decoder = new TextDecoder();
 
 function _utf8Slice(buf, start, end) {
@@ -2777,7 +2792,7 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
-export default {
+const mod = {
   atob,
   btoa,
   Blob,
@@ -2785,9 +2800,21 @@ export default {
   constants,
   isAscii,
   isUtf8,
-  INSPECT_MAX_BYTES,
+  get INSPECT_MAX_BYTES() {
+    return INSPECT_MAX_BYTES_;
+  },
+  set INSPECT_MAX_BYTES(val) {
+    validateNumber(val, "INSPECT_MAX_BYTES", 0);
+    INSPECT_MAX_BYTES_ = val;
+  },
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
   transcode,
 };
+
+// NB(bartlomieju): we want to have a default exports from this module for ES imports,
+// as well as make it work with `require` in such a way that getters/setters
+// for `INSPECT_MAX_BYTES` work correctly - using `as "module.exports"` ensures
+// that `require`ing this module does that.
+export { mod as "module.exports", mod as default };

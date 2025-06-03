@@ -55,7 +55,6 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
 // - global (node only)
-// - performance (both, but different implementation)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
 // - setImmediate (node only)
@@ -65,14 +64,13 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 13] = [
+const MANAGED_GLOBALS: [&[u16]; 12] = [
   &str_to_utf16::<6>("Buffer"),
   &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
   &str_to_utf16::<6>("global"),
-  &str_to_utf16::<11>("performance"),
   &str_to_utf16::<7>("process"),
   &str_to_utf16::<4>("self"),
   &str_to_utf16::<12>("setImmediate"),
@@ -282,7 +280,9 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -315,7 +315,9 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -342,7 +344,9 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -374,7 +378,9 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -403,7 +409,9 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -437,7 +445,9 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -471,7 +481,9 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

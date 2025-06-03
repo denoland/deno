@@ -30,6 +30,7 @@ use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -98,7 +99,8 @@ use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -260,8 +262,6 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-  registry_provider:
-    Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
@@ -298,19 +298,13 @@ impl std::fmt::Debug for Inner {
 }
 
 impl LanguageServer {
-  pub fn new(
-    client: Client,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) -> Self {
+  pub fn new(client: Client) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
       inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
-        registry_provider,
       ))),
       init_flag: Default::default(),
       performance,
@@ -337,7 +331,8 @@ impl LanguageServer {
         .collect::<HashMap<_, _>>();
       let module_graph_builder = factory.module_graph_builder().await?;
       let module_graph_creator = factory.module_graph_creator().await?;
-      let mut inner_loader = module_graph_builder.create_graph_loader();
+      let mut inner_loader =
+        module_graph_builder.create_graph_loader_with_root_permissions();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_modules: &open_modules,
@@ -347,7 +342,7 @@ impl LanguageServer {
           GraphKind::All,
           roots.clone(),
           &mut loader,
-          graph_util::NpmCachingStrategy::Eager,
+          NpmCachingStrategy::Eager,
         )
         .await?;
       graph_util::graph_valid(
@@ -359,6 +354,7 @@ impl LanguageServer {
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
+          ignore_graph_errors: true,
         },
       )?;
 
@@ -533,13 +529,7 @@ impl LanguageServer {
 }
 
 impl Inner {
-  fn new(
-    client: Client,
-    performance: Arc<Performance>,
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) -> Self {
+  fn new(client: Client, performance: Arc<Performance>) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
@@ -586,7 +576,6 @@ impl Inner {
       workspace_files: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
-      registry_provider,
     }
   }
 
@@ -927,7 +916,7 @@ impl Inner {
           let mut root_url = uri_to_url(&root_uri);
           let name = root_url
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|mut s| s.next_back())
             .unwrap_or_default()
             .to_string();
           if !root_url.path().ends_with('/') {
@@ -1136,15 +1125,17 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::RespectHeaders,
-      super::logging::lsp_log_level(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::RespectHeaders,
+        download_log_level: super::logging::lsp_log_level(),
+        progress_bar: None,
+      },
     );
     let file_fetcher = Arc::new(file_fetcher);
     self
@@ -1154,8 +1145,8 @@ impl Inner {
         &self.config.settings,
         &self.workspace_files,
         &file_fetcher,
+        &self.http_client_provider,
         self.cache.deno_dir(),
-        &self.registry_provider,
       )
       .await;
     self
@@ -1163,6 +1154,10 @@ impl Inner {
       .send_did_refresh_deno_configuration_tree_notification(
         self.config.tree.to_did_refresh_params(),
       );
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn dispatch_cache_jsx_import_sources(&self) {
     for config_file in self.config.tree.config_files() {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()??.options;
@@ -1616,6 +1611,7 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
@@ -1643,10 +1639,12 @@ impl Inner {
       .any(|(s, _)| self.config.tree.is_watched_file(s))
     {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
+      let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
             ConfigWatchedFileType::DenoJson => {
+              changed_deno_json = true;
               lsp_custom::DenoConfigurationType::DenoJson
             }
             ConfigWatchedFileType::PackageJson => {
@@ -1667,6 +1665,11 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      // Don't cache anything if only a lockfile has changed, or it can
+      // retrigger this notification and cause an infinite loop.
+      if changed_deno_json {
+        self.dispatch_cache_jsx_import_sources();
+      }
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
@@ -1977,7 +1980,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -3921,7 +3923,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn project_changed<'a>(
+  fn project_changed(
     &mut self,
     changed_specifiers: impl IntoIterator<Item = (Arc<Url>, ChangeKind)>,
     scopes_change: ProjectScopesChange,
@@ -4480,6 +4482,7 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
@@ -4566,7 +4569,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -4665,7 +4667,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn pre_did_change_workspace_folders(
     &mut self,
     params: DidChangeWorkspaceFoldersParams,
@@ -4699,6 +4700,7 @@ impl Inner {
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
+    self.dispatch_cache_jsx_import_sources();
     self.refresh_resolver().await;
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
@@ -4755,6 +4757,7 @@ impl Inner {
             command: def.command.clone(),
             source_uri: url_to_uri(&config_file.specifier)
               .map_err(|_| LspError::internal_error())?,
+            description: def.description.clone(),
           });
         }
       };
@@ -4767,6 +4770,7 @@ impl Inner {
             command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
+            description: None,
           });
         }
       }

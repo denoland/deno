@@ -190,14 +190,14 @@ impl Resource for UnixStreamResource {
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub type VsockStreamResource =
   FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub struct VsockStreamResource;
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 impl VsockStreamResource {
   fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<usize> {
     unreachable!()

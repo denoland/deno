@@ -11,6 +11,8 @@ use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
@@ -20,7 +22,6 @@ use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
-use crate::npm::installer::PackageCaching;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
@@ -94,9 +95,13 @@ pub async fn run_script(
       main_module.clone(),
       unconfigured_runtime,
     )
-    .await?;
+    .await
+    .inspect_err(|e| deno_telemetry::report_event("boot_failure", e))?;
 
-  let exit_code = worker.run().await?;
+  let exit_code = worker
+    .run()
+    .await
+    .inspect_err(|e| deno_telemetry::report_event("uncaught_exception", e))?;
   Ok(exit_code)
 }
 
@@ -121,6 +126,7 @@ pub async fn run_from_stdin(
   // to allow module access by TS compiler
   file_fetcher.insert_memory_files(File {
     url: main_module.clone(),
+    mtime: None,
     maybe_headers: None,
     source: source.into(),
   });
@@ -213,6 +219,7 @@ pub async fn eval_command(
   // to allow module access by TS compiler.
   file_fetcher.insert_memory_files(File {
     url: main_module.clone(),
+    mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
   });
@@ -238,7 +245,7 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
       if !already_done
         && matches!(
           cli_options.default_npm_caching_strategy(),
-          crate::graph_util::NpmCachingStrategy::Eager
+          NpmCachingStrategy::Eager
         )
       {
         npm_installer.cache_packages(PackageCaching::All).await?;
