@@ -335,6 +335,20 @@ ObjectSetPrototypeOf(Buffer.prototype, Uint8ArrayPrototype);
 
 ObjectSetPrototypeOf(Buffer, Uint8Array);
 
+// Identical to the built-in %TypedArray%.of(), but avoids using the deprecated
+// Buffer() constructor. Must use arrow function syntax to avoid automatically
+// adding a `prototype` property and making the function a constructor.
+//
+// Refs: https://tc39.github.io/ecma262/#sec-%typedarray%.of
+// Refs: https://esdiscuss.org/topic/isconstructor#content-11
+const of = (...items) => {
+  const newObj = createBuffer(items.length);
+  for (let k = 0; k < items.length; k++)
+    newObj[k] = items[k];
+  return newObj;
+};
+Buffer.of = of;
+
 function assertSize(size) {
   validateNumber(size, "size", 0, kMaxLength);
 }
