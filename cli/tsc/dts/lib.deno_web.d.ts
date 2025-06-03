@@ -263,7 +263,7 @@ interface EventListener {
  *
  * @example
  * ```ts
- * // Creating an object that implements EventListenerObject
+ * // Creating an object that implements `EventListenerObject`
  * const myEventListener = {
  *   handleEvent(event) {
  *     console.log(`Event of type ${event.type} occurred`);
