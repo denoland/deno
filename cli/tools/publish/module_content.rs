@@ -148,7 +148,7 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     specifier: &Url,
     parsed_source: &ParsedSource,
     text_info: &SourceTextInfo,
-    module_info: &deno_graph::ModuleInfo,
+    module_info: &deno_graph::analysis::ModuleInfo,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
     text_changes: &mut Vec<TextChange>,
   ) -> Result<(), AnyError> {
