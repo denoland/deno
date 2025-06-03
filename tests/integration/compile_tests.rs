@@ -900,6 +900,7 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   // compile
   let output = context.new_command().args_vec(args).run();
   output.assert_exit_code(0);
+  eprintln!("{}", output.combined_output());
   output.skip_output_check();
 
   // delete the npm folder in the DENO_DIR to ensure it's not using it
@@ -916,6 +917,7 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
     .name(binary_path)
     .args_vec(opts.run_args)
     .run();
+  eprintln!("Exit code: {:?}", output.exit_code());
   output.assert_matches_file(opts.output_file);
   output.assert_exit_code(opts.exit_code);
 }
