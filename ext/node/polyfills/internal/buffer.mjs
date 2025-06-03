@@ -16,7 +16,6 @@ const {
   ArrayIsArray,
   ArrayPrototypeSlice,
   BigInt,
-  ErrorCaptureStackTrace,
   DataViewPrototypeGetByteLength,
   Float32Array,
   Float64Array,
@@ -42,6 +41,7 @@ const {
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
   SymbolFor,
+  SymbolSpecies,
   SymbolToPrimitive,
   TypeError,
   TypeErrorPrototype,
@@ -160,6 +160,21 @@ function showFlaggedDeprecation() {
   process.emitWarning(bufferWarning, "DeprecationWarning", "DEP0005");
   bufferWarningAlreadyEmitted = true;
 }
+
+class FastBuffer extends Uint8Array {
+  constructor(arg0, arg1, arg2) {
+    super(arg0, arg1, arg2);
+  }
+}
+
+FastBuffer.prototype.constructor = Buffer;
+Buffer.prototype = FastBuffer.prototype;
+
+ObjectDefineProperty(Buffer, SymbolSpecies, {
+  enumerable: false,
+  configurable: true,
+  get() { return FastBuffer; }
+});
 
 ObjectDefineProperty(Buffer.prototype, "parent", {
   __proto__: null,
