@@ -1060,9 +1060,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  if (length === undefined) {
-    length = maxLength;
-  } else {
+  if (length !== undefined) {
     // Convert length to non-negative integer.
     length = +length;
     if (length > 0) {
