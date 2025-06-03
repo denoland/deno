@@ -91,7 +91,7 @@ pub async fn ensure_esbuild(
     if !existed {
       std::fs::remove_dir_all(&package_folder)?;
     }
-    return Ok(esbuild_path);
+    Ok(esbuild_path)
   } else {
     anyhow::bail!(
       "could not get fetch esbuild binary; download it manually and copy it to {}",
