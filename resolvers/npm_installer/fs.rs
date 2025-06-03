@@ -11,7 +11,11 @@ use sys_traits::FsSymlinkDir;
 
 #[sys_traits::auto_impl]
 pub trait CloneDirRecursiveSys:
-  CopyDirRecursiveSys + sys_traits::FsRemoveFile + sys_traits::ThreadSleep
+  CopyDirRecursiveSys
+  + sys_traits::FsCreateDirAll
+  + sys_traits::FsRemoveFile
+  + sys_traits::FsRemoveDirAll
+  + sys_traits::ThreadSleep
 {
 }
 

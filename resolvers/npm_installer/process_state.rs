@@ -73,8 +73,7 @@ impl NpmProcessState {
         sys: &impl NpmProcessStateFromEnvVarSys,
       ) -> std::io::Result<sys_traits::boxed::BoxedFsFile> {
         match self {
-          // SAFETY: Assume valid file descriptor
-          FdOrPath::Fd(fd) => unsafe {
+          FdOrPath::Fd(fd) => {
             #[cfg(target_arch = "wasm32")]
             return Err(std::io::Error::new(
               ErrorKind::Unsupported,
@@ -82,16 +81,24 @@ impl NpmProcessState {
             ));
             #[cfg(all(unix, not(target_arch = "wasm32")))]
             return Ok(
-              sys_traits::impls::RealFsFile::from_raw(
-                <std::fs::File as std::os::unix::io::FromRawFd>::from_raw_fd(
-                  *fd as _,
-                ),
-              )
-              .into_boxed(),
+              // SAFETY: Assume valid file descriptor
+              unsafe {
+                sys_traits::impls::RealFsFile::from_raw(
+                  <std::fs::File as std::os::unix::io::FromRawFd>::from_raw_fd(
+                    *fd as _,
+                  ),
+                )
+                .into_boxed()
+              },
             );
             #[cfg(windows)]
-            Ok(sys_traits::impls::RealFsFile::from_raw(<std::fs::File as std::os::windows::io::FromRawHandle>::from_raw_handle(*fd as _)).into_boxed())
-          },
+            Ok(
+              // SAFETY: Assume valid file descriptor
+              unsafe {
+                sys_traits::impls::RealFsFile::from_raw(<std::fs::File as std::os::windows::io::FromRawHandle>::from_raw_handle(*fd as _)).into_boxed()
+              },
+            )
+          }
           FdOrPath::Path(path) => Ok(
             sys
               .fs_open(path, &sys_traits::OpenOptions::new_read())?

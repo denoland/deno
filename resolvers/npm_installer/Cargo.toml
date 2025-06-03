@@ -32,7 +32,6 @@ deno_resolver = { workspace = true, features = ["graph", "sync"] }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
-fs3.workspace = true
 futures.workspace = true
 log.workspace = true
 once_cell.workspace = true
@@ -41,15 +40,18 @@ pathdiff.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["getrandom", "real", "winapi", "libc"] }
 thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
 twox-hash.workspace = true
 url.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sys_traits = { workspace = true, features = ["real", "wasm"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio.workspace = true
+
 [target.'cfg(windows)'.dependencies]
-junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [dev-dependencies]

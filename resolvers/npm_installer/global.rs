@@ -16,6 +16,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_terminal::colors;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use sys_traits::OpenOptions;
 
 use crate::lifecycle_scripts::LifecycleScripts;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
@@ -30,6 +31,7 @@ pub struct GlobalNpmPackageInstaller<
 > {
   cache: Arc<NpmCache<TSys>>,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
+  sys: TSys,
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
@@ -55,6 +57,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   pub fn new(
     cache: Arc<NpmCache<TSys>>,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
+    sys: TSys,
     resolution: Arc<NpmResolutionCell>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
@@ -62,6 +65,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     Self {
       cache,
       tarball_cache,
+      sys,
       resolution,
       lifecycle_scripts,
       system_info,
@@ -122,9 +126,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmPackageFsInstaller
     }
 
     let mut lifecycle_scripts = LifecycleScripts::new(
+      &self.sys,
       &self.lifecycle_scripts,
       GlobalLifecycleScripts::new(
         self.cache.as_ref(),
+        &self.sys,
         &self.lifecycle_scripts.root_dir,
       ),
     );
@@ -154,16 +160,21 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmPackageFsInstaller
 
 struct GlobalLifecycleScripts<'a, TSys: NpmCacheSys> {
   cache: &'a NpmCache<TSys>,
+  sys: &'a TSys,
   path_hash: u64,
 }
 
 impl<'a, TSys: NpmCacheSys> GlobalLifecycleScripts<'a, TSys> {
-  fn new(cache: &'a NpmCache<TSys>, root_dir: &Path) -> Self {
+  fn new(cache: &'a NpmCache<TSys>, sys: &'a TSys, root_dir: &Path) -> Self {
     use std::hash::Hasher;
     let mut hasher = twox_hash::XxHash64::default();
     hasher.write(root_dir.to_string_lossy().as_bytes());
     let path_hash = hasher.finish();
-    Self { cache, path_hash }
+    Self {
+      cache,
+      sys,
+      path_hash,
+    }
   }
 
   fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
@@ -202,13 +213,16 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     log::warn!("┖─ {}", colors::bold("\"nodeModulesDir\": \"auto\""));
 
     for (package, _) in packages {
-      std::fs::write(self.warned_scripts_file(package), "")?;
+      self.sys.fs_open(
+        self.warned_scripts_file(package),
+        &OpenOptions::new_write(),
+      )?;
     }
     Ok(())
   }
 
   fn has_warned(&self, package: &NpmResolutionPackage) -> bool {
-    self.warned_scripts_file(package).exists()
+    self.sys.fs_exists_no_err(self.warned_scripts_file(package))
   }
 
   fn has_run(&self, _package: &NpmResolutionPackage) -> bool {
