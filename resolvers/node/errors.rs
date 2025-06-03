@@ -647,9 +647,6 @@ pub enum FinalizeResolutionErrorKind {
   ModuleNotFound(#[from] ModuleNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
-  TypesNotFound(#[from] TypesNotFoundError),
-  #[class(inherit)]
-  #[error(transparent)]
   UnsupportedDirImport(#[from] UnsupportedDirImportError),
   #[class(inherit)]
   #[error(transparent)]
@@ -662,7 +659,6 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
     match self {
       FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
       FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
-      FinalizeResolutionErrorKind::TypesNotFound(e) => e.code(),
       FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
       FinalizeResolutionErrorKind::UrlToFilePath(_) => {
         NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
@@ -674,8 +670,9 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Cannot find module '{}'{}{}",
+  "[{}] Cannot find {} '{}'{}{}",
   self.code(),
+  typ,
   specifier,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
   suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
@@ -684,6 +681,7 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
 pub struct ModuleNotFoundError {
   pub specifier: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
+  pub typ: &'static str,
   pub suggested_ext: Option<&'static str>,
 }
 
