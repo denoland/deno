@@ -6,6 +6,12 @@ use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
+
+use crate::ExtNodeSys;
+use crate::NodeResolverRc;
+
 #[repr(u32)]
 enum HandleType {
   #[allow(dead_code)]
@@ -88,7 +94,14 @@ pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_node_call_is_from_dependency(scope: &mut v8::HandleScope) -> bool {
+pub fn op_node_call_is_from_dependency<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+) -> bool {
   // non internal call site should appear in < 20 frames
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
     return false;
@@ -106,12 +119,19 @@ pub fn op_node_call_is_from_dependency(scope: &mut v8::HandleScope) -> bool {
     let name = script.to_rust_string_lossy(scope);
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
-    } else if name.contains("node_modules")
-      || name.contains("registry.npmjs.org")
-      || name.starts_with("https://")
-    {
+    } else if name.starts_with("https:") {
       return true;
     } else {
+      let Ok(specifier) = url::Url::parse(&name) else {
+        continue;
+      };
+      if state.borrow::<NodeResolverRc<
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TSys,
+      >>().in_npm_package(&specifier) {
+        return true;
+      }
       break;
     }
   }
