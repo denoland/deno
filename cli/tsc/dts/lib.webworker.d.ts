@@ -66,8 +66,8 @@ interface AddEventListenerOptions extends EventListenerOptions {
 
     /**
      * When set to true, indicates that the function specified by the listener will never call
-     * preventDefault(). This allows optimization of the processing of events.
-     * If a passive listener does try to call preventDefault(), it will be ignored.
+     * `preventDefault()`. This allows optimization of the processing of events.
+     * If a passive listener does try to call `preventDefault()`, it will be ignored.
      */
     passive?: boolean;
 
