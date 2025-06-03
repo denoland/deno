@@ -7,7 +7,7 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_webgpu.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
-import { GPUCanvasContext, UnsafeWindowSurface } from "ext:core/ops";
+import { GPUCanvasSurfaceContext, UnsafeWindowSurface } from "ext:core/ops";
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -15,21 +15,28 @@ const {
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
-ObjectDefineProperty(GPUCanvasContext, SymbolFor("Deno.privateCustomInspect"), {
-  __proto__: null,
-  value(inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUCanvasContextPrototype, this),
-        keys: [
-          "canvas",
-        ],
-      }),
-      inspectOptions,
-    );
+ObjectDefineProperty(
+  GPUCanvasSurfaceContext,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(
+            GPUCanvasSurfaceContextPrototype,
+            this,
+          ),
+          keys: [
+            "canvas",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
   },
-});
-const GPUCanvasContextPrototype = GPUCanvasContext.prototype;
+);
+const GPUCanvasSurfaceContextPrototype = GPUCanvasSurfaceContext.prototype;
 
-export { GPUCanvasContext, UnsafeWindowSurface };
+export { GPUCanvasSurfaceContext, UnsafeWindowSurface };

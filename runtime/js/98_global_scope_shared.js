@@ -39,6 +39,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadCanvas = core.createLazyLoader("ext:deno_canvas/02_canvas.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -148,6 +149,15 @@ const windowOrWorkerGlobalScope = {
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
+
+  OffscreenCanvas: core.propNonEnumerableLazyLoaded(
+    (canvas) => canvas.OffscreenCanvas,
+    loadCanvas,
+  ),
+  ImageBitmapRenderingContext: core.propNonEnumerableLazyLoaded(
+    (canvas) => canvas.ImageBitmapRenderingContext,
+    loadCanvas,
+  ),
   GPU: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPU, loadWebGPU),
   GPUAdapter: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUAdapter,
@@ -165,7 +175,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBufferUsage,
     loadWebGPU,
   ),
-  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
+  GPUCanvasContext: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCanvasContext,
+    loadWebGPU,
+  ),
   GPUColorWrite: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUColorWrite,
     loadWebGPU,
@@ -329,7 +342,11 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   ),
 };
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
+  GPUCanvasSurfaceContext: core.propNonEnumerable(
+    webgpuSurface.GPUCanvasSurfaceContext,
+  ),
+};
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   Buffer: core.propWritable(Buffer),

@@ -36,7 +36,7 @@ pub struct Configuration {
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 }
 
-pub struct GPUCanvasContext {
+pub struct GPUCanvasSurfaceContext {
   pub surface_id: wgpu_core::id::SurfaceId,
   pub width: RefCell<u32>,
   pub height: RefCell<u32>,
@@ -47,14 +47,14 @@ pub struct GPUCanvasContext {
   pub canvas: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for GPUCanvasContext {
+impl GarbageCollected for GPUCanvasSurfaceContext {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
   }
 }
 
 #[op2]
-impl GPUCanvasContext {
+impl GPUCanvasSurfaceContext {
   #[getter]
   #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
@@ -164,7 +164,7 @@ impl GPUCanvasContext {
   }
 }
 
-impl GPUCanvasContext {
+impl GPUCanvasSurfaceContext {
   pub fn present(&self) -> Result<(), SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {

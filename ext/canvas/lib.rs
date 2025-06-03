@@ -1,5 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::OpState;
+
+pub mod bitmaprenderer;
+pub mod canvas;
 mod image_ops;
 mod op_create_image_bitmap;
 pub use image;
@@ -43,6 +51,24 @@ impl CanvasError {
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_create_image_bitmap],
-  lazy_loaded_esm = ["01_image.js"],
+  ops = [op_create_image_bitmap, op_init_canvas],
+  objects = [op_create_image_bitmap::ImageBitmap, canvas::OffscreenCanvas, bitmaprenderer::ImageBitmapRenderingContext],
+  lazy_loaded_esm = ["01_image.js", "02_canvas.js"],
+  options = {
+    get_context: canvas::GetContext,
+    contexts: HashMap<String, canvas::CreateCanvasContext>,
+  },
+  state = |state, options| {
+    state.put(canvas::GetContextContainer(options.get_context));
+    state.put(canvas::RegisteredContexts(options.contexts));
+  },
 );
+
+#[op2(fast)]
+pub fn op_init_canvas(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+  blob: v8::Local<v8::Value>,
+) {
+  state.put(canvas::BlobHandle(v8::Global::new(scope, blob.cast())));
+}
