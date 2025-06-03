@@ -29,7 +29,7 @@ interface CloseEventInit extends EventInit {
 }
 
 /**
- * The CloseEvent interface represents an event that occurs when a WebSocket connection is closed.
+ * The `CloseEvent` interface represents an event that occurs when a WebSocket connection is closed.
  *
  * This event is sent to the client when the connection is closed, providing information about
  * why the connection was closed through the code, reason, and wasClean properties.
@@ -67,7 +67,7 @@ interface CloseEvent extends Event {
 }
 
 /**
- * Constructor interface for creating CloseEvent instances.
+ * Constructor interface for creating `CloseEvent` instances.
  *
  * @example
  * ```ts
