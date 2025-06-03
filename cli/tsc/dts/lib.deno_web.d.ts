@@ -219,7 +219,7 @@ declare var EventTarget: {
 /** @category Events */
 interface EventListener {
   /**
-   * The EventListener interface represents a callback function to be called
+   * The `EventListener` interface represents a callback function to be called
    * whenever an event of a specific type occurs on a target object.
    *
    * This is a basic event listener, represented by a simple function
