@@ -23,7 +23,7 @@ and limitations under the License.
 /**
  * Specifies characteristics about the event listener or the event handler it can invoke.
  *
- * This interface extends EventListenerOptions and provides additional configuration
+ * This interface extends `EventListenerOptions` and provides additional configuration
  * options for controlling event listener behavior.
  *
  * @example
