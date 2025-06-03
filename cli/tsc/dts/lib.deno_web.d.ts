@@ -328,7 +328,7 @@ interface AddEventListenerOptions extends EventListenerOptions {
   passive?: boolean;
 
   /**
-   * An AbortSignal that can be used to remove the event listener when aborted.
+   * An `AbortSignal` that can be used to remove the event listener when aborted.
    *
    * @example
    * ```ts
