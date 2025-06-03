@@ -442,6 +442,7 @@ impl<
 
     Err(JsErrorBox::from_err(ModuleNotFoundError {
       specifier: UrlOrPath::Path(PathBuf::from(specifier)),
+      typ: "module",
       maybe_referrer: Some(UrlOrPath::Path(referrer_path.to_path_buf())),
       suggested_ext: None,
     }))
@@ -483,6 +484,7 @@ impl<
     Err(JsErrorBox::from_err(ModuleNotFoundError {
       specifier: UrlOrPath::Path(p),
       maybe_referrer: Some(UrlOrPath::Path(referrer.to_path_buf())),
+      typ: "module",
       suggested_ext: None,
     }))
   }
