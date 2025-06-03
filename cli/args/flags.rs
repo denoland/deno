@@ -686,6 +686,7 @@ pub struct Flags {
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
   pub eszip: bool,
+  pub conditions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3564,6 +3565,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
     .arg(vendor_arg())
+    .arg(conditions_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -4360,6 +4362,14 @@ fn lock_args() -> [Arg; 3] {
       .help("Error out if lockfile is out of date")
       .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
   ]
+}
+
+fn conditions_arg() -> Arg {
+  Arg::new("conditions")
+    .short('C')
+    .long("conditions")
+    .num_args(0..)
+    .action(ArgAction::Append)
 }
 
 fn config_arg() -> Arg {
@@ -5661,6 +5671,7 @@ fn compile_args_without_check_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
+  conditions_args_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
@@ -6015,6 +6026,12 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
   if let Some(&v) = matches.get_one::<bool>("frozen") {
     flags.frozen_lockfile = Some(v);
+  }
+}
+
+fn conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(conditions) = matches.remove_many::<String>("conditions") {
+    flags.conditions = conditions.collect();
   }
 }
 
@@ -12158,5 +12175,51 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn conditions_test() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--conditions",
+      "development",
+      "--",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        conditions: svec!["development"],
+        ..Default::default()
+      }
+    );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--conditions",
+      "development",
+      "--conditions",
+      "production",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        conditions: svec!["development", "production"],
+        ..Default::default()
+      }
+    );
   }
 }
