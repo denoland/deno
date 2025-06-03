@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1181 tests out of 3993 have been ported from Node 23.9.0 (29.58% ported, 70.95% remaining).
+1184 tests out of 3993 have been ported from Node 23.9.0 (29.65% ported, 70.87% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -291,7 +291,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-pending-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pending-deprecation.js)
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
-- [parallel/test-buffer-resizable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-resizable.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
 - [parallel/test-child-process-advanced-serialization-splitted-length-field.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-splitted-length-field.js)
