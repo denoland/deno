@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
@@ -284,6 +285,25 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 url_or_path.into_url().map_err(JsErrorBox::from_err)
               })?,
           )
+        }
+        PackageJsonDepValue::JsrReq(req) => {
+          let specifier = Url::parse(&format!(
+            "jsr:{}{}",
+            req,
+            sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+          ))
+          .map_err(|err| {
+            JsErrorBox::from_err(ModuleResolutionError::InvalidUrl(err))
+          })?;
+          if let Some(specifier) = self
+            .shared
+            .modules
+            .resolve_specifier(&specifier)
+            .map_err(JsErrorBox::from_err)?
+          {
+            return Ok(specifier.clone());
+          }
+          Ok(specifier)
         }
       },
       Ok(MappedResolution::Normal { specifier, .. }) => {

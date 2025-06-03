@@ -420,6 +420,17 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
               ))
               .ok()
             }
+            PackageJsonDepValue::JsrReq(req) => {
+              ModuleSpecifier::parse(&format!(
+                "jsr:{}{}",
+                req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
+            }
           },
           Err(err) => {
             log::warn!(

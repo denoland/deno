@@ -6060,6 +6060,73 @@ fn lsp_jsr_auto_import_completion_patch() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_package_json_jsr_auto_import_completion() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .add_jsr_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "none",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "@denotest/types-file": "jsr:*",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.source_file("other.ts", "import \"@denotest/types-file\";\n");
+  let file = temp_dir.source_file("file.ts", "someFunction;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 12),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "someFunction")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "someFunction",
+        "labelDetails": { "description": "@denotest/types-file" },
+        "kind": 3,
+        "detail": "Add import from \"@denotest/types-file\"\n\nfunction someFunction(): ReturnType",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { someFunction } from \"@denotest/types-file\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18543,6 +18610,7 @@ fn definitely_typed_fallback() {
 #[timeout(300_000)]
 fn do_not_auto_import_from_definitely_typed() {
   for node_modules_dir in ["none", "auto", "manual"] {
+    eprintln!("node_modules_dir: {node_modules_dir}");
     let context = TestContextBuilder::for_npm().use_temp_cwd().build();
     let mut client = context.new_lsp_command().build();
     let temp = context.temp_dir();
@@ -18563,22 +18631,6 @@ fn do_not_auto_import_from_definitely_typed() {
       },
       "nodeModulesDir": node_modules_dir
     });
-    if node_modules_dir == "manual" {
-      // TODO: there's a (pre-existing) bug that prevents auto-imports
-      // from working with nodeModuleDir "manual" w/o a package.json
-      temp.write(
-        "package.json",
-        json!({
-          "dependencies": {
-            "@denotest/index-export-no-types": "1.0.0",
-          },
-          "devDependencies": {
-            "@types/denotest__index-export-no-types": "1.0.0",
-          }
-        })
-        .to_string(),
-      );
-    }
     temp.write("deno.json", deno_json.to_string());
     context.run_deno("install");
 
@@ -18603,26 +18655,36 @@ fn do_not_auto_import_from_definitely_typed() {
         "triggerKind": 2,
       }),
     );
-    let item = completions
+    let items = completions
       .items
       .iter()
-      .find(|it| it.label == "foo")
-      .unwrap();
-    eprintln!("item: {item:#?}");
-    let res = client.write_request("completionItem/resolve", json!(item));
-    eprintln!("resolved: {res}");
-    assert_json_subset(
-      res,
-      json!({
-        "label": "foo",
-        "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
-        "additionalTextEdits": [json!({
-          "range": source.range_of("{}"),
-          "newText": "{ foo }"
-        })]
-      }),
+      .filter(|i| i.label == "foo")
+      .map(|i| client.write_request("completionItem/resolve", json!(i)))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      json!(items),
+      json!([
+        {
+          "label": "foo",
+          "labelDetails": {
+            "description": "@denotest/index-export-no-types",
+          },
+          "kind": 3,
+          "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
+          "documentation": { "kind": "markdown", "value": "" },
+          "sortText": "\u{ffff}16_0",
+          "additionalTextEdits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 13 },
+                "end": { "line": 1, "character": 15 },
+              },
+              "newText": "{ foo }",
+            },
+          ],
+        },
+      ]),
     );
-
-    client.did_close_file(&source);
+    client.shutdown();
   }
 }

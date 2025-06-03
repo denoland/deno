@@ -26,6 +26,7 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::package_json::NpmInstallDepsProvider;
 use deno_npm_installer::resolution::NpmResolutionInstaller;
 use deno_npm_installer::LifecycleScriptsConfig;
+use deno_package_json::PackageJsonDepValue;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
@@ -46,6 +47,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 use import_map::ImportMap;
 use indexmap::IndexMap;
 use node_resolver::cache::NodeResolutionSys;
@@ -103,7 +105,7 @@ pub struct LspScopedResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
-  configured_npm_resolutions: Arc<ConfiguredNpmResolutions>,
+  configured_dep_resolutions: Arc<ConfiguredDepResolutions>,
   config_data: Option<Arc<ConfigData>>,
 }
 
@@ -125,7 +127,7 @@ impl Default for LspScopedResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       dep_info: Default::default(),
-      configured_npm_resolutions: Default::default(),
+      configured_dep_resolutions: Default::default(),
       config_data: None,
     }
   }
@@ -184,13 +186,14 @@ impl LspScopedResolver {
         )
       })
       .unwrap_or_default();
-    let configured_npm_resolutions = (|| {
+    let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
-      Some(Arc::new(ConfiguredNpmResolutions::new(
+      Some(Arc::new(ConfiguredDepResolutions::new(
         config_data.and_then(|d| d.resolver.maybe_import_map()),
         config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
         &pkg_json_resolver,
+        jsr_resolver.as_deref(),
       )))
     })()
     .unwrap_or_default();
@@ -209,7 +212,7 @@ impl LspScopedResolver {
       redirect_resolver,
       graph_imports,
       dep_info: Default::default(),
-      configured_npm_resolutions,
+      configured_dep_resolutions,
       config_data: config_data.cloned(),
     }
   }
@@ -283,7 +286,7 @@ impl LspScopedResolver {
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       graph_imports: self.graph_imports.clone(),
       dep_info: self.dep_info.clone(),
-      configured_npm_resolutions: self.configured_npm_resolutions.clone(),
+      configured_dep_resolutions: self.configured_dep_resolutions.clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -384,19 +387,13 @@ impl LspScopedResolver {
     )))
   }
 
-  pub fn file_url_to_npm_dep_key(
+  pub fn resource_url_to_configured_dep_key(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     self
-      .configured_npm_resolutions
+      .configured_dep_resolutions
       .dep_key_from_resolution(specifier)
-      .or_else(|| {
-        self
-          .node_resolver
-          .as_ref()?
-          .lookup_package_specifier_for_resolution(specifier)
-      })
   }
 
   pub fn npm_reqs(&self) -> BTreeSet<PackageReq> {
@@ -646,19 +643,20 @@ pub struct ScopeDepInfo {
 }
 
 #[derive(Debug, Default)]
-struct ConfiguredNpmResolutions {
+struct ConfiguredDepResolutions {
   deps_by_resolution: IndexMap<ModuleSpecifier, String>,
 }
 
-impl ConfiguredNpmResolutions {
+impl ConfiguredDepResolutions {
   fn new(
     import_map: Option<&ImportMap>,
     package_json: Option<&PackageJson>,
     npm_pkg_req_resolver: &CliNpmReqResolver,
     pkg_json_resolver: &CliPackageJsonResolver,
+    jsr_resolver: Option<&JsrCacheResolver>,
   ) -> Self {
     let mut result = Self::default();
-    let insert_export_resolutions =
+    let insert_npm_export_resolutions =
       |key_prefix: &str,
        dep_req_str: &str,
        dep_package_json: &PackageJson,
@@ -755,7 +753,7 @@ impl ConfiguredNpmResolutions {
         if let Some(key_prefix) = entry.key.strip_suffix('/') {
           if req_ref.sub_path().is_none() {
             if let Some(dep_package_json) = &dep_package_json {
-              insert_export_resolutions(
+              insert_npm_export_resolutions(
                 key_prefix,
                 &req_ref.req().to_string(),
                 dep_package_json,
@@ -769,10 +767,54 @@ impl ConfiguredNpmResolutions {
     }
     if let Some(package_json) = package_json {
       let referrer = package_json.specifier();
-      let Some(dependencies) = package_json.dependencies.as_ref() else {
-        return Self::default();
-      };
-      for name in dependencies.keys() {
+      let deps = package_json.resolve_local_package_json_deps();
+      for (name, dep_value) in [&deps.dependencies, &deps.dev_dependencies]
+        .into_iter()
+        .flatten()
+      {
+        let Ok(dep_value) = dep_value else {
+          continue;
+        };
+        let jsr_req = match dep_value {
+          PackageJsonDepValue::File(_) => None,
+          PackageJsonDepValue::Req(_) => None,
+          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::JsrReq(req) => Some(req),
+        };
+        if let Some(jsr_req) = jsr_req {
+          let Some(jsr_resolver) = jsr_resolver else {
+            continue;
+          };
+          let Some(jsr_nv) = jsr_resolver.req_to_nv(jsr_req) else {
+            continue;
+          };
+          let Some(info) = jsr_resolver.package_version_info(&jsr_nv) else {
+            continue;
+          };
+          for (export_key, _) in info.exports() {
+            let sub_path = if export_key == "." {
+              None
+            } else {
+              Some(export_key.strip_prefix("./").unwrap_or(export_key))
+                .filter(|s| !s.is_empty())
+            };
+            let req_ref = JsrPackageReqReference::new(PackageReqReference {
+              req: jsr_req.clone(),
+              sub_path: sub_path.map(From::from),
+            });
+            let Some(resource_url) = jsr_resolver.jsr_to_resource_url(&req_ref)
+            else {
+              continue;
+            };
+            let dep_key = if let Some(sub_path) = sub_path {
+              format!("{name}/{sub_path}")
+            } else {
+              jsr_nv.name.to_string()
+            };
+            result.deps_by_resolution.insert(resource_url, dep_key);
+          }
+          continue;
+        }
         let Some(req_ref) =
           NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
         else {
@@ -780,7 +822,7 @@ impl ConfiguredNpmResolutions {
         };
         let mut dep_package_json = None;
         for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution] {
-          let Ok(req) = npm_pkg_req_resolver.resolve_req_reference(
+          let Ok(url_or_path) = npm_pkg_req_resolver.resolve_req_reference(
             &req_ref,
             &referrer,
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
@@ -789,20 +831,19 @@ impl ConfiguredNpmResolutions {
           ) else {
             continue;
           };
-          let Some(url) = req.into_url().ok() else {
+          let Some(file_url) = url_or_path.into_url().ok() else {
             continue;
           };
-          let specifier = into_specifier_and_media_type(Some(url)).0;
           if dep_package_json.is_none() {
             dep_package_json = (|| {
-              let path = url_to_file_path(&specifier).ok()?;
+              let path = url_to_file_path(&file_url).ok()?;
               pkg_json_resolver.get_closest_package_json(&path).ok()?
             })();
           }
-          result.deps_by_resolution.insert(specifier, name.clone());
+          result.deps_by_resolution.insert(file_url, name.to_string());
         }
         if let Some(dep_package_json) = &dep_package_json {
-          insert_export_resolutions(
+          insert_npm_export_resolutions(
             name,
             name,
             dep_package_json,
@@ -1105,25 +1146,22 @@ impl<'a> ResolverFactory<'a> {
       .node_resolver
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
-        Some(Arc::new(
-          CliNodeResolver::new(
-            self.in_npm_pkg_checker().clone(),
-            DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            self.pkg_json_resolver.clone(),
-            self.node_resolution_sys.clone(),
-            NodeResolverOptions {
-              conditions_from_resolution_mode: Default::default(),
-              typescript_version: Some(
-                deno_semver::Version::parse_standard(
-                  deno_lib::version::DENO_VERSION_INFO.typescript,
-                )
-                .unwrap(),
-              ),
-            },
-          )
-          .with_package_resolution_lookup_cache(),
-        ))
+        Some(Arc::new(CliNodeResolver::new(
+          self.in_npm_pkg_checker().clone(),
+          DenoIsBuiltInNodeModuleChecker,
+          npm_resolver.clone(),
+          self.pkg_json_resolver.clone(),
+          self.node_resolution_sys.clone(),
+          NodeResolverOptions {
+            conditions_from_resolution_mode: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
+        )))
       })
       .as_ref()
   }
