@@ -9,44 +9,149 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::rc::Rc;
 
+use deno_core::convert::OptionUndefined;
+use deno_core::cppgc;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::v8_static_strings;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
+use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::limits::Limit;
-use serde::Deserialize;
 
 use super::session::SessionOptions;
+use super::statement::check_error_code2;
 use super::validators;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
-use crate::ops::sqlite::SqliteResultExt;
 
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DatabaseSyncOptions {
-  #[serde(default = "true_fn")]
   open: bool,
-  #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
   read_only: bool,
-  #[serde(default = "false_fn")]
   allow_extension: bool,
+  enable_double_quoted_string_literals: bool,
 }
 
-fn true_fn() -> bool {
-  true
-}
+impl<'a> FromV8<'a> for DatabaseSyncOptions {
+  type Error = validators::Error;
 
-fn false_fn() -> bool {
-  false
+  fn from_v8(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    use validators::Error;
+
+    if value.is_undefined() {
+      return Ok(Self::default());
+    }
+
+    let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
+      return Err(Error::InvalidArgType(
+        "The \"options\" argument must be an object.",
+      ));
+    };
+
+    let mut options = Self::default();
+
+    v8_static_strings! {
+      OPEN_STRING = "open",
+      ENABLE_FOREIGN_KEY_CONSTRAINTS_STRING = "enableForeignKeyConstraints",
+      READ_ONLY_STRING = "readOnly",
+      ALLOW_EXTENSION_STRING = "allowExtension",
+      ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
+    }
+
+    let open_string = OPEN_STRING.v8_string(scope).unwrap();
+    if let Some(open) = obj.get(scope, open_string.into()) {
+      if !open.is_undefined() {
+        options.open = v8::Local::<v8::Boolean>::try_from(open)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.open\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+      }
+    }
+
+    let read_only_string = READ_ONLY_STRING.v8_string(scope).unwrap();
+    if let Some(read_only) = obj.get(scope, read_only_string.into()) {
+      if !read_only.is_undefined() {
+        options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.readOnly\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+      }
+    }
+
+    let enable_foreign_key_constraints_string =
+      ENABLE_FOREIGN_KEY_CONSTRAINTS_STRING
+        .v8_string(scope)
+        .unwrap();
+    if let Some(enable_foreign_key_constraints) =
+      obj.get(scope, enable_foreign_key_constraints_string.into())
+    {
+      if !enable_foreign_key_constraints.is_undefined() {
+        options.enable_foreign_key_constraints =
+          v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
+            .map_err(|_| {
+              Error::InvalidArgType(
+              "The \"options.enableForeignKeyConstraints\" argument must be a boolean.",
+            )
+            })?
+            .is_true();
+      }
+    }
+
+    let allow_extension_string =
+      ALLOW_EXTENSION_STRING.v8_string(scope).unwrap();
+    if let Some(allow_extension) = obj.get(scope, allow_extension_string.into())
+    {
+      if !allow_extension.is_undefined() {
+        options.allow_extension =
+          v8::Local::<v8::Boolean>::try_from(allow_extension)
+            .map_err(|_| {
+              Error::InvalidArgType(
+                "The \"options.allowExtension\" argument must be a boolean.",
+              )
+            })?
+            .is_true();
+      }
+    }
+
+    let enable_double_quoted_string_literals_string =
+      ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING
+        .v8_string(scope)
+        .unwrap();
+    if let Some(enable_double_quoted_string_literals) =
+      obj.get(scope, enable_double_quoted_string_literals_string.into())
+    {
+      if !enable_double_quoted_string_literals.is_undefined() {
+        options.enable_double_quoted_string_literals =
+            v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
+                .map_err(|_| {
+                Error::InvalidArgType(
+                    "The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.",
+                )
+                })?
+                .is_true();
+      }
+    }
+
+    Ok(options)
+  }
 }
 
 impl Default for DatabaseSyncOptions {
@@ -56,15 +161,71 @@ impl Default for DatabaseSyncOptions {
       enable_foreign_key_constraints: true,
       read_only: false,
       allow_extension: false,
+      enable_double_quoted_string_literals: false,
     }
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ApplyChangesetOptions<'a> {
-  filter: Option<serde_v8::Value<'a>>,
-  on_conflict: Option<serde_v8::Value<'a>>,
+  filter: Option<v8::Local<'a, v8::Value>>,
+  on_conflict: Option<v8::Local<'a, v8::Value>>,
+}
+
+// Note: Can't use `FromV8` here because of lifetime issues with holding
+// Local references.
+impl<'a> ApplyChangesetOptions<'a> {
+  fn from_value(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Option<Self>, validators::Error> {
+    use validators::Error;
+
+    if value.is_undefined() {
+      return Ok(None);
+    }
+
+    let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
+      Error::InvalidArgType("The \"options\" argument must be an object.")
+    })?;
+
+    let mut options = Self {
+      filter: None,
+      on_conflict: None,
+    };
+
+    v8_static_strings! {
+      FILTER_STRING = "filter",
+      ON_CONFLICT_STRING = "onConflict",
+    }
+
+    let filter_string = FILTER_STRING.v8_string(scope).unwrap();
+    if let Some(filter) = obj.get(scope, filter_string.into()) {
+      if !filter.is_undefined() {
+        if !filter.is_function() {
+          return Err(Error::InvalidArgType(
+            "The \"options.filter\" argument must be a function.",
+          ));
+        }
+
+        options.filter = Some(filter);
+      }
+    }
+
+    let on_conflict_string = ON_CONFLICT_STRING.v8_string(scope).unwrap();
+    if let Some(on_conflict) = obj.get(scope, on_conflict_string.into()) {
+      if !on_conflict.is_undefined() {
+        if !on_conflict.is_function() {
+          return Err(Error::InvalidArgType(
+            "The \"options.onConflict\" argument must be a function.",
+          ));
+        }
+
+        options.on_conflict = Some(on_conflict);
+      }
+    }
+
+    Ok(Some(options))
+  }
 }
 
 pub struct DatabaseSync {
@@ -191,6 +352,22 @@ fn database_constructor(
   Ok(())
 }
 
+fn is_open(
+  scope: &mut v8::HandleScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), SqliteError> {
+  let this_ = args.this();
+  let db = cppgc::try_unwrap_cppgc_object::<DatabaseSync>(scope, this_.into())
+    .ok_or(SqliteError::AlreadyClosed)?;
+
+  db.conn
+    .borrow()
+    .as_ref()
+    .ok_or(SqliteError::AlreadyClosed)?;
+
+  Ok(())
+}
+
 // Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
@@ -205,19 +382,31 @@ impl DatabaseSync {
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[string] location: String,
-    #[serde] options: Option<DatabaseSyncOptions>,
+    #[validate(validators::path_str)]
+    #[string]
+    location: String,
+    #[from_v8] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
-    let options = options.unwrap_or_default();
-
     let db = if options.open {
       let db =
         open_db(state, options.read_only, &location, options.allow_extension)?;
 
       if options.enable_foreign_key_constraints {
-        db.execute("PRAGMA foreign_keys = ON", [])
-          .with_enhanced_errors(&db)?;
+        db.execute("PRAGMA foreign_keys = ON", [])?;
+      } else {
+        db.execute("PRAGMA foreign_keys = OFF", [])?;
       }
+
+      set_db_config(
+        &db,
+        SQLITE_DBCONFIG_DQS_DDL,
+        options.enable_double_quoted_string_literals,
+      );
+      set_db_config(
+        &db,
+        SQLITE_DBCONFIG_DQS_DML,
+        options.enable_double_quoted_string_literals,
+      );
       Some(db)
     } else {
       None
@@ -237,6 +426,7 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
+  #[undefined]
   fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
@@ -249,9 +439,21 @@ impl DatabaseSync {
       self.options.allow_extension,
     )?;
     if self.options.enable_foreign_key_constraints {
-      db.execute("PRAGMA foreign_keys = ON", [])
-        .with_enhanced_errors(&db)?;
+      db.execute("PRAGMA foreign_keys = ON", [])?;
+    } else {
+      db.execute("PRAGMA foreign_keys = OFF", [])?;
     }
+
+    set_db_config(
+      &db,
+      SQLITE_DBCONFIG_DQS_DDL,
+      self.options.enable_double_quoted_string_literals,
+    );
+    set_db_config(
+      &db,
+      SQLITE_DBCONFIG_DQS_DML,
+      self.options.enable_double_quoted_string_literals,
+    );
 
     *self.conn.borrow_mut() = Some(db);
 
@@ -261,6 +463,7 @@ impl DatabaseSync {
   // Closes the database connection. An exception is thrown if the
   // database is not open.
   #[fast]
+  #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
@@ -286,12 +489,18 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[validate(is_open)]
   #[undefined]
-  fn exec(&self, #[string] sql: &str) -> Result<(), SqliteError> {
+  fn exec(
+    &self,
+    #[validate(validators::sql_str)]
+    #[string]
+    sql: &str,
+  ) -> Result<(), SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    db.execute_batch(sql).with_enhanced_errors(db)?;
+    db.execute_batch(sql)?;
 
     Ok(())
   }
@@ -299,8 +508,14 @@ impl DatabaseSync {
   // Compiles an SQL statement into a prepared statement.
   //
   // This method is a wrapper around `sqlite3_prepare_v2()`.
+  #[validate(is_open)]
   #[cppgc]
-  fn prepare(&self, #[string] sql: &str) -> Result<StatementSync, SqliteError> {
+  fn prepare(
+    &self,
+    #[validate(validators::sql_str)]
+    #[string]
+    sql: &str,
+  ) -> Result<StatementSync, SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
@@ -341,13 +556,18 @@ impl DatabaseSync {
   // Applies a changeset to the database.
   //
   // This method is a wrapper around `sqlite3changeset_apply()`.
+  #[fast]
   #[reentrant]
   fn apply_changeset<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    #[buffer] changeset: &[u8],
-    #[serde] options: Option<ApplyChangesetOptions<'a>>,
+    #[validate(validators::changeset_buffer)]
+    #[buffer]
+    changeset: &[u8],
+    options: v8::Local<'a, v8::Value>,
   ) -> Result<bool, SqliteError> {
+    let options = ApplyChangesetOptions::from_value(scope, options)?;
+
     struct HandlerCtx<'a, 'b> {
       scope: &'a mut v8::HandleScope<'b>,
       confict: Option<v8::Local<'b, v8::Function>>,
@@ -366,10 +586,26 @@ impl DatabaseSync {
         let recv = v8::undefined(ctx.scope).into();
         let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-        let ret = conflict.call(ctx.scope, recv, &args).unwrap();
-        return ret
-          .int32_value(ctx.scope)
+        let tc_scope = &mut v8::TryCatch::new(ctx.scope);
+
+        let ret = conflict
+          .call(tc_scope, recv, &args)
+          .unwrap_or_else(|| v8::undefined(tc_scope).into());
+        if tc_scope.has_caught() {
+          tc_scope.rethrow();
+          return libsqlite3_sys::SQLITE_CHANGESET_ABORT;
+        }
+
+        const INVALID_VALUE: i32 = -1;
+        if !ret.is_int32() {
+          return INVALID_VALUE;
+        }
+
+        let value = ret
+          .int32_value(tc_scope)
           .unwrap_or(libsqlite3_sys::SQLITE_CHANGESET_ABORT);
+
+        return value;
       }
 
       libsqlite3_sys::SQLITE_CHANGESET_ABORT
@@ -409,7 +645,6 @@ impl DatabaseSync {
     if let Some(options) = options {
       if let Some(filter) = options.filter {
         let filter_cb: v8::Local<v8::Function> = filter
-          .v8_value
           .try_into()
           .map_err(|_| SqliteError::InvalidCallback("filter"))?;
         ctx.filter = Some(filter_cb);
@@ -417,7 +652,6 @@ impl DatabaseSync {
 
       if let Some(on_conflict) = options.on_conflict {
         let on_conflict_cb: v8::Local<v8::Function> = on_conflict
-          .v8_value
           .try_into()
           .map_err(|_| SqliteError::InvalidCallback("onConflict"))?;
         ctx.confict = Some(on_conflict_cb);
@@ -447,7 +681,9 @@ impl DatabaseSync {
         return Ok(false);
       }
 
-      Err(SqliteError::ChangesetApplyFailed)
+      check_error_code2(r)?;
+
+      Ok(false)
     }
   }
 
@@ -458,16 +694,18 @@ impl DatabaseSync {
   fn load_extension(
     &self,
     state: &mut OpState,
-    #[string] path: &str,
+    #[validate(validators::path_str)]
+    #[string]
+    path: &str,
     #[string] entry_point: Option<String>,
   ) -> Result<(), SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     if !self.options.allow_extension {
-      return Err(SqliteError::create_error(
-        "Cannot load SQLite extensions when allowExtension is not enabled",
-        "ERR_LOAD_SQLITE_EXTENSION",
+      return Err(SqliteError::LoadExensionFailed(
+        "Cannot load SQLite extensions when allowExtension is not enabled"
+          .to_string(),
       ));
     }
 
@@ -506,10 +744,7 @@ impl DatabaseSync {
           format!("Failed to load extension with error code: {}", res)
         };
 
-        return Err(SqliteError::create_error(
-          &error_message,
-          "ERR_LOAD_SQLITE_EXTENSION",
-        ));
+        return Err(SqliteError::LoadExensionFailed(error_message));
       }
 
       res
@@ -518,9 +753,8 @@ impl DatabaseSync {
     if result == libsqlite3_sys::SQLITE_OK {
       Ok(())
     } else {
-      Err(SqliteError::create_error(
-        "Unknown error loading SQLite extension",
-        "ERR_LOAD_SQLITE_EXTENSION",
+      Err(SqliteError::LoadExensionFailed(
+        "Unknown error loading SQLite extension".to_string(),
       ))
     }
   }
@@ -532,8 +766,9 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[serde] options: Option<SessionOptions>,
+    #[from_v8] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
+    let options = options.0;
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 

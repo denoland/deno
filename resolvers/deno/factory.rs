@@ -70,7 +70,7 @@ use crate::workspace::WorkspaceNpmPatchPackagesRc;
 use crate::workspace::WorkspaceResolver;
 use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
-use crate::NodeAndNpmReqResolver;
+use crate::NodeAndNpmResolvers;
 use crate::NpmCacheDirRc;
 use crate::RawDenoResolver;
 use crate::WorkspaceResolverRc;
@@ -732,8 +732,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             node_and_req_resolver: if self.workspace_factory.no_npm() {
               None
             } else {
-              Some(NodeAndNpmReqResolver {
+              Some(NodeAndNpmResolvers {
                 node_resolver: self.node_resolver()?.clone(),
+                npm_resolver: self.npm_resolver()?.clone(),
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
@@ -781,6 +782,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       .get_or_try_init(async {
         Ok(new_rc(crate::graph::DenoResolver::new(
           self.raw_deno_resolver().await?.clone(),
+          self.workspace_factory.sys.clone(),
           self.found_package_json_dep_flag.clone(),
           self.options.on_mapped_resolution_diagnostic.clone(),
         )))
