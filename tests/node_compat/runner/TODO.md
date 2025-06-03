@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1177 tests out of 3993 have been ported from Node 23.9.0 (29.48% ported, 71.05% remaining).
+1184 tests out of 3993 have been ported from Node 23.9.0 (29.65% ported, 70.87% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -291,8 +291,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-pending-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pending-deprecation.js)
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
-- [parallel/test-buffer-resizable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-resizable.js)
-- [parallel/test-buffer-write-fast.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-write-fast.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
 - [parallel/test-child-process-advanced-serialization-splitted-length-field.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-splitted-length-field.js)
@@ -651,7 +649,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dns-channel-cancel-promise.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel-promise.js)
 - [parallel/test-dns-channel-cancel.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-cancel.js)
 - [parallel/test-dns-channel-timeout.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-channel-timeout.js)
-- [parallel/test-dns-default-order-ipv4.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv4.js)
 - [parallel/test-dns-default-order-ipv6.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-ipv6.js)
 - [parallel/test-dns-default-order-verbatim.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-default-order-verbatim.js)
 - [parallel/test-dns-get-server.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-dns-get-server.js)
@@ -2049,11 +2046,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-source-map-api.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-source-map-api.js)
 - [parallel/test-source-map-cjs-require-cache.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-source-map-cjs-require-cache.js)
 - [parallel/test-sqlite-custom-functions.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-custom-functions.js)
-- [parallel/test-sqlite-data-types.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-data-types.js)
-- [parallel/test-sqlite-database-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-database-sync.js)
-- [parallel/test-sqlite-named-parameters.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-named-parameters.js)
 - [parallel/test-sqlite-session.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-session.js)
-- [parallel/test-sqlite-statement-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite-statement-sync.js)
 - [parallel/test-sqlite.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-sqlite.js)
 - [parallel/test-stack-size-limit.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stack-size-limit.js)
 - [parallel/test-startup-empty-regexp-statics.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-startup-empty-regexp-statics.js)

@@ -1062,7 +1062,6 @@ impl CliFactory {
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
       node_code_translator.clone(),
-      node_resolver.clone(),
       NpmModuleLoader::new(
         self.cjs_tracker()?.clone(),
         node_code_translator.clone(),
