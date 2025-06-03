@@ -16,6 +16,7 @@ pub trait LaxSingleProcessFsFlagSys:
   + sys_traits::FsMetadata
   + sys_traits::FsWrite
   + sys_traits::ThreadSleep
+  + sys_traits::SystemTimeNow
   + Clone
   + Send
   + Sync
@@ -68,8 +69,10 @@ impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
     log::debug!("Acquiring file lock at {}", file_path.display());
     let last_updated_path = file_path.with_extension("lock.poll");
     let start_instant = std::time::Instant::now();
-    let mut open_options = sys_traits::OpenOptions::new_write();
-    open_options.read();
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.create = true;
+    open_options.read = true;
+    open_options.write = true;
     let open_result = sys.fs_open(&file_path, &open_options);
 
     match open_result {
@@ -78,7 +81,7 @@ impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
         let mut error_count = 0;
         while error_count < 10 {
           let lock_result =
-            fs_file.fs_file_lock(sys_traits::FsFileLockMode::Exclusive);
+            fs_file.fs_file_try_lock(sys_traits::FsFileLockMode::Exclusive);
           let poll_file_update_ms = 100;
           match lock_result {
             Ok(_) => {
@@ -137,7 +140,7 @@ impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
                 .and_then(|p| p.modified())
               {
                 Ok(last_updated_time) => {
-                  let current_time = std::time::SystemTime::now();
+                  let current_time = sys.sys_time_now();
                   match current_time.duration_since(last_updated_time) {
                     Ok(duration) => {
                       if duration.as_millis()
@@ -193,7 +196,7 @@ mod test {
   use crate::LogReporter;
 
   #[tokio::test]
-  async fn lax_fs_lock() {
+  async fn lax_fs_lock_basic() {
     let temp_dir = TempDir::new();
     let lock_path = temp_dir.path().join("file.lock");
     let signal1 = Arc::new(Notify::new());

@@ -74,6 +74,7 @@ pub trait LocalNpmInstallSys:
   + sys_traits::EnvVar
   + sys_traits::FsSymlinkDir
   + sys_traits::FsCreateJunction
+  + sys_traits::SystemTimeNow
 {
 }
 

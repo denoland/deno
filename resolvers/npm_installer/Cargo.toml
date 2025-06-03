@@ -40,7 +40,7 @@ pathdiff.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["getrandom", "real", "winapi", "libc"] }
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
