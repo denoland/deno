@@ -46,6 +46,7 @@ required-features = ["transpile"]
 deno_ast = { workspace = true, optional = true }
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
+deno_image.workspace = true
 deno_canvas.workspace = true
 deno_console.workspace = true
 deno_core.workspace = true

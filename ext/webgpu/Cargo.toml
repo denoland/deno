@@ -30,7 +30,7 @@ thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 deno_unsync.workspace = true
-deno_canvas.workspace = true
+deno_image.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
 workspace = true

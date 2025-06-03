@@ -26,7 +26,7 @@ use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
-use crate::CanvasError;
+use crate::ImageError;
 
 #[derive(Debug, PartialEq)]
 enum ImageBitmapSource {
@@ -82,7 +82,7 @@ fn decode_bitmap_data(
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
   mime_type: MimeType,
-) -> Result<DecodeBitmapDataReturn, CanvasError> {
+) -> Result<DecodeBitmapDataReturn, ImageError> {
   let (image, width, height, orientation, icc_profile) =
     match image_bitmap_source {
       ImageBitmapSource::Blob => {
@@ -101,12 +101,12 @@ fn decode_bitmap_data(
           MimeType::Png => {
             // If PngDecoder decodes an animated image, it returns the default image if one is set, or the first frame if not.
             let mut decoder = PngDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -114,12 +114,12 @@ fn decode_bitmap_data(
           MimeType::Jpeg => {
             let mut decoder =
               JpegDecoder::new(BufReader::new(Cursor::new(buf)))
-                .map_err(CanvasError::image_error_to_invalid_image)?;
+                .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -142,24 +142,24 @@ fn decode_bitmap_data(
           }
           MimeType::Bmp => {
             let mut decoder = BmpDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Ico => {
             let mut decoder = IcoDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -198,7 +198,7 @@ fn decode_bitmap_data(
         let image = match RgbaImage::from_raw(width, height, buf.into()) {
           Some(image) => image.into(),
           None => {
-            return Err(CanvasError::NotBigEnoughChunk(width, height));
+            return Err(ImageError::NotBigEnoughChunk(width, height));
           }
         };
 
@@ -232,7 +232,7 @@ fn apply_color_space_conversion(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
   color_space_conversion: &ColorSpaceConversion,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match color_space_conversion {
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
@@ -246,7 +246,7 @@ fn apply_premultiply_alpha(
   image: DynamicImage,
   image_bitmap_source: &ImageBitmapSource,
   premultiply_alpha: &PremultiplyAlpha,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match premultiply_alpha {
     // 1.
     PremultiplyAlpha::Default => Ok(image),
@@ -390,7 +390,7 @@ pub(super) fn op_create_image_bitmap(
   resize_quality: u8,
   image_bitmap_source: u8,
   mime_type: u8,
-) -> Result<ImageBitmap, CanvasError> {
+) -> Result<ImageBitmap, ImageError> {
   let ParsedArgs {
     resize_width,
     resize_height,

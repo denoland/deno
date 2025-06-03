@@ -10,11 +10,10 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
-use image::DynamicImage;
-use image::GenericImageView;
-
-use crate::canvas::CanvasContextHooks;
-use crate::op_create_image_bitmap::ImageBitmap;
+use deno_image::image;
+use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
+use deno_image::op_create_image_bitmap::ImageBitmap;
 
 pub struct ImageBitmapRenderingContext {
   canvas: v8::Global<v8::Object>,
@@ -77,19 +76,6 @@ impl ImageBitmapRenderingContext {
   }
 }
 
-impl CanvasContextHooks for ImageBitmapRenderingContext {
-  fn resize(&self, _scope: &mut v8::HandleScope) {}
-
-  fn bitmap_read_hook(
-    &self,
-    _scope: &mut v8::HandleScope,
-  ) -> Result<(), JsErrorBox> {
-    Ok(())
-  }
-
-  fn post_transfer_to_image_bitmap_hook(&self, _scope: &mut v8::HandleScope) {}
-}
-
 pub const CONTEXT_ID: &str = "bitmaprenderer";
 
 pub fn create<'s>(
@@ -126,3 +112,4 @@ struct ImageBitmapRenderingContextSettings {
   #[webidl(default = true)]
   alpha: bool,
 }
+

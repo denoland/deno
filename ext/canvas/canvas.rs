@@ -11,20 +11,13 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
-use image::ColorType;
-use image::DynamicImage;
-use image::GenericImageView;
-
-use crate::op_create_image_bitmap::ImageBitmap;
+use deno_image::image;
+use deno_image::image::ColorType;
+use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
+use deno_image::op_create_image_bitmap::ImageBitmap;
 
 pub struct BlobHandle(pub v8::Global<v8::Function>);
-
-pub type GetContext = for<'s, 't> fn(
-  id: &'t str,
-  scope: &mut v8::HandleScope<'s>,
-  local: v8::Local<'t, v8::Value>,
-) -> Box<dyn CanvasContextHooks>;
-pub struct GetContextContainer(pub GetContext);
 
 pub type CreateCanvasContext = for<'s> fn(
   canvas: v8::Global<v8::Object>,
@@ -35,7 +28,6 @@ pub type CreateCanvasContext = for<'s> fn(
   context: &'static str,
 ) -> v8::Global<v8::Value>;
 
-pub struct RegisteredContexts(pub HashMap<String, CreateCanvasContext>);
 
 pub struct OffscreenCanvas {
   data: Rc<RefCell<DynamicImage>>,
@@ -69,9 +61,10 @@ impl OffscreenCanvas {
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
-      let get_context = state.borrow::<GetContextContainer>();
-      let active_context = get_context.0(id, scope, active_context);
-      active_context.resize(scope);
+      match get_context(id, scope, active_context) {
+        Context::Bitmap(_) => {}
+        Context::WebGPU(context) => context.resize(scope),
+      }
     }
   }
 
@@ -93,9 +86,10 @@ impl OffscreenCanvas {
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
-      let get_context = state.borrow::<GetContextContainer>();
-      let active_context = get_context.0(id, scope, active_context);
-      active_context.resize(scope);
+      match get_context(id, scope, active_context) {
+        Context::Bitmap(_) => {}
+        Context::WebGPU(context) => context.resize(scope),
+      }
     }
   }
 
@@ -126,17 +120,16 @@ impl OffscreenCanvas {
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
     if self.active_context.get().is_none() {
-      let registered_contexts = state.borrow::<RegisteredContexts>();
-
-      let (name, create_context) = registered_contexts
-        .0
-        .get_key_value(&context_id)
-        .ok_or_else(|| {
-          JsErrorBox::new(
+      let create_context: CreateCanvasContext = match context_id.as_str() {
+        super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
+        deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
+        _ => {
+          return Err(JsErrorBox::new(
             "DOMExceptionNotSupportedError",
             format!("Context '{context_id}' not implemented"),
-          )
-        })?;
+          ));
+        }
+      };
 
       let context = create_context(
         this,
@@ -146,7 +139,7 @@ impl OffscreenCanvas {
         "Failed to execute 'getContext' on 'OffscreenCanvas'",
         "Argument 2",
       );
-      let _ = self.active_context.set((name.clone(), context));
+      let _ = self.active_context.set((context_id.clone(), context));
     }
 
     let (name, context) = self.active_context.get().unwrap();
@@ -173,18 +166,21 @@ impl OffscreenCanvas {
 
     let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
-    let get_context = state.borrow::<GetContextContainer>();
-    let active_context =
-      get_context.0(&active_context.0, scope, active_context_local);
-
-    active_context.bitmap_read_hook(scope)?;
+    let context = get_context(&active_context.0, scope, active_context_local);
+    match &context {
+      Context::Bitmap(_) => {}
+      Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
+    }
 
     let data = self.data.replace_with(|image| {
       let (width, height) = image.dimensions();
       DynamicImage::new(width, height, ColorType::Rgba8)
     });
 
-    active_context.post_transfer_to_image_bitmap_hook(scope);
+    match &context {
+      Context::Bitmap(_) => {}
+      Context::WebGPU(context) => context.post_transfer_to_image_bitmap_hook(scope),
+    }
 
     Ok(ImageBitmap {
       detached: Default::default(),
@@ -202,11 +198,10 @@ impl OffscreenCanvas {
     let state = state.borrow();
     let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
-    let get_context = state.borrow::<GetContextContainer>();
-    let active_context =
-      get_context.0(&active_context.0, scope, active_context_local);
-
-    active_context.bitmap_read_hook(scope)?;
+    match get_context(&active_context.0, scope, active_context_local) {
+      Context::Bitmap(_) => {}
+      Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
+    }
 
     let data = self.data.borrow();
 
@@ -264,15 +259,34 @@ impl OffscreenCanvas {
   }
 }
 
-pub trait CanvasContextHooks {
-  fn resize(&self, scope: &mut v8::HandleScope);
+enum Context {
+  #[allow(dead_code)]
+  Bitmap(deno_core::cppgc::Ptr<crate::bitmaprenderer::ImageBitmapRenderingContext>),
+  WebGPU(deno_core::cppgc::Ptr<deno_webgpu::canvas::GPUCanvasContext>),
+}
 
-  fn bitmap_read_hook(
-    &self,
-    scope: &mut v8::HandleScope,
-  ) -> Result<(), JsErrorBox>;
-
-  fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope);
+fn get_context<'t>(
+  id: &'t str,
+  scope: &mut v8::HandleScope,
+  local: v8::Local<'t, v8::Value>,
+) -> Context {
+  match id {
+    crate::bitmaprenderer::CONTEXT_ID => {
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
+        crate::bitmaprenderer::ImageBitmapRenderingContext,
+      >(scope, local)
+        .unwrap();
+      Context::Bitmap(ptr)
+    }
+    deno_webgpu::canvas::CONTEXT_ID => {
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
+        deno_webgpu::canvas::GPUCanvasContext,
+      >(scope, local)
+        .unwrap();
+      Context::WebGPU(ptr)
+    }
+    _ => panic!(),
+  }
 }
 
 #[derive(WebIDL)]

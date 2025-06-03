@@ -2,9 +2,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_canvas::canvas::CanvasContextHooks;
-use deno_canvas::image::DynamicImage;
-use deno_canvas::image::GenericImageView;
+use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8;
@@ -171,7 +170,7 @@ impl GPUCanvasContext {
     else {
       self.bitmap.replace_with(|image| {
         let (width, height) = image.dimensions();
-        let image = deno_canvas::image::RgbaImage::new(width, height);
+        let image = deno_image::image::RgbaImage::new(width, height);
         DynamicImage::from(image)
       });
 
@@ -209,7 +208,7 @@ impl GPUCanvasContext {
       self.bitmap.replace_with(|image| {
         let (width, height) = image.dimensions();
         let image =
-          deno_canvas::image::RgbaImage::from_raw(width, height, data).unwrap();
+          deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
         DynamicImage::from(image)
       });
     }
@@ -233,10 +232,8 @@ impl GPUCanvasContext {
   fn replace_drawing_buffer(&self, scope: &mut v8::HandleScope) {
     self.expire_current_texture(scope);
   }
-}
 
-impl CanvasContextHooks for GPUCanvasContext {
-  fn resize(&self, scope: &mut v8::HandleScope) {
+  pub fn resize(&self, scope: &mut v8::HandleScope) {
     self.replace_drawing_buffer(scope);
     if let Some(configuration) = self.configuration.borrow().as_ref() {
       self.texture_descriptor.replace(Some(
@@ -247,14 +244,14 @@ impl CanvasContextHooks for GPUCanvasContext {
     }
   }
 
-  fn bitmap_read_hook(
+  pub fn bitmap_read_hook(
     &self,
     scope: &mut v8::HandleScope,
   ) -> Result<(), JsErrorBox> {
     self.copy_image_contents_to_canvas_data(scope)
   }
 
-  fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope) {
+  pub fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope) {
     self.replace_drawing_buffer(scope);
   }
 }

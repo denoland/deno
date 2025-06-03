@@ -18,6 +18,7 @@ members = [
   "ext/ffi",
   "ext/fs",
   "ext/http",
+  "ext/image",
   "ext/io",
   "ext/kv",
   "ext/napi",
@@ -84,6 +85,7 @@ denokv_sqlite = { default-features = false, version = "0.10.0" }
 deno_broadcast_channel = { version = "0.199.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.137.0", path = "./ext/cache" }
 deno_canvas = { version = "0.74.0", path = "./ext/canvas" }
+deno_image = { version = "0.1.0", path = "./ext/image" }
 deno_console = { version = "0.205.0", path = "./ext/console" }
 deno_cron = { version = "0.85.0", path = "./ext/cron" }
 deno_crypto = { version = "0.219.0", path = "./ext/crypto" }

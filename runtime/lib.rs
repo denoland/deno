@@ -11,6 +11,7 @@ pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_fs;
 pub use deno_http;
+pub use deno_image;
 pub use deno_io;
 pub use deno_kv;
 pub use deno_napi;
