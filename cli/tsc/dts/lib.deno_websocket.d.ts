@@ -5,14 +5,28 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category WebSockets */
+/**
+ * Configuration options for a WebSocket close event.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/CloseEvent
+ * @category WebSockets
+ */
 interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
-/** @category WebSockets */
+/**
+ * The CloseEvent interface represents an event that occurs when a WebSocket connection is closed.
+ *
+ * This event is sent to the client when the connection is closed, providing information about
+ * why the connection was closed through the code, reason, and wasClean properties.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
+ *
+ * @category WebSockets
+ */
 interface CloseEvent extends Event {
   /**
    * Returns the WebSocket connection close code provided by the server.
@@ -28,13 +42,23 @@ interface CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
-/** @category WebSockets */
+/**
+ * Constructor interface for creating CloseEvent instances.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/CloseEvent
+ * @category WebSockets
+ */
 declare var CloseEvent: {
   readonly prototype: CloseEvent;
   new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
 };
 
-/** @category WebSockets */
+/**
+ * Interface mapping WebSocket event names to their corresponding event types.
+ * Used for strongly typed event handling with addEventListener and removeEventListener.
+ *
+ * @category WebSockets
+ */
 interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
@@ -149,7 +173,15 @@ interface WebSocket extends EventTarget {
   ): void;
 }
 
-/** @category WebSockets */
+/**
+ * Constructor interface for creating WebSocket instances.
+ *
+ * The WebSocket constructor creates and returns a new WebSocket object
+ * that represents a connection to a WebSocket server.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/WebSocket
+ * @category WebSockets
+ */
 declare var WebSocket: {
   readonly prototype: WebSocket;
   new (url: string | URL, protocols?: string | string[]): WebSocket;
@@ -159,5 +191,13 @@ declare var WebSocket: {
   readonly OPEN: number;
 };
 
-/** @category WebSockets */
+/**
+ * Specifies the type of binary data being received over a WebSocket connection.
+ *
+ * - "blob": Binary data is returned as Blob objects
+ * - "arraybuffer": Binary data is returned as ArrayBuffer objects
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/binaryType
+ * @category WebSockets
+ */
 type BinaryType = "arraybuffer" | "blob";
