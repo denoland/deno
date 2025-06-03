@@ -36,9 +36,9 @@ and limitations under the License.
  * ```
  */
 /**
- * Options that can be specified when adding an event listener via addEventListener.
+ * Options that can be specified when adding an event listener via `addEventListener`.
  *
- * This interface extends EventListenerOptions and provides additional configuration
+ * This interface extends `EventListenerOptions` and provides additional configuration
  * options for controlling event listener behavior in a worker context.
  *
  * @example
