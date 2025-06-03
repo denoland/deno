@@ -296,9 +296,6 @@ fn run_test_inner(
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
-  if !should_run(metadata.if_cond.as_deref()) {
-    return;
-  }
   let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
   for step in metadata
     .steps
