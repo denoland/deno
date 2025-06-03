@@ -1993,7 +1993,7 @@ fn analyze_module(
         deno_graph::ModuleError::Parse {
           specifier,
           mtime: None,
-          diagnostic: diagnostic.clone(),
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
         },
       )),
       ResolutionMode::Import,

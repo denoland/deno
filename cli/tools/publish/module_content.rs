@@ -117,7 +117,7 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     };
     let text_info = parsed_source.text_info_lazy();
     let module_info =
-      deno_graph::ParserModuleAnalyzer::module_info(&parsed_source);
+      deno_graph::ast::ParserModuleAnalyzer::module_info(&parsed_source);
     let mut text_changes = Vec::new();
     if media_type.is_jsx() {
       self.add_jsx_text_changes(

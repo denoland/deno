@@ -757,7 +757,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_graph::ParserModuleAnalyzer;
+  use deno_graph::ast::ParserModuleAnalyzer;
   use deno_resolver::workspace::SloppyImportsOptions;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
