@@ -298,9 +298,9 @@ type EventListenerOrEventListenerObject =
   | EventListenerObject;
 
 /**
- * Options for configuring an event listener via addEventListener.
+ * Options for configuring an event listener via `addEventListener`.
  *
- * This interface extends EventListenerOptions and provides additional configuration
+ * This interface extends `EventListenerOptions` and provides additional configuration
  * options to control event listener behavior.
  *
  * @example
