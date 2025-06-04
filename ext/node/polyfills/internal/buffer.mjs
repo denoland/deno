@@ -237,34 +237,13 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-class FastBuffer extends Uint8Array {
-  // Using an explicit constructor here is necessary to avoid relying on
-  // `Array.prototype[Symbol.iterator]`, which can be mutated by users.
-  // eslint-disable-next-line no-useless-constructor
-  constructor(bufferOrLength, byteOffset, length) {
-    super(bufferOrLength, byteOffset, length);
-  }
-}
-
-Object.defineProperty(Buffer, Symbol.species, {
-  __proto__: null,
-  enumerable: false,
-  configurable: true,
-  get() {
-    return FastBuffer;
-  },
-});
-
-FastBuffer.prototype.constructor = Buffer;
-Buffer.prototype = FastBuffer.prototype;
-
 Buffer.poolSize = 8 * 1024;
 let poolSize, poolOffset, allocPool, allocBuffer;
 
 function createPool() {
   poolSize = Buffer.poolSize;
   allocBuffer = new Uint8Array(poolSize);
-  allocPool = allocBuffer.buffer;
+  allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
   poolOffset = 0;
 }
 createPool();
@@ -500,7 +479,7 @@ ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8ArrayPrototype);
 ObjectSetPrototypeOf(SlowBuffer, Uint8Array);
 
 const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
-  return b instanceof Buffer;
+  return ObjectPrototypeIsPrototypeOf(Buffer.prototype, b);
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
