@@ -881,11 +881,13 @@ function buildCommand(
   file: string,
   args: string[],
   shell: string | boolean,
-): [string, string[]] {
+): [string, string[], string[]] {
+  let nodeOptions: string[];
   if (file === Deno.execPath()) {
     // The user is trying to spawn another Deno process as Node.js.
-    args = toDenoArgs(args);
+    [args, nodeOptions] = toDenoArgs(args);
   }
+  nodeOptions ??= [];
 
   if (shell) {
     const command = [file, ...args].join(" ");
@@ -912,7 +914,7 @@ function buildCommand(
       args = ["-c", command];
     }
   }
-  return [file, args];
+  return [file, args, nodeOptions];
 }
 
 function _createSpawnSyncError(
@@ -1030,7 +1032,9 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  [command, args] = buildCommand(command, args ?? [], shell);
+  let nodeOptions: string[];
+  [command, args, nodeOptions] = buildCommand(command, args ?? [], shell);
+  env.NODE_OPTIONS = env.NODE_OPTIONS ? env.NODE_OPTIONS + " " + nodeOptions.join(" ") : nodeOptions.join(" ");
   const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
@@ -1162,13 +1166,14 @@ const kDenoSubcommands = new Set([
   "vendor",
 ]);
 
-function toDenoArgs(args: string[]): string[] {
+function toDenoArgs(args: string[]): [string[], string[]] {
   if (args.length === 0) {
-    return args;
+    return [args, args];
   }
 
   // Update this logic as more CLI arguments are mapped from Node to Deno.
   const denoArgs: string[] = [];
+  const nodeOptions: string[] = [];
   let useRunArgs = true;
 
   for (let i = 0; i < args.length; i++) {
@@ -1181,7 +1186,7 @@ function toDenoArgs(args: string[]): string[] {
       // spawned as Deno, not Deno in Node compat mode. In this case, bail out
       // and return the original args.
       if (kDenoSubcommands.has(arg)) {
-        return args;
+        return [args, []];
       }
 
       // Copy of the rest of the arguments to the output.
@@ -1220,10 +1225,13 @@ function toDenoArgs(args: string[]): string[] {
     if (flagInfo === undefined) {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
+        nodeOptions.push(arg);
       } else if (arg === "--expose-internals") {
         // internals are always exposed in Deno.
       } else if (arg === "--permission") {
         // ignore --permission flag
+      } else if (arg === "--pending-deprecation") {
+        nodeOptions.push(arg);
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);
@@ -1262,7 +1270,7 @@ function toDenoArgs(args: string[]): string[] {
     denoArgs.unshift("run", "-A");
   }
 
-  return denoArgs;
+  return [denoArgs, nodeOptions];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");
