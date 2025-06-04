@@ -259,6 +259,7 @@ export class ChildProcess extends EventEmitter {
       command,
       args || [],
       shell,
+      env,
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
@@ -881,13 +882,21 @@ function buildCommand(
   file: string,
   args: string[],
   shell: string | boolean,
-): [string, string[], string[]] {
-  let nodeOptions: string[];
+  env: Record<string, string | number | boolean>,
+): [string, string[]] {
   if (file === Deno.execPath()) {
+    let nodeOptions: string[];
     // The user is trying to spawn another Deno process as Node.js.
     [args, nodeOptions] = toDenoArgs(args);
+
+    // Update NODE_OPTIONS if it exists
+    if (nodeOptions.length > 0) {
+      if (env.NODE_OPTIONS) {
+        nodeOptions.push(env.NODE_OPTIONS);
+      }
+      env.NODE_OPTIONS = nodeOptions.join(" ");
+    }
   }
-  nodeOptions ??= [];
 
   if (shell) {
     const command = [file, ...args].join(" ");
@@ -914,7 +923,8 @@ function buildCommand(
       args = ["-c", command];
     }
   }
-  return [file, args, nodeOptions];
+
+  return [file, args];
 }
 
 function _createSpawnSyncError(
@@ -1032,9 +1042,7 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  let nodeOptions: string[];
-  [command, args, nodeOptions] = buildCommand(command, args ?? [], shell);
-  env.NODE_OPTIONS = env.NODE_OPTIONS ? env.NODE_OPTIONS + " " + nodeOptions.join(" ") : nodeOptions.join(" ");
+  [command, args] = buildCommand(command, args ?? [], shell, env);
   const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};

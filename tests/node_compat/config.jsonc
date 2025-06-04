@@ -271,6 +271,7 @@
       "test-buffer-concat.js",
       "test-buffer-constants.js",
       "test-buffer-constructor-deprecation-error.js",
+      "test-buffer-constructor-node-modules.js",
       "test-buffer-constructor-outside-node-modules.js",
       "test-buffer-copy.js",
       "test-buffer-equals.js",
