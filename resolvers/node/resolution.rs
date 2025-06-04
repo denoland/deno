@@ -87,10 +87,16 @@ impl Default for ConditionResolverOptions {
   }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ConditionResolver {
   import_conditions: Vec<Cow<'static, str>>,
   require_conditions: Vec<Cow<'static, str>>,
+}
+
+impl Default for ConditionResolver {
+  fn default() -> Self {
+    Self::new(Default::default())
+  }
 }
 
 impl ConditionResolver {
