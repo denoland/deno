@@ -20,4 +20,3 @@ deno_image.workspace = true
 deno_webgpu.workspace = true
 raw-window-handle.workspace = true
 thiserror.workspace = true
-vello = "0.5.0"
