@@ -89,29 +89,43 @@ impl Default for ConditionResolverOptions {
 
 #[derive(Debug, Default, Clone)]
 pub struct ConditionResolver {
-  options: ConditionResolverOptions,
+  import_conditions: Vec<Cow<'static, str>>,
+  require_conditions: Vec<Cow<'static, str>>,
 }
 
 impl ConditionResolver {
   pub fn new(options: ConditionResolverOptions) -> Self {
-    Self { options }
+    if options.conditions.is_empty() {
+      // Fast path for no custom conditions.
+      return Self {
+        import_conditions: options.default_import_conditions,
+        require_conditions: options.default_require_conditions,
+      };
+    }
+    Self {
+      import_conditions: options
+        .conditions
+        .iter()
+        .chain(&options.default_import_conditions)
+        .cloned()
+        .collect(),
+      require_conditions: options
+        .conditions
+        .iter()
+        .chain(&options.default_require_conditions)
+        .cloned()
+        .collect(),
+    }
   }
 
   pub fn resolve(
     &self,
     resolution_mode: ResolutionMode,
-  ) -> Vec<Cow<'static, str>> {
-    let default_conditions = match resolution_mode {
-      ResolutionMode::Import => &self.options.default_import_conditions,
-      ResolutionMode::Require => &self.options.default_require_conditions,
-    };
-    self
-      .options
-      .conditions
-      .iter()
-      .chain(default_conditions)
-      .cloned()
-      .collect()
+  ) -> &[Cow<'static, str>] {
+    match resolution_mode {
+      ResolutionMode::Import => &self.import_conditions,
+      ResolutionMode::Require => &self.require_conditions,
+    }
   }
 }
 
@@ -361,7 +375,7 @@ impl<
       specifier,
       &referrer,
       resolution_mode,
-      &conditions,
+      conditions,
       resolution_kind,
     )?;
 
@@ -650,7 +664,7 @@ impl<
       &package_subpath,
       maybe_referrer.as_ref(),
       resolution_mode,
-      &self.condition_resolver.resolve(resolution_mode),
+      self.condition_resolver.resolve(resolution_mode),
       resolution_kind,
     )?;
     let url_or_path = self.finalize_resolution(
