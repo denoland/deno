@@ -231,15 +231,7 @@ type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
 
-/**
- * Options that can be specified when adding an event listener via addEventListener.
- *
- * This interface extends EventListenerOptions and provides additional configuration
- * options for controlling event listener behavior, such as specifying if a listener
- * should run only once, whether it will call preventDefault(), or associating it with
- * an AbortSignal for easy removal.
- *
- * @category Events */
+/** @category Events */
 interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
