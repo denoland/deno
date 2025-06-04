@@ -36,18 +36,6 @@ export function indexOfNeedle(
   return -1;
 }
 
-export function numberToBytes(n: number): Uint8Array {
-  if (n === 0) return new Uint8Array([0]);
-
-  const bytes = [];
-  bytes.unshift(n & 255);
-  while (n >= 256) {
-    n = n >>> 8;
-    bytes.unshift(n & 255);
-  }
-  return new Uint8Array(bytes);
-}
-
 // TODO(Soremwar)
 // Check if offset or buffer can be transform in order to just use std's lastIndexOf directly
 // This implementation differs from std's lastIndexOf in the fact that
@@ -143,23 +131,17 @@ function indexOfBuffer(
   return indexOfNeedle(targetBuffer, buffer, byteOffset);
 }
 
-// TODO(Soremwar)
-// Node's implementation is a very obscure algorithm that I haven't been able to crack just yet
 function indexOfNumber(
   targetBuffer: Uint8Array,
   number: number,
   byteOffset: number,
   forwardDirection: boolean,
 ) {
-  const bytes = numberToBytes(number);
-
-  if (bytes.length > 1) {
-    throw new Error("Multi byte number search is not supported");
-  }
-
   return indexOfBuffer(
     targetBuffer,
-    numberToBytes(number),
+    // Uses only the last 2 hex digits of the number
+    // https://github.com/nodejs/node/issues/7591#issuecomment-231178104
+    Uint8Array.from([number & 255]),
     byteOffset,
     Encodings.UTF8,
     forwardDirection,
