@@ -54,6 +54,7 @@ use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::FeatureChecker;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::ConditionsResolver;
 use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
@@ -1210,7 +1211,7 @@ impl CliFactory {
             IsCjsResolutionMode::Disabled
           },
           node_resolver_options: NodeResolverOptions {
-            conditions_resolver: Default::default(),
+            conditions_resolver: ConditionsResolver::new(options.conditions()),
             typescript_version: Some(
               deno_semver::Version::parse_standard(
                 deno_lib::version::DENO_VERSION_INFO.typescript,
