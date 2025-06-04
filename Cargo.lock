@@ -1505,7 +1505,6 @@ dependencies = [
  "import_map",
  "indexmap 2.8.0",
  "jsonc-parser",
- "junction",
  "lazy-regex",
  "libc",
  "libsui",
@@ -1850,9 +1849,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.177.0"
+version = "0.178.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fe1094f3e84803dac3c613d3bef2a0c6c172962bf9abfabefef12236f1bea1e"
+checksum = "52fe9fb2d9e6efed6c19dbceecd14d169023ee61223336e386e0d7aa396249c4"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2000,9 +1999,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.94.2"
+version = "0.95.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d8943de4ab8cc7a124a0cd75191447f6e8be443ebeb5117416e31cc99ba2045"
+checksum = "af557eab0d8abf2c6e7c890d510eccaebe52388924ae4a3e15c8a818c1bbbb90"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2027,7 +2026,7 @@ dependencies = [
  "sha2",
  "sys_traits",
  "thiserror 2.0.12",
- "twox-hash",
+ "twox-hash 1.6.3",
  "url",
  "wasm_dep_analyzer",
 ]
@@ -2158,7 +2157,7 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.12",
- "twox-hash",
+ "twox-hash 2.1.0",
  "url",
 ]
 
@@ -2420,9 +2419,7 @@ dependencies = [
  "deno_semver",
  "deno_terminal 0.2.2",
  "deno_unsync",
- "fs3",
  "futures",
- "junction",
  "log",
  "once_cell",
  "parking_lot",
@@ -2434,8 +2431,7 @@ dependencies = [
  "test_server",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
- "twox-hash",
+ "twox-hash 2.1.0",
  "url",
  "winapi",
 ]
@@ -2670,7 +2666,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-metrics",
- "twox-hash",
+ "twox-hash 2.1.0",
  "uuid",
  "winapi",
  "windows-sys 0.59.0",
@@ -3030,7 +3026,7 @@ dependencies = [
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
- "twox-hash",
+ "twox-hash 2.1.0",
 ]
 
 [[package]]
@@ -3577,9 +3573,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.91.0"
+version = "0.92.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e626660183f085e9ad81dc48a3954394e3c32d1f203ceedfa364d76984af361a"
+checksum = "dccf7977c7fcddecd68242e657b6a7b91047553da6bae3f7d1febb4e92e077b0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8404,17 +8400,20 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f8c2c55b6b4dd67f0f8df8de9bdf00b16c8ea4fbc4be0c2133d5d3924be5d4"
+checksum = "110a9308163844c6ce51149737dbcea372f101bffbc0ef05d5de06acb4a4128f"
 dependencies = [
  "filetime",
  "getrandom",
+ "js-sys",
+ "junction",
  "libc",
  "parking_lot",
  "serde",
  "serde_json",
  "sys_traits_macros",
+ "wasm-bindgen",
  "windows-sys 0.59.0",
 ]
 
@@ -9057,6 +9056,12 @@ dependencies = [
  "rand",
  "static_assertions",
 ]
+
+[[package]]
+name = "twox-hash"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7b17f197b3050ba473acf9181f7b1d3b66d1cf7356c6cc57886662276e65908"
 
 [[package]]
 name = "typed-arena"

@@ -187,7 +187,6 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]

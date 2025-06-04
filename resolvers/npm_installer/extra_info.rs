@@ -63,8 +63,15 @@ impl ExpectedExtraInfo {
   }
 }
 
+#[sys_traits::auto_impl]
+pub trait NpmPackageExtraInfoProviderSys:
+  sys_traits::BaseFsRead + Send + Sync
+{
+}
+
 pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+  sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
   workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
 }
 
@@ -77,16 +84,16 @@ impl std::fmt::Debug for NpmPackageExtraInfoProvider {
 impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+    sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
     workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
   ) -> Self {
     Self {
       npm_registry_info_provider,
+      sys,
       workspace_patch_packages,
     }
   }
-}
 
-impl NpmPackageExtraInfoProvider {
   pub async fn get_package_extra_info(
     &self,
     package_nv: &PackageNv,
@@ -147,12 +154,15 @@ impl NpmPackageExtraInfoProvider {
     package_path: &Path,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     let package_json_path = package_path.join("package.json");
+    let sys = self.sys.clone();
     let extra_info: NpmPackageExtraInfo =
-      deno_unsync::spawn_blocking(move || {
-        let package_json = std::fs::read_to_string(&package_json_path)
+      crate::rt::spawn_blocking(move || {
+        let package_json = sys
+          .base_fs_read(&package_json_path)
           .map_err(JsErrorBox::from_err)?;
         let extra_info: NpmPackageExtraInfo =
-          serde_json::from_str(&package_json).map_err(JsErrorBox::from_err)?;
+          serde_json::from_slice(&package_json)
+            .map_err(JsErrorBox::from_err)?;
 
         Ok::<_, JsErrorBox>(extra_info)
       })
