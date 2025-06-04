@@ -101,8 +101,6 @@ function findLastIndex(
   return searchableBufferLastIndex - index;
 }
 
-// TODO(@bartlomieju):
-// Take encoding into account when evaluating index
 function indexOfBuffer(
   targetBuffer: Uint8Array,
   buffer: Uint8Array,
@@ -112,6 +110,14 @@ function indexOfBuffer(
 ) {
   if (!Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
+  }
+
+  // If the encoding is UCS2 and haystack or needle has a length less than 2, the search will always fail
+  // https://github.com/nodejs/node/blob/fbdfe9399cf6c660e67fd7d6ceabfb106e32d787/src/node_buffer.cc#L1067-L1069
+  if (encoding === Encodings.UCS2) {
+    if (buffer.length < 2 || targetBuffer.length < 2) {
+      return -1;
+    }
   }
 
   if (!forwardDirection) {
