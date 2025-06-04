@@ -6030,7 +6030,8 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn unstable_conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(conditions) = matches.remove_many::<String>("unstable-conditions") {
+  if let Some(conditions) = matches.remove_many::<String>("unstable-conditions")
+  {
     flags.unstable_conditions = conditions.collect();
   }
 }
