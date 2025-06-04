@@ -1701,7 +1701,7 @@ pub async fn run_tests(
       flags,
       vec![coverage.clone()],
       vec![],
-      vec![],
+      vec!["^file:"],
       vec![],
       Some(
         PathBuf::from(coverage)
