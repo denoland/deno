@@ -28,6 +28,7 @@ mod local;
 pub mod package_json;
 pub mod process_state;
 pub mod resolution;
+mod rt;
 
 pub use bin_entries::BinEntries;
 pub use bin_entries::BinEntriesError;

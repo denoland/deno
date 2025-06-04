@@ -156,7 +156,7 @@ impl NpmPackageExtraInfoProvider {
     let package_json_path = package_path.join("package.json");
     let sys = self.sys.clone();
     let extra_info: NpmPackageExtraInfo =
-      deno_unsync::spawn_blocking(move || {
+      crate::rt::spawn_blocking(move || {
         let package_json = sys
           .base_fs_read(&package_json_path)
           .map_err(JsErrorBox::from_err)?;

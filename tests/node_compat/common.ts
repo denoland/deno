@@ -171,6 +171,9 @@ export async function runNodeCompatTestCase(
       case "--no-warnings":
         nodeOptions.push("--no-warnings");
         break;
+      case "--pending-deprecation":
+        nodeOptions.push("--pending-deprecation");
+        break;
       case "--allow-natives-syntax":
         v8Flags.push("--allow-natives-syntax");
         break;
