@@ -428,7 +428,7 @@ function fromString(string, encoding) {
     createPool();
   }
   const ops = getEncodingOps(encoding);
-  const b = new FastBuffer(allocPool, poolOffset, length);
+  let b = new FastBuffer(allocPool, poolOffset, length);
   const actual = ops.write(b, string, 0, length);
   if (actual !== length) {
     // byteLength() may overestimate the length, so we slice it down.
