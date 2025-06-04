@@ -1481,6 +1481,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_snapshots",
+ "deno_subprocess_windows",
  "deno_task_shell",
  "deno_telemetry",
  "deno_terminal 0.2.2",
@@ -1509,7 +1510,6 @@ dependencies = [
  "lazy-regex",
  "libc",
  "libsui",
- "libuv-subprocess-windows",
  "libz-sys",
  "log",
  "lsp-types",
@@ -2083,10 +2083,10 @@ dependencies = [
  "async-trait",
  "deno_core",
  "deno_error",
+ "deno_subprocess_windows",
  "filetime",
  "fs3",
  "libc",
- "libuv-subprocess-windows",
  "log",
  "nix 0.27.1",
  "once_cell",
@@ -2286,6 +2286,7 @@ dependencies = [
  "deno_path_util",
  "deno_permissions",
  "deno_process",
+ "deno_subprocess_windows",
  "deno_whoami",
  "der",
  "digest",
@@ -2307,7 +2308,6 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
- "libuv-subprocess-windows",
  "libz-sys",
  "md-5",
  "md4",
@@ -2558,8 +2558,8 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_subprocess_windows",
  "libc",
- "libuv-subprocess-windows",
  "log",
  "memchr",
  "nix 0.27.1",
@@ -2702,6 +2702,17 @@ name = "deno_snapshots"
 version = "0.21.0"
 dependencies = [
  "deno_runtime",
+]
+
+[[package]]
+name = "deno_subprocess_windows"
+version = "0.1.0"
+dependencies = [
+ "fastrand",
+ "futures-channel",
+ "libc",
+ "pretty_assertions",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3009,11 +3020,11 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_snapshots",
+ "deno_subprocess_windows",
  "deno_terminal 0.2.2",
  "import_map",
  "indexmap 2.8.0",
  "libsui",
- "libuv-subprocess-windows",
  "log",
  "memmap2",
  "node_resolver",
@@ -5286,16 +5297,6 @@ dependencies = [
  "sha2",
  "windows-sys 0.48.0",
  "zerocopy",
-]
-
-[[package]]
-name = "libuv-subprocess-windows"
-version = "0.1.0"
-dependencies = [
- "fastrand",
- "futures-channel",
- "libc",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

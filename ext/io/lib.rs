@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#[cfg(windows)]
-use libuv_subprocess_windows::Stdio as StdStdio;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
@@ -42,6 +40,8 @@ use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;

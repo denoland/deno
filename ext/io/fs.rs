@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -14,12 +16,9 @@ use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use tokio::task::JoinError;
-
 #[cfg(windows)]
-use libuv_subprocess_windows::Stdio as StdStdio;
-#[cfg(unix)]
-use std::process::Stdio as StdStdio;
+use deno_subprocess_windows::Stdio as StdStdio;
+use tokio::task::JoinError;
 
 #[derive(Debug, deno_error::JsError)]
 pub enum FsError {

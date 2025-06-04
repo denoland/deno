@@ -8,6 +8,8 @@ use std::io::SeekFrom;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,17 +37,14 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
 use url::Url;
-
-#[cfg(windows)]
-use libuv_subprocess_windows::Stdio as StdStdio;
-#[cfg(unix)]
-use std::process::Stdio as StdStdio;
 
 #[derive(Debug, Clone)]
 pub struct DenoRtSys(Arc<FileBackedVfs>);

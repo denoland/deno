@@ -39,6 +39,7 @@ members = [
   "runtime",
   "runtime/features",
   "runtime/permissions",
+  "runtime/subprocess_windows",
   "tests",
   "tests/ffi",
   "tests/napi",
@@ -119,6 +120,7 @@ deno_permissions = { version = "0.65.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.37.0", path = "./resolvers/deno" }
 deno_runtime = { version = "0.214.0", path = "./runtime" }
 deno_snapshots = { version = "0.21.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.1.0" }
 napi_sym = { version = "0.136.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.44.0", path = "./resolvers/node" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -385,7 +387,6 @@ win32job = "2"
 winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
-libuv-subprocess-windows = { path = "../subprocess", version = "0.1.0" }
 
 [profile.release]
 codegen-units = 1

@@ -460,7 +460,7 @@ pub fn main() {
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
   {
-    libuv_subprocess_windows::disable_stdio_inheritance();
+    deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
   deno_runtime::deno_permissions::set_prompt_callbacks(

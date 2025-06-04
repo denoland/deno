@@ -11,7 +11,11 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::process::Command;
 use std::process::ExitStatus;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 
 use deno_core::op2;
@@ -34,19 +38,13 @@ use deno_os::SignalError;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 #[cfg(windows)]
-use libuv_subprocess_windows::Command;
+use deno_subprocess_windows::Child as AsyncChild;
+#[cfg(windows)]
+use deno_subprocess_windows::Command;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use serde::Deserialize;
 use serde::Serialize;
-#[cfg(unix)]
-use std::process::Command;
-
-#[cfg(windows)]
-use libuv_subprocess_windows::Stdio as StdStdio;
-#[cfg(unix)]
-use std::process::Stdio as StdStdio;
-
-#[cfg(windows)]
-use libuv_subprocess_windows::Child as AsyncChild;
 #[cfg(unix)]
 use tokio::process::Child as AsyncChild;
 
@@ -1057,13 +1055,12 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
-  use super::*;
-
   #[cfg(windows)]
-  use libuv_subprocess_windows::Child;
-
+  use deno_subprocess_windows::Child;
   #[cfg(not(windows))]
   use tokio::process::Child;
+
+  use super::*;
 
   #[derive(Deserialize)]
   #[serde(rename_all = "camelCase")]

@@ -95,7 +95,6 @@ deno_telemetry.workspace = true
 deno_terminal.workspace = true
 eszip.workspace = true
 libsui.workspace = true
-libuv-subprocess-windows.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
@@ -190,6 +189,7 @@ zstd.workspace = true
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
