@@ -686,7 +686,7 @@ pub struct Flags {
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
   pub eszip: bool,
-  pub conditions: Vec<String>,
+  pub unstable_conditions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3565,7 +3565,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
     .arg(vendor_arg())
-    .arg(conditions_arg())
+    .arg(unstable_conditions_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -4364,10 +4364,10 @@ fn lock_args() -> [Arg; 3] {
   ]
 }
 
-fn conditions_arg() -> Arg {
-  Arg::new("conditions")
+fn unstable_conditions_arg() -> Arg {
+  Arg::new("unstable-conditions")
     .short('C')
-    .long("conditions")
+    .long("unstable-conditions")
     .num_args(0..)
     .action(ArgAction::Append)
 }
@@ -5671,7 +5671,7 @@ fn compile_args_without_check_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
-  conditions_args_parse(flags, matches);
+  unstable_conditions_args_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
@@ -6029,9 +6029,9 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(conditions) = matches.remove_many::<String>("conditions") {
-    flags.conditions = conditions.collect();
+fn unstable_conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(conditions) = matches.remove_many::<String>("unstable-conditions") {
+    flags.unstable_conditions = conditions.collect();
   }
 }
 
@@ -12182,7 +12182,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--conditions",
+      "--unstable-conditions",
       "development",
       "--",
       "main.ts"
@@ -12195,7 +12195,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           script: "main.ts".into(),
           ..Default::default()
         }),
-        conditions: svec!["development"],
+        unstable_conditions: svec!["development"],
         ..Default::default()
       }
     );
@@ -12203,9 +12203,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--conditions",
+      "--unstable-conditions",
       "development",
-      "--conditions",
+      "--unstable-conditions",
       "production",
       "main.ts"
     ])
@@ -12217,7 +12217,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           script: "main.ts".into(),
           ..Default::default()
         }),
-        conditions: svec!["development", "production"],
+        unstable_conditions: svec!["development", "production"],
         ..Default::default()
       }
     );

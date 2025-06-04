@@ -499,7 +499,7 @@ impl CliOptions {
   }
 
   pub fn conditions(&self) -> &[String] {
-    self.flags.conditions.as_ref()
+    self.flags.unstable_conditions.as_ref()
   }
 
   pub fn otel_config(&self) -> OtelConfig {
