@@ -35,7 +35,6 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 import { clearImmediate, setImmediate } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
@@ -339,12 +338,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebTransportError: core.propNonEnumerableLazyLoaded(
     (wt) => wt.WebTransportError,
     loadWebTransport,
-  ),
-};
-
-unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
-  GPUCanvasSurfaceContext: core.propNonEnumerable(
-    webgpuSurface.GPUCanvasSurfaceContext,
   ),
 };
 

@@ -8,16 +8,18 @@ use deno_core::v8;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use deno_image::image;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
 use deno_image::op_create_image_bitmap::ImageBitmap;
+use deno_webgpu::canvas::Data;
 
 pub struct ImageBitmapRenderingContext {
   canvas: v8::Global<v8::Object>,
-  bitmap: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
 
   alpha: bool,
 }
@@ -38,6 +40,7 @@ impl ImageBitmapRenderingContext {
 
   fn transfer_from_image_bitmap(
     &self,
+    state: &mut OpState,
     #[webidl] bitmap: Nullable<Ptr<ImageBitmap>>,
   ) -> Result<(), JsErrorBox> {
     if let Some(bitmap) = bitmap.into_option() {
@@ -54,22 +57,32 @@ impl ImageBitmapRenderingContext {
       // but that case hasnt been hit yet
 
       let _ = bitmap.detached.set(());
-      let data =
+      let new_data =
         bitmap
           .data
           .replace(DynamicImage::new(0, 0, image::ColorType::Rgba8));
-      self.bitmap.replace(data);
-    } else {
-      let (width, height) = {
-        let bitmap = self.bitmap.borrow();
-        bitmap.dimensions()
-      };
 
-      self.bitmap.replace(DynamicImage::new(
-        width,
-        height,
-        image::ColorType::Rgba8,
-      ));
+      let mut data = self.data.borrow_mut();
+      match &mut *data {
+        Data::Image(image) => {
+          *image = new_data;
+        }
+        Data::Surface { .. } => {
+          todo!()
+        }
+      }
+    } else {
+      let mut data = self.data.borrow_mut();
+      match &mut *data {
+        Data::Image(image) => {
+          let (width, height) = image.dimensions();
+
+          *image = DynamicImage::new(width, height, image::ColorType::Rgba8);
+        }
+        Data::Surface { .. } => {
+          todo!()
+        }
+      }
     }
 
     Ok(())
@@ -80,7 +93,7 @@ pub const CONTEXT_ID: &str = "bitmaprenderer";
 
 pub fn create<'s>(
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
   scope: &mut v8::HandleScope<'s>,
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
@@ -100,7 +113,7 @@ pub fn create<'s>(
     ImageBitmapRenderingContext {
       alpha: settings.alpha,
       canvas,
-      bitmap: data,
+      data,
     },
   );
   v8::Global::new(scope, obj.cast())
@@ -112,4 +125,3 @@ struct ImageBitmapRenderingContextSettings {
   #[webidl(default = true)]
   alpha: bool,
 }
-

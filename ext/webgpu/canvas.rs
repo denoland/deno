@@ -2,16 +2,19 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_image::image::DynamicImage;
-use deno_image::image::GenericImageView;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
+use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
 use wgpu_core::resource::TextureDescriptor;
+use wgpu_types::CompositeAlphaMode;
 use wgpu_types::Extent3d;
+use wgpu_types::SurfaceConfiguration;
+use wgpu_types::SurfaceStatus;
 
 use crate::device::GPUDevice;
 use crate::error::GPUError;
@@ -19,14 +22,28 @@ use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 use crate::Instance;
 
+pub enum Data {
+  Image(DynamicImage),
+  Surface {
+    width: u32,
+    height: u32,
+    id: wgpu_core::id::SurfaceId,
+  },
+}
+
+pub enum Descriptor {
+  Texture(TextureDescriptor<'static>),
+  Surface(SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>),
+}
+
 pub struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
-  bitmap: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
 
-  texture_descriptor: RefCell<Option<TextureDescriptor<'static>>>,
-  configuration: RefCell<Option<GPUCanvasConfiguration>>,
+  pub texture_descriptor: RefCell<Option<Descriptor>>,
+  pub configuration: RefCell<Option<GPUCanvasConfiguration>>,
 
-  current_texture: RefCell<Option<v8::Global<v8::Object>>>,
+  pub current_texture: RefCell<Option<v8::Global<v8::Object>>>,
 }
 
 impl GarbageCollected for GPUCanvasContext {
@@ -60,6 +77,24 @@ impl GPUCanvasContext {
     }
 
     let descriptor = self.get_descriptor_for_configuration(&configuration)?;
+
+    match &descriptor {
+      Descriptor::Texture(_) => {}
+      Descriptor::Surface(surface) => {
+        let data = self.data.borrow();
+        let Data::Surface { id, .. } = &*data else {
+          unreachable!()
+        };
+
+        let err = configuration.device.instance.surface_configure(
+          *id,
+          configuration.device.id,
+          surface,
+        );
+        configuration.device.error_handler.push_error(err);
+      }
+    }
+
     self.configuration.replace(Some(configuration));
     self.texture_descriptor.replace(Some(descriptor));
 
@@ -96,26 +131,68 @@ impl GPUCanvasContext {
     if let Some(texture) = current_texture.as_ref() {
       Ok(texture.clone())
     } else {
-      let (id, err) = device.instance.device_create_texture(
-        device.id,
-        texture_descriptor,
-        None,
-      );
-      device.error_handler.push_error(err);
+      let texture = match texture_descriptor {
+        Descriptor::Texture(texture_descriptor) => {
+          let (id, err) = device.instance.device_create_texture(
+            device.id,
+            texture_descriptor,
+            None,
+          );
+          device.error_handler.push_error(err);
 
-      let texture = GPUTexture {
-        instance: device.instance.clone(),
-        error_handler: device.error_handler.clone(),
-        id,
-        device_id: device.id,
-        queue_id: device.queue,
-        label: texture_descriptor.label.as_ref().unwrap().to_string(),
-        size: texture_descriptor.size,
-        mip_level_count: texture_descriptor.mip_level_count,
-        sample_count: texture_descriptor.sample_count,
-        dimension: crate::texture::GPUTextureDimension::D2,
-        format: configuration.format.clone(),
-        usage: configuration.usage,
+          GPUTexture {
+            instance: device.instance.clone(),
+            error_handler: device.error_handler.clone(),
+            id,
+            device_id: device.id,
+            queue_id: device.queue,
+            label: texture_descriptor.label.as_ref().unwrap().to_string(),
+            size: texture_descriptor.size,
+            mip_level_count: texture_descriptor.mip_level_count,
+            sample_count: texture_descriptor.sample_count,
+            dimension: crate::texture::GPUTextureDimension::D2,
+            format: configuration.format.clone(),
+            usage: configuration.usage,
+          }
+        }
+        Descriptor::Surface(surface) => {
+          let data = self.data.borrow();
+          let Data::Surface { id, .. } = &*data else {
+            unreachable!()
+          };
+
+          let output = configuration
+            .device
+            .instance
+            .surface_get_current_texture(*id, None)
+            .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+
+          match output.status {
+            SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
+              let id = output.texture_id.unwrap();
+
+              GPUTexture {
+                instance: configuration.device.instance.clone(),
+                error_handler: configuration.device.error_handler.clone(),
+                id,
+                device_id: configuration.device.id,
+                queue_id: configuration.device.queue,
+                label: "".to_string(),
+                size: wgpu_types::Extent3d {
+                  width: surface.width,
+                  height: surface.height,
+                  depth_or_array_layers: 1,
+                },
+                mip_level_count: 0,
+                sample_count: 0,
+                dimension: crate::texture::GPUTextureDimension::D2,
+                format: configuration.format.clone(),
+                usage: configuration.usage,
+              }
+            }
+            _ => return Err(JsErrorBox::generic("Invalid Surface Status")),
+          }
+        }
       };
 
       let texture_obj = deno_core::cppgc::make_cppgc_object(scope, texture);
@@ -132,33 +209,52 @@ impl GPUCanvasContext {
   fn get_descriptor_for_configuration(
     &self,
     configuration: &GPUCanvasConfiguration,
-  ) -> Result<TextureDescriptor<'static>, JsErrorBox> {
-    let (width, height) = {
-      let data = self.bitmap.borrow();
-      data.dimensions()
-    };
+  ) -> Result<Descriptor, JsErrorBox> {
+    let usage = wgpu_types::TextureUsages::from_bits(configuration.usage)
+      .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?;
+    let view_formats = configuration
+      .view_formats
+      .clone()
+      .into_iter()
+      .map(Into::into)
+      .collect();
 
-    Ok(TextureDescriptor {
-      label: Some("GPUCanvasContext".into()),
-      size: Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-      },
-      mip_level_count: 1,
-      sample_count: 1,
-      dimension: wgpu_types::TextureDimension::D2,
-      format: configuration.format.clone().into(),
-      usage: (wgpu_types::TextureUsages::from_bits(configuration.usage)
-        .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?)
-        | wgpu_types::TextureUsages::COPY_SRC,
-      view_formats: configuration
-        .view_formats
-        .clone()
-        .into_iter()
-        .map(Into::into)
-        .collect(),
-    })
+    match &*self.data.borrow() {
+      Data::Image(image) => {
+        let (width, height) = image.dimensions();
+
+        Ok(Descriptor::Texture(TextureDescriptor {
+          label: Some("GPUCanvasContext".into()),
+          size: Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+          },
+          mip_level_count: 1,
+          sample_count: 1,
+          dimension: wgpu_types::TextureDimension::D2,
+          format: configuration.format.clone().into(),
+          usage: usage | wgpu_types::TextureUsages::COPY_SRC,
+          view_formats,
+        }))
+      }
+      Data::Surface { width, height, .. } => {
+        Ok(Descriptor::Surface(SurfaceConfiguration {
+          usage,
+          format: configuration.format.clone().into(),
+          width: *width,
+          height: *height,
+          present_mode: configuration
+            .present_mode
+            .clone()
+            .map(Into::into)
+            .unwrap_or_default(),
+          desired_maximum_frame_latency: 2,
+          alpha_mode: configuration.alpha_mode.clone().into(),
+          view_formats,
+        }))
+      }
+    }
   }
 
   pub fn copy_image_contents_to_canvas_data(
@@ -168,10 +264,14 @@ impl GPUCanvasContext {
     let configuration = self.configuration.borrow();
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
     else {
-      self.bitmap.replace_with(|image| {
+      self.data.replace_with(|data| {
+        let Data::Image(image) = data else {
+          unreachable!()
+        };
+
         let (width, height) = image.dimensions();
         let image = deno_image::image::RgbaImage::new(width, height);
-        DynamicImage::from(image)
+        Data::Image(DynamicImage::from(image))
       });
 
       return Ok(());
@@ -180,7 +280,11 @@ impl GPUCanvasContext {
     let texture_descriptor = self.texture_descriptor.borrow();
 
     if let Some(texture) = self.current_texture.borrow().as_ref() {
-      let TextureDescriptor { size, .. } = texture_descriptor.as_ref().unwrap();
+      let Descriptor::Texture(TextureDescriptor { size, .. }) =
+        texture_descriptor.as_ref().unwrap()
+      else {
+        unreachable!()
+      };
 
       let local = v8::Local::new(scope, texture).cast::<v8::Value>();
       let underlying_texture =
@@ -205,11 +309,15 @@ impl GPUCanvasContext {
         size,
       )?;
 
-      self.bitmap.replace_with(|image| {
+      self.data.replace_with(|image| {
+        let Data::Image(image) = image else {
+          unreachable!()
+        };
+
         let (width, height) = image.dimensions();
         let image =
           deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
-        DynamicImage::from(image)
+        Data::Image(DynamicImage::from(image))
       });
     }
 
@@ -241,6 +349,27 @@ impl GPUCanvasContext {
           .get_descriptor_for_configuration(configuration)
           .unwrap(),
       ));
+
+      match &*self.data.borrow() {
+        Data::Image(_) => {}
+        Data::Surface { id, .. } => {
+          let texture_descriptor = self.texture_descriptor.borrow();
+
+          let Descriptor::Surface(descriptor) =
+            texture_descriptor.as_ref().unwrap()
+          else {
+            unreachable!()
+          };
+
+          let err = configuration.device.instance.surface_configure(
+            *id,
+            configuration.device.id,
+            &descriptor,
+          );
+
+          configuration.device.error_handler.push_error(err);
+        }
+      }
     }
   }
 
@@ -251,32 +380,78 @@ impl GPUCanvasContext {
     self.copy_image_contents_to_canvas_data(scope)
   }
 
-  pub fn post_transfer_to_image_bitmap_hook(&self, scope: &mut v8::HandleScope) {
+  pub fn post_transfer_to_image_bitmap_hook(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) {
     self.replace_drawing_buffer(scope);
   }
 }
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
-struct GPUCanvasConfiguration {
-  device: Ptr<GPUDevice>,
-  format: GPUTextureFormat,
+pub struct GPUCanvasConfiguration {
+  pub device: Ptr<GPUDevice>,
+  pub format: GPUTextureFormat,
   #[webidl(default = wgpu_types::TextureUsages::RENDER_ATTACHMENT.bits())]
   #[options(enforce_range = true)]
-  usage: u32,
+  pub usage: u32,
   #[webidl(default = vec![])]
-  view_formats: Vec<GPUTextureFormat>,
+  pub view_formats: Vec<GPUTextureFormat>,
   // TODO: PredefinedColorSpace colorSpace = "srgb";
   // TODO: GPUCanvasToneMapping toneMapping = {};
   #[webidl(default = GPUCanvasAlphaMode::Opaque)]
-  alpha_mode: GPUCanvasAlphaMode,
+  pub alpha_mode: GPUCanvasAlphaMode,
+
+  // Extended from spec
+  pub present_mode: Option<GPUPresentMode>,
 }
 
-#[derive(WebIDL)]
+#[derive(WebIDL, Clone)]
 #[webidl(enum)]
-enum GPUCanvasAlphaMode {
+pub enum GPUCanvasAlphaMode {
   Opaque,
   Premultiplied,
+}
+
+impl From<GPUCanvasAlphaMode> for CompositeAlphaMode {
+  fn from(value: GPUCanvasAlphaMode) -> Self {
+    match value {
+      GPUCanvasAlphaMode::Opaque => CompositeAlphaMode::Opaque,
+      GPUCanvasAlphaMode::Premultiplied => CompositeAlphaMode::PreMultiplied,
+    }
+  }
+}
+
+// Extended from spec
+#[derive(WebIDL, Clone)]
+#[webidl(enum)]
+pub enum GPUPresentMode {
+  #[webidl(rename = "autoVsync")]
+  AutoVsync,
+  #[webidl(rename = "autoNoVsync")]
+  AutoNoVsync,
+  #[webidl(rename = "fifo")]
+  Fifo,
+  #[webidl(rename = "fifoRelaxed")]
+  FifoRelaxed,
+  #[webidl(rename = "immediate")]
+  Immediate,
+  #[webidl(rename = "mailbox")]
+  Mailbox,
+}
+
+impl From<GPUPresentMode> for wgpu_types::PresentMode {
+  fn from(value: GPUPresentMode) -> Self {
+    match value {
+      GPUPresentMode::AutoVsync => Self::AutoVsync,
+      GPUPresentMode::AutoNoVsync => Self::AutoNoVsync,
+      GPUPresentMode::Fifo => Self::Fifo,
+      GPUPresentMode::FifoRelaxed => Self::FifoRelaxed,
+      GPUPresentMode::Immediate => Self::Immediate,
+      GPUPresentMode::Mailbox => Self::Mailbox,
+    }
+  }
 }
 
 pub struct PaddedSize {
@@ -406,7 +581,7 @@ pub const CONTEXT_ID: &str = "webgpu";
 
 pub fn create<'s>(
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
   scope: &mut v8::HandleScope<'s>,
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
@@ -416,7 +591,7 @@ pub fn create<'s>(
     scope,
     GPUCanvasContext {
       canvas,
-      bitmap: data,
+      data,
       texture_descriptor: RefCell::new(None),
       configuration: RefCell::new(None),
       current_texture: RefCell::new(None),

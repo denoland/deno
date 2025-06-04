@@ -85,7 +85,6 @@ denokv_sqlite = { default-features = false, version = "0.10.0" }
 deno_broadcast_channel = { version = "0.199.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.137.0", path = "./ext/cache" }
 deno_canvas = { version = "0.74.0", path = "./ext/canvas" }
-deno_image = { version = "0.1.0", path = "./ext/image" }
 deno_console = { version = "0.205.0", path = "./ext/console" }
 deno_cron = { version = "0.85.0", path = "./ext/cron" }
 deno_crypto = { version = "0.219.0", path = "./ext/crypto" }
@@ -93,6 +92,7 @@ deno_fetch = { version = "0.229.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.192.0", path = "./ext/ffi" }
 deno_fs = { version = "0.115.0", path = "./ext/fs" }
 deno_http = { version = "0.203.0", path = "./ext/http" }
+deno_image = { version = "0.1.0", path = "./ext/image" }
 deno_io = { version = "0.115.0", path = "./ext/io" }
 deno_kv = { version = "0.113.0", path = "./ext/kv" }
 deno_napi = { version = "0.136.0", path = "./ext/napi" }

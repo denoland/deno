@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::cell::OnceCell;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use deno_core::op2;
@@ -16,21 +15,21 @@ use deno_image::image::ColorType;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
 use deno_image::op_create_image_bitmap::ImageBitmap;
+use deno_webgpu::canvas::Data;
 
 pub struct BlobHandle(pub v8::Global<v8::Function>);
 
 pub type CreateCanvasContext = for<'s> fn(
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
   scope: &mut v8::HandleScope<'s>,
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
 ) -> v8::Global<v8::Value>;
 
-
 pub struct OffscreenCanvas {
-  data: Rc<RefCell<DynamicImage>>,
+  data: Rc<RefCell<Data>>,
 
   active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
@@ -45,19 +44,26 @@ impl GarbageCollected for OffscreenCanvas {
 impl OffscreenCanvas {
   #[getter]
   fn width(&self) -> u32 {
-    self.data.borrow().width()
+    let data = self.data.borrow();
+    let Data::Image(data) = &*data else {
+      unreachable!();
+    };
+
+    data.width()
   }
   #[setter]
   fn width(
     &self,
-    state: &mut OpState,
     scope: &mut v8::HandleScope,
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
-      self
-        .data
-        .replace_with(|data| data.crop_imm(0, 0, value as _, data.height()));
+      self.data.replace_with(|data| {
+        let Data::Image(data) = &data else {
+          unreachable!();
+        };
+        Data::Image(data.crop_imm(0, 0, value as _, data.height()))
+      });
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -70,19 +76,27 @@ impl OffscreenCanvas {
 
   #[getter]
   fn height(&self) -> u32 {
-    self.data.borrow().height()
+    let data = self.data.borrow();
+    let Data::Image(data) = &*data else {
+      unreachable!();
+    };
+
+    data.height()
   }
   #[setter]
   fn height(
     &self,
-    state: &mut OpState,
     scope: &mut v8::HandleScope,
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
-      self
-        .data
-        .replace_with(|data| data.crop_imm(0, 0, data.width(), value as _));
+      self.data.replace_with(|data| {
+        let Data::Image(data) = &data else {
+          unreachable!();
+        };
+
+        Data::Image(data.crop_imm(0, 0, data.width(), value as _))
+      });
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -101,11 +115,11 @@ impl OffscreenCanvas {
     #[webidl(options(enforce_range = true))] height: u64,
   ) -> OffscreenCanvas {
     OffscreenCanvas {
-      data: Rc::new(RefCell::new(DynamicImage::new(
+      data: Rc::new(RefCell::new(Data::Image(DynamicImage::new(
         width as _,
         height as _,
         ColorType::Rgba8,
-      ))),
+      )))),
       active_context: Default::default(),
     }
   }
@@ -113,7 +127,6 @@ impl OffscreenCanvas {
   #[global]
   fn get_context<'s>(
     &self,
-    state: &mut OpState,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'s>,
     #[webidl] context_id: String,
@@ -154,7 +167,6 @@ impl OffscreenCanvas {
   #[cppgc]
   fn transfer_to_image_bitmap(
     &self,
-    state: &mut OpState,
     scope: &mut v8::HandleScope,
   ) -> Result<ImageBitmap, JsErrorBox> {
     if self.active_context.get().is_none() {
@@ -173,14 +185,25 @@ impl OffscreenCanvas {
     }
 
     let data = self.data.replace_with(|image| {
+      let data = self.data.borrow();
+      let Data::Image(image) = &*data else {
+        unreachable!();
+      };
+
       let (width, height) = image.dimensions();
-      DynamicImage::new(width, height, ColorType::Rgba8)
+      Data::Image(DynamicImage::new(width, height, ColorType::Rgba8))
     });
 
     match &context {
       Context::Bitmap(_) => {}
-      Context::WebGPU(context) => context.post_transfer_to_image_bitmap_hook(scope),
+      Context::WebGPU(context) => {
+        context.post_transfer_to_image_bitmap_hook(scope)
+      }
     }
+
+    let Data::Image(data) = data else {
+      unreachable!();
+    };
 
     Ok(ImageBitmap {
       detached: Default::default(),
@@ -204,6 +227,9 @@ impl OffscreenCanvas {
     }
 
     let data = self.data.borrow();
+    let Data::Image(data) = &*data else {
+      unreachable!();
+    };
 
     let mut out = vec![];
 
@@ -259,13 +285,15 @@ impl OffscreenCanvas {
   }
 }
 
-enum Context {
+pub enum Context {
   #[allow(dead_code)]
-  Bitmap(deno_core::cppgc::Ptr<crate::bitmaprenderer::ImageBitmapRenderingContext>),
+  Bitmap(
+    deno_core::cppgc::Ptr<crate::bitmaprenderer::ImageBitmapRenderingContext>,
+  ),
   WebGPU(deno_core::cppgc::Ptr<deno_webgpu::canvas::GPUCanvasContext>),
 }
 
-fn get_context<'t>(
+pub fn get_context<'t>(
   id: &'t str,
   scope: &mut v8::HandleScope,
   local: v8::Local<'t, v8::Value>,
@@ -275,14 +303,14 @@ fn get_context<'t>(
       let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
         crate::bitmaprenderer::ImageBitmapRenderingContext,
       >(scope, local)
-        .unwrap();
+      .unwrap();
       Context::Bitmap(ptr)
     }
     deno_webgpu::canvas::CONTEXT_ID => {
       let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
         deno_webgpu::canvas::GPUCanvasContext,
       >(scope, local)
-        .unwrap();
+      .unwrap();
       Context::WebGPU(ptr)
     }
     _ => panic!(),

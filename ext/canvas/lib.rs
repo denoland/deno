@@ -1,19 +1,23 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
 
-pub mod bitmaprenderer;
-pub mod canvas;
+mod bitmaprenderer;
+mod byow;
+mod canvas;
 
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
   ops = [op_init_canvas],
-  objects = [canvas::OffscreenCanvas, bitmaprenderer::ImageBitmapRenderingContext],
+  objects = [
+    bitmaprenderer::ImageBitmapRenderingContext,
+    canvas::OffscreenCanvas,
+    byow::UnsafeWindowSurface,
+  ],
+  esm = ["02_surface.js"],
   lazy_loaded_esm = ["01_canvas.js"],
 );
 

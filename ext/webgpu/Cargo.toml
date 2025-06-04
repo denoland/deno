@@ -25,7 +25,6 @@ deno_error.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 wgpu-types = { workspace = true, features = ["serde"] }
-raw-window-handle.workspace = true
 thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
