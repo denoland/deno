@@ -105,9 +105,11 @@ impl ConditionResolver {
       ResolutionMode::Import => &self.options.default_import_conditions,
       ResolutionMode::Require => &self.options.default_require_conditions,
     };
-    [&self.options.conditions, default_conditions]
-      .into_iter()
-      .flatten()
+    self
+      .options
+      .conditions
+      .iter()
+      .chain(default_conditions)
       .cloned()
       .collect()
   }
