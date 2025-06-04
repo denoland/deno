@@ -20,13 +20,13 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::ConditionResolver;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -534,7 +534,7 @@ pub fn op_require_try_self<
       exports,
       Some(&referrer),
       ResolutionMode::Require,
-      &ConditionResolver::default(),
+      REQUIRE_CONDITIONS,
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(r)?))
@@ -641,7 +641,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    &ConditionResolver::default(),
+    REQUIRE_CONDITIONS,
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))
@@ -720,7 +720,7 @@ pub fn op_require_package_imports_resolve<
       Some(&UrlOrPathRef::from_path(&referrer_path)),
       ResolutionMode::Require,
       Some(&pkg),
-      &ConditionResolver::default(),
+      REQUIRE_CONDITIONS,
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))
