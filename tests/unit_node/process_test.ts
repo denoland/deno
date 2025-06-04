@@ -395,8 +395,7 @@ Deno.test({
 
     Deno.env.set("HELLO", "WORLD");
 
-    // TODO(nathanwhit): uncomment this out, it fails on my windows machine for some reason
-    // assertObjectMatch(process.env, Deno.env.toObject());
+    assertObjectMatch(process.env, Deno.env.toObject());
 
     assertEquals(typeof (process.env.HELLO), "string");
     assertEquals(process.env.HELLO, "WORLD");

@@ -15,9 +15,9 @@ Deno.test(
     assert(readmeInfo.isFile);
     assert(!readmeInfo.isSymlink);
 
-    // const modulesInfo = Deno.statSync("tests/testdata/symlink_to_subdir");
-    // assert(modulesInfo.isDirectory);
-    // assert(!modulesInfo.isSymlink);
+    const modulesInfo = Deno.statSync("tests/testdata/symlink_to_subdir");
+    assert(modulesInfo.isDirectory);
+    assert(!modulesInfo.isSymlink);
 
     const testsInfo = Deno.statSync("tests");
     assert(testsInfo.isDirectory);
@@ -43,11 +43,11 @@ Deno.test(
     assert(readmeInfoByUrl.isFile);
     assert(!readmeInfoByUrl.isSymlink);
 
-    // const modulesInfoByUrl = Deno.statSync(
-    //   pathToAbsoluteFileUrl("tests/testdata/symlink_to_subdir"),
-    // );
-    // assert(modulesInfoByUrl.isDirectory);
-    // assert(!modulesInfoByUrl.isSymlink);
+    const modulesInfoByUrl = Deno.statSync(
+      pathToAbsoluteFileUrl("tests/testdata/symlink_to_subdir"),
+    );
+    assert(modulesInfoByUrl.isDirectory);
+    assert(!modulesInfoByUrl.isSymlink);
 
     const testsInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("tests"));
     assert(testsInfoByUrl.isDirectory);
@@ -155,15 +155,15 @@ Deno.test(
     assert(readmeInfoByUrl.isFile);
     assert(!readmeInfoByUrl.isSymlink);
 
-    // const modulesInfo = await Deno.stat("tests/testdata/symlink_to_subdir");
-    // assert(modulesInfo.isDirectory);
-    // assert(!modulesInfo.isSymlink);
+    const modulesInfo = await Deno.stat("tests/testdata/symlink_to_subdir");
+    assert(modulesInfo.isDirectory);
+    assert(!modulesInfo.isSymlink);
 
-    // const modulesInfoByUrl = await Deno.stat(
-    //   pathToAbsoluteFileUrl("tests/testdata/symlink_to_subdir"),
-    // );
-    // assert(modulesInfoByUrl.isDirectory);
-    // assert(!modulesInfoByUrl.isSymlink);
+    const modulesInfoByUrl = await Deno.stat(
+      pathToAbsoluteFileUrl("tests/testdata/symlink_to_subdir"),
+    );
+    assert(modulesInfoByUrl.isDirectory);
+    assert(!modulesInfoByUrl.isSymlink);
 
     const testsInfo = await Deno.stat("tests");
     assert(testsInfo.isDirectory);
