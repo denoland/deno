@@ -1210,7 +1210,7 @@ impl CliFactory {
             IsCjsResolutionMode::Disabled
           },
           node_resolver_options: NodeResolverOptions {
-            conditions_from_resolution_mode: Default::default(),
+            conditions_resolver: Default::default(),
             typescript_version: Some(
               deno_semver::Version::parse_standard(
                 deno_lib::version::DENO_VERSION_INFO.typescript,
