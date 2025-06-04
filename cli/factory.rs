@@ -1215,7 +1215,7 @@ impl CliFactory {
             condition_resolver: ConditionResolver::new(
               ConditionResolverOptions {
                 conditions: options
-                  .conditions()
+                  .node_conditions()
                   .iter()
                   .map(|c| Cow::Owned(c.clone()))
                   .collect(),
