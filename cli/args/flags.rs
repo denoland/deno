@@ -4368,7 +4368,7 @@ fn unstable_conditions_arg() -> Arg {
   Arg::new("unstable-conditions")
     .short('C')
     .long("unstable-conditions")
-    .num_args(0..)
+    .use_value_delimiter(true)
     .action(ArgAction::Append)
 }
 
@@ -12185,7 +12185,6 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       "run",
       "--unstable-conditions",
       "development",
-      "--",
       "main.ts"
     ])
     .unwrap();
@@ -12197,6 +12196,28 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         }),
         unstable_conditions: svec!["development"],
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-conditions",
+      "development,production",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        unstable_conditions: svec!["development", "production"],
+        code_cache_enabled: true,
         ..Default::default()
       }
     );
@@ -12219,6 +12240,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         }),
         unstable_conditions: svec!["development", "production"],
+        code_cache_enabled: true,
         ..Default::default()
       }
     );
