@@ -26,13 +26,25 @@ interface AddEventListenerOptions extends EventListenerOptions {
     signal?: AbortSignal;
 }
 
+/**
+ * Configuration options for algorithm-specific AES-CBC encryption parameters.
+ * Used with the Web Crypto API in Deno's worker environments.
+ *
+ * @category Web Crypto
+ */
 interface AesCbcParams extends Algorithm {
-    iv: BufferSource;
+  iv: BufferSource;
 }
 
+/**
+ * Configuration options for algorithm-specific AES-CTR encryption parameters.
+ * Used with the Web Crypto API in Deno's worker environments.
+ *
+ * @category Web Crypto
+ */
 interface AesCtrParams extends Algorithm {
-    counter: BufferSource;
-    length: number;
+  counter: BufferSource;
+  length: number;
 }
 
 interface AesDerivedKeyParams extends Algorithm {
@@ -122,9 +134,15 @@ interface AvcEncoderConfig {
     format?: AvcBitstreamFormat;
 }
 
+/**
+ * Options for transforming a BLOB into a more useful form.
+ * In Deno's worker context, primarily used for image processing.
+ *
+ * @category Files
+ */
 interface BlobPropertyBag {
-    endings?: EndingType;
-    type?: string;
+  endings?: EndingType;
+  type?: string;
 }
 
 interface CSSMatrixComponentOptions {
@@ -635,13 +653,14 @@ interface RTCEncodedVideoFrameMetadata {
     width?: number;
 }
 
+/**
+ * Options for controlling how a ReadableStream's getReader() method
+ * should create a reader object.
+ *
+ * @category Streams
+ */
 interface ReadableStreamGetReaderOptions {
-    /**
-     * Creates a ReadableStreamBYOBReader and locks the stream to the new reader.
-     *
-     * This call behaves the same way as the no-argument variant, except that it only works on readable byte streams, i.e. streams which were constructed specifically with the ability to handle "bring your own buffer" reading. The returned BYOB reader provides the ability to directly read individual chunks from the stream via its read() method, into developer-supplied buffers, allowing more precise control over allocation.
-     */
-    mode?: ReadableStreamReaderMode;
+  mode?: ReadableStreamReaderMode;
 }
 
 interface ReadableStreamIteratorOptions {
@@ -769,28 +788,17 @@ interface StorageEstimate {
     usage?: number;
 }
 
+/**
+ * Options for configuring the pipe operation between ReadableStream and WritableStream.
+ * Controls error handling and signal propagation during piping.
+ *
+ * @category Streams
+ */
 interface StreamPipeOptions {
-    preventAbort?: boolean;
-    preventCancel?: boolean;
-    /**
-     * Pipes this readable stream to a given writable stream destination. The way in which the piping process behaves under various error conditions can be customized with a number of passed options. It returns a promise that fulfills when the piping process completes successfully, or rejects if any errors were encountered.
-     *
-     * Piping a stream will lock it for the duration of the pipe, preventing any other consumer from acquiring a reader.
-     *
-     * Errors and closures of the source and destination streams propagate as follows:
-     *
-     * An error in this source readable stream will abort destination, unless preventAbort is truthy. The returned promise will be rejected with the source's error, or with any error that occurs during aborting the destination.
-     *
-     * An error in destination will cancel this source readable stream, unless preventCancel is truthy. The returned promise will be rejected with the destination's error, or with any error that occurs during canceling the source.
-     *
-     * When this source readable stream closes, destination will be closed, unless preventClose is truthy. The returned promise will be fulfilled once this process completes, unless an error is encountered while closing the destination, in which case it will be rejected with that error.
-     *
-     * If destination starts out closed or closing, this source readable stream will be canceled, unless preventCancel is true. The returned promise will be rejected with an error indicating piping to a closed stream failed, or with any error that occurs during canceling the source.
-     *
-     * The signal option can be set to an AbortSignal to allow aborting an ongoing pipe operation via the corresponding AbortController. In this case, this source readable stream will be canceled, and destination aborted, unless the respective options preventCancel or preventAbort are set.
-     */
-    preventClose?: boolean;
-    signal?: AbortSignal;
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
 }
 
 interface StructuredSerializeOptions {
