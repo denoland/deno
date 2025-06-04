@@ -70,46 +70,67 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
   &[Cow::Borrowed("require"), Cow::Borrowed("node")];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
-#[allow(clippy::disallowed_types)]
-type ConditionsFromResolutionModeFn = crate::sync::MaybeArc<
-  dyn Fn(ResolutionMode) -> &'static [Cow<'static, str>] + Send + Sync,
->;
-
-#[derive(Clone)]
-pub enum ConditionsResolver {
-  FromResolutionModeFn(ConditionsFromResolutionModeFn),
-  List(Vec<Cow<'static, str>>),
+#[derive(Debug, Clone)]
+pub struct ConditionResolverOptions {
+  pub conditions: Vec<Cow<'static, str>>,
+  pub default_import_conditions: Vec<Cow<'static, str>>,
+  pub default_require_conditions: Vec<Cow<'static, str>>,
 }
 
-impl Default for ConditionsResolver {
+impl Default for ConditionResolverOptions {
   fn default() -> Self {
-    Self::List(DEFAULT_CONDITIONS.to_vec())
-  }
-}
-
-impl ConditionsResolver {
-  pub fn new(configured_conditions: &[String]) -> Self {
-    Self::List(
-      configured_conditions
-        .iter()
-        .cloned()
-        .map(|c| Cow::Owned(c))
-        .chain(DEFAULT_CONDITIONS.iter().cloned())
-        .collect(),
-    )
-  }
-
-  fn resolve(&self, resolution_mode: ResolutionMode) -> &[Cow<'static, str>] {
-    match &self {
-      ConditionsResolver::FromResolutionModeFn(func) => func(resolution_mode),
-      ConditionsResolver::List(list) => list,
+    Self {
+      conditions: Vec::new(),
+      default_import_conditions: DEFAULT_CONDITIONS.to_vec(),
+      default_require_conditions: REQUIRE_CONDITIONS.to_vec(),
     }
   }
 }
 
-impl Debug for ConditionsResolver {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("ConditionsFromResolutionMode").finish()
+#[derive(Debug, Default, Clone)]
+pub struct ConditionResolver {
+  options: ConditionResolverOptions,
+}
+
+impl ConditionResolver {
+  pub fn new(options: ConditionResolverOptions) -> Self {
+    Self { options }
+  }
+
+  pub fn contains_key(
+    &self,
+    key: &str,
+    resolution_mode: ResolutionMode,
+  ) -> bool {
+    if self.options.conditions.contains(&Cow::Borrowed(key)) {
+      return true;
+    }
+    match resolution_mode {
+      ResolutionMode::Import => self
+        .options
+        .default_import_conditions
+        .contains(&Cow::Borrowed(key)),
+      ResolutionMode::Require => self
+        .options
+        .default_require_conditions
+        .contains(&Cow::Borrowed(key)),
+    }
+  }
+
+  fn types_only() -> Self {
+    Self {
+      options: ConditionResolverOptions {
+        conditions: TYPES_ONLY_CONDITIONS.to_vec(),
+        default_import_conditions: Vec::new(),
+        default_require_conditions: Vec::new(),
+      },
+    }
+  }
+
+  fn is_types_only(&self) -> bool {
+    self.options.conditions == TYPES_ONLY_CONDITIONS
+      && self.options.default_import_conditions.is_empty()
+      && self.options.default_require_conditions.is_empty()
   }
 }
 
@@ -212,7 +233,7 @@ enum ResolvedMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
-  pub conditions_resolver: ConditionsResolver,
+  pub condition_resolver: ConditionResolver,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
@@ -248,7 +269,7 @@ pub struct NodeResolver<
   npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: NodeResolutionSys<TSys>,
-  conditions_resolver: ConditionsResolver,
+  condition_resolver: ConditionResolver,
   typescript_version: Option<Version>,
   package_resolution_lookup_cache: Option<DashMap<Url, String>>,
 }
@@ -280,7 +301,7 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      conditions_resolver: options.conditions_resolver,
+      condition_resolver: options.condition_resolver,
       typescript_version: options.typescript_version,
       package_resolution_lookup_cache: None,
     }
@@ -353,13 +374,12 @@ impl<
       }
     }
 
-    let conditions = self.conditions_resolver.resolve(resolution_mode);
     let referrer = UrlOrPathRef::from_url(referrer);
     let (url, resolved_kind) = self.module_resolve(
       specifier,
       &referrer,
       resolution_mode,
-      conditions,
+      &self.condition_resolver,
       resolution_kind,
     )?;
 
@@ -396,7 +416,7 @@ impl<
     specifier: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -412,7 +432,7 @@ impl<
         LocalUrlOrPath::Url(url),
         Some(referrer),
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )?;
       Ok((url, ResolvedMethod::RelativeOrAbsolute))
@@ -428,7 +448,7 @@ impl<
           Some(referrer),
           resolution_mode,
           pkg_config.as_deref(),
-          conditions,
+          condition_resolver,
           resolution_kind,
         )?,
         ResolvedMethod::PackageImports,
@@ -438,7 +458,7 @@ impl<
         LocalUrlOrPath::Url(url),
         Some(referrer),
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )?;
       Ok((url_or_path, ResolvedMethod::Url))
@@ -447,7 +467,7 @@ impl<
         specifier,
         referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )?)
     }
@@ -648,7 +668,7 @@ impl<
       &package_subpath,
       maybe_referrer.as_ref(),
       resolution_mode,
-      self.conditions_resolver.resolve(resolution_mode),
+      &self.condition_resolver,
       resolution_kind,
     )?;
     let url_or_path = self.finalize_resolution(
@@ -731,7 +751,7 @@ impl<
     url: LocalUrlOrPath,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     if resolution_kind.is_types() {
@@ -753,7 +773,7 @@ impl<
         file_path,
         maybe_referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
       )
     } else {
       Ok(MaybeTypesResolvedUrl(url))
@@ -766,7 +786,7 @@ impl<
     local_path: LocalPath,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
       sys: &NodeResolutionSys<TSys>,
@@ -834,7 +854,7 @@ impl<
         /* sub path */ ".",
         maybe_referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         NodeResolutionKind::Types,
       );
       if let Ok((url_or_path, _)) = resolution_result {
@@ -870,7 +890,7 @@ impl<
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageImportsResolveError> {
     self
@@ -879,7 +899,7 @@ impl<
         maybe_referrer,
         resolution_mode,
         referrer_pkg_json,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )
       .map(|url| url.0.into_url_or_path())
@@ -892,7 +912,7 @@ impl<
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
@@ -922,7 +942,7 @@ impl<
             resolution_mode,
             false,
             true,
-            conditions,
+            condition_resolver,
             resolution_kind,
           )?;
           if let Some(resolved) = maybe_resolved {
@@ -962,7 +982,7 @@ impl<
               resolution_mode,
               true,
               true,
-              conditions,
+              condition_resolver,
               resolution_kind,
             )?;
             if let Some(resolved) = maybe_resolved {
@@ -994,7 +1014,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageTargetResolveError> {
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
@@ -1036,7 +1056,7 @@ impl<
               &export_target,
               &UrlOrPathRef::from_path(package_json_path),
               resolution_mode,
-              conditions,
+              condition_resolver,
               resolution_kind,
             ) {
               Ok((url, _)) => Ok(url),
@@ -1162,7 +1182,7 @@ impl<
       LocalUrlOrPath::Path(path),
       maybe_referrer,
       resolution_mode,
-      conditions,
+      condition_resolver,
       resolution_kind,
     )?)
   }
@@ -1178,7 +1198,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<MaybeTypesResolvedUrl>, PackageTargetResolveError> {
     let result = self.resolve_package_target_inner(
@@ -1190,7 +1210,7 @@ impl<
       resolution_mode,
       pattern,
       internal,
-      conditions,
+      condition_resolver,
       resolution_kind,
     );
     match result {
@@ -1198,7 +1218,7 @@ impl<
       Err(err) => {
         if resolution_kind.is_types()
           && err.code() == NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-          && conditions != TYPES_ONLY_CONDITIONS
+          && !condition_resolver.is_types_only()
         {
           // try resolving with just "types" conditions for when someone misconfigures
           // and puts the "types" condition in the wrong place
@@ -1211,7 +1231,7 @@ impl<
             resolution_mode,
             pattern,
             internal,
-            TYPES_ONLY_CONDITIONS,
+            &ConditionResolver::types_only(),
             resolution_kind,
           ) {
             return Ok(Some(resolved));
@@ -1234,7 +1254,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<MaybeTypesResolvedUrl>, PackageTargetResolveError> {
     if let Some(target) = target.as_str() {
@@ -1247,7 +1267,7 @@ impl<
         resolution_mode,
         pattern,
         internal,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )?;
       return Ok(Some(url_or_path));
@@ -1267,7 +1287,7 @@ impl<
           resolution_mode,
           pattern,
           internal,
-          conditions,
+          condition_resolver,
           resolution_kind,
         );
 
@@ -1301,7 +1321,7 @@ impl<
         // ));
 
         if key == "default"
-          || conditions.contains(&Cow::Borrowed(key))
+          || condition_resolver.contains_key(key, resolution_mode)
           || resolution_kind.is_types() && self.matches_types_key(key)
         {
           let resolved = self.resolve_package_target(
@@ -1313,7 +1333,7 @@ impl<
             resolution_mode,
             pattern,
             internal,
-            conditions,
+            condition_resolver,
             resolution_kind,
           )?;
           match resolved {
@@ -1364,7 +1384,7 @@ impl<
     package_exports: &Map<String, Value>,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageExportsResolveError> {
     self
@@ -1374,7 +1394,7 @@ impl<
         package_exports,
         maybe_referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )
       .map(|url| url.0.into_url_or_path())
@@ -1388,7 +1408,7 @@ impl<
     package_exports: &Map<String, Value>,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageExportsResolveError> {
     if let Some(target) = package_exports.get(package_subpath) {
@@ -1403,7 +1423,7 @@ impl<
           resolution_mode,
           false,
           false,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )?;
         return match resolved {
@@ -1467,7 +1487,7 @@ impl<
         resolution_mode,
         true,
         false,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )?;
       if let Some(resolved) = maybe_resolved {
@@ -1501,7 +1521,7 @@ impl<
     specifier: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let (package_name, package_subpath, _is_scoped) =
@@ -1521,7 +1541,7 @@ impl<
               exports,
               Some(referrer),
               resolution_mode,
-              conditions,
+              condition_resolver,
               resolution_kind,
             )
             .map(|url| (url, ResolvedMethod::PackageExports))
@@ -1535,7 +1555,7 @@ impl<
       &package_subpath,
       referrer,
       resolution_mode,
-      conditions,
+      condition_resolver,
       resolution_kind,
     )
   }
@@ -1547,7 +1567,7 @@ impl<
     package_subpath: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let result = self.resolve_package_subpath_for_package_inner(
@@ -1555,7 +1575,7 @@ impl<
       package_subpath,
       referrer,
       resolution_mode,
-      conditions,
+      condition_resolver,
       resolution_kind,
     );
     if resolution_kind.is_types() && result.is_err() {
@@ -1566,7 +1586,7 @@ impl<
         package_subpath,
         referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       ) {
         return Ok(result);
@@ -1582,7 +1602,7 @@ impl<
     package_subpath: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let package_dir_path = self
@@ -1609,7 +1629,7 @@ impl<
         package_subpath,
         Some(referrer),
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       )
       .map_err(|err| err.into())
@@ -1622,7 +1642,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
@@ -1636,7 +1656,7 @@ impl<
         package_subpath,
         maybe_referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       ),
       None => self
@@ -1645,7 +1665,7 @@ impl<
           package_subpath,
           maybe_referrer,
           resolution_mode,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )
         .map(|url| (url, ResolvedMethod::PackageSubPath))
@@ -1662,7 +1682,7 @@ impl<
     package_subpath: &str,
     referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
@@ -1673,7 +1693,7 @@ impl<
         exports,
         referrer,
         resolution_mode,
-        conditions,
+        condition_resolver,
         resolution_kind,
       );
       match result {
@@ -1685,7 +1705,7 @@ impl<
                 package_json,
                 referrer,
                 resolution_mode,
-                conditions,
+                condition_resolver,
                 resolution_kind,
               )
               .map(|url| (url, ResolvedMethod::PackageSubPath))
@@ -1706,7 +1726,7 @@ impl<
           package_json,
           referrer,
           resolution_mode,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )
         .map(|url| (url, ResolvedMethod::PackageSubPath))
@@ -1721,7 +1741,7 @@ impl<
           Some(package_json),
           referrer,
           resolution_mode,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )
         .map(|url| (url, ResolvedMethod::PackageSubPath))
@@ -1768,7 +1788,7 @@ impl<
     package_json: Option<&PackageJson>,
     referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
@@ -1786,7 +1806,7 @@ impl<
       }),
       referrer,
       resolution_mode,
-      conditions,
+      condition_resolver,
       resolution_kind,
     )
   }
@@ -1797,7 +1817,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
     if package_subpath == "." {
@@ -1815,7 +1835,7 @@ impl<
           None,
           maybe_referrer,
           resolution_mode,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )
         .map_err(|err| err.into())
@@ -1827,7 +1847,7 @@ impl<
     package_json: &PackageJson,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
+    condition_resolver: &ConditionResolver,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
     let pkg_json_kind = match resolution_mode {
@@ -1858,7 +1878,7 @@ impl<
               },
               maybe_referrer,
               resolution_mode,
-              conditions,
+              condition_resolver,
             );
             // don't surface errors, fallback to checking the index now
             if let Ok(url_or_path) = decl_path_result {
@@ -1882,7 +1902,7 @@ impl<
           }),
           maybe_referrer,
           resolution_mode,
-          conditions,
+          condition_resolver,
           resolution_kind,
         )?);
       }

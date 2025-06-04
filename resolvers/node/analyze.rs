@@ -22,6 +22,8 @@ use url::Url;
 
 use crate::errors::ModuleNotFoundError;
 use crate::resolution::NodeResolverRc;
+use crate::ConditionResolver;
+use crate::ConditionResolverOptions;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
@@ -388,7 +390,11 @@ impl<
               exports,
               Some(&referrer),
               ResolutionMode::Import,
-              conditions,
+              &ConditionResolver::new(ConditionResolverOptions {
+                conditions: conditions.to_vec(),
+                default_import_conditions: Vec::new(),
+                default_require_conditions: Vec::new(),
+              }),
               resolution_kind,
             )
             .map_err(JsErrorBox::from_err),
