@@ -6,9 +6,10 @@ mod proxy;
 #[cfg(test)]
 mod tests;
 
+use deno_core::futures::StreamExt;
+use deno_fetch_base::FetchResponseReader;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::cmp::min;
 use std::convert::From;
 use std::future;
 use std::marker::PhantomData;
@@ -24,32 +25,28 @@ use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
 use data_url::DataUrl;
-use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_fetch_base::BytesStream;
 use deno_fetch_base::FetchHandler;
 use deno_fetch_base::FetchResponse;
+use deno_fetch_base::FetchResponseResource;
 pub use deno_fetch_base::FetchReturn;
 use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
@@ -73,6 +70,7 @@ use http::header::RANGE;
 use http::header::USER_AGENT;
 use http::Extensions;
 use http::Method;
+use http::Response;
 use http::Uri;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
@@ -88,6 +86,39 @@ use tower::retry;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
 
+pub type ResBody = BoxBody<Bytes, JsErrorBox>;
+
+/// New type pattern to wrap the http response
+struct HttpResponse(Response<ResBody>);
+
+impl From<Response<ResBody>> for HttpResponse {
+  fn from(response: Response<ResBody>) -> Self {
+    HttpResponse(response)
+  }
+}
+
+impl From<HttpResponse> for BytesStream {
+  fn from(response: HttpResponse) -> Self {
+    Box::pin(response.0.into_body().into_data_stream().map(|r| {
+      r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+    }))
+  }
+}
+
+#[allow(unused)]
+trait UpgradableResponse {
+  async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error>;
+}
+
+impl UpgradableResponse for FetchResponseResource<HttpResponse> {
+  async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
+    let reader = self.response_reader.into_inner();
+    match reader {
+      FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp.0).await?),
+      _ => unreachable!(),
+    }
+  }
+}
 
 #[derive(Clone)]
 pub struct Options {
@@ -696,10 +727,14 @@ pub async fn op_fetch_send(
     (None, None)
   };
 
-  let response_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(FetchResponseResource::new(res, content_length));
+  let response_rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(FetchResponseResource::new(
+        Into::<HttpResponse>::into(res),
+        content_length,
+      ));
 
   Ok(FetchResponse {
     status: status.as_u16(),
@@ -737,115 +772,6 @@ impl Resource for FetchCancelHandle {
 
   fn close(self: Rc<Self>) {
     self.0.cancel()
-  }
-}
-
-type BytesStream =
-  Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
-
-pub enum FetchResponseReader {
-  Start(http::Response<ResBody>),
-  BodyReader(Peekable<BytesStream>),
-}
-
-impl Default for FetchResponseReader {
-  fn default() -> Self {
-    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
-    Self::BodyReader(stream.peekable())
-  }
-}
-#[derive(Debug)]
-pub struct FetchResponseResource {
-  pub response_reader: AsyncRefCell<FetchResponseReader>,
-  pub cancel: CancelHandle,
-  pub size: Option<u64>,
-}
-
-impl FetchResponseResource {
-  pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
-    Self {
-      response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
-      cancel: CancelHandle::default(),
-      size,
-    }
-  }
-
-  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
-    let reader = self.response_reader.into_inner();
-    match reader {
-      FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp).await?),
-      _ => unreachable!(),
-    }
-  }
-}
-
-impl Resource for FetchResponseResource {
-  fn name(&self) -> Cow<str> {
-    "fetchResponse".into()
-  }
-
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(async move {
-      let mut reader =
-        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
-
-      let body = loop {
-        match &mut *reader {
-          FetchResponseReader::BodyReader(reader) => break reader,
-          FetchResponseReader::Start(_) => {}
-        }
-
-        match std::mem::take(&mut *reader) {
-          FetchResponseReader::Start(resp) => {
-            let stream: BytesStream =
-              Box::pin(resp.into_body().into_data_stream().map(|r| {
-                r.map_err(|err| {
-                  std::io::Error::new(std::io::ErrorKind::Other, err)
-                })
-              }));
-            *reader = FetchResponseReader::BodyReader(stream.peekable());
-          }
-          FetchResponseReader::BodyReader(_) => unreachable!(),
-        }
-      };
-      let fut = async move {
-        let mut reader = Pin::new(body);
-        loop {
-          match reader.as_mut().peek_mut().await {
-            Some(Ok(chunk)) if !chunk.is_empty() => {
-              let len = min(limit, chunk.len());
-              let chunk = chunk.split_to(len);
-              break Ok(chunk.into());
-            }
-            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
-            // currently has a peeked value that can be synchronously returned
-            // from `next()`.
-            //
-            // The future returned from `next()` is always ready, so we can
-            // safely call `await` on it without creating a race condition.
-            Some(_) => match reader.as_mut().next().await.unwrap() {
-              Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
-            },
-            None => break Ok(BufView::empty()),
-          }
-        }
-      };
-
-      let cancel_handle = RcRef::map(self, |r| &r.cancel);
-      fut
-        .try_or_cancel(cancel_handle)
-        .await
-        .map_err(JsErrorBox::from_err)
-    })
-  }
-
-  fn size_hint(&self) -> (u64, Option<u64>) {
-    (self.size.unwrap_or(0), self.size)
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel()
   }
 }
 
@@ -1209,8 +1135,6 @@ pub enum ReqBody {
   Empty(http_body_util::Empty<Bytes>),
   Streaming(BoxBody<Bytes, JsErrorBox>),
 }
-
-pub type ResBody = BoxBody<Bytes, JsErrorBox>;
 
 impl ReqBody {
   pub fn full(bytes: Bytes) -> Self {

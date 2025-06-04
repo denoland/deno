@@ -1,18 +1,128 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cmp::min;
 use std::convert::From;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 
+use bytes::Bytes;
+use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
+use deno_core::BufView;
 use deno_core::ByteString;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use serde::Deserialize;
 use serde::Serialize;
+
+pub type BytesStream =
+  Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Unpin>>;
+
+pub enum FetchResponseReader<T: Into<BytesStream>> {
+  Start(T),
+  BodyReader(Peekable<BytesStream>),
+}
+
+impl<T: Into<BytesStream>> Default for FetchResponseReader<T> {
+  fn default() -> Self {
+    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
+    Self::BodyReader(stream.peekable())
+  }
+}
+#[derive(Debug)]
+pub struct FetchResponseResource<T: Into<BytesStream>> {
+  pub response_reader: AsyncRefCell<FetchResponseReader<T>>,
+  pub cancel: CancelHandle,
+  pub size: Option<u64>,
+}
+
+impl<T: Into<BytesStream> + 'static> FetchResponseResource<T> {
+  pub fn new(s: T, size: Option<u64>) -> Self {
+    Self {
+      response_reader: AsyncRefCell::new(FetchResponseReader::Start(s)),
+      cancel: CancelHandle::default(),
+      size,
+    }
+  }
+}
+
+impl<T: Into<BytesStream> + 'static> Resource for FetchResponseResource<T> {
+  fn name(&self) -> Cow<str> {
+    "fetchResponse".into()
+  }
+
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+    Box::pin(async move {
+      let mut reader =
+        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
+
+      let body = loop {
+        match &mut *reader {
+          FetchResponseReader::BodyReader(reader) => break reader,
+          FetchResponseReader::Start(_) => {}
+        }
+
+        match std::mem::take(&mut *reader) {
+          FetchResponseReader::Start(resp) => {
+            *reader = FetchResponseReader::BodyReader(resp.into().peekable());
+          }
+          FetchResponseReader::BodyReader(_) => unreachable!(),
+        }
+      };
+      let fut = async move {
+        let mut reader = Pin::new(body);
+        loop {
+          match reader.as_mut().peek_mut().await {
+            Some(Ok(chunk)) if !chunk.is_empty() => {
+              let len = min(limit, chunk.len());
+              let chunk = chunk.split_to(len);
+              break Ok(chunk.into());
+            }
+            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
+            // currently has a peeked value that can be synchronously returned
+            // from `next()`.
+            //
+            // The future returned from `next()` is always ready, so we can
+            // safely call `await` on it without creating a race condition.
+            Some(_) => match reader.as_mut().next().await.unwrap() {
+              Ok(chunk) => assert!(chunk.is_empty()),
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
+            },
+            None => break Ok(BufView::empty()),
+          }
+        }
+      };
+
+      let cancel_handle = RcRef::map(self, |r| &r.cancel);
+      fut
+        .try_or_cancel(cancel_handle)
+        .await
+        .map_err(JsErrorBox::from_err)
+    })
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (self.size.unwrap_or(0), self.size)
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
+  }
+}
 
 /// Marker trait for options allow passing it in as a concrete type
 pub trait Options {}
