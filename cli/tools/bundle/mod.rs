@@ -183,8 +183,6 @@ pub async fn bundle(
     tokio::spawn(async move {
       let res = esbuild.wait_for_exit().await;
       log::warn!("esbuild exited: {:?}", res);
-
-      Ok::<(), AnyError>(())
     });
   }
 
@@ -323,7 +321,7 @@ fn format_message(message: &esbuild_client::protocol::Message) -> String {
 #[class(generic)]
 enum BundleError {
   #[error(transparent)]
-  Resolver(#[from] deno_graph::source::ResolveError),
+  Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
   #[error(transparent)]
