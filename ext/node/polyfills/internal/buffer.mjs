@@ -85,7 +85,10 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import {
+  isArrayBufferView,
+  isUint8Array,
+} from "ext:deno_node/internal/util/types.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
@@ -1930,7 +1933,7 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
       this[i] = val;
     }
   } else {
-    if (typeof val !== "string" && !BufferIsBuffer(val)) {
+    if (typeof val !== "string" && !isArrayBufferView(val)) {
       val = Number(val) & 255;
       for (i = start; i < end; ++i) {
         this[i] = val;
