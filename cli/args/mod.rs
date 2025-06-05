@@ -510,6 +510,19 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
+  pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.preload.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut preload = Vec::with_capacity(self.flags.preload.len());
+    for preload_specifier in self.flags.preload.iter() {
+      preload.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+    }
+
+    Ok(preload)
+  }
+
   pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
     self
       .main_module_cell
