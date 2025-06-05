@@ -116,8 +116,9 @@ type ErrorUnexpected = {
   message: string;
 };
 
-function getV8Flags(source: string): string[] {
+function getFlags(source: string): [string[], string[]] {
   const v8Flags = [] as string[];
+  const nodeOptions = [] as string[];
   const flags = parseFlags(source);
   flags.forEach((flag) => {
     switch (flag) {
@@ -127,11 +128,20 @@ function getV8Flags(source: string): string[] {
       case "--expose-gc":
         v8Flags.push("--expose-gc");
         break;
+      case "--no-warnings":
+        nodeOptions.push("--no-warnings");
+        break;
+      case "--pending-deprecation":
+        nodeOptions.push("--pending-deprecation");
+        break;
+      case "--allow-natives-syntax":
+        v8Flags.push("--allow-natives-syntax");
+        break;
       default:
         break;
     }
   });
-  return v8Flags;
+  return [v8Flags, nodeOptions];
 }
 
 /**
@@ -151,7 +161,7 @@ async function runSingle(
   try {
     const source = await Deno.readTextFile(testPath_);
     const usesNodeTest = usesNodeTestModule(source);
-    const v8Flags = getV8Flags(source);
+    const [v8Flags, nodeOptions] = getFlags(source);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
         ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
@@ -161,6 +171,7 @@ async function runSingle(
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
         NODE_SKIP_FLAG_CHECK: "1",
+        NODE_OPTIONS: nodeOptions.join(" "),
         NO_COLOR: "1",
       },
       stdout: "piped",

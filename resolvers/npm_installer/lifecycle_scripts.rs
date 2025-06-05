@@ -6,12 +6,14 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Error as AnyError;
+use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;
 use crate::LifecycleScriptsConfig;
@@ -28,7 +30,7 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   pub process_state: &'a str,
   pub root_node_modules_dir_path: &'a Path,
   pub on_ran_pkg_scripts:
-    &'a dyn Fn(&NpmResolutionPackage) -> std::io::Result<()>,
+    &'a dyn Fn(&NpmResolutionPackage) -> Result<(), JsErrorBox>,
   pub snapshot: &'a NpmResolutionSnapshot,
   pub system_packages: &'a [NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
@@ -72,13 +74,14 @@ pub trait LifecycleScriptsStrategy {
 }
 
 pub fn has_lifecycle_scripts(
+  sys: &impl FsMetadata,
   extra: &NpmPackageExtraInfo,
   package_path: &Path,
 ) -> bool {
   if let Some(install) = extra.scripts.get("install") {
     {
       // default script
-      if !is_broken_default_install_script(install, package_path) {
+      if !is_broken_default_install_script(sys, install, package_path) {
         return true;
       }
     }
@@ -91,13 +94,16 @@ pub fn has_lifecycle_scripts(
 // but it always fails if the package excludes the `binding.gyp` file when they publish.
 // (for example, `fsevents` hits this)
 pub fn is_broken_default_install_script(
+  sys: &impl FsMetadata,
   script: &str,
   package_path: &Path,
 ) -> bool {
-  script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
+  script == "node-gyp rebuild"
+    && !sys.fs_exists_no_err(package_path.join("binding.gyp"))
 }
 
-pub struct LifecycleScripts<'a> {
+pub struct LifecycleScripts<'a, TSys: FsMetadata> {
+  sys: &'a TSys,
   packages_with_scripts: Vec<PackageWithScript<'a>>,
   packages_with_scripts_not_run: Vec<(&'a NpmResolutionPackage, PathBuf)>,
 
@@ -105,21 +111,21 @@ pub struct LifecycleScripts<'a> {
   strategy: Box<dyn LifecycleScriptsStrategy + 'a>,
 }
 
-impl<'a> LifecycleScripts<'a> {
+impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
   pub fn new<TLifecycleScriptsStrategy: LifecycleScriptsStrategy + 'a>(
+    sys: &'a TSys,
     config: &'a LifecycleScriptsConfig,
     strategy: TLifecycleScriptsStrategy,
   ) -> Self {
     Self {
+      sys,
       config,
       packages_with_scripts: Vec::new(),
       packages_with_scripts_not_run: Vec::new(),
       strategy: Box::new(strategy),
     }
   }
-}
 
-impl<'a> LifecycleScripts<'a> {
   pub fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
     if !self.strategy.can_run_scripts() {
       return false;
@@ -150,7 +156,7 @@ impl<'a> LifecycleScripts<'a> {
     extra: &NpmPackageExtraInfo,
     package_path: Cow<Path>,
   ) {
-    if has_lifecycle_scripts(extra, &package_path) {
+    if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
         if !self.has_run_scripts(package) {
           self.packages_with_scripts.push(PackageWithScript {

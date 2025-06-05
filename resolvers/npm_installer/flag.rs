@@ -1,167 +1,227 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
+pub use inner::LaxSingleProcessFsFlag;
+pub use inner::LaxSingleProcessFsFlagSys;
 
-use crate::Reporter;
+#[cfg(not(target_arch = "wasm32"))]
+mod inner {
+  use std::path::PathBuf;
+  use std::sync::Arc;
+  use std::time::Duration;
 
-struct LaxSingleProcessFsFlagInner {
-  file_path: PathBuf,
-  fs_file: std::fs::File,
-  finished_token: Arc<tokio_util::sync::CancellationToken>,
-}
+  use deno_unsync::sync::AtomicFlag;
+  use sys_traits::FsFileLock;
+  use sys_traits::FsMetadataValue;
 
-impl Drop for LaxSingleProcessFsFlagInner {
-  fn drop(&mut self) {
-    // kill the poll thread
-    self.finished_token.cancel();
-    // release the file lock
-    if let Err(err) = fs3::FileExt::unlock(&self.fs_file) {
-      log::debug!(
-        "Failed releasing lock for {}. {:#}",
-        self.file_path.display(),
-        err
-      );
+  use crate::Reporter;
+
+  #[sys_traits::auto_impl]
+  pub trait LaxSingleProcessFsFlagSys:
+    sys_traits::FsOpen
+    + sys_traits::FsMetadata
+    + sys_traits::FsWrite
+    + sys_traits::ThreadSleep
+    + sys_traits::SystemTimeNow
+    + Clone
+    + Send
+    + Sync
+    + 'static
+  {
+  }
+
+  struct LaxSingleProcessFsFlagInner<TSys: LaxSingleProcessFsFlagSys> {
+    file_path: PathBuf,
+    fs_file: TSys::File,
+    finished_flag: Arc<AtomicFlag>,
+  }
+
+  impl<TSys: LaxSingleProcessFsFlagSys> Drop
+    for LaxSingleProcessFsFlagInner<TSys>
+  {
+    fn drop(&mut self) {
+      // kill the poll thread
+      self.finished_flag.raise();
+      // release the file lock
+      if let Err(err) = self.fs_file.fs_file_unlock() {
+        log::debug!(
+          "Failed releasing lock for {}. {:#}",
+          self.file_path.display(),
+          err
+        );
+      }
     }
   }
-}
 
-/// A file system based flag that will attempt to synchronize multiple
-/// processes so they go one after the other. In scenarios where
-/// synchronization cannot be achieved, it will allow the current process
-/// to proceed.
-///
-/// This should only be used in places where it's ideal for multiple
-/// processes to not update something on the file system at the same time,
-/// but it's not that big of a deal.
-pub struct LaxSingleProcessFsFlag(
-  #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner>,
-);
+  /// A file system based flag that will attempt to synchronize multiple
+  /// processes so they go one after the other. In scenarios where
+  /// synchronization cannot be achieved, it will allow the current process
+  /// to proceed.
+  ///
+  /// This should only be used in places where it's ideal for multiple
+  /// processes to not update something on the file system at the same time,
+  /// but it's not that big of a deal.
+  pub struct LaxSingleProcessFsFlag<TSys: LaxSingleProcessFsFlagSys>(
+    #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner<TSys>>,
+  );
 
-impl LaxSingleProcessFsFlag {
-  pub async fn lock(
-    file_path: PathBuf,
-    reporter: &impl Reporter,
-    long_wait_message: &str,
-  ) -> Self {
-    log::debug!("Acquiring file lock at {}", file_path.display());
-    use fs3::FileExt;
-    let last_updated_path = file_path.with_extension("lock.poll");
-    let start_instant = std::time::Instant::now();
-    let open_result = std::fs::OpenOptions::new()
-      .read(true)
-      .write(true)
-      .create(true)
-      .truncate(false)
-      .open(&file_path);
+  impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
+    pub async fn lock(
+      sys: &TSys,
+      file_path: PathBuf,
+      reporter: &impl Reporter,
+      long_wait_message: &str,
+    ) -> Self {
+      log::debug!("Acquiring file lock at {}", file_path.display());
+      let last_updated_path = file_path.with_extension("lock.poll");
+      let start_instant = std::time::Instant::now();
+      let mut open_options = sys_traits::OpenOptions::new();
+      open_options.create = true;
+      open_options.read = true;
+      open_options.write = true;
+      let open_result = sys.fs_open(&file_path, &open_options);
 
-    match open_result {
-      Ok(fs_file) => {
-        let mut pb_update_guard = None;
-        let mut error_count = 0;
-        while error_count < 10 {
-          let lock_result = fs_file.try_lock_exclusive();
-          let poll_file_update_ms = 100;
-          match lock_result {
-            Ok(_) => {
-              log::debug!("Acquired file lock at {}", file_path.display());
-              let _ignore = std::fs::write(&last_updated_path, "");
-              let token = Arc::new(tokio_util::sync::CancellationToken::new());
+      match open_result {
+        Ok(mut fs_file) => {
+          let mut pb_update_guard = None;
+          let mut error_count = 0;
+          while error_count < 10 {
+            let lock_result =
+              fs_file.fs_file_try_lock(sys_traits::FsFileLockMode::Exclusive);
+            let poll_file_update_ms = 100;
+            match lock_result {
+              Ok(_) => {
+                log::debug!("Acquired file lock at {}", file_path.display());
+                let _ignore = sys.fs_write(&last_updated_path, "");
+                let finished_flag = Arc::new(AtomicFlag::lowered());
 
-              // Spawn a blocking task that will continually update a file
-              // signalling the lock is alive. This is a fail safe for when
-              // a file lock is never released. For example, on some operating
-              // systems, if a process does not release the lock (say it's
-              // killed), then the OS may release it at an indeterminate time
-              //
-              // This uses a blocking task because we use a single threaded
-              // runtime and this is time sensitive so we don't want it to update
-              // at the whims of whatever is occurring on the runtime thread.
-              deno_unsync::spawn_blocking({
-                let token = token.clone();
-                let last_updated_path = last_updated_path.clone();
-                move || {
-                  let mut i = 0;
-                  while !token.is_cancelled() {
-                    i += 1;
-                    let _ignore =
-                      std::fs::write(&last_updated_path, i.to_string());
-                    std::thread::sleep(Duration::from_millis(
-                      poll_file_update_ms,
-                    ));
+                // Spawn a blocking task that will continually update a file
+                // signalling the lock is alive. This is a fail safe for when
+                // a file lock is never released. For example, on some operating
+                // systems, if a process does not release the lock (say it's
+                // killed), then the OS may release it at an indeterminate time
+                //
+                // This uses a blocking task because we use a single threaded
+                // runtime and this is time sensitive so we don't want it to update
+                // at the whims of whatever is occurring on the runtime thread.
+                let sys = sys.clone();
+                deno_unsync::spawn_blocking({
+                  let finished_flag = finished_flag.clone();
+                  let last_updated_path = last_updated_path.clone();
+                  move || {
+                    let mut i = 0;
+                    while !finished_flag.is_raised() {
+                      i += 1;
+                      let _ignore =
+                        sys.fs_write(&last_updated_path, i.to_string());
+                      sys.thread_sleep(Duration::from_millis(
+                        poll_file_update_ms,
+                      ));
+                    }
                   }
-                }
-              });
+                });
 
-              return Self(Some(LaxSingleProcessFsFlagInner {
-                file_path,
-                fs_file,
-                finished_token: token,
-              }));
-            }
-            Err(_) => {
-              // show a message if it's been a while
-              if pb_update_guard.is_none()
-                && start_instant.elapsed().as_millis() > 1_000
-              {
-                let guard = reporter.on_blocking(long_wait_message);
-                pb_update_guard = Some(guard);
+                return Self(Some(LaxSingleProcessFsFlagInner {
+                  file_path,
+                  fs_file,
+                  finished_flag,
+                }));
               }
+              Err(_) => {
+                // show a message if it's been a while
+                if pb_update_guard.is_none()
+                  && start_instant.elapsed().as_millis() > 1_000
+                {
+                  let guard = reporter.on_blocking(long_wait_message);
+                  pb_update_guard = Some(guard);
+                }
 
-              // sleep for a little bit
-              tokio::time::sleep(Duration::from_millis(20)).await;
+                // sleep for a little bit
+                tokio::time::sleep(Duration::from_millis(20)).await;
 
-              // Poll the last updated path to check if it's stopped updating,
-              // which is an indication that the file lock is claimed, but
-              // was never properly released.
-              match std::fs::metadata(&last_updated_path)
-                .and_then(|p| p.modified())
-              {
-                Ok(last_updated_time) => {
-                  let current_time = std::time::SystemTime::now();
-                  match current_time.duration_since(last_updated_time) {
-                    Ok(duration) => {
-                      if duration.as_millis()
-                        > (poll_file_update_ms * 2) as u128
-                      {
-                        // the other process hasn't updated this file in a long time
-                        // so maybe it was killed and the operating system hasn't
-                        // released the file lock yet
-                        return Self(None);
-                      } else {
-                        error_count = 0; // reset
+                // Poll the last updated path to check if it's stopped updating,
+                // which is an indication that the file lock is claimed, but
+                // was never properly released.
+                match sys
+                  .fs_metadata(&last_updated_path)
+                  .and_then(|p| p.modified())
+                {
+                  Ok(last_updated_time) => {
+                    let current_time = sys.sys_time_now();
+                    match current_time.duration_since(last_updated_time) {
+                      Ok(duration) => {
+                        if duration.as_millis()
+                          > (poll_file_update_ms * 2) as u128
+                        {
+                          // the other process hasn't updated this file in a long time
+                          // so maybe it was killed and the operating system hasn't
+                          // released the file lock yet
+                          return Self(None);
+                        } else {
+                          error_count = 0; // reset
+                        }
+                      }
+                      Err(_) => {
+                        error_count += 1;
                       }
                     }
-                    Err(_) => {
-                      error_count += 1;
-                    }
                   }
-                }
-                Err(_) => {
-                  error_count += 1;
+                  Err(_) => {
+                    error_count += 1;
+                  }
                 }
               }
             }
           }
-        }
 
-        drop(pb_update_guard); // explicit for clarity
-        Self(None)
-      }
-      Err(err) => {
-        log::debug!(
-          "Failed to open file lock at {}. {:#}",
-          file_path.display(),
-          err
-        );
-        Self(None) // let the process through
+          drop(pb_update_guard); // explicit for clarity
+          Self(None)
+        }
+        Err(err) => {
+          log::debug!(
+            "Failed to open file lock at {}. {:#}",
+            file_path.display(),
+            err
+          );
+          Self(None) // let the process through
+        }
       }
     }
   }
 }
 
-#[cfg(test)]
+#[cfg(target_arch = "wasm32")]
+mod inner {
+  use std::marker::PhantomData;
+  use std::path::PathBuf;
+
+  use crate::Reporter;
+
+  // Don't bother locking the folder when installing via Wasm for now.
+  // In the future, what we'd need is a way to spawn a thread (worker)
+  // and have it reliably do the update of the .poll file
+  #[sys_traits::auto_impl]
+  pub trait LaxSingleProcessFsFlagSys: Clone + Send + Sync + 'static {}
+
+  pub struct LaxSingleProcessFsFlag<TSys: LaxSingleProcessFsFlagSys> {
+    _data: PhantomData<TSys>,
+  }
+
+  impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
+    pub async fn lock(
+      _sys: &TSys,
+      _file_path: PathBuf,
+      _reporter: &impl Reporter,
+      _long_wait_message: &str,
+    ) -> Self {
+      Self {
+        _data: Default::default(),
+      }
+    }
+  }
+}
+
+#[allow(clippy::disallowed_methods)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod test {
   use std::sync::Arc;
   use std::time::Duration;
@@ -174,7 +234,7 @@ mod test {
   use crate::LogReporter;
 
   #[tokio::test]
-  async fn lax_fs_lock() {
+  async fn lax_fs_lock_basic() {
     let temp_dir = TempDir::new();
     let lock_path = temp_dir.path().join("file.lock");
     let signal1 = Arc::new(Notify::new());
@@ -190,6 +250,7 @@ mod test {
       let temp_dir = temp_dir.clone();
       async move {
         let flag = LaxSingleProcessFsFlag::lock(
+          &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
           &LogReporter,
           "waiting",
@@ -212,6 +273,7 @@ mod test {
         signal1.notified().await;
         signal2.notify_one();
         let flag = LaxSingleProcessFsFlag::lock(
+          &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
           &LogReporter,
           "waiting",
@@ -247,6 +309,7 @@ mod test {
       let expected_order = expected_order.clone();
       tasks.push(tokio::spawn(async move {
         let flag = LaxSingleProcessFsFlag::lock(
+          &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
           &LogReporter,
           "waiting",

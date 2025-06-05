@@ -7,7 +7,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleExportsAndReExports;
 use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
-use deno_graph::ParsedSourceStore;
+use deno_graph::ast::ParsedSourceStore;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
