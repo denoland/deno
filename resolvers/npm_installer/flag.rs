@@ -9,7 +9,7 @@ mod inner {
   use std::sync::Arc;
   use std::time::Duration;
 
-  use deno_unsync::sync::AtomicFlag;
+  use parking_lot::Mutex;
   use sys_traits::FsFileLock;
   use sys_traits::FsMetadataValue;
 
@@ -30,18 +30,47 @@ mod inner {
   {
   }
 
+  struct PollFile<TSys: LaxSingleProcessFsFlagSys> {
+    sys: TSys,
+    file_path: PathBuf,
+    count: usize,
+  }
+
+  impl<TSys: LaxSingleProcessFsFlagSys> Drop for PollFile<TSys> {
+    fn drop(&mut self) {
+      // cleanup the poll file so the node_modules folder is more
+      // deterministic and so it doesn't end up in `deno compile`
+      _ = self.sys.fs_remove_file(&self.file_path);
+    }
+  }
+
+  impl<TSys: LaxSingleProcessFsFlagSys> PollFile<TSys> {
+    pub fn new(sys: TSys, file_path: PathBuf) -> Self {
+      Self {
+        sys,
+        file_path,
+        count: 0,
+      }
+    }
+
+    pub fn touch(&mut self) {
+      self.count += 1;
+      _ = self.sys.fs_write(&self.file_path, self.count.to_string());
+    }
+  }
+
   struct LaxSingleProcessFsFlagInner<TSys: LaxSingleProcessFsFlagSys> {
     file_path: PathBuf,
     fs_file: TSys::File,
-    finished_flag: Arc<AtomicFlag>,
+    poll_file: Arc<Mutex<Option<PollFile<TSys>>>>,
   }
 
   impl<TSys: LaxSingleProcessFsFlagSys> Drop
     for LaxSingleProcessFsFlagInner<TSys>
   {
     fn drop(&mut self) {
-      // kill the poll thread
-      self.finished_flag.raise();
+      // kill the poll thread and clean up the poll file
+      self.poll_file.lock().take();
       // release the file lock
       if let Err(err) = self.fs_file.fs_file_unlock() {
         log::debug!(
@@ -92,8 +121,10 @@ mod inner {
             match lock_result {
               Ok(_) => {
                 log::debug!("Acquired file lock at {}", file_path.display());
-                let _ignore = sys.fs_write(&last_updated_path, "");
-                let finished_flag = Arc::new(AtomicFlag::lowered());
+                let mut poll_file =
+                  PollFile::new(sys.clone(), last_updated_path);
+                poll_file.touch();
+                let poll_file = Arc::new(Mutex::new(Some(poll_file)));
 
                 // Spawn a blocking task that will continually update a file
                 // signalling the lock is alive. This is a fail safe for when
@@ -106,28 +137,21 @@ mod inner {
                 // at the whims of whatever is occurring on the runtime thread.
                 let sys = sys.clone();
                 deno_unsync::spawn_blocking({
-                  let finished_flag = finished_flag.clone();
-                  let last_updated_path = last_updated_path.clone();
-                  move || {
-                    let mut i = 0;
-                    while !finished_flag.is_raised() {
-                      i += 1;
-                      let _ignore =
-                        sys.fs_write(&last_updated_path, i.to_string());
-                      sys.thread_sleep(Duration::from_millis(
-                        poll_file_update_ms,
-                      ));
+                  let poll_file = poll_file.clone();
+                  move || loop {
+                    sys
+                      .thread_sleep(Duration::from_millis(poll_file_update_ms));
+                    match &mut *poll_file.lock() {
+                      Some(poll_file) => poll_file.touch(),
+                      None => return,
                     }
-                    // cleanup the poll file so the node_modules folder is more
-                    // deterministic and so it doesn't end up in `deno compile`
-                    _ = sys.fs_remove_file(&last_updated_path);
                   }
                 });
 
                 return Self(Some(LaxSingleProcessFsFlagInner {
                   file_path,
                   fs_file,
-                  finished_flag,
+                  poll_file,
                 }));
               }
               Err(_) => {
@@ -271,6 +295,7 @@ mod test {
     });
     let signal5 = Arc::new(Notify::new());
     tokio::spawn({
+      let lock_path = lock_path.clone();
       let temp_dir = temp_dir.clone();
       let signal5 = signal5.clone();
       async move {
@@ -294,6 +319,9 @@ mod test {
     signal4.notify_one();
     signal5.notified().await;
     assert_eq!(temp_dir.read_to_string("file.txt"), "update2");
+
+    // ensure this is cleaned up
+    assert!(!lock_path.with_extension("lock.poll").exists())
   }
 
   #[tokio::test]
