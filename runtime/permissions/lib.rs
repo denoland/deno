@@ -3266,6 +3266,27 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn query_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, ImportDescriptorParseError> {
+    let inner = self.inner.lock();
+    let permission = &inner.import;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
+    Ok(
+      permission.query(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // revoke
 
   #[inline(always)]
@@ -3376,6 +3397,22 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn revoke_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, ImportDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.revoke(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // request
 
   #[inline(always)]
@@ -3482,6 +3519,22 @@ impl PermissionsContainer {
           })
           .transpose()?
           .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, ImportDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.request(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+        }
+        .as_ref(),
       ),
     )
   }
