@@ -158,11 +158,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
   );
-
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -212,11 +211,10 @@ fn multifile_coverage() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
   );
-
-  output.assert_exit_code(0);
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
@@ -375,11 +373,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
   );
-
-  output.assert_exit_code(0);
 
   let output = context
     .new_command()
@@ -391,10 +388,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
   );
-  output.assert_exit_code(0);
 }
 
 #[test]

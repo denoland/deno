@@ -40,7 +40,7 @@ use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceNpmPatchPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
-use deno_resolver::NodeAndNpmReqResolver;
+use deno_resolver::NodeAndNpmResolvers;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1005,14 +1005,20 @@ impl<'a> ResolverFactory<'a> {
       let deno_resolver =
         Arc::new(deno_resolver::RawDenoResolver::new(DenoResolverOptions {
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
-          node_and_req_resolver: match (self.node_resolver(), npm_req_resolver)
-          {
-            (Some(node_resolver), Some(npm_req_resolver)) => {
-              Some(NodeAndNpmReqResolver {
-                node_resolver: node_resolver.clone(),
-                npm_req_resolver,
-              })
-            }
+          node_and_req_resolver: match (
+            self.node_resolver(),
+            npm_req_resolver,
+            self.npm_resolver(),
+          ) {
+            (
+              Some(node_resolver),
+              Some(npm_req_resolver),
+              Some(npm_resolver),
+            ) => Some(NodeAndNpmResolvers {
+              node_resolver: node_resolver.clone(),
+              npm_resolver: npm_resolver.clone(),
+              npm_req_resolver,
+            }),
             _ => None,
           },
           workspace_resolver: self
@@ -1043,6 +1049,7 @@ impl<'a> ResolverFactory<'a> {
         }));
       Arc::new(CliResolver::new(
         deno_resolver,
+        CliSys::default(),
         self.services.found_pkg_json_dep_flag.clone(),
         Some(Arc::new(on_resolve_diagnostic)),
       ))

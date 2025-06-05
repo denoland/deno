@@ -41,6 +41,7 @@ const {
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
   SymbolFor,
+  SymbolSpecies,
   SymbolToPrimitive,
   TypeError,
   TypeErrorPrototype,
@@ -56,7 +57,12 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { op_is_ascii, op_is_utf8, op_transcode } from "ext:core/ops";
+import {
+  op_is_ascii,
+  op_is_utf8,
+  op_node_call_is_from_dependency,
+  op_transcode,
+} from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -86,12 +92,14 @@ import {
   genericNodeError,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
+import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
 export { atob, Blob, btoa };
 
@@ -128,6 +136,50 @@ export const constants = {
   MAX_STRING_LENGTH: kStringMaxLength,
 };
 
+let bufferWarningAlreadyEmitted = false;
+let nodeModulesCheckCounter = 0;
+const bufferWarning = "Buffer() is deprecated due to security and usability " +
+  "issues. Please use the Buffer.alloc(), " +
+  "Buffer.allocUnsafe(), or Buffer.from() methods instead.";
+
+function showFlaggedDeprecation() {
+  if (
+    bufferWarningAlreadyEmitted ||
+    ++nodeModulesCheckCounter > 10000 ||
+    (!getOptionValue("--pending-deprecation") &&
+      op_node_call_is_from_dependency())
+  ) {
+    // We don't emit a warning, because we either:
+    // - Already did so, or
+    // - Already checked too many times whether a call is coming
+    //   from dependencies and want to stop slowing down things, or
+    // - We aren't running with `--pending-deprecation` enabled,
+    //   and the code is inside `node_modules`.
+    return;
+  }
+
+  process.emitWarning(bufferWarning, "DeprecationWarning", "DEP0005");
+  bufferWarningAlreadyEmitted = true;
+}
+
+class FastBuffer extends Uint8Array {
+  constructor(arg0, arg1, arg2) {
+    super(arg0, arg1, arg2);
+  }
+}
+
+FastBuffer.prototype.constructor = Buffer;
+Buffer.prototype = FastBuffer.prototype;
+
+ObjectDefineProperty(Buffer, SymbolSpecies, {
+  __proto__: null,
+  enumerable: false,
+  configurable: true,
+  get() {
+    return FastBuffer;
+  },
+});
+
 ObjectDefineProperty(Buffer.prototype, "parent", {
   __proto__: null,
   enumerable: true,
@@ -156,9 +208,8 @@ function createBuffer(length) {
       'The value "' + length + '" is invalid for option "size"',
     );
   }
-  const buf = new Uint8Array(length);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+
+  return new FastBuffer(length);
 }
 
 /**
@@ -173,6 +224,7 @@ function isDetachedBuffer(O) {
 }
 
 export function Buffer(arg, encodingOrOffset, length) {
+  showFlaggedDeprecation();
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
       throw new codes.ERR_INVALID_ARG_TYPE(
@@ -186,7 +238,25 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-Buffer.poolSize = 8192;
+Buffer.poolSize = 8 * 1024;
+let poolSize, poolOffset, allocPool, allocBuffer;
+
+function createPool() {
+  poolSize = Buffer.poolSize;
+  allocBuffer = new Uint8Array(poolSize);
+  allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
+  allocPool[untransferableSymbol] = true;
+  poolOffset = 0;
+}
+createPool();
+
+function alignPool() {
+  // Ensure aligned slices
+  if (poolOffset & 0x7) {
+    poolOffset |= 0x7;
+    poolOffset++;
+  }
+}
 
 function _from(value, encodingOrOffset, length) {
   if (typeof value === "string") {
@@ -283,6 +353,21 @@ ObjectSetPrototypeOf(Buffer.prototype, Uint8ArrayPrototype);
 
 ObjectSetPrototypeOf(Buffer, Uint8Array);
 
+// Identical to the built-in %TypedArray%.of(), but avoids using the deprecated
+// Buffer() constructor. Must use arrow function syntax to avoid automatically
+// adding a `prototype` property and making the function a constructor.
+//
+// Refs: https://tc39.github.io/ecma262/#sec-%typedarray%.of
+// Refs: https://esdiscuss.org/topic/isconstructor#content-11
+const of = (...items) => {
+  const newObj = createBuffer(items.length);
+  for (let k = 0; k < items.length; k++) {
+    newObj[k] = items[k];
+  }
+  return newObj;
+};
+Buffer.of = of;
+
 function assertSize(size) {
   validateNumber(size, "size", 0, kMaxLength);
 }
@@ -329,20 +414,36 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+  const maxLength = Buffer.poolSize >>> 1;
   const length = byteLength(string, encoding) | 0;
-  let buf = createBuffer(length);
-  const actual = buf.write(string, encoding);
-  if (actual !== length) {
-    // deno-lint-ignore prefer-primordials
-    buf = buf.slice(0, actual);
+  if (length >= maxLength) {
+    let buf = createBuffer(length);
+    const actual = buf.write(string, encoding);
+    if (actual !== length) {
+      // deno-lint-ignore prefer-primordials
+      buf = buf.slice(0, actual);
+    }
+    return buf;
   }
-  return buf;
+
+  if (length > (poolSize - poolOffset)) {
+    createPool();
+  }
+  const ops = getEncodingOps(encoding);
+  let b = new FastBuffer(allocPool, poolOffset, length);
+  const actual = ops.write(b, string, 0, length);
+  if (actual !== length) {
+    // byteLength() may overestimate the length, so we slice it down.
+    b = new FastBuffer(allocPool, poolOffset, actual);
+  }
+
+  poolOffset += actual;
+  alignPool();
+  return b;
 }
 
 function fromArrayLike(obj) {
-  const buf = new Uint8Array(obj);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+  return new FastBuffer(obj);
 }
 
 function fromObject(obj) {
@@ -380,7 +481,7 @@ ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8ArrayPrototype);
 ObjectSetPrototypeOf(SlowBuffer, Uint8Array);
 
 const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
-  return b != null && b._isBuffer === true && b !== BufferPrototype;
+  return ObjectPrototypeIsPrototypeOf(Buffer.prototype, b);
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
@@ -993,9 +1094,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  if (length === undefined) {
-    length = maxLength;
-  } else {
+  if (length !== undefined) {
     // Convert length to non-negative integer.
     length = +length;
     if (length > 0) {
@@ -1007,9 +1106,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  const buffer = new Uint8Array(obj, byteOffset, length);
-  ObjectSetPrototypeOf(buffer, BufferPrototype);
-  return buffer;
+  return new FastBuffer(obj, byteOffset, length);
 }
 
 function _base64Slice(buf, start, end) {

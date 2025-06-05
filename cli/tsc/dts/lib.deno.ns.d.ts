@@ -3442,24 +3442,6 @@ declare namespace Deno {
    */
   export function truncateSync(name: string, len?: number): void;
 
-  /** @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
   /**
    * Additional information for FsEvent objects with the "other" kind.
    *

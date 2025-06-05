@@ -18,10 +18,10 @@ use deno_ast::SourceTextProvider;
 use deno_ast::TextChange;
 use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
-use deno_graph::DependencyDescriptor;
-use deno_graph::DynamicTemplatePart;
-use deno_graph::StaticDependencyKind;
-use deno_graph::TypeScriptReference;
+use deno_graph::analysis::DependencyDescriptor;
+use deno_graph::analysis::DynamicTemplatePart;
+use deno_graph::analysis::StaticDependencyKind;
+use deno_graph::analysis::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_resolver::workspace::MappedResolution;
@@ -510,12 +510,12 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     &self,
     module_url: &ModuleSpecifier,
     text_info: &SourceTextInfo,
-    dep: &deno_graph::DynamicDependencyDescriptor,
+    dep: &deno_graph::analysis::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> bool {
     match &dep.argument {
-      deno_graph::DynamicArgument::String(specifier) => {
+      deno_graph::analysis::DynamicArgument::String(specifier) => {
         let range = to_range(text_info, &dep.argument_range);
         let maybe_relative_index =
           text_info.text_str()[range.start..range.end].find(specifier);
@@ -539,49 +539,51 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
         }
         true
       }
-      deno_graph::DynamicArgument::Template(parts) => match parts.first() {
-        Some(DynamicTemplatePart::String { value: specifier }) => {
-          // relative doesn't need to be modified
-          let is_relative =
-            specifier.starts_with("./") || specifier.starts_with("../");
-          if is_relative {
-            return true;
+      deno_graph::analysis::DynamicArgument::Template(parts) => {
+        match parts.first() {
+          Some(DynamicTemplatePart::String { value: specifier }) => {
+            // relative doesn't need to be modified
+            let is_relative =
+              specifier.starts_with("./") || specifier.starts_with("../");
+            if is_relative {
+              return true;
+            }
+            if !specifier.ends_with('/') {
+              return false;
+            }
+            let unfurled = self.unfurl_specifier_reporting_diagnostic(
+              module_url,
+              specifier,
+              deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
+              text_info,
+              &dep.argument_range,
+              diagnostic_reporter,
+            );
+            let Some(unfurled) = unfurled else {
+              return true; // nothing to unfurl
+            };
+            let range = to_range(text_info, &dep.argument_range);
+            let maybe_relative_index =
+              text_info.text_str()[range.start..].find(specifier);
+            let Some(relative_index) = maybe_relative_index else {
+              return false;
+            };
+            let start = range.start + relative_index;
+            text_changes.push(deno_ast::TextChange {
+              range: start..start + specifier.len(),
+              new_text: unfurled,
+            });
+            true
           }
-          if !specifier.ends_with('/') {
-            return false;
+          Some(DynamicTemplatePart::Expr) => {
+            false // failed analyzing
           }
-          let unfurled = self.unfurl_specifier_reporting_diagnostic(
-            module_url,
-            specifier,
-            deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
-            text_info,
-            &dep.argument_range,
-            diagnostic_reporter,
-          );
-          let Some(unfurled) = unfurled else {
-            return true; // nothing to unfurl
-          };
-          let range = to_range(text_info, &dep.argument_range);
-          let maybe_relative_index =
-            text_info.text_str()[range.start..].find(specifier);
-          let Some(relative_index) = maybe_relative_index else {
-            return false;
-          };
-          let start = range.start + relative_index;
-          text_changes.push(deno_ast::TextChange {
-            range: start..start + specifier.len(),
-            new_text: unfurled,
-          });
-          true
+          None => {
+            true // ignore
+          }
         }
-        Some(DynamicTemplatePart::Expr) => {
-          false // failed analyzing
-        }
-        None => {
-          true // ignore
-        }
-      },
-      deno_graph::DynamicArgument::Expr => {
+      }
+      deno_graph::analysis::DynamicArgument::Expr => {
         false // failed analyzing
       }
     }
@@ -591,7 +593,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
-    module_info: &deno_graph::ModuleInfo,
+    module_info: &deno_graph::analysis::ModuleInfo,
     text_changes: &mut Vec<TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) {
@@ -757,7 +759,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_graph::ParserModuleAnalyzer;
+  use deno_graph::ast::ParserModuleAnalyzer;
   use deno_resolver::workspace::SloppyImportsOptions;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
