@@ -91,14 +91,18 @@ impl WCStr {
   }
 
   pub fn from_wchars(wchars: &[u16]) -> &WCStr {
-    unsafe { &*(wchars as *const [u16] as *const WCStr) }
+    if wchars.last().unwrap_or(&1) == &0 {
+      unsafe { &*(wchars as *const [u16] as *const WCStr) }
+    } else {
+      panic!("wchars must have a null terminator");
+    }
   }
 
   pub fn as_ptr(&self) -> *const u16 {
     self.buf.as_ptr()
   }
 
-  fn has_nul(&self) -> bool {
+  pub fn has_nul(&self) -> bool {
     if self.buf.is_empty() {
       false
     } else {

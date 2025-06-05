@@ -258,6 +258,8 @@ fn quote_cmd_arg(src: &WCStr, target: &mut Vec<u16>) {
     return;
   }
 
+  debug_assert!(src.has_nul());
+
   if unsafe { wcspbrk(src.as_ptr(), w!(" \t\"")) }.is_null() {
     // No quotation needed
     target.extend(src.wchars_no_null());
@@ -340,6 +342,7 @@ fn make_program_args(
     if verbatim_arguments {
       dst.extend(temp_buffer.as_slice());
     } else {
+      temp_buffer.push(0);
       quote_cmd_arg(WCStr::from_wchars(&temp_buffer), &mut dst);
     }
 
