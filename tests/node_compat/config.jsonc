@@ -303,6 +303,7 @@
       "test-buffer-over-max-length.js",
       "test-buffer-parent-property.js",
       "test-buffer-pending-deprecation.js",
+      "test-buffer-pool-untransferable.js",
       "test-buffer-read.js",
       "test-buffer-readdouble.js",
       "test-buffer-readfloat.js",
