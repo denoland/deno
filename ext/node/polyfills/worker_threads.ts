@@ -35,6 +35,7 @@ const {
   Error,
   ObjectHasOwn,
   PromiseResolve,
+  FunctionPrototypeCall,
   SafeSet,
   Symbol,
   SymbolFor,
@@ -589,7 +590,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       }
     }
 
-    return webPostMessage.call(
+    return FunctionPrototypeCall(
+      webPostMessage,
       port,
       message,
       transferList,
