@@ -681,7 +681,7 @@ fn spawn_child(
   let stdin_rid = child
     .stdin
     .take()
-    .map(|stdin| tokio::process::ChildStdin::from_std(stdin))
+    .map(tokio::process::ChildStdin::from_std)
     .transpose()?
     .map(|stdin| state.resource_table.add(ChildStdinResource::from(stdin)));
 
@@ -695,7 +695,7 @@ fn spawn_child(
   let stdout_rid = child
     .stdout
     .take()
-    .map(|stdout| tokio::process::ChildStdout::from_std(stdout))
+    .map(tokio::process::ChildStdout::from_std)
     .transpose()?
     .map(|stdout| state.resource_table.add(ChildStdoutResource::from(stdout)));
 
@@ -709,7 +709,7 @@ fn spawn_child(
   let stderr_rid = child
     .stderr
     .take()
-    .map(|stderr| tokio::process::ChildStderr::from_std(stderr))
+    .map(tokio::process::ChildStderr::from_std)
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 

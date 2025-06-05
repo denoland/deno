@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#![allow(clippy::undocumented_unsafe_blocks)]
 #![cfg(windows)]
 
 #[cfg(test)]
@@ -284,7 +285,7 @@ impl Command {
   }
 
   pub fn get_current_dir(&self) -> Option<&Path> {
-    self.cwd.as_deref().map(|s| Path::new(s))
+    self.cwd.as_deref().map(Path::new)
   }
 
   pub fn current_dir<S: AsRef<Path>>(&mut self, cwd: S) -> &mut Self {
@@ -432,7 +433,7 @@ impl Command {
     let mut stdio = Vec::with_capacity(3 + self.extra_handles.len());
     stdio.extend([stdin, stdout, stderr]);
     stdio.extend(self.extra_handles.iter().map(|h| {
-      h.map(|h| StdioContainer::RawHandle(h))
+      h.map(StdioContainer::RawHandle)
         .unwrap_or(StdioContainer::Ignore)
     }));
 

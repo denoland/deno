@@ -186,6 +186,7 @@ pub fn anon_pipe(
     //
     // Additionally we don't enable overlapped mode on this because most
     // client processes aren't enabled to work with that.
+    #[allow(clippy::disallowed_methods)]
     let mut opts = OpenOptions::new();
     opts.write(ours_readable);
     opts.read(!ours_readable);
@@ -196,7 +197,7 @@ pub fn anon_pipe(
       GENERIC_READ
     };
     let size = size_of::<SECURITY_ATTRIBUTES>();
-    let mut sa = SECURITY_ATTRIBUTES {
+    let sa = SECURITY_ATTRIBUTES {
       nLength: size as u32,
       lpSecurityDescriptor: ptr::null_mut(),
       bInheritHandle: their_handle_inheritable as i32,
@@ -209,7 +210,7 @@ pub fn anon_pipe(
       path_utf16.as_ptr(),
       access,
       0,
-      &mut sa,
+      &sa,
       OPEN_EXISTING,
       0,
       ptr::null_mut(),
@@ -364,9 +365,9 @@ impl<'a> AsyncPipe<'a> {
   /// Returns values:
   ///
   /// * `true` - finished any pending read and the pipe is not at EOF (keep
-  ///            going)
+  ///   going)
   /// * `false` - finished any pending read and pipe is at EOF (stop issuing
-  ///             reads)
+  ///   reads)
   fn result(&mut self) -> io::Result<bool> {
     let amt = match self.state {
       State::NotReading => return Ok(true),
@@ -395,7 +396,7 @@ impl<'a> AsyncPipe<'a> {
   }
 }
 
-impl<'a> Drop for AsyncPipe<'a> {
+impl Drop for AsyncPipe<'_> {
   fn drop(&mut self) {
     match self.state {
       State::Reading => {}

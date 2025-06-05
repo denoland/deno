@@ -45,7 +45,7 @@ impl CommandEnv {
       }
     }
     for (k, maybe_v) in &self.vars {
-      if let &Some(ref v) = maybe_v {
+      if let Some(v) = maybe_v {
         result.insert(k.clone(), v.clone());
       } else {
         result.remove(k);

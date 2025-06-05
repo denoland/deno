@@ -47,8 +47,7 @@ const FDEV: u8 = 0x40;
 // const FTEXT: u8 = 0x80;
 
 const fn child_stdio_size(count: usize) -> usize {
-  (size_of::<c_int>() + size_of::<u8>() * count + size_of::<usize>() * count)
-    as usize
+  size_of::<c_int>() + size_of::<u8>() * count + size_of::<usize>() * count
 }
 
 unsafe fn child_stdio_count(buffer: *mut u8) -> usize {
@@ -147,7 +146,7 @@ pub unsafe fn uv_duplicate_handle(
   handle: HANDLE,
 ) -> Result<HANDLE, std::io::Error> {
   if handle == INVALID_HANDLE_VALUE
-    || handle == null_mut()
+    || handle.is_null()
     || handle == ((-2i32) as usize as HANDLE)
   {
     return Err(std::io::Error::new(

@@ -16,7 +16,6 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::FromRawHandle;
 use std::os::windows::io::OwnedHandle;
 use std::pin::Pin;
-use std::ptr::null;
 use std::ptr::null_mut;
 use std::ptr::{self};
 use std::sync::OnceLock;
@@ -259,13 +258,13 @@ fn quote_cmd_arg(src: &WCStr, target: &mut Vec<u16>) {
     return;
   }
 
-  if unsafe { wcspbrk(src.as_ptr(), w!(" \t\"")) } == null() {
+  if unsafe { wcspbrk(src.as_ptr(), w!(" \t\"")) }.is_null() {
     // No quotation needed
     target.extend(src.wchars_no_null());
     return;
   }
 
-  if unsafe { wcspbrk(src.as_ptr(), w!("\"\\")) } == null() {
+  if unsafe { wcspbrk(src.as_ptr(), w!("\"\\")) }.is_null() {
     // No embedded double quotes or backlashes, so I can just wrap
     // quote marks around the whole thing.
     target.push(wchar!('"'));
@@ -522,30 +521,30 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
     WCString::new(cwd_option)
   } else {
     // Inherit cwd
+    #[allow(clippy::disallowed_methods)]
     let cwd = std::env::current_dir().unwrap();
     WCString::new(cwd)
   };
 
   // If cwd is too long, shorten it
-  let cwd = if cwd.len_no_nul() as usize
-    >= windows_sys::Win32::Foundation::MAX_PATH as usize
-  {
-    unsafe {
-      let cwd_ptr = cwd.as_ptr();
-      let mut short_buf = vec![0u16; cwd.len_no_nul() as usize];
-      let cwd_len = GetShortPathNameW(
-        cwd_ptr,
-        short_buf.as_mut_ptr(),
-        cwd.len_no_nul() as u32,
-      );
-      if cwd_len == 0 {
-        return Err(std::io::Error::last_os_error());
+  let cwd =
+    if cwd.len_no_nul() >= windows_sys::Win32::Foundation::MAX_PATH as usize {
+      unsafe {
+        let cwd_ptr = cwd.as_ptr();
+        let mut short_buf = vec![0u16; cwd.len_no_nul()];
+        let cwd_len = GetShortPathNameW(
+          cwd_ptr,
+          short_buf.as_mut_ptr(),
+          cwd.len_no_nul() as u32,
+        );
+        if cwd_len == 0 {
+          return Err(std::io::Error::last_os_error());
+        }
+        WCString::from_vec(short_buf)
       }
-      WCString::from_vec(short_buf)
-    }
-  } else {
-    cwd
-  };
+    } else {
+      cwd
+    };
 
   // Get PATH environment variable
   let path = child_paths
@@ -1062,7 +1061,7 @@ fn search_path(
   // Check if the filename includes an extension
   let name_slice = &file[file_name_start..];
   let dot_pos = name_slice.iter().position(|&c| c == wchar!('.'));
-  let name_has_ext = dot_pos.map_or(false, |pos| pos + 1 < name_slice.len());
+  let name_has_ext = dot_pos.is_some_and(|pos| pos + 1 < name_slice.len());
 
   if file_has_dir {
     // The file has a path inside, don't use path
@@ -1086,10 +1085,7 @@ fn search_path(
     }
 
     // If path is None, we've checked cwd and there's nothing else to do
-    let path = match path {
-      Some(p) => p,
-      None => return None,
-    };
+    let path = path?;
 
     // Handle path segments
     let mut dir_end = 0;
@@ -1142,9 +1138,10 @@ fn search_path(
       let mut dir_path = &path[dir_start..dir_end];
 
       // Adjust if the path is quoted.
-      if is_quoted && dir_path.len() > 0 {
+      if is_quoted && !dir_path.is_empty() {
         dir_path = &dir_path[1..]; // Skip opening quote
-        if dir_path.len() > 0 && (dir_path[dir_path.len() - 1] == quote_char) {
+        if !dir_path.is_empty() && (dir_path[dir_path.len() - 1] == quote_char)
+        {
           dir_path = &dir_path[..dir_path.len() - 1]; // Skip closing quote
         }
       }
@@ -1180,7 +1177,7 @@ fn uv__kill(
   signum: i32,
 ) -> Result<(), ProcessKillError> {
   // Validate signal number
-  if signum < 0 || signum >= NSIG {
+  if !(0..NSIG).contains(&signum) {
     return Err(ProcessKillError::from_uv(uv_error::UV_EINVAL));
   }
 
@@ -1286,9 +1283,8 @@ fn uv__kill(
         }
 
         // Concatenate basename
-        for i in 0..basename_len {
-          dump_name[dump_folder_len + i] = basename_buf[i];
-        }
+        dump_name[dump_folder_len..(basename_len + dump_folder_len)]
+          .copy_from_slice(&basename_buf[..basename_len]);
         dump_folder_len += basename_len;
 
         // Add dot and PID
@@ -1314,16 +1310,13 @@ fn uv__kill(
 
           // Reverse the digits
           for i in 0..pid_len / 2 {
-            let temp = pid_digits[i];
-            pid_digits[i] = pid_digits[pid_len - 1 - i];
-            pid_digits[pid_len - 1 - i] = temp;
+            pid_digits.swap(i, pid_len - 1 - i);
           }
         }
 
         // Add PID digits to dump_name
-        for i in 0..pid_len {
-          dump_name[dump_folder_len + i] = pid_digits[i];
-        }
+        dump_name[dump_folder_len..(pid_len + dump_folder_len)]
+          .copy_from_slice(&pid_digits[..pid_len]);
         dump_folder_len += pid_len;
 
         // Add .dmp extension
@@ -1428,7 +1421,7 @@ fn uv__kill(
           }
         }
 
-        return Err(ProcessKillError::from_sys_error(err));
+        Err(ProcessKillError::from_sys_error(err))
       }
     }
 
@@ -1444,22 +1437,16 @@ fn uv__kill(
       }
 
       match WaitForSingleObject(process_handle, 0) {
-        WAIT_OBJECT_0 => {
-          return Err(ProcessKillError::esrch());
-        }
-        WAIT_FAILED => {
-          return Err(ProcessKillError::from_last_error());
-        }
-        WAIT_TIMEOUT => return Ok(()),
-        _ => {
-          return Err(ProcessKillError::from_uv(uv_error::UV_UNKNOWN));
-        }
+        WAIT_OBJECT_0 => Err(ProcessKillError::esrch()),
+        WAIT_FAILED => Err(ProcessKillError::from_last_error()),
+        WAIT_TIMEOUT => Ok(()),
+        _ => Err(ProcessKillError::from_uv(uv_error::UV_UNKNOWN)),
       }
     },
 
     // Unsupported signal
     _ => {
-      return Err(ProcessKillError::from_uv(uv_error::UV_EINVAL)); // TODO: is this correct?
+      Err(ProcessKillError::from_uv(uv_error::UV_EINVAL)) // TODO: is this correct?
     }
   }
 }
@@ -1518,7 +1505,7 @@ pub fn process_kill(pid: i32, signum: i32) -> Result<(), ProcessKillError> {
       )
     };
 
-    if process_handle == ptr::null_mut() {
+    if process_handle.is_null() {
       let err = get_last_error();
       if err == ERROR_INVALID_PARAMETER {
         return Err(ProcessKillError::from_uv(uv_error::UV_ESRCH));
