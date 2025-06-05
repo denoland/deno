@@ -89,12 +89,6 @@ struct ConditionResolver {
   require_conditions: Cow<'static, [Cow<'static, str>]>,
 }
 
-impl Default for ConditionResolver {
-  fn default() -> Self {
-    Self::new(Default::default())
-  }
-}
-
 impl ConditionResolver {
   pub fn new(options: ConditionOptions) -> Self {
     fn combine_conditions(
