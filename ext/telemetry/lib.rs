@@ -1130,7 +1130,7 @@ macro_rules! attr_raw {
                 break;
               }
             }
-            _ => unreachable!()
+            _ => unreachable!(),
           }
         } else {
           // Determine the array element type.
