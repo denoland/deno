@@ -58,9 +58,6 @@ pub enum PermissionError {
   NetDescriptorParse(#[from] ::deno_permissions::NetDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]
-  ImportDescriptorParse(#[from] ::deno_permissions::ImportDescriptorParseError),
-  #[class(inherit)]
-  #[error("{0}")]
   SysDescriptorParse(#[from] ::deno_permissions::SysDescriptorParseError),
   #[class(inherit)]
   #[error("{0}")]

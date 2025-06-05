@@ -3270,7 +3270,7 @@ impl PermissionsContainer {
   pub fn query_import(
     &self,
     host: Option<&str>,
-  ) -> Result<PermissionState, ImportDescriptorParseError> {
+  ) -> Result<PermissionState, NetDescriptorParseError> {
     let inner = self.inner.lock();
     let permission = &inner.import;
     if permission.is_allow_all() {
@@ -3280,7 +3280,7 @@ impl PermissionsContainer {
       permission.query(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3401,12 +3401,12 @@ impl PermissionsContainer {
   pub fn revoke_import(
     &self,
     host: Option<&str>,
-  ) -> Result<PermissionState, ImportDescriptorParseError> {
+  ) -> Result<PermissionState, NetDescriptorParseError> {
     Ok(
       self.inner.lock().import.revoke(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3527,12 +3527,12 @@ impl PermissionsContainer {
   pub fn request_import(
     &self,
     host: Option<&str>,
-  ) -> Result<PermissionState, ImportDescriptorParseError> {
+  ) -> Result<PermissionState, NetDescriptorParseError> {
     Ok(
       self.inner.lock().import.request(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_import_query(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
