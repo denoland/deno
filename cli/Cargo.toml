@@ -120,7 +120,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_rs = { version = "0.1.0", git = "https://github.com/denoland/esbuild_rs" }
+esbuild_client = { version = "0.1.1" }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.

@@ -1493,7 +1493,7 @@ dependencies = [
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
- "esbuild_rs",
+ "esbuild_client",
  "eszip",
  "fancy-regex",
  "faster-hex",
@@ -3573,9 +3573,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
-name = "esbuild_rs"
-version = "0.1.0"
-source = "git+https://github.com/denoland/esbuild_rs#a71472da1c597ff12388df6f846dbd401443b0e0"
+name = "esbuild_client"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "241d235e88635b3622ee664b3ed9bf70cb286b3067cff2ea2b9be11c7e2f8d19"
 dependencies = [
  "anyhow",
  "async-trait",

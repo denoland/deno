@@ -19,9 +19,9 @@ use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_rs::protocol;
-use esbuild_rs::EsbuildFlagsBuilder;
-use esbuild_rs::EsbuildService;
+use esbuild_client::protocol;
+use esbuild_client::EsbuildFlagsBuilder;
+use esbuild_client::EsbuildService;
 use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
@@ -196,13 +196,13 @@ pub async fn bundle(
     .external(bundle_flags.external.clone())
     .tree_shaking(true)
     .format(match bundle_flags.format {
-      BundleFormat::Esm => esbuild_rs::Format::Esm,
-      BundleFormat::Cjs => esbuild_rs::Format::Cjs,
-      BundleFormat::Iife => esbuild_rs::Format::Iife,
+      BundleFormat::Esm => esbuild_client::Format::Esm,
+      BundleFormat::Cjs => esbuild_client::Format::Cjs,
+      BundleFormat::Iife => esbuild_client::Format::Iife,
     })
     .packages(match bundle_flags.packages {
-      PackageHandling::External => esbuild_rs::PackagesHandling::External,
-      PackageHandling::Bundle => esbuild_rs::PackagesHandling::Bundle,
+      PackageHandling::External => esbuild_client::PackagesHandling::External,
+      PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
   if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
@@ -305,7 +305,7 @@ var __require = createRequire(import.meta.url);
   )
 }
 
-fn format_message(message: &esbuild_rs::protocol::Message) -> String {
+fn format_message(message: &esbuild_client::protocol::Message) -> String {
   format!(
     "{}{}",
     message.text,
@@ -366,15 +366,15 @@ struct DenoPluginHandler {
 }
 
 #[async_trait::async_trait(?Send)]
-impl esbuild_rs::PluginHandler for DenoPluginHandler {
+impl esbuild_client::PluginHandler for DenoPluginHandler {
   async fn on_resolve(
     &self,
-    args: esbuild_rs::OnResolveArgs,
-  ) -> Result<Option<esbuild_rs::OnResolveResult>, AnyError> {
+    args: esbuild_client::OnResolveArgs,
+  ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
     if let Some(reg) = &self.externals_regex {
       if reg.is_match(&args.path) {
-        return Ok(Some(esbuild_rs::OnResolveResult {
+        return Ok(Some(esbuild_client::OnResolveResult {
           external: Some(true),
           path: Some(args.path),
           plugin_name: Some("deno".to_string()),
@@ -392,7 +392,7 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
     )?;
 
     Ok(result.map(|r| {
-      esbuild_rs::OnResolveResult {
+      esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
           || r.starts_with("https:")
           || r.starts_with("http:")
@@ -419,8 +419,8 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
 
   async fn on_load(
     &self,
-    args: esbuild_rs::OnLoadArgs,
-  ) -> Result<Option<esbuild_rs::OnLoadResult>, AnyError> {
+    args: esbuild_client::OnLoadArgs,
+  ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     let result = self.bundle_load(&args.path, "").await?;
     log::trace!(
       "{}: {:?}",
@@ -432,7 +432,7 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
       ))
     );
     if let Some((code, loader)) = result {
-      Ok(Some(esbuild_rs::OnLoadResult {
+      Ok(Some(esbuild_client::OnLoadResult {
         contents: Some(code),
         loader: Some(loader),
         ..Default::default()
@@ -444,14 +444,14 @@ impl esbuild_rs::PluginHandler for DenoPluginHandler {
 
   async fn on_start(
     &self,
-    _args: esbuild_rs::OnStartArgs,
-  ) -> Result<Option<esbuild_rs::OnStartResult>, AnyError> {
+    _args: esbuild_client::OnStartArgs,
+  ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
     Ok(None)
   }
 }
 
 fn import_kind_to_resolution_mode(
-  kind: esbuild_rs::protocol::ImportKind,
+  kind: esbuild_client::protocol::ImportKind,
 ) -> ResolutionMode {
   match kind {
     protocol::ImportKind::EntryPoint
@@ -505,7 +505,7 @@ impl DenoPluginHandler {
     path: &str,
     importer: Option<&str>,
     resolve_dir: Option<&str>,
-    kind: esbuild_rs::protocol::ImportKind,
+    kind: esbuild_client::protocol::ImportKind,
     // TODO: use this / store it for later usage when loading
     with: IndexMap<String, String>,
   ) -> Result<Option<String>, AnyError> {
@@ -657,7 +657,7 @@ impl DenoPluginHandler {
     &self,
     specifier: &str,
     resolve_dir: &str,
-  ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
+  ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, AnyError> {
     log::debug!(
       "{}: {:?} {:?}",
       deno_terminal::colors::magenta("bundle_load"),
@@ -709,7 +709,7 @@ impl DenoPluginHandler {
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<(ModuleSpecifier, esbuild_rs::BuiltinLoader)>, AnyError>
+  ) -> Result<Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>, AnyError>
   {
     let graph = self.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
@@ -722,7 +722,7 @@ impl DenoPluginHandler {
       ),
       deno_graph::Module::Json(json_module) => (
         json_module.specifier.clone(),
-        esbuild_rs::BuiltinLoader::Json,
+        esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => todo!(),
       deno_graph::Module::Npm(module) => {
@@ -771,19 +771,19 @@ fn file_path_or_url(url: &Url) -> Result<String, AnyError> {
 }
 fn media_type_to_loader(
   media_type: deno_media_type::MediaType,
-) -> esbuild_rs::BuiltinLoader {
+) -> esbuild_client::BuiltinLoader {
   use deno_ast::MediaType::*;
   match media_type {
-    JavaScript | Cjs | Mjs | Mts => esbuild_rs::BuiltinLoader::Js,
-    TypeScript | Cts | Dts | Dmts | Dcts => esbuild_rs::BuiltinLoader::Ts,
-    Jsx | Tsx => esbuild_rs::BuiltinLoader::Jsx,
-    Css => esbuild_rs::BuiltinLoader::Css,
-    Json => esbuild_rs::BuiltinLoader::Json,
-    SourceMap => esbuild_rs::BuiltinLoader::Text,
-    Html => esbuild_rs::BuiltinLoader::Text,
-    Sql => esbuild_rs::BuiltinLoader::Text,
-    Wasm => esbuild_rs::BuiltinLoader::Binary,
-    Unknown => esbuild_rs::BuiltinLoader::Binary,
-    // _ => esbuild_rs::BuiltinLoader::External,
+    JavaScript | Cjs | Mjs | Mts => esbuild_client::BuiltinLoader::Js,
+    TypeScript | Cts | Dts | Dmts | Dcts => esbuild_client::BuiltinLoader::Ts,
+    Jsx | Tsx => esbuild_client::BuiltinLoader::Jsx,
+    Css => esbuild_client::BuiltinLoader::Css,
+    Json => esbuild_client::BuiltinLoader::Json,
+    SourceMap => esbuild_client::BuiltinLoader::Text,
+    Html => esbuild_client::BuiltinLoader::Text,
+    Sql => esbuild_client::BuiltinLoader::Text,
+    Wasm => esbuild_client::BuiltinLoader::Binary,
+    Unknown => esbuild_client::BuiltinLoader::Binary,
+    // _ => esbuild_client::BuiltinLoader::External,
   }
 }
