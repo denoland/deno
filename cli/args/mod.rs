@@ -498,6 +498,10 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  pub fn node_conditions(&self) -> &[String] {
+    self.flags.node_conditions.as_ref()
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
