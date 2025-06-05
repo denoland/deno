@@ -61,7 +61,7 @@ use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
-pub static DEFAULT_CONDITIONS: &[Cow<'static, str>] = &[
+pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
   Cow::Borrowed("node"),
   Cow::Borrowed("import"),
@@ -70,57 +70,62 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
   &[Cow::Borrowed("require"), Cow::Borrowed("node")];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
-#[derive(Debug, Clone)]
-pub struct ConditionResolverOptions {
+#[derive(Debug, Default, Clone)]
+pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
-  pub default_import_conditions: Vec<Cow<'static, str>>,
-  pub default_require_conditions: Vec<Cow<'static, str>>,
-}
-
-impl Default for ConditionResolverOptions {
-  fn default() -> Self {
-    Self {
-      conditions: Vec::new(),
-      default_import_conditions: DEFAULT_CONDITIONS.to_vec(),
-      default_require_conditions: REQUIRE_CONDITIONS.to_vec(),
-    }
-  }
+  /// Provide a value to override the default import conditions.
+  ///
+  /// Defaults to `["deno", "node", "import"]`
+  pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
+  /// Provide a value to override the default require conditions.
+  ///
+  /// Defaults to `["require", "node"]`
+  pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ConditionResolver {
-  import_conditions: Vec<Cow<'static, str>>,
-  require_conditions: Vec<Cow<'static, str>>,
-}
-
-impl Default for ConditionResolver {
-  fn default() -> Self {
-    Self::new(Default::default())
-  }
+struct ConditionResolver {
+  import_conditions: Cow<'static, [Cow<'static, str>]>,
+  require_conditions: Cow<'static, [Cow<'static, str>]>,
 }
 
 impl ConditionResolver {
-  pub fn new(options: ConditionResolverOptions) -> Self {
-    if options.conditions.is_empty() {
-      // Fast path for no custom conditions.
-      return Self {
-        import_conditions: options.default_import_conditions,
-        require_conditions: options.default_require_conditions,
-      };
+  pub fn new(options: NodeConditionOptions) -> Self {
+    fn combine_conditions(
+      user_conditions: Cow<'_, [Cow<'static, str>]>,
+      override_default: Option<Vec<Cow<'static, str>>>,
+      default_conditions: &'static [Cow<'static, str>],
+    ) -> Cow<'static, [Cow<'static, str>]> {
+      if user_conditions.is_empty() {
+        Cow::Borrowed(default_conditions)
+      } else {
+        let default_conditions = override_default
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(default_conditions));
+        let mut new =
+          Vec::with_capacity(user_conditions.len() + default_conditions.len());
+        let mut append =
+          |conditions: Cow<'_, [Cow<'static, str>]>| match conditions {
+            Cow::Borrowed(conditions) => new.extend(conditions.iter().cloned()),
+            Cow::Owned(conditions) => new.extend(conditions),
+          };
+        append(user_conditions);
+        append(default_conditions);
+        Cow::Owned(new)
+      }
     }
+
     Self {
-      import_conditions: options
-        .conditions
-        .iter()
-        .chain(&options.default_import_conditions)
-        .cloned()
-        .collect(),
-      require_conditions: options
-        .conditions
-        .iter()
-        .chain(&options.default_require_conditions)
-        .cloned()
-        .collect(),
+      import_conditions: combine_conditions(
+        Cow::Borrowed(&options.conditions),
+        options.import_conditions_override,
+        IMPORT_CONDITIONS,
+      ),
+      require_conditions: combine_conditions(
+        Cow::Owned(options.conditions),
+        options.require_conditions_override,
+        REQUIRE_CONDITIONS,
+      ),
     }
   }
 
@@ -144,7 +149,7 @@ pub enum ResolutionMode {
 impl ResolutionMode {
   pub fn default_conditions(&self) -> &'static [Cow<'static, str>] {
     match self {
-      ResolutionMode::Import => DEFAULT_CONDITIONS,
+      ResolutionMode::Import => IMPORT_CONDITIONS,
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }
@@ -234,7 +239,7 @@ enum ResolvedMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
-  pub condition_resolver: ConditionResolver,
+  pub conditions: NodeConditionOptions,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
@@ -302,7 +307,7 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      condition_resolver: options.condition_resolver,
+      condition_resolver: ConditionResolver::new(options.conditions),
       typescript_version: options.typescript_version,
       package_resolution_lookup_cache: None,
     }
