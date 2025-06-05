@@ -70,7 +70,15 @@ pub async fn ensure_esbuild(
     let existed = package_folder.exists();
 
     if !existed {
-      tarball_cache.ensure_package(&nv, dist).await?;
+      tarball_cache
+        .ensure_package(&nv, dist)
+        .await
+        .with_context(|| {
+          format!(
+            "failed to download esbuild package tarball {} from {}",
+            nv, dist.tarball
+          )
+        })?;
     }
 
     let path = if cfg!(windows) {
@@ -79,7 +87,14 @@ pub async fn ensure_esbuild(
       package_folder.join("bin").join("esbuild")
     };
 
-    std::fs::create_dir_all(esbuild_path.parent().unwrap())?;
+    std::fs::create_dir_all(esbuild_path.parent().unwrap()).with_context(
+      || {
+        format!(
+          "failed to create directory {}",
+          esbuild_path.parent().unwrap().display()
+        )
+      },
+    )?;
     std::fs::copy(&path, &esbuild_path).with_context(|| {
       format!(
         "failed to copy esbuild binary from {} to {}",
@@ -89,7 +104,9 @@ pub async fn ensure_esbuild(
     })?;
 
     if !existed {
-      std::fs::remove_dir_all(&package_folder)?;
+      std::fs::remove_dir_all(&package_folder).with_context(|| {
+        format!("failed to remove directory {}", package_folder.display())
+      })?;
     }
     Ok(esbuild_path)
   } else {
