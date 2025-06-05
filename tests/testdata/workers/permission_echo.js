@@ -5,7 +5,7 @@ self.onmessage = async () => {
   const read = await Deno.permissions.query({ name: "read" });
   const run = await Deno.permissions.query({ name: "run" });
   const write = await Deno.permissions.query({ name: "write" });
-  const _import = await Deno.permissions.query({ name: "import" });
+  const imports = await Deno.permissions.query({ name: "import" });
   self.postMessage({
     env: env.state,
     ffi: ffi.state,
@@ -13,7 +13,7 @@ self.onmessage = async () => {
     read: read.state,
     run: run.state,
     write: write.state,
-    import: _import.state,
+    import: imports.state,
   });
   self.close();
 };

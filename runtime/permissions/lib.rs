@@ -992,6 +992,12 @@ impl QueryDescriptor for NetDescriptor {
   }
 }
 
+impl NetDescriptor {
+  pub fn into_import(self) -> ImportDescriptor {
+    ImportDescriptor(self)
+  }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum NetDescriptorParseError {
   #[error("invalid value '{0}': URLs are not supported, only domains and ips")]
@@ -3280,7 +3286,9 @@ impl PermissionsContainer {
       permission.query(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
         }
         .as_ref(),
       ),
@@ -3406,7 +3414,9 @@ impl PermissionsContainer {
       self.inner.lock().import.revoke(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
         }
         .as_ref(),
       ),
@@ -3532,7 +3542,9 @@ impl PermissionsContainer {
       self.inner.lock().import.request(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
         }
         .as_ref(),
       ),
