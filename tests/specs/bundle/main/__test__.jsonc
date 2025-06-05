@@ -13,7 +13,7 @@
         },
         {
           "args": "bundle --output=out.js main.ts",
-          "output": "Download[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
         },
         {
           "args": "clean",
@@ -37,7 +37,7 @@
         },
         {
           "args": "bundle --output=out.js main2.ts",
-          "output": "Download[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
         },
         {
           "args": "clean",
@@ -46,6 +46,26 @@
         {
           "args": "run --no-lock --cached-only --no-config -A out.js",
           "output": "Hello, world!\n"
+        }
+      ]
+    },
+    "jsr_specifier": {
+      "steps": [
+        {
+          "args": "i -e main_jsr.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "bundle --output=out.js main_jsr.ts",
+          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "2\n"
         }
       ]
     },
