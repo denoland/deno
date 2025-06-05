@@ -71,7 +71,7 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
 #[derive(Debug, Default, Clone)]
-pub struct ConditionResolverOptions {
+pub struct ConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
   /// Provide a value to override the default import conditions.
   ///
@@ -84,7 +84,7 @@ pub struct ConditionResolverOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct ConditionResolver {
+struct ConditionResolver {
   import_conditions: Cow<'static, [Cow<'static, str>]>,
   require_conditions: Cow<'static, [Cow<'static, str>]>,
 }
@@ -96,7 +96,7 @@ impl Default for ConditionResolver {
 }
 
 impl ConditionResolver {
-  pub fn new(options: ConditionResolverOptions) -> Self {
+  pub fn new(options: ConditionOptions) -> Self {
     fn combine_conditions(
       user_conditions: Cow<'_, [Cow<'static, str>]>,
       override_default: Option<Vec<Cow<'static, str>>>,
@@ -245,7 +245,7 @@ enum ResolvedMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
-  pub condition_resolver: ConditionResolver,
+  pub conditions: ConditionOptions,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
@@ -313,7 +313,7 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      condition_resolver: options.condition_resolver,
+      condition_resolver: ConditionResolver::new(options.conditions),
       typescript_version: options.typescript_version,
       package_resolution_lookup_cache: None,
     }

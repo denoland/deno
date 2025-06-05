@@ -1113,7 +1113,7 @@ impl<'a> ResolverFactory<'a> {
             self.pkg_json_resolver.clone(),
             self.node_resolution_sys.clone(),
             NodeResolverOptions {
-              condition_resolver: Default::default(),
+              conditions: Default::default(),
               typescript_version: Some(
                 deno_semver::Version::parse_standard(
                   deno_lib::version::DENO_VERSION_INFO.typescript,
