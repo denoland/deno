@@ -231,6 +231,14 @@
       "new-buffer-cjs.js",
       "new-buffer-esm.mjs"
     ],
+    "fixtures/warning_node_modules/node_modules/new-buffer-cjs": [
+      "index.js",
+      "package.json"
+    ],
+    "fixtures/warning_node_modules/node_modules/new-buffer-esm": [
+      "index.js",
+      "package.json"
+    ],
     "internet": [
       // "test-dns-any.js",
       "test-dns-idna2008.js",

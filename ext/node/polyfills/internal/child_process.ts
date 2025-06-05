@@ -893,7 +893,7 @@ function buildCommand(
     if (nodeOptions.length > 0) {
       const options = nodeOptions.join(" ");
       if (env.NODE_OPTIONS) {
-        env.NODE_OPTIONS += " " + options
+        env.NODE_OPTIONS += " " + options;
       } else {
         env.NODE_OPTIONS = options;
       }
