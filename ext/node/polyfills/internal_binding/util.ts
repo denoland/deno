@@ -137,3 +137,7 @@ export function arrayBufferViewHasBuffer(
 ): boolean {
   return op_node_view_has_buffer(view);
 }
+
+export const untransferableSymbol = Symbol.for(
+  "nodejs.worker_threads.untransferable",
+);
