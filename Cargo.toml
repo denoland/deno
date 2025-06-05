@@ -57,7 +57,7 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.350.0" }
 
-deno_cache_dir = "=0.22.1"
+deno_cache_dir = "=0.22.2"
 deno_config = { version = "=0.55.0", features = ["workspace"] }
 deno_doc = "=0.178.0"
 deno_error = "=0.6.1"
