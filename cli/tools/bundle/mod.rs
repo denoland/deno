@@ -563,9 +563,7 @@ impl DenoPluginHandler {
     );
 
     match result {
-      Ok(specifier) => {
-        return Ok(Some(file_path_or_url(&specifier)?));
-      }
+      Ok(specifier) => Ok(Some(file_path_or_url(&specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
         Err(BundleError::Resolver(e).into())
