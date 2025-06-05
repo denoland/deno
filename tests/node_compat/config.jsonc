@@ -288,6 +288,7 @@
       "test-buffer-equals.js",
       "test-buffer-failed-alloc-typed-arrays.js",
       "test-buffer-fakes.js",
+      "test-buffer-fill.js",
       "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",

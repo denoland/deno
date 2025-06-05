@@ -1891,14 +1891,14 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   } else if (typeof val === "boolean") {
     val = Number(val);
   }
- 
+
   if (typeof start === "string") {
     encoding = start;
     start = 0;
     end = this.length;
   }
   if (start !== undefined) {
-    validateNumber(start, "start", 0, Number.MAX_SAFE_INTEGER);
+    validateNumber(start, "start", 0, kMaxLength);
     if (end !== undefined) {
       validateNumber(end, "end", 0, this.length);
     }
@@ -1917,10 +1917,24 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   }
   let i;
   if (typeof val === "number") {
+    // OOB check
+    const byteLen = TypedArrayPrototypeGetByteLength(this);
+    const fillLength = end - start;
+    if (start > end || fillLength + start > byteLen) {
+      throw new codes.ERR_BUFFER_OUT_OF_BOUNDS();
+    }
+
     for (i = start; i < end; ++i) {
       this[i] = val;
     }
   } else {
+    if (typeof val !== "string" && !BufferIsBuffer(val)) {
+      val = Number(val) & 255;
+      for (i = start; i < end; ++i) {
+        this[i] = val;
+      }
+      return this;
+    }
     const bytes = BufferIsBuffer(val) ? val : BufferFrom(val, encoding);
     const len = bytes.length;
     if (len === 0) {
