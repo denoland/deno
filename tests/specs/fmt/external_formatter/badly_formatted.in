@@ -12,7 +12,7 @@ margin: 0.5rem;
 		}
 	}
 
-  div { padding: ${condition ? expression1 + expression2 * expression3 : expression3}px; }
+  div { padding: ${condition ? expression1 + expression2 * expression3 : expression4}px; }
 `;
 
 cssString = css`
