@@ -891,10 +891,12 @@ function buildCommand(
 
     // Update NODE_OPTIONS if it exists
     if (nodeOptions.length > 0) {
+      const options = nodeOptions.join(" ");
       if (env.NODE_OPTIONS) {
-        nodeOptions.push(env.NODE_OPTIONS);
+        env.NODE_OPTIONS += " " + options
+      } else {
+        env.NODE_OPTIONS = options;
       }
-      env.NODE_OPTIONS = nodeOptions.join(" ");
     }
   }
 
