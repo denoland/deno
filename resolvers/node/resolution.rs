@@ -117,12 +117,12 @@ impl ConditionResolver {
         .conditions
         .iter()
         .cloned()
-        .chain(import_conditions.into_owned())
+        .chain(import_conditions.into_iter().cloned())
         .collect(),
       require_conditions: options
         .conditions
         .into_iter()
-        .chain(require_conditions.into_owned())
+        .chain(require_conditions.into_iter().cloned())
         .collect(),
     }
   }
