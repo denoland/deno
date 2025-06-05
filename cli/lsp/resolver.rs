@@ -1105,25 +1105,23 @@ impl<'a> ResolverFactory<'a> {
       .node_resolver
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
-        Some(Arc::new(
-          CliNodeResolver::new(
-            self.in_npm_pkg_checker().clone(),
-            DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            self.pkg_json_resolver.clone(),
-            self.node_resolution_sys.clone(),
-            NodeResolverOptions {
-              condition_resolver: Default::default(),
-              typescript_version: Some(
-                deno_semver::Version::parse_standard(
-                  deno_lib::version::DENO_VERSION_INFO.typescript,
-                )
-                .unwrap(),
-              ),
-            },
-          )
-          .with_package_resolution_lookup_cache(),
-        ))
+        Some(Arc::new(CliNodeResolver::new(
+          self.in_npm_pkg_checker().clone(),
+          DenoIsBuiltInNodeModuleChecker,
+          npm_resolver.clone(),
+          self.pkg_json_resolver.clone(),
+          self.node_resolution_sys.clone(),
+          NodeResolverOptions {
+            condition_resolver: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+            use_package_resolution_lookup_store: true,
+          },
+        )))
       })
       .as_ref()
   }

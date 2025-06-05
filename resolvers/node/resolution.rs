@@ -238,6 +238,10 @@ pub struct NodeResolverOptions {
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
+  /// Enables the `lookup_package_specifier_for_resolution` method.
+  /// This is mostly only useful in the LSP and probably you want
+  /// to set this to `false`.
+  pub use_package_resolution_lookup_store: bool,
 }
 
 #[sys_traits::auto_impl]
@@ -272,7 +276,7 @@ pub struct NodeResolver<
   sys: NodeResolutionSys<TSys>,
   condition_resolver: ConditionResolver,
   typescript_version: Option<Version>,
-  package_resolution_lookup_cache: Option<DashMap<Url, String>>,
+  package_resolution_lookup_store: Option<DashMap<Url, String>>,
 }
 
 impl<
@@ -304,14 +308,9 @@ impl<
       sys,
       condition_resolver: options.condition_resolver,
       typescript_version: options.typescript_version,
-      package_resolution_lookup_cache: None,
-    }
-  }
-
-  pub fn with_package_resolution_lookup_cache(self) -> Self {
-    Self {
-      package_resolution_lookup_cache: Some(Default::default()),
-      ..self
+      package_resolution_lookup_store: options
+        .use_package_resolution_lookup_store
+        .then(Default::default),
     }
   }
 
@@ -393,8 +392,8 @@ impl<
       Some(&referrer),
     )?;
     let maybe_cache_resolution = || {
-      let package_resolution_lookup_cache =
-        self.package_resolution_lookup_cache.as_ref()?;
+      let package_resolution_lookup_store =
+        self.package_resolution_lookup_store.as_ref()?;
       if specifier_is_url
         || specifier.starts_with("./")
         || specifier.starts_with("../")
@@ -403,7 +402,7 @@ impl<
         return None;
       }
       let url = url_or_path.clone().into_url().ok()?;
-      package_resolution_lookup_cache.insert(url, specifier.to_string());
+      package_resolution_lookup_store.insert(url, specifier.to_string());
       Some(())
     };
     maybe_cache_resolution();
@@ -617,7 +616,7 @@ impl<
     url: &Url,
   ) -> Option<String> {
     self
-      .package_resolution_lookup_cache
+      .package_resolution_lookup_store
       .as_ref()?
       .get(url)
       .map(|r| r.value().clone())

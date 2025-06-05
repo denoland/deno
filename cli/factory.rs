@@ -1228,6 +1228,7 @@ impl CliFactory {
               )
               .unwrap(),
             ),
+            use_package_resolution_lookup_store: false,
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
