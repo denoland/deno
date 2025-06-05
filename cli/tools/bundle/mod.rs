@@ -547,7 +547,10 @@ impl DenoPluginHandler {
       referrer,
       import_kind_to_resolution_mode(kind)
     );
-    let result = resolver.resolve(
+
+    let graph = self.module_graph_container.graph();
+    let result = resolver.resolve_with_graph(
+      &graph,
       path,
       &referrer,
       Position::new(0, 0),
@@ -562,63 +565,8 @@ impl DenoPluginHandler {
     );
 
     match result {
-      Ok(result) => {
-        log::debug!(
-          "{}: {:?}",
-          deno_terminal::colors::cyan("preparing module load"),
-          result
-        );
-        log::debug!(
-          "{}: {:?}",
-          deno_terminal::colors::green("prepared module load"),
-          result
-        );
-
-        let graph = self.module_graph_container.graph();
-        let module = graph.get(&result).cloned();
-        if let Some(module) = module {
-          log::debug!(
-            "{}: {} -> {}",
-            deno_terminal::colors::cyan("module"),
-            result,
-            module.specifier()
-          );
-          let specifier = match module {
-            deno_graph::Module::Npm(_) => {
-              let req_ref = NpmPackageReqReference::from_specifier(&result)?;
-              return Ok(Some(file_path_or_url(
-                &self
-                  .npm_req_resolver
-                  .resolve_req_reference(
-                    &req_ref,
-                    &referrer,
-                    ResolutionMode::Import,
-                    NodeResolutionKind::Execution,
-                  )?
-                  .into_url()?,
-              )?));
-            }
-            _ => module.specifier().clone(),
-          };
-          return Ok(Some(file_path_or_url(&specifier)?));
-        }
-
-        if result.scheme() == "npm" {
-          let req_ref = NpmPackageReqReference::from_specifier(&result)?;
-          Ok(Some(file_path_or_url(
-            &self
-              .npm_req_resolver
-              .resolve_req_reference(
-                &req_ref,
-                &referrer,
-                ResolutionMode::Import,
-                NodeResolutionKind::Execution,
-              )?
-              .into_url()?,
-          )?))
-        } else {
-          Ok(Some(file_path_or_url(&result)?))
-        }
+      Ok(specifier) => {
+        return Ok(Some(file_path_or_url(&specifier)?));
       }
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
