@@ -97,33 +97,41 @@ impl Default for ConditionResolver {
 
 impl ConditionResolver {
   pub fn new(options: ConditionResolverOptions) -> Self {
-    let import_conditions = options
-      .import_conditions_override
-      .map(Cow::Owned)
-      .unwrap_or(Cow::Borrowed(IMPORT_CONDITIONS));
-    let require_conditions = options
-      .require_conditions_override
-      .map(Cow::Owned)
-      .unwrap_or(Cow::Borrowed(REQUIRE_CONDITIONS));
-    if options.conditions.is_empty() {
-      // Fast path for no custom conditions.
-      return Self {
-        import_conditions,
-        require_conditions,
-      };
+    fn combine_conditions(
+      user_conditions: Cow<'_, [Cow<'static, str>]>,
+      override_default: Option<Vec<Cow<'static, str>>>,
+      default_conditions: &'static [Cow<'static, str>],
+    ) -> Cow<'static, [Cow<'static, str>]> {
+      if user_conditions.is_empty() {
+        Cow::Borrowed(default_conditions)
+      } else {
+        let default_conditions = override_default
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(default_conditions));
+        let mut new =
+          Vec::with_capacity(user_conditions.len() + default_conditions.len());
+        let mut append =
+          |conditions: Cow<'_, [Cow<'static, str>]>| match conditions {
+            Cow::Borrowed(conditions) => new.extend(conditions.iter().cloned()),
+            Cow::Owned(conditions) => new.extend(conditions),
+          };
+        append(user_conditions);
+        append(default_conditions);
+        Cow::Owned(new)
+      }
     }
+
     Self {
-      import_conditions: options
-        .conditions
-        .iter()
-        .cloned()
-        .chain(import_conditions.into_iter().cloned())
-        .collect(),
-      require_conditions: options
-        .conditions
-        .into_iter()
-        .chain(require_conditions.into_iter().cloned())
-        .collect(),
+      import_conditions: combine_conditions(
+        Cow::Borrowed(&options.conditions),
+        options.import_conditions_override,
+        IMPORT_CONDITIONS,
+      ),
+      require_conditions: combine_conditions(
+        Cow::Owned(options.conditions),
+        options.require_conditions_override,
+        REQUIRE_CONDITIONS,
+      ),
     }
   }
 
