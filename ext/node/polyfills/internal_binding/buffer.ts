@@ -5,6 +5,15 @@
 
 import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
 
+export function fill(
+  buffer,
+  value,
+  start,
+  end,
+) {
+  return buffer.fill(value, start, end);
+}
+
 export function indexOfNeedle(
   source: Uint8Array,
   needle: Uint8Array,

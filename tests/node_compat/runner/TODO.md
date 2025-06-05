@@ -283,7 +283,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
-- [parallel/test-buffer-fill.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-fill.js)
 - [parallel/test-buffer-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-inspect.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
