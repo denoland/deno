@@ -21,8 +21,8 @@ const length = a.length;
 
 const { port1 } = new MessageChannel();
 assert.throws(() => port1.postMessage(a, [ a.buffer ]), {
-	code: 25,
-	name: 'DataCloneError',
+  code: 25,
+  name: 'DataCloneError',
 });
 
 // Verify that the pool ArrayBuffer has not actually been transferred:
