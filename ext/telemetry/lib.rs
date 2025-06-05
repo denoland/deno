@@ -1076,7 +1076,7 @@ macro_rules! attr_raw {
     } else if let Ok(array) = $value.try_cast::<v8::Array>() {
       // Build up a homogeneous array of primitive attribute values.
       let len = array.length();
-      let mut builder: Option<opentelemetry::Array> = None;
+      let mut builder: Option<Array> = None;
       for i in 0..len {
         let Some(el) = array.get_index($scope, i) else {
           continue;
@@ -1087,7 +1087,7 @@ macro_rules! attr_raw {
         }
         if let Some(b) = &mut builder {
           match b {
-            opentelemetry::Array::String(vec) => {
+            Array::String(vec) => {
               if let Ok(s) = el.try_cast::<v8::String>() {
                 let view = v8::ValueView::new($scope, s);
                 match view.data() {
@@ -1105,7 +1105,7 @@ macro_rules! attr_raw {
                 break;
               }
             }
-            opentelemetry::Array::F64(vec) => {
+            Array::F64(vec) => {
               if let Ok(n) = el.try_cast::<v8::Number>() {
                 vec.push(n.value());
               } else {
@@ -1113,7 +1113,7 @@ macro_rules! attr_raw {
                 break;
               }
             }
-            opentelemetry::Array::Bool(vec) => {
+            Array::Bool(vec) => {
               if let Ok(b) = el.try_cast::<v8::Boolean>() {
                 vec.push(b.is_true());
               } else {
@@ -1121,7 +1121,7 @@ macro_rules! attr_raw {
                 break;
               }
             }
-            opentelemetry::Array::I64(vec) => {
+            Array::I64(vec) => {
               if let Ok(bi) = el.try_cast::<v8::BigInt>() {
                 let (i64_value, _lossless) = bi.i64_value();
                 vec.push(i64_value);
@@ -1130,6 +1130,7 @@ macro_rules! attr_raw {
                 break;
               }
             }
+            _ => unreachable!()
           }
         } else {
           // Determine the array element type.
@@ -1144,20 +1145,20 @@ macro_rules! attr_raw {
                 vec.push(StringValue::from(String::from_utf16_lossy(bytes)))
               }
             }
-            builder = Some(opentelemetry::Array::String(vec));
+            builder = Some(Array::String(vec));
           } else if let Ok(n) = el.try_cast::<v8::Number>() {
             let mut vec = Vec::with_capacity(len as usize);
             vec.push(n.value());
-            builder = Some(opentelemetry::Array::F64(vec));
+            builder = Some(Array::F64(vec));
           } else if let Ok(b) = el.try_cast::<v8::Boolean>() {
             let mut vec = Vec::with_capacity(len as usize);
             vec.push(b.is_true());
-            builder = Some(opentelemetry::Array::Bool(vec));
+            builder = Some(Array::Bool(vec));
           } else if let Ok(bi) = el.try_cast::<v8::BigInt>() {
             let mut vec = Vec::with_capacity(len as usize);
             let (i64_value, _lossless) = bi.i64_value();
             vec.push(i64_value);
-            builder = Some(opentelemetry::Array::I64(vec));
+            builder = Some(Array::I64(vec));
           } else {
             // unsupported element type
             builder = None;
@@ -1165,7 +1166,7 @@ macro_rules! attr_raw {
           }
         }
       }
-      array.map(Value::Array)
+      builder.map(Value::Array)
     } else {
       None
     };
