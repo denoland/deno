@@ -292,6 +292,7 @@
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
       "test-buffer-inheritance.js",
+      "test-buffer-inspect.js",
       "test-buffer-isascii.js",
       "test-buffer-isencoding.js",
       "test-buffer-isutf8.js",
