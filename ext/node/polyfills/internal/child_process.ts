@@ -1183,7 +1183,7 @@ function wrapScriptForEval(sourceCode: string): string {
     process.getBuiltinModule("module").builtinModules
       .filter((m) => !/\\/|crypto|process/.test(m))
       .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
-    vm.runInThisContext(atob("${btoa(sourceCode)}"))
+    vm.runInThisContext(${JSON.stringify(sourceCode)})
   `;
 }
 
