@@ -14,11 +14,13 @@ use flate2::read::GzDecoder;
 use sha2::Digest;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
+use sys_traits::FsFileSetPermissions;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
+use sys_traits::OpenOptions;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
@@ -192,11 +194,43 @@ fn verify_tarball_integrity(
   Ok(())
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum IoErrorOperation {
+  Creating,
+  Canonicalizing,
+  Opening,
+  Writing,
+}
+
+impl std::fmt::Display for IoErrorOperation {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      IoErrorOperation::Creating => write!(f, "creating"),
+      IoErrorOperation::Canonicalizing => write!(f, "canonicalizing"),
+      IoErrorOperation::Opening => write!(f, "opening"),
+      IoErrorOperation::Writing => write!(f, "writing"),
+    }
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Failed {} '{}'", operation, path.display())]
+pub struct IoWithPathError {
+  pub path: PathBuf,
+  pub operation: IoErrorOperation,
+  #[source]
+  pub source: std::io::Error,
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExtractTarballError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  IoWithPath(#[from] IoWithPathError),
   #[class(generic)]
   #[error(
     "Extracted directory '{0}' of npm tarball was not in output directory."
@@ -209,8 +243,21 @@ fn extract_tarball(
   data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
-  sys.fs_create_dir_all(output_folder)?;
-  let output_folder = sys.fs_canonicalize(output_folder)?;
+  sys
+    .fs_create_dir_all(output_folder)
+    .map_err(|source| IoWithPathError {
+      path: output_folder.to_path_buf(),
+      operation: IoErrorOperation::Creating,
+      source,
+    })?;
+  let output_folder =
+    sys
+      .fs_canonicalize(output_folder)
+      .map_err(|source| IoWithPathError {
+        path: output_folder.to_path_buf(),
+        operation: IoErrorOperation::Canonicalizing,
+        source,
+      })?;
   let tar = GzDecoder::new(data);
   let mut archive = Archive::new(tar);
   archive.set_overwrite(true);
@@ -237,8 +284,21 @@ fn extract_tarball(
       absolute_path.parent().unwrap()
     };
     if created_dirs.insert(dir_path.to_path_buf()) {
-      sys.fs_create_dir_all(dir_path)?;
-      let canonicalized_dir = sys.fs_canonicalize(dir_path)?;
+      sys
+        .fs_create_dir_all(dir_path)
+        .map_err(|source| IoWithPathError {
+          path: output_folder.to_path_buf(),
+          operation: IoErrorOperation::Creating,
+          source,
+        })?;
+      let canonicalized_dir =
+        sys
+          .fs_canonicalize(dir_path)
+          .map_err(|source| IoWithPathError {
+            path: output_folder.to_path_buf(),
+            operation: IoErrorOperation::Canonicalizing,
+            source,
+          })?;
       if !canonicalized_dir.starts_with(&output_folder) {
         return Err(ExtractTarballError::NotInOutputDirectory(
           canonicalized_dir.to_path_buf(),
@@ -249,12 +309,26 @@ fn extract_tarball(
     let entry_type = entry.header().entry_type();
     match entry_type {
       EntryType::Regular => {
-        // todo(dsherret): switch back to using the sys so that this
-        // crate can work in Wasm
-        // let open_options = OpenOptions::new_write();
-        // let mut f = sys.fs_open(&absolute_path, &open_options)?;
-        // std::io::copy(&mut entry, &mut f)?;
-        entry.unpack(&absolute_path)?;
+        let open_options = OpenOptions::new_write();
+        let mut f =
+          sys
+            .fs_open(&absolute_path, &open_options)
+            .map_err(|source| IoWithPathError {
+              path: absolute_path.to_path_buf(),
+              operation: IoErrorOperation::Opening,
+              source,
+            })?;
+        std::io::copy(&mut entry, &mut f).map_err(|source| {
+          IoWithPathError {
+            path: absolute_path,
+            operation: IoErrorOperation::Writing,
+            source,
+          }
+        })?;
+        if !sys_traits::impls::is_windows() {
+          let mode = entry.header().mode()?;
+          f.fs_file_set_permissions(mode)?;
+        }
       }
       EntryType::Symlink | EntryType::Link => {
         // At the moment, npm doesn't seem to support uploading hardlinks or

@@ -1,21 +1,28 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
+use boxed_error::Boxed;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
+use deno_graph::Module;
+use deno_graph::Resolution;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use url::Url;
 
 use crate::cjs::CjsTracker;
+use crate::npm;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
 use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveErrorKind;
-use crate::DenoResolverRc;
 use crate::DenoResolverSys;
+use crate::RawDenoResolverRc;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
@@ -25,6 +32,40 @@ pub type FoundPackageJsonDepFlagRc =
 /// found during resolution.
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
+
+#[derive(Debug, deno_error::JsError, Boxed)]
+pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveWithGraphErrorKind {
+  #[error(transparent)]
+  #[class(inherit)]
+  CouldNotResolve(#[from] CouldNotResolveError),
+  #[error(transparent)]
+  #[class(inherit)]
+  ResolvePkgFolderFromDenoModule(
+    #[from] npm::managed::ResolvePkgFolderFromDenoModuleError,
+  ),
+  #[error(transparent)]
+  #[class(inherit)]
+  Resolution(#[from] deno_graph::ResolutionError),
+  #[error(transparent)]
+  #[class(inherit)]
+  Resolve(#[from] ResolveError),
+  #[error(transparent)]
+  #[class(inherit)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(inherit)]
+#[error("Could not resolve '{reference}'")]
+pub struct CouldNotResolveError {
+  reference: deno_semver::npm::NpmPackageNvReference,
+  #[source]
+  #[inherit]
+  source: node_resolver::errors::PackageSubpathResolveError,
+}
 
 impl FoundPackageJsonDepFlag {
   #[inline(always)]
@@ -38,26 +79,57 @@ impl FoundPackageJsonDepFlag {
   }
 }
 
-type OnWarningFn = Box<
-  dyn Fn(&MappedResolutionDiagnostic, &Url, deno_graph::Position) + Send + Sync,
+pub struct MappedResolutionDiagnosticWithPosition<'a> {
+  pub diagnostic: &'a MappedResolutionDiagnostic,
+  pub referrer: &'a Url,
+  pub start: deno_graph::Position,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
+  dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
 
-/// A resolver for interfacing with deno_graph and displaying warnings.
-pub struct DenoGraphResolver<
-  TInNpmPackageChecker: InNpmPackageChecker,
-  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-  TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: DenoResolverSys,
-> {
-  resolver: DenoResolverRc<
+pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+  npm::DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  npm::NpmResolver<TSys>,
+  TSys,
+>;
+
+#[allow(clippy::disallowed_types)]
+pub type DenoResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
     TSys,
   >,
+>;
+
+/// The resolver used in the CLI for resolving and interfacing
+/// with deno_graph.
+pub struct DenoResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> {
+  resolver: RawDenoResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  sys: TSys,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
   warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
-  on_warning: OnWarningFn,
+  on_warning: Option<OnMappedResolutionDiagnosticFn>,
 }
 
 impl<
@@ -66,7 +138,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   > std::fmt::Debug
-  for DenoGraphResolver<
+  for DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -74,7 +146,7 @@ impl<
   >
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("DenoGraphResolver").finish()
+    f.debug_struct("DenoResolver").finish()
   }
 }
 
@@ -84,7 +156,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: DenoResolverSys,
   >
-  DenoGraphResolver<
+  DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
@@ -92,21 +164,96 @@ impl<
   >
 {
   pub fn new(
-    resolver: DenoResolverRc<
+    resolver: RawDenoResolverRc<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
       TSys,
     >,
+    sys: TSys,
     found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
-    on_warning: OnWarningFn,
+    on_warning: Option<OnMappedResolutionDiagnosticFn>,
   ) -> Self {
     Self {
       resolver,
+      sys,
       found_package_json_dep_flag,
       warned_pkgs: Default::default(),
       on_warning,
     }
+  }
+
+  pub fn resolve_with_graph(
+    &self,
+    graph: &deno_graph::ModuleGraph,
+    raw_specifier: &str,
+    referrer: &Url,
+    referrer_range_start: deno_graph::Position,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<Url, ResolveWithGraphError> {
+    let resolution = match graph.get(referrer) {
+      Some(Module::Js(module)) => module
+        .dependencies
+        .get(raw_specifier)
+        .map(|d| &d.maybe_code)
+        .unwrap_or(&Resolution::None),
+      _ => &Resolution::None,
+    };
+
+    let specifier = match resolution {
+      Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
+      Resolution::Err(err) => {
+        return Err(
+          ResolveWithGraphErrorKind::Resolution((**err).clone()).into(),
+        );
+      }
+      Resolution::None => Cow::Owned(self.resolve(
+        raw_specifier,
+        referrer,
+        referrer_range_start,
+        resolution_mode,
+        resolution_kind,
+      )?),
+    };
+
+    let specifier = match graph.get(&specifier) {
+      Some(Module::Npm(module)) => {
+        let node_and_npm_resolver =
+          self.resolver.node_and_npm_resolver.as_ref().unwrap();
+        let package_folder = node_and_npm_resolver
+          .npm_resolver
+          .as_managed()
+          .unwrap() // byonm won't create a Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        node_and_npm_resolver
+          .node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            resolution_kind,
+          )
+          .map_err(|source| CouldNotResolveError {
+            reference: module.nv_reference.clone(),
+            source,
+          })?
+          .into_url()?
+      }
+      Some(Module::Node(module)) => module.specifier.clone(),
+      Some(Module::Js(module)) => module.specifier.clone(),
+      Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::Wasm(module)) => module.specifier.clone(),
+      Some(Module::External(module)) => {
+        node_resolver::resolve_specifier_into_node_modules(
+          &self.sys,
+          &module.specifier,
+        )
+      }
+      None => specifier.into_owned(),
+    };
+    Ok(specifier)
   }
 
   pub fn resolve(
@@ -146,8 +293,14 @@ impl<
           reference,
           ..
         } => {
-          if self.warned_pkgs.insert(reference.req().clone()) {
-            (self.on_warning)(diagnostic, referrer, referrer_range_start);
+          if let Some(on_warning) = &self.on_warning {
+            if self.warned_pkgs.insert(reference.req().clone()) {
+              on_warning(MappedResolutionDiagnosticWithPosition {
+                diagnostic,
+                referrer,
+                start: referrer_range_start,
+              });
+            }
           }
         }
       }
@@ -183,7 +336,7 @@ pub struct DenoGraphResolverAdapter<
   TSys: DenoResolverSys,
 > {
   cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
-  resolver: &'a DenoGraphResolver<
+  resolver: &'a DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,

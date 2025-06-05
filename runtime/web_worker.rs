@@ -61,11 +61,14 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
+#[cfg(target_os = "linux")]
+use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
+#[cfg(target_os = "linux")]
+use crate::worker::SIGUSR2_RX;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 
@@ -104,6 +107,7 @@ pub enum WebWorkerType {
 
 /// Events that are sent to host from child
 /// worker.
+#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError),
   Close,
@@ -164,6 +168,7 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
+  #[allow(clippy::result_large_err)]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -401,12 +406,17 @@ pub struct WebWorker {
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for WebWorker {
   fn drop(&mut self) {
     // clean up the package.json thread local cache
     node_resolver::PackageJsonThreadLocalCache::clear();
+
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
   }
 }
 
@@ -622,13 +632,9 @@ impl WebWorker {
         validate_import_attributes_callback,
       )),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-      maybe_op_stack_trace_callback: if options.enable_stack_trace_arg_in_ops {
-        Some(Box::new(|stack| {
-          deno_permissions::prompter::set_current_stacktrace(stack)
-        }))
-      } else {
-        None
-      },
+      maybe_op_stack_trace_callback: options
+        .enable_stack_trace_arg_in_ops
+        .then(crate::worker::create_permissions_stack_trace_callback),
       ..Default::default()
     });
 
@@ -702,6 +708,7 @@ impl WebWorker {
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
+        memory_trim_handle: None,
       },
       external_handle,
       options.bootstrap,
@@ -775,7 +782,51 @@ impl WebWorker {
     }
   }
 
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
+  }
+
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,
@@ -957,66 +1008,63 @@ fn print_worker_error(
 
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-pub fn run_web_worker(
+// TODO(bartlomieju): run following block using "select!"
+// with terminate
+pub async fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
+  worker.setup_memory_trim_handler();
+
   let name = worker.name.to_string();
+  let internal_handle = worker.internal_handle.clone();
 
-  // TODO(bartlomieju): run following block using "select!"
-  // with terminate
-
-  let fut = async move {
-    let internal_handle = worker.internal_handle.clone();
-
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code.into());
-      worker.start_polling_for_messages();
-      r
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      match worker.preload_main_module(&specifier).await {
-        Ok(id) => {
-          worker.start_polling_for_messages();
-          worker.execute_main_module(id).await
-        }
-        Err(e) => Err(e),
+  // Execute provided source code immediately
+  let result = if let Some(source_code) = maybe_source_code.take() {
+    let r = worker.execute_script(located_script_name!(), source_code.into());
+    worker.start_polling_for_messages();
+    r
+  } else {
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
+    // script instead of module
+    match worker.preload_main_module(&specifier).await {
+      Ok(id) => {
+        worker.start_polling_for_messages();
+        worker.execute_main_module(id).await
       }
-    };
-
-    // If sender is closed it means that worker has already been closed from
-    // within using "globalThis.close()"
-    if internal_handle.is_terminated() {
-      return Ok(());
+      Err(e) => Err(e),
     }
+  };
 
-    let result = if result.is_ok() {
-      worker
-        .run_event_loop(PollEventLoopOptions {
-          wait_for_inspector: true,
-          ..Default::default()
-        })
-        .await
-    } else {
-      result
-    };
+  // If sender is closed it means that worker has already been closed from
+  // within using "globalThis.close()"
+  if internal_handle.is_terminated() {
+    return Ok(());
+  }
 
-    if let Err(e) = result {
-      print_worker_error(&e, &name, format_js_error_fn.as_deref());
-      internal_handle
-        .post_event(WorkerControlEvent::TerminalError(e))
-        .expect("Failed to post message to host");
-
-      // Failure to execute script is a terminal error, bye, bye.
-      return Ok(());
-    }
-
-    debug!("Worker thread shuts down {}", &name);
+  let result = if result.is_ok() {
+    worker
+      .run_event_loop(PollEventLoopOptions {
+        wait_for_inspector: true,
+        ..Default::default()
+      })
+      .await
+  } else {
     result
   };
-  create_and_run_current_thread(fut)
+
+  if let Err(e) = result {
+    print_worker_error(&e, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(e))
+      .expect("Failed to post message to host");
+
+    // Failure to execute script is a terminal error, bye, bye.
+    return Ok(());
+  }
+
+  debug!("Worker thread shuts down {}", &name);
+  result
 }

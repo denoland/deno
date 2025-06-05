@@ -1445,6 +1445,19 @@ mod permissions {
   }
 
   #[test]
+  fn net_fetch_localhost_subdomain() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --unstable-subdomain-wildcards --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
   fn net_connect_allow_localhost_ip_4555() {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
@@ -3231,6 +3244,17 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
       3
     );
   }
+}
+
+#[test]
+fn node_process_stdin_pause() {
+  util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run/node_process_stdin_pause.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
 }
 
 #[test]

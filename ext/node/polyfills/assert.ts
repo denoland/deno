@@ -18,6 +18,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
+import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
+import { deprecate } from "node:util";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 
@@ -882,8 +884,15 @@ function isValidThenable(maybeThennable: any): boolean {
   return isThenable && typeof maybeThennable !== "function";
 }
 
+const CallTracker_ = deprecate(
+  CallTracker,
+  "assert.CallTracker is deprecated.",
+  "DEP0173",
+);
+
 Object.assign(strict, {
   AssertionError,
+  CallTracker: CallTracker_,
   deepEqual: deepStrictEqual,
   deepStrictEqual,
   doesNotMatch,
@@ -906,6 +915,7 @@ Object.assign(strict, {
 
 export default Object.assign(assert, {
   AssertionError,
+  CallTracker: CallTracker_,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,
@@ -928,6 +938,7 @@ export default Object.assign(assert, {
 
 export {
   AssertionError,
+  CallTracker_ as CallTracker,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.1"
+version = "2.3.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -82,6 +82,7 @@ deno_lockfile.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
+deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
@@ -127,7 +128,7 @@ fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
@@ -186,12 +187,12 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]

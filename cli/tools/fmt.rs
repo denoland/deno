@@ -49,7 +49,6 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
-use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -102,15 +101,15 @@ pub async fn format(
             paths_with_options.paths = if let Some(paths) = &changed_paths {
               if fmt_flags.check {
                 // check all files on any changed (https://github.com/denoland/deno/issues/12446)
-                files
-                  .iter()
-                  .any(|path| {
-                    canonicalize_path(path)
-                      .map(|path| paths.contains(&path))
-                      .unwrap_or(false)
-                  })
-                  .then_some(files)
-                  .unwrap_or_else(|| [].to_vec())
+                if files.iter().any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                }) {
+                  files
+                } else {
+                  [].to_vec()
+                }
               } else {
                 files
                   .into_iter()
@@ -542,7 +541,7 @@ fn create_external_formatter_for_typescript(
   MediaType,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   let unstable_sql = unstable_options.sql;
   move |media_type, text, config| match media_type {
     MediaType::Css => format_embedded_css(&text, config),
@@ -551,10 +550,10 @@ fn create_external_formatter_for_typescript(
       if unstable_sql {
         format_embedded_sql(&text, config)
       } else {
-        None
+        Ok(None)
       }
     }
-    _ => None,
+    _ => Ok(None),
   }
 }
 
@@ -571,7 +570,7 @@ fn create_external_formatter_for_typescript(
 fn format_embedded_css(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   use malva::config;
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
@@ -618,19 +617,18 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
-      declaration_order_group_by:
-        config::DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
     },
   };
-  // Wraps the text in a css block of `a { ... }`
-  // to make it valid css (scss)
-  let Ok(text) = malva::format_text(
-    &format!("a{{\n{}\n}}", text),
-    malva::Syntax::Scss,
+  // Wraps the text in a css block of `a { ... ;}`
+  // to make it valid css
+  // Note: We choose LESS for the syntax because it allows us to use
+  // @variable for both property values and mixins, which is convenient
+  // for handling placeholders used as both properties and mixins.
+  let text = malva::format_text(
+    &format!("a{{\n{}\n;}}", text),
+    malva::Syntax::Less,
     &options,
-  ) else {
-    return None;
-  };
+  )?;
   let mut buf = vec![];
   for (i, l) in text.lines().enumerate() {
     // skip the first line (a {)
@@ -642,20 +640,31 @@ fn format_embedded_css(
       continue;
     }
     let mut chars = l.chars();
+
+    // indent width option is disregarded when use tabs is true since
+    // only one tab will be inserted when indented once
+    // https://malva.netlify.app/config/indent-width.html
+    let indent_width = if config.use_tabs {
+      1
+    } else {
+      config.indent_width as usize
+    };
+
     // drop the indentation
-    for _ in 0..config.indent_width {
+    for _ in 0..indent_width {
       chars.next();
     }
+
     buf.push(chars.as_str());
   }
-  Some(buf.join("\n").to_string())
+  Ok(Some(buf.join("\n").to_string()))
 }
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
+) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
@@ -713,26 +722,27 @@ fn format_embedded_html(
       script_formatter: None,
       ignore_comment_directive: "deno-fmt-ignore".into(),
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-      single_attr_same_line: true,
     },
   };
-  let Ok(text) = markup_fmt::format_text(
+  let text = markup_fmt::format_text(
     text,
     markup_fmt::Language::Html,
     &options,
     |code, _| Ok::<_, std::convert::Infallible>(code.into()),
-  ) else {
-    return None;
-  };
-  Some(text.to_string())
+  )?;
+  Ok(Some(text.to_string()))
 }
 
 /// Formats the embedded SQL code blocks in JavaScript and TypeScript.
 fn format_embedded_sql(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-) -> Option<String> {
-  Some(format_sql_text(text, config.use_tabs, config.indent_width))
+) -> deno_core::anyhow::Result<Option<String>> {
+  Ok(Some(format_sql_text(
+    text,
+    config.use_tabs,
+    config.indent_width,
+  )))
 }
 
 fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {
@@ -914,7 +924,8 @@ impl Formatter for CheckFormatter {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
-            let diff = diff(&file_text, &formatted_text);
+            let diff =
+              deno_resolver::display::diff(&file_text, &formatted_text);
             info!("");
             info!("{} {}:", colors::bold("from"), file_path.display());
             info!("{}", diff);
@@ -1466,8 +1477,6 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    declaration_order_group_by:
-      DeclarationOrderGroupBy::NonDeclarationAndEmptyLine,
   };
 
   FormatOptions {
@@ -1528,7 +1537,6 @@ fn get_resolved_markup_fmt_config(
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    single_attr_same_line: true,
   };
 
   FormatOptions {
