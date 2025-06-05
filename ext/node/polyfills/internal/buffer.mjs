@@ -15,6 +15,7 @@ const {
   ArrayBufferPrototypeGetDetached,
   ArrayIsArray,
   ArrayPrototypeSlice,
+  ArrayPrototypeForEach,
   BigInt,
   DataViewPrototypeGetByteLength,
   Float32Array,
@@ -36,6 +37,7 @@ const {
   String,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
   StringPrototypeIncludes,
   StringPrototypeReplace,
   StringPrototypeToLowerCase,
@@ -80,7 +82,13 @@ import {
   hexToBytes,
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
+import { inspect as utilInspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import {
+  ALL_PROPERTIES,
+  getOwnNonIndexProperties,
+  ONLY_ENUMERABLE,
+} from "ext:deno_node/internal_binding/util.ts";
 import {
   validateBuffer,
   validateInteger,
@@ -710,7 +718,7 @@ const SPACER_PATTERN = new SafeRegExp(/(.{2})/g);
 
 Buffer.prototype[customInspectSymbol] =
   Buffer.prototype.inspect =
-    function inspect() {
+    function inspect(_, ctx) {
       let str = "";
       str = StringPrototypeTrim(
         StringPrototypeReplace(
@@ -723,6 +731,32 @@ Buffer.prototype[customInspectSymbol] =
       if (this.length > INSPECT_MAX_BYTES_) {
         const remaining = this.length - INSPECT_MAX_BYTES_;
         str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
+      }
+      // Inspect special properties as well, if possible.
+      if (ctx) {
+        let extras = false;
+        const filter = ctx.showHidden ? ALL_PROPERTIES : ONLY_ENUMERABLE;
+        const obj = { __proto__: null };
+        ArrayPrototypeForEach(getOwnNonIndexProperties(this, filter), (key) => {
+          extras = true;
+          obj[key] = this[key];
+        });
+        if (extras) {
+          if (this.length !== 0) {
+            str += ", ";
+          }
+          // '[Object: null prototype] {'.length === 26
+          // This is guarded with a test.
+          str += StringPrototypeSlice(
+            utilInspect(obj, {
+              ...ctx,
+              breakLength: Infinity,
+              compact: true,
+            }),
+            27,
+            -2,
+          );
+        }
       }
       return "<Buffer " + str + ">";
     };

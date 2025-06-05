@@ -98,7 +98,7 @@ export function getOwnNonIndexProperties(
     ...Object.getOwnPropertySymbols(obj),
   ];
 
-  if (Array.isArray(obj)) {
+  if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
     allProperties = allProperties.filter((k) => !isArrayIndex(k));
   }
 
