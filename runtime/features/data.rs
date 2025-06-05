@@ -215,13 +215,5 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
-  },
-  UnstableFeatureDescription{
-    name: "bundle",
-    help_text: "Enable unstable bundle command",
-    show_in_help: true,
-    kind: UnstableFeatureKind::Cli,
-    config_option: ConfigFileOption::SameAsFlagName,
-    env_var: Some("DENO_UNSTABLE_BUNDLE"),
   }
 ];

@@ -45,6 +45,11 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 
+/// Given a set of pattern indicating files to mark as external,
+/// return a regex that matches any of those patterns.
+///
+/// For instance given, `--external="*.node" --external="*.wasm"`, the regex will match
+/// any path that ends with `.node` or `.wasm`.
 pub fn externals_regex(external: &[String]) -> Regex {
   let mut regex_str = String::new();
   for (i, e) in external.iter().enumerate() {
@@ -111,7 +116,7 @@ pub async fn bundle(
     node_resolver: node_resolver.clone(),
     http_cache: factory.http_cache()?.clone(),
     module_loader: module_loader.clone(),
-    // TODO(nathanwhit): validate external strings
+    // TODO(nathanwhit): look at the external patterns to give diagnostics for probably incorrect patterns
     externals_regex: if bundle_flags.external.is_empty() {
       None
     } else {
@@ -201,13 +206,8 @@ pub async fn bundle(
     });
   if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
-  } else {
-    builder.outfile(
-      bundle_flags
-        .output_path
-        .clone()
-        .unwrap_or_else(|| "./dist/bundled.js".to_string()),
-    );
+  } else if let Some(output_path) = bundle_flags.output_path.clone() {
+    builder.outfile(output_path);
   }
   let flags = builder.build().unwrap();
 
@@ -244,24 +244,20 @@ pub async fn bundle(
     .await
     .unwrap();
 
-  if !response.errors.is_empty() {
-    for error in &response.errors {
-      log::error!(
-        "{}: {}",
-        deno_terminal::colors::red("bundler error"),
-        format_message(error)
-      );
-    }
+  for error in &response.errors {
+    log::error!(
+      "{}: {}",
+      deno_terminal::colors::red("bundler error"),
+      format_message(error)
+    );
   }
 
-  if !response.warnings.is_empty() {
-    for warning in &response.warnings {
-      log::warn!(
-        "{}: {}",
-        deno_terminal::colors::yellow("bundler warning"),
-        format_message(warning)
-      );
-    }
+  for warning in &response.warnings {
+    log::warn!(
+      "{}: {}",
+      deno_terminal::colors::yellow("bundler warning"),
+      format_message(warning)
+    );
   }
 
   if let Some(stdout) = response.write_to_stdout {
@@ -272,14 +268,12 @@ pub async fn bundle(
   } else if response.errors.is_empty() {
     if bundle_flags.output_dir.is_none()
       && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
+      && bundle_flags.output_path.is_some()
     {
-      let out = bundle_flags
-        .output_path
-        .clone()
-        .unwrap_or_else(|| "./dist/bundled.js".to_string());
-      let contents = std::fs::read_to_string(&out).unwrap();
+      let out = bundle_flags.output_path.as_ref().unwrap();
+      let contents = std::fs::read_to_string(out).unwrap();
       let contents = replace_require_shim(&contents);
-      std::fs::write(&out, contents).unwrap();
+      std::fs::write(out, contents).unwrap();
     }
 
     log::info!(
@@ -567,9 +561,6 @@ impl DenoPluginHandler {
       result
     );
 
-    // eprintln!("op_bundle_resolve result: {:?}", result);
-    // return error, but don't error out. defer until after all plugins have run. if still
-    // nothing resolved it, then error out with this error.
     match result {
       Ok(result) => {
         log::debug!(
@@ -605,11 +596,11 @@ impl DenoPluginHandler {
                     NodeResolutionKind::Execution,
                   )?
                   .into_url()?,
-              )));
+              )?));
             }
             _ => module.specifier().clone(),
           };
-          return Ok(Some(file_path_or_url(&specifier)));
+          return Ok(Some(file_path_or_url(&specifier)?));
         }
 
         if result.scheme() == "npm" {
@@ -624,9 +615,9 @@ impl DenoPluginHandler {
                 NodeResolutionKind::Execution,
               )?
               .into_url()?,
-          )))
+          )?))
         } else {
-          Ok(Some(file_path_or_url(&result)))
+          Ok(Some(file_path_or_url(&result)?))
         }
       }
       Err(e) => {
@@ -657,15 +648,7 @@ impl DenoPluginHandler {
           skip_graph_roots_validation: true,
         },
       )
-      .await
-      .inspect_err(|_e| {
-        // eprintln!(
-        //   "{}: error preparing module load: {:?}",
-        //   deno_terminal::colors::red("ERROR"),
-        //   e
-        // );
-      })?;
-    // eprintln!("prepared module load");
+      .await?;
     graph_permit.commit();
     Ok(())
   }
@@ -684,23 +667,6 @@ impl DenoPluginHandler {
 
     let resolve_dir = Path::new(&resolve_dir);
     let specifier = deno_core::resolve_url_or_path(specifier, resolve_dir)?;
-
-    // let (code, loader) =
-    //   if let Some((code, loader)) = self.load_from_graph(&specifier)? {
-    //     (code, loader)
-    //   } else {
-    //     log::debug!(
-    //       "{}: {}",
-    //       deno_terminal::colors::cyan("module is none"),
-    //       specifier
-    //     );
-    //     self.prepare_module_load(&[specifier.clone()]).await?;
-    //     let Some((code, loader)) = self.load_from_graph(&specifier)? else {
-    //       return Ok(None);
-    //     };
-    //     (code, loader)
-    //   };
-    // Ok(Some((code, loader)))
 
     let (specifier, loader) = if let Some((specifier, loader)) =
       self.specifier_and_type_from_graph(&specifier)?
@@ -737,55 +703,6 @@ impl DenoPluginHandler {
         let pin = pin.await?;
         Ok(Some((pin.code.as_bytes().to_vec(), loader)))
       }
-    }
-  }
-
-  #[allow(dead_code)]
-  fn load_from_graph(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<(Vec<u8>, esbuild_rs::BuiltinLoader)>, AnyError> {
-    let graph = self.module_graph_container.graph();
-    let Some(module) = graph.get(specifier) else {
-      return Ok(None);
-    };
-
-    match module {
-      deno_graph::Module::Js(js_module) => Ok(Some((
-        js_module.source.to_string().into_bytes(),
-        media_type_to_loader(js_module.media_type),
-      ))),
-      deno_graph::Module::Json(json_module) => Ok(Some((
-        json_module.source.to_string().into_bytes(),
-        esbuild_rs::BuiltinLoader::Json,
-      ))),
-      deno_graph::Module::Wasm(_) => todo!(),
-      deno_graph::Module::Npm(module) => {
-        let package_folder = self
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let path = self
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
-            None,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )?;
-        let url = path.clone().into_url()?;
-        let path = path.into_path()?;
-        let (media_type, _charset) =
-          deno_media_type::resolve_media_type_and_charset_from_content_type(
-            &url, None,
-          );
-        let contents = std::fs::read(path)?;
-        Ok(Some((contents, media_type_to_loader(media_type))))
-      }
-      deno_graph::Module::Node(_) => Ok(None),
-      deno_graph::Module::External(_) => Ok(None),
     }
   }
 
@@ -841,11 +758,15 @@ impl DenoPluginHandler {
   }
 }
 
-fn file_path_or_url(url: &Url) -> String {
+fn file_path_or_url(url: &Url) -> Result<String, AnyError> {
   if url.scheme() == "file" {
-    url.to_file_path().unwrap().to_string_lossy().to_string()
+    Ok(
+      deno_path_util::url_to_file_path(url)?
+        .to_string_lossy()
+        .into(),
+    )
   } else {
-    url.to_string()
+    Ok(url.to_string())
   }
 }
 fn media_type_to_loader(

@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_UNSTABLE_BUNDLE": "1"
-  },
   "tests": {
     "npm_specifier": {
       "steps": [

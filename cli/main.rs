@@ -129,6 +129,10 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bundle(bundle_flags) => {
       spawn_subcommand(async {
+        log::warn!(
+          "⚠️ {} is experimental and subject to changes",
+          colors::cyan("deno bundle")
+        );
         tools::bundle::bundle(flags, bundle_flags).await
       })
     },

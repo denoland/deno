@@ -1910,13 +1910,6 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  if std::env::var("DENO_UNSTABLE_BUNDLE").is_err() {
-    return command("bundle",  "`deno bundle` was removed in Deno 2.
-
-    See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
-        .hide(true);
-  }
-
   fn format_parser(s: &str) -> Result<BundleFormat, clap::Error> {
     match s {
       "esm" => Ok(BundleFormat::Esm),
@@ -1934,7 +1927,14 @@ fn bundle_subcommand() -> Command {
   }
   command(
     "bundle",
-    "bundle a thing",
+    "Output a single JavaScript file with all dependencies.
+
+  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+
+If no output file is given, the output is written to standard output:
+
+  deno bundle https://deno.land/std/examples/colors.ts
+",
     UnstableArgsConfig::ResolutionOnly,
   )
   .defer(|cmd| {
@@ -1950,7 +1950,7 @@ fn bundle_subcommand() -> Command {
         Arg::new("output")
           .long("output")
           .short('o')
-          .help("Output path. Defaults to `dist/bundled.js`")
+          .help("Output path`")
           .num_args(1)
           .value_parser(value_parser!(String))
           .value_hint(ValueHint::FilePath),
