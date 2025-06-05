@@ -1176,6 +1176,18 @@ const kDenoSubcommands = new Set([
   "vendor",
 ]);
 
+/** Wraps the script for (Node.js) --eval / --print argument
+ * Note: Builtin modules are available as global variables */
+function wrapScriptForEval(sourceCode: string): string {
+  return `
+    process.getBuiltinModule("module").builtinModules
+      .filter((m) => !/\\/|crypto|process/.test(m))
+      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
+    vm.runInThisContext(atob("${btoa(sourceCode)}"))
+  `;
+}
+
+/** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
 function toDenoArgs(args: string[]): [string[], string[]] {
   if (args.length === 0) {
     return [args, args];
@@ -1266,7 +1278,10 @@ function toDenoArgs(args: string[]): [string[], string[]] {
 
     // Remap Node's eval flags to Deno.
     if (flag === "-e" || flag === "--eval") {
-      denoArgs.push("eval", flagValue);
+      denoArgs.push("eval", wrapScriptForEval(flagValue));
+      useRunArgs = false;
+    } else if (flag === "-p" || flag === "--print") {
+      denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
       useRunArgs = false;
     } else if (isLongWithValue) {
       denoArgs.push(arg);
