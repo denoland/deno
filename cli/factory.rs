@@ -54,7 +54,7 @@ use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::FeatureChecker;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
-use node_resolver::ConditionOptions;
+use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
@@ -1211,7 +1211,7 @@ impl CliFactory {
             IsCjsResolutionMode::Disabled
           },
           node_resolver_options: NodeResolverOptions {
-            conditions: ConditionOptions {
+            conditions: NodeConditionOptions {
               conditions: options
                 .node_conditions()
                 .iter()

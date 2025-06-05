@@ -71,7 +71,7 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
 #[derive(Debug, Default, Clone)]
-pub struct ConditionOptions {
+pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
   /// Provide a value to override the default import conditions.
   ///
@@ -90,7 +90,7 @@ struct ConditionResolver {
 }
 
 impl ConditionResolver {
-  pub fn new(options: ConditionOptions) -> Self {
+  pub fn new(options: NodeConditionOptions) -> Self {
     fn combine_conditions(
       user_conditions: Cow<'_, [Cow<'static, str>]>,
       override_default: Option<Vec<Cow<'static, str>>>,
@@ -239,7 +239,7 @@ enum ResolvedMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
-  pub conditions: ConditionOptions,
+  pub conditions: NodeConditionOptions,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
