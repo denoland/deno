@@ -207,9 +207,8 @@ function createBuffer(length) {
       'The value "' + length + '" is invalid for option "size"',
     );
   }
-  const buf = new Uint8Array(length);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+
+  return new FastBuffer(length);
 }
 
 /**
@@ -238,7 +237,24 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-Buffer.poolSize = 8192;
+Buffer.poolSize = 8 * 1024;
+let poolSize, poolOffset, allocPool, allocBuffer;
+
+function createPool() {
+  poolSize = Buffer.poolSize;
+  allocBuffer = new Uint8Array(poolSize);
+  allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
+  poolOffset = 0;
+}
+createPool();
+
+function alignPool() {
+  // Ensure aligned slices
+  if (poolOffset & 0x7) {
+    poolOffset |= 0x7;
+    poolOffset++;
+  }
+}
 
 function _from(value, encodingOrOffset, length) {
   if (typeof value === "string") {
@@ -396,20 +412,36 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+  const maxLength = Buffer.poolSize >>> 1;
   const length = byteLength(string, encoding) | 0;
-  let buf = createBuffer(length);
-  const actual = buf.write(string, encoding);
-  if (actual !== length) {
-    // deno-lint-ignore prefer-primordials
-    buf = buf.slice(0, actual);
+  if (length >= maxLength) {
+    let buf = createBuffer(length);
+    const actual = buf.write(string, encoding);
+    if (actual !== length) {
+      // deno-lint-ignore prefer-primordials
+      buf = buf.slice(0, actual);
+    }
+    return buf;
   }
-  return buf;
+
+  if (length > (poolSize - poolOffset)) {
+    createPool();
+  }
+  const ops = getEncodingOps(encoding);
+  let b = new FastBuffer(allocPool, poolOffset, length);
+  const actual = ops.write(b, string, 0, length);
+  if (actual !== length) {
+    // byteLength() may overestimate the length, so we slice it down.
+    b = new FastBuffer(allocPool, poolOffset, actual);
+  }
+
+  poolOffset += actual;
+  alignPool();
+  return b;
 }
 
 function fromArrayLike(obj) {
-  const buf = new Uint8Array(obj);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+  return new FastBuffer(obj);
 }
 
 function fromObject(obj) {
@@ -447,7 +479,7 @@ ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8ArrayPrototype);
 ObjectSetPrototypeOf(SlowBuffer, Uint8Array);
 
 const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
-  return b != null && b._isBuffer === true && b !== BufferPrototype;
+  return ObjectPrototypeIsPrototypeOf(Buffer.prototype, b);
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
@@ -1072,9 +1104,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  const buffer = new Uint8Array(obj, byteOffset, length);
-  ObjectSetPrototypeOf(buffer, BufferPrototype);
-  return buffer;
+  return new FastBuffer(obj, byteOffset, length);
 }
 
 function _base64Slice(buf, start, end) {
