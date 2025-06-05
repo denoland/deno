@@ -41,5 +41,5 @@ pub use resolution::NodeResolverOptions;
 pub use resolution::NodeResolverRc;
 pub use resolution::NodeResolverSys;
 pub use resolution::ResolutionMode;
-pub use resolution::DEFAULT_CONDITIONS;
+pub use resolution::IMPORT_CONDITIONS;
 pub use resolution::REQUIRE_CONDITIONS;

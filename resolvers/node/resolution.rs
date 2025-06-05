@@ -61,7 +61,7 @@ use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
-pub static DEFAULT_CONDITIONS: &[Cow<'static, str>] = &[
+pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
   Cow::Borrowed("node"),
   Cow::Borrowed("import"),
@@ -70,27 +70,23 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
   &[Cow::Borrowed("require"), Cow::Borrowed("node")];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ConditionResolverOptions {
   pub conditions: Vec<Cow<'static, str>>,
-  pub default_import_conditions: Vec<Cow<'static, str>>,
-  pub default_require_conditions: Vec<Cow<'static, str>>,
-}
-
-impl Default for ConditionResolverOptions {
-  fn default() -> Self {
-    Self {
-      conditions: Vec::new(),
-      default_import_conditions: DEFAULT_CONDITIONS.to_vec(),
-      default_require_conditions: REQUIRE_CONDITIONS.to_vec(),
-    }
-  }
+  /// Provide a value to override the default import conditions.
+  ///
+  /// Defaults to `["deno", "node", "import"]`
+  pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
+  /// Provide a value to override the default require conditions.
+  ///
+  /// Defaults to `["require", "node"]`
+  pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConditionResolver {
-  import_conditions: Vec<Cow<'static, str>>,
-  require_conditions: Vec<Cow<'static, str>>,
+  import_conditions: Cow<'static, [Cow<'static, str>]>,
+  require_conditions: Cow<'static, [Cow<'static, str>]>,
 }
 
 impl Default for ConditionResolver {
@@ -101,25 +97,32 @@ impl Default for ConditionResolver {
 
 impl ConditionResolver {
   pub fn new(options: ConditionResolverOptions) -> Self {
+    let import_conditions = options
+      .import_conditions_override
+      .map(Cow::Owned)
+      .unwrap_or(Cow::Borrowed(IMPORT_CONDITIONS));
+    let require_conditions = options
+      .require_conditions_override
+      .map(Cow::Owned)
+      .unwrap_or(Cow::Borrowed(REQUIRE_CONDITIONS));
     if options.conditions.is_empty() {
       // Fast path for no custom conditions.
       return Self {
-        import_conditions: options.default_import_conditions,
-        require_conditions: options.default_require_conditions,
+        import_conditions,
+        require_conditions,
       };
     }
     Self {
       import_conditions: options
         .conditions
         .iter()
-        .chain(&options.default_import_conditions)
         .cloned()
+        .chain(import_conditions.into_owned())
         .collect(),
       require_conditions: options
         .conditions
-        .iter()
-        .chain(&options.default_require_conditions)
-        .cloned()
+        .into_iter()
+        .chain(require_conditions.into_owned())
         .collect(),
     }
   }
@@ -144,7 +147,7 @@ pub enum ResolutionMode {
 impl ResolutionMode {
   pub fn default_conditions(&self) -> &'static [Cow<'static, str>] {
     match self {
-      ResolutionMode::Import => DEFAULT_CONDITIONS,
+      ResolutionMode::Import => IMPORT_CONDITIONS,
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }

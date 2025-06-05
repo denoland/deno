@@ -1219,7 +1219,8 @@ impl CliFactory {
                   .iter()
                   .map(|c| Cow::Owned(c.clone()))
                   .collect(),
-                ..Default::default()
+                import_conditions_override: None,
+                require_conditions_override: None,
               },
             ),
             typescript_version: Some(
