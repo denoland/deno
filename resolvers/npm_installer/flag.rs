@@ -19,6 +19,7 @@ mod inner {
   pub trait LaxSingleProcessFsFlagSys:
     sys_traits::FsOpen
     + sys_traits::FsMetadata
+    + sys_traits::FsRemoveFile
     + sys_traits::FsWrite
     + sys_traits::ThreadSleep
     + sys_traits::SystemTimeNow
@@ -117,6 +118,9 @@ mod inner {
                         poll_file_update_ms,
                       ));
                     }
+                    // cleanup the poll file so the node_modules folder is more
+                    // deterministic and so it doesn't end up in `deno compile`
+                    _ = sys.fs_remove_file(&last_updated_path);
                   }
                 });
 
