@@ -80,6 +80,22 @@
           "output": "{ a: 1, b: 'hello' }\n"
         }
       ]
+    },
+    "json_import": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js imports_json.ts",
+          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+        },
+        {
+          "args": ["eval", "console.log(Deno.readTextFileSync('./out.js'))"],
+          "output": "imports_json.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ hi: \"bye\", thing: { other: \"thing\" } }\n"
+        }
+      ]
     }
   }
 }
