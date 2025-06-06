@@ -96,6 +96,18 @@
           "output": "{ hi: \"bye\", thing: { other: \"thing\" } }\n"
         }
       ]
+    },
+    "sloppy_imports": {
+      "steps": [
+        {
+          "args": "bundle --unstable-sloppy-imports --output=out.js sloppy.ts",
+          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ hi: \"bye\", thing: { other: \"thing\" } }\n"
+        }
+      ]
     }
   }
 }

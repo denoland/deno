@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -41,9 +40,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::sys::CliSys;
 
 /// Given a set of pattern indicating files to mark as external,
 /// return a regex that matches any of those patterns.
@@ -100,7 +97,6 @@ pub async fn bundle(
     .module_loader;
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().canonicalize()?;
-  let npm_req_resolver = factory.npm_req_resolver()?;
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
@@ -111,10 +107,8 @@ pub async fn bundle(
       .await?
       .clone(),
     permissions: root_permissions.clone(),
-    npm_req_resolver: npm_req_resolver.clone(),
     npm_resolver: npm_resolver.clone(),
     node_resolver: node_resolver.clone(),
-    http_cache: factory.http_cache()?.clone(),
     module_loader: module_loader.clone(),
     // TODO(nathanwhit): look at the external patterns to give diagnostics for probably incorrect patterns
     externals_regex: if bundle_flags.external.is_empty() {
@@ -284,6 +278,10 @@ pub async fn bundle(
     );
   }
 
+  if !response.errors.is_empty() {
+    deno_core::anyhow::bail!("bundling failed");
+  }
+
   Ok(())
 }
 
@@ -355,11 +353,8 @@ struct DenoPluginHandler {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   node_resolver: Arc<CliNodeResolver>,
-  #[allow(dead_code)]
-  http_cache: GlobalOrLocalHttpCache<CliSys>,
   module_loader: Rc<dyn ModuleLoader>,
   externals_regex: Option<Regex>,
 }
@@ -395,6 +390,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         namespace: if r.starts_with("jsr:")
           || r.starts_with("https:")
           || r.starts_with("http:")
+          || r.starts_with("data:")
         {
           Some("deno".into())
         } else {
@@ -465,40 +461,6 @@ fn import_kind_to_resolution_mode(
 }
 
 impl DenoPluginHandler {
-  #[allow(dead_code)]
-  fn get_final_path(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<String, AnyError> {
-    match specifier.scheme() {
-      "file" => {
-        let path = specifier.to_file_path().unwrap();
-        Ok(path.to_string_lossy().to_string())
-      }
-      "npm" => {
-        let req_ref = NpmPackageReqReference::from_specifier(specifier)?;
-        let path = self.npm_req_resolver.resolve_req_reference(
-          &req_ref,
-          specifier,
-          ResolutionMode::Import,
-          NodeResolutionKind::Execution,
-        )?;
-        Ok(path.to_string_lossy().to_string())
-      }
-      "https" | "http" => Ok(match &self.http_cache {
-        GlobalOrLocalHttpCache::Global(global_http_cache) => global_http_cache
-          .local_path_for_url(specifier)?
-          .to_string_lossy()
-          .to_string(),
-        GlobalOrLocalHttpCache::Local(local_http_cache) => local_http_cache
-          .local_path_for_url(specifier)?
-          .ok_or(BundleError::HttpCache)?
-          .to_string_lossy()
-          .to_string(),
-      }),
-      _ => Ok(specifier.to_string()),
-    }
-  }
   fn bundle_resolve(
     &self,
     path: &str,
@@ -589,7 +551,7 @@ impl DenoPluginHandler {
           lib: TsTypeLib::default(),
           permissions: self.permissions.clone(),
           ext_overwrite: None,
-          allow_unknown_media_types: false,
+          allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
         },
       )
@@ -623,6 +585,13 @@ impl DenoPluginHandler {
         deno_terminal::colors::yellow("warn"),
         specifier
       );
+
+      if specifier.scheme() == "data" {
+        return Ok(Some((
+          specifier.to_string().as_bytes().to_vec(),
+          esbuild_client::BuiltinLoader::DataUrl,
+        )));
+      }
 
       let (media_type, _) =
         deno_media_type::resolve_media_type_and_charset_from_content_type(
