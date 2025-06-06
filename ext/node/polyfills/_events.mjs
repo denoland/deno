@@ -75,6 +75,7 @@ EventEmitter.on = on;
 EventEmitter.once = once;
 EventEmitter.getEventListeners = getEventListeners;
 EventEmitter.setMaxListeners = setMaxListeners;
+EventEmitter.getMaxListeners = getMaxListeners;
 EventEmitter.listenerCount = listenerCount;
 // Backwards-compat with node 0.10.x
 EventEmitter.EventEmitter = EventEmitter;
@@ -259,6 +260,32 @@ EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
   this._maxListeners = n;
   return this;
 };
+
+/**
+ * Returns the max listeners set.
+ * @param {EventEmitter | EventTarget} emitterOrTarget
+ * @returns {number}
+ */
+export function getMaxListeners(emitterOrTarget) {
+  if (typeof emitterOrTarget?.getMaxListeners === "function") {
+    return _getMaxListeners(emitterOrTarget);
+  } else if (
+    typeof emitterOrTarget?.[kMaxEventTargetListeners] === "number"
+  ) {
+    return emitterOrTarget[kMaxEventTargetListeners] ?? defaultMaxListeners;
+  } else if (emitterOrTarget instanceof AbortSignal) {
+    return 0; // default for AbortController if not set by EventTarget prototype.
+  } else if (
+    emitterOrTarget instanceof EventTarget) {
+     return defaultMaxListeners;
+  }
+
+  throw new ERR_INVALID_ARG_TYPE(
+    "emitter",
+    ["EventEmitter", "EventTarget"],
+    emitterOrTarget,
+  );
+}
 
 function _getMaxListeners(that) {
   if (that._maxListeners === undefined) {
