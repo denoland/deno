@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // This code has been inspired by https://github.com/bevry/domain-browser/commit/8bce7f4a093966ca850da75b024239ad5d0b33c6
+// deno-lint-ignore-file no-process-global
 
 import { primordials } from "ext:core/mod.js";
 import { ERR_UNHANDLED_ERROR } from "ext:deno_node/internal/errors.ts";
@@ -9,10 +10,10 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeApply,
   ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
   ReflectApply,
 } = primordials;
 import { EventEmitter } from "node:events";
@@ -21,8 +22,6 @@ function emitError(e) {
   this.emit("error", e);
 }
 
-// TODO(bartlomieju): maybe use this one
-// deno-lint-ignore prefer-const
 let stack = [];
 export let _stack = stack;
 export let active = null;
@@ -52,13 +51,13 @@ export class Domain extends EventEmitter {
       ee.domain.remove(ee);
     }
 
-    if (this.domain && (ee instanceof Domain)) {
+    if (this.domain && (ObjectPrototypeIsPrototypeOf(Domain.prototype, ee))) {
       for (let d = this.domain; d; d = d.domain) {
         if (ee === d) return;
       }
     }
 
-    ObjectDefineProperty(ee, 'domain', {
+    ObjectDefineProperty(ee, "domain", {
       __proto__: null,
       configurable: true,
       enumerable: false,
@@ -72,7 +71,7 @@ export class Domain extends EventEmitter {
     ee.domain = null;
     const index = ArrayPrototypeIndexOf(this.members, ee);
     if (index !== -1) {
-      ArrayPrototypeSplice(this.members, index, 1)
+      ArrayPrototypeSplice(this.members, index, 1);
     }
   }
 
@@ -147,15 +146,15 @@ function patchEventEmitter() {
   EventEmitter.usingDomains = true;
 
   const eventInit = EventEmitter.init;
-  EventEmitter.init = function(opts) {
-    ObjectDefineProperty(this, 'domain', {
+  EventEmitter.init = function (opts) {
+    ObjectDefineProperty(this, "domain", {
       __proto__: null,
       configurable: true,
       enumerable: false,
       value: null,
       writable: true,
     });
-    if (active && !(this instanceof Domain)) {
+    if (active && !ObjectPrototypeIsPrototypeOf(Domain.prototype, this)) {
       this.domain = active;
     }
 
@@ -167,23 +166,26 @@ function patchEventEmitter() {
     const domain = this.domain;
 
     const type = args[0];
-    const shouldEmitError = type === 'error' &&
-                            this.listenerCount(type) > 0;
+    const shouldEmitError = type === "error" &&
+      this.listenerCount(type) > 0;
 
     // Just call original `emit` if current EE instance has `error`
     // handler, there's no active domain or this is process
-    if (shouldEmitError || domain === null || domain === undefined ||
-        this === process) {
+    if (
+      shouldEmitError || domain === null || domain === undefined ||
+      this === process
+    ) {
       return ReflectApply(eventEmit, this, args);
     }
 
-    if (type === 'error') {
-      const er = args.length > 1 && args[1] ?
-        args[1] : new ERR_UNHANDLED_ERROR();
+    if (type === "error") {
+      const er = args.length > 1 && args[1]
+        ? args[1]
+        : new ERR_UNHANDLED_ERROR();
 
-      if (typeof er === 'object') {
+      if (typeof er === "object") {
         er.domainEmitter = this;
-        ObjectDefineProperty(er, 'domain', {
+        ObjectDefineProperty(er, "domain", {
           __proto__: null,
           configurable: true,
           enumerable: false,
@@ -225,7 +227,7 @@ function patchEventEmitter() {
 
       updateExceptionCapture();
 
-      domain.emit('error', er);
+      domain.emit("error", er);
 
       // Now that the domain's error handler has completed, restore the domains
       // stack and the active domain to their original values.
@@ -242,7 +244,6 @@ function patchEventEmitter() {
 
     return ret;
   };
-
 }
 
 export default {
