@@ -1028,12 +1028,9 @@ Module.prototype._compile = function (content, filename, format) {
   }
 
   const {
-    Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1046,11 +1043,11 @@ Module.prototype._compile = function (content, filename, format) {
     this,
     filename,
     dirname,
-    Buffer,
+    buffer.Buffer,
     clearImmediate,
     clearInterval,
     clearTimeout,
-    global,
+    globalThis,
     process,
     setImmediate,
     setInterval,
@@ -1135,7 +1132,7 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    nodeGlobals.Buffer,
+    buffer.Buffer,
     reportError,
   );
 };
