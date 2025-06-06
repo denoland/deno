@@ -57,6 +57,7 @@ use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
+use opentelemetry::Array;
 use opentelemetry::InstrumentationScope;
 pub use opentelemetry::Key;
 pub use opentelemetry::KeyValue;
@@ -1072,9 +1073,100 @@ macro_rules! attr_raw {
     } else if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
       let (i64_value, _lossless) = bigint.i64_value();
       Some(Value::I64(i64_value))
-    } else if let Ok(_array) = $value.try_cast::<v8::Array>() {
-      // TODO: implement array attributes
-      None
+    } else if let Ok(array) = $value.try_cast::<v8::Array>() {
+      // Build up a homogeneous array of primitive attribute values.
+      let len = array.length();
+      let mut builder: Option<Array> = None;
+      for i in 0..len {
+        let Some(el) = array.get_index($scope, i) else {
+          continue;
+        };
+        if el.is_null_or_undefined() {
+          // Skip null/undefined elements.
+          continue;
+        }
+        if let Some(b) = &mut builder {
+          match b {
+            Array::String(vec) => {
+              if let Ok(s) = el.try_cast::<v8::String>() {
+                let view = v8::ValueView::new($scope, s);
+                match view.data() {
+                  v8::ValueViewData::OneByte(bytes) => {
+                    vec.push(StringValue::from(
+                      String::from_utf8_lossy(bytes).into_owned(),
+                    ))
+                  }
+                  v8::ValueViewData::TwoByte(bytes) => {
+                    vec.push(StringValue::from(String::from_utf16_lossy(bytes)))
+                  }
+                }
+              } else {
+                builder = None;
+                break;
+              }
+            }
+            Array::F64(vec) => {
+              if let Ok(n) = el.try_cast::<v8::Number>() {
+                vec.push(n.value());
+              } else {
+                builder = None;
+                break;
+              }
+            }
+            Array::Bool(vec) => {
+              if let Ok(b) = el.try_cast::<v8::Boolean>() {
+                vec.push(b.is_true());
+              } else {
+                builder = None;
+                break;
+              }
+            }
+            Array::I64(vec) => {
+              if let Ok(bi) = el.try_cast::<v8::BigInt>() {
+                let (i64_value, _lossless) = bi.i64_value();
+                vec.push(i64_value);
+              } else {
+                builder = None;
+                break;
+              }
+            }
+            _ => unreachable!(),
+          }
+        } else {
+          // Determine the array element type.
+          if let Ok(s) = el.try_cast::<v8::String>() {
+            let view = v8::ValueView::new($scope, s);
+            let mut vec = Vec::with_capacity(len as usize);
+            match view.data() {
+              v8::ValueViewData::OneByte(bytes) => vec.push(StringValue::from(
+                String::from_utf8_lossy(bytes).into_owned(),
+              )),
+              v8::ValueViewData::TwoByte(bytes) => {
+                vec.push(StringValue::from(String::from_utf16_lossy(bytes)))
+              }
+            }
+            builder = Some(Array::String(vec));
+          } else if let Ok(n) = el.try_cast::<v8::Number>() {
+            let mut vec = Vec::with_capacity(len as usize);
+            vec.push(n.value());
+            builder = Some(Array::F64(vec));
+          } else if let Ok(b) = el.try_cast::<v8::Boolean>() {
+            let mut vec = Vec::with_capacity(len as usize);
+            vec.push(b.is_true());
+            builder = Some(Array::Bool(vec));
+          } else if let Ok(bi) = el.try_cast::<v8::BigInt>() {
+            let mut vec = Vec::with_capacity(len as usize);
+            let (i64_value, _lossless) = bi.i64_value();
+            vec.push(i64_value);
+            builder = Some(Array::I64(vec));
+          } else {
+            // unsupported element type
+            builder = None;
+            break;
+          }
+        }
+      }
+      builder.map(Value::Array)
     } else {
       None
     };
