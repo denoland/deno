@@ -103,10 +103,14 @@ interface NodeTestFileReport {
 
 type TestReports = Record<string, NodeTestFileReport>;
 
+type SingleResultInfo = {
+  usesNodeTest?: 1;
+}
+
 export type SingleResult = [
   pass: boolean | "IGNORE",
   error: ErrorExit | ErrorTimeout | ErrorUnexpected | undefined,
-  info: string[],
+  info: SingleResultInfo,
 ];
 type ErrorExit = {
   code: number;
@@ -227,9 +231,9 @@ function transformReportsIntoResults(
     if (value.result === NodeTestFileResult.SKIP) {
       throw new Error("Can't transform 'SKIP' result into `SingleResult`");
     }
-    const info = [];
+    const info = {} as SingleResultInfo;
     if (value.usesNodeTest) {
-      info.push("usesNodeTest");
+      info.usesNodeTest = 1;
     }
     let result: SingleResult = [true, undefined, info];
     if (value.result === NodeTestFileResult.FAIL) {
