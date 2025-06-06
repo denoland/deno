@@ -133,10 +133,15 @@ impl ConditionResolver {
     &self,
     resolution_mode: ResolutionMode,
   ) -> &[Cow<'static, str>] {
+    eprintln!("resolve conditions {:?} {:#?}", resolution_mode, self);
     match resolution_mode {
       ResolutionMode::Import => &self.import_conditions,
       ResolutionMode::Require => &self.require_conditions,
     }
+  }
+
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    &self.require_conditions
   }
 }
 
@@ -313,6 +318,10 @@ impl<
     }
   }
 
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    self.condition_resolver.require_conditions()
+  }
+
   pub fn with_package_resolution_lookup_cache(self) -> Self {
     Self {
       package_resolution_lookup_cache: Some(Default::default()),
@@ -426,6 +435,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), NodeResolveError> {
+    eprintln!("module resolve {} {:?}", specifier, conditions);
     if should_be_treated_as_relative_or_absolute_path(specifier) {
       let referrer_url = referrer.url()?;
       let url = node_join_url(referrer_url, specifier).map_err(|err| {
@@ -761,6 +771,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
+    eprintln!("maybe resolve types {:?}", conditions);
     if resolution_kind.is_types() {
       let file_path = match url {
         LocalUrlOrPath::Url(url) => {
@@ -922,6 +933,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
+    eprintln!("package imports resolve internal {} {:?}", name, conditions);
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(
@@ -1024,6 +1036,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageTargetResolveError> {
+    eprintln!("package target string resolve {} {:?}", target, conditions);
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
       return Err(
         InvalidPackageTargetError {
@@ -1264,6 +1277,10 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<MaybeTypesResolvedUrl>, PackageTargetResolveError> {
+    eprintln!(
+      "resolve package target inner resolve {:?} {:?}",
+      package_json_path, conditions
+    );
     if let Some(target) = target.as_str() {
       let url_or_path = self.resolve_package_target_string(
         target,
@@ -1418,6 +1435,10 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageExportsResolveError> {
+    eprintln!(
+      "package exports resolve {:?} {:?}",
+      package_json_path, conditions
+    );
     if let Some(target) = package_exports.get(package_subpath) {
       if package_subpath.find('*').is_none() && !package_subpath.ends_with('/')
       {
@@ -1531,6 +1552,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
+    eprintln!("package resolve {} {:?}", specifier, conditions);
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
@@ -1612,6 +1634,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
+    eprintln!("package subpath resolve {} {:?}", package_name, conditions);
     let package_dir_path = self
       .npm_pkg_folder_resolver
       .resolve_package_folder_from_package(package_name, referrer)?;
@@ -1653,6 +1676,10 @@ impl<
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
+    eprintln!(
+      "package dir subpath resolve {:?} {:?}",
+      package_dir_path, conditions
+    );
     let package_json_path = package_dir_path.join("package.json");
     match self
       .pkg_json_resolver
@@ -1693,6 +1720,10 @@ impl<
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
+    eprintln!(
+      "package subpath subpath resolve {:#?} {:?}",
+      package_json, conditions
+    );
     if let Some(exports) = &package_json.exports {
       let result = self.package_exports_resolve_internal(
         &package_json.path,
@@ -1857,6 +1888,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
+    eprintln!("legacy main resolve {:#?} {:?}", package_json, conditions);
     let pkg_json_kind = match resolution_mode {
       ResolutionMode::Require => deno_package_json::NodeModuleKind::Cjs,
       ResolutionMode::Import => deno_package_json::NodeModuleKind::Esm,
