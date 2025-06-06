@@ -72,7 +72,7 @@ deno_path_util = "=0.4.0"
 deno_semver = "=0.8.0"
 deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
-deno_unsync = "0.4.3"
+deno_unsync = { version = "0.4.3", default-features = false }
 deno_whoami = "0.1.0"
 eszip = "=0.92.0"
 
