@@ -228,7 +228,12 @@ impl<
               &referrer,
               // FIXME(bartlomieju): check if these conditions are okay, probably
               // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-              &["deno", "node", "require", "default"],
+              &[
+                Cow::Borrowed("deno"),
+                Cow::Borrowed("node"),
+                Cow::Borrowed("require"),
+                Cow::Borrowed("default"),
+              ],
               NodeResolutionKind::Execution,
             )
             .and_then(|value| {
@@ -328,7 +333,7 @@ impl<
     &self,
     specifier: &str,
     referrer: &Url,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<UrlOrPath>, JsErrorBox> {
     if specifier.starts_with('/') {
