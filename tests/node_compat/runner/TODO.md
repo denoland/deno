@@ -748,7 +748,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-event-target.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-event-target.js)
 - [parallel/test-eventemitter-asyncresource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventemitter-asyncresource.js)
 - [parallel/test-events-customevent.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-customevent.js)
-- [parallel/test-events-getmaxlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-getmaxlisteners.js)
 - [parallel/test-events-listener-count-with-listener.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-listener-count-with-listener.js)
 - [parallel/test-events-static-geteventlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-static-geteventlisteners.js)
 - [parallel/test-eventsource-disabled.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventsource-disabled.js)
