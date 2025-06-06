@@ -316,6 +316,12 @@ impl<'a> TsResponseImportMapper<'a> {
     let scoped_resolver =
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
+    if let Some(dep_name) =
+      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+    {
+      return Some(dep_name);
+    }
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -461,10 +467,6 @@ impl<'a> TsResponseImportMapper<'a> {
       if let Some(result) = match_specifier() {
         return Some(result);
       }
-    } else if let Some(dep_name) =
-      scoped_resolver.file_url_to_npm_dep_key(specifier)
-    {
-      return Some(dep_name);
     }
 
     if let Some(bare_package_specifier) =

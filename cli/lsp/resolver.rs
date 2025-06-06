@@ -103,7 +103,7 @@ pub struct LspScopedResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
-  configured_npm_resolutions: Arc<ConfiguredNpmResolutions>,
+  configured_dep_resolutions: Arc<ConfiguredDepResolutions>,
   config_data: Option<Arc<ConfigData>>,
 }
 
@@ -125,7 +125,7 @@ impl Default for LspScopedResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       dep_info: Default::default(),
-      configured_npm_resolutions: Default::default(),
+      configured_dep_resolutions: Default::default(),
       config_data: None,
     }
   }
@@ -184,9 +184,9 @@ impl LspScopedResolver {
         )
       })
       .unwrap_or_default();
-    let configured_npm_resolutions = (|| {
+    let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
-      Some(Arc::new(ConfiguredNpmResolutions::new(
+      Some(Arc::new(ConfiguredDepResolutions::new(
         config_data.and_then(|d| d.resolver.maybe_import_map()),
         config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
@@ -209,7 +209,7 @@ impl LspScopedResolver {
       redirect_resolver,
       graph_imports,
       dep_info: Default::default(),
-      configured_npm_resolutions,
+      configured_dep_resolutions,
       config_data: config_data.cloned(),
     }
   }
@@ -283,7 +283,7 @@ impl LspScopedResolver {
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       graph_imports: self.graph_imports.clone(),
       dep_info: self.dep_info.clone(),
-      configured_npm_resolutions: self.configured_npm_resolutions.clone(),
+      configured_dep_resolutions: self.configured_dep_resolutions.clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -384,19 +384,13 @@ impl LspScopedResolver {
     )))
   }
 
-  pub fn file_url_to_npm_dep_key(
+  pub fn resource_url_to_configured_dep_key(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     self
-      .configured_npm_resolutions
+      .configured_dep_resolutions
       .dep_key_from_resolution(specifier)
-      .or_else(|| {
-        self
-          .node_resolver
-          .as_ref()?
-          .lookup_package_specifier_for_resolution(specifier)
-      })
   }
 
   pub fn npm_reqs(&self) -> BTreeSet<PackageReq> {
@@ -646,11 +640,11 @@ pub struct ScopeDepInfo {
 }
 
 #[derive(Debug, Default)]
-struct ConfiguredNpmResolutions {
+struct ConfiguredDepResolutions {
   deps_by_resolution: IndexMap<ModuleSpecifier, String>,
 }
 
-impl ConfiguredNpmResolutions {
+impl ConfiguredDepResolutions {
   fn new(
     import_map: Option<&ImportMap>,
     package_json: Option<&PackageJson>,
@@ -789,17 +783,16 @@ impl ConfiguredNpmResolutions {
           ) else {
             continue;
           };
-          let Some(url) = req.into_url().ok() else {
+          let Some(file_url) = req.into_url().ok() else {
             continue;
           };
-          let specifier = into_specifier_and_media_type(Some(url)).0;
           if dep_package_json.is_none() {
             dep_package_json = (|| {
-              let path = url_to_file_path(&specifier).ok()?;
+              let path = url_to_file_path(&file_url).ok()?;
               pkg_json_resolver.get_closest_package_json(&path).ok()?
             })();
           }
-          result.deps_by_resolution.insert(specifier, name.clone());
+          result.deps_by_resolution.insert(file_url, name.clone());
         }
         if let Some(dep_package_json) = &dep_package_json {
           insert_export_resolutions(
@@ -1105,25 +1098,22 @@ impl<'a> ResolverFactory<'a> {
       .node_resolver
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
-        Some(Arc::new(
-          CliNodeResolver::new(
-            self.in_npm_pkg_checker().clone(),
-            DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            self.pkg_json_resolver.clone(),
-            self.node_resolution_sys.clone(),
-            NodeResolverOptions {
-              conditions: Default::default(),
-              typescript_version: Some(
-                deno_semver::Version::parse_standard(
-                  deno_lib::version::DENO_VERSION_INFO.typescript,
-                )
-                .unwrap(),
-              ),
-            },
-          )
-          .with_package_resolution_lookup_cache(),
-        ))
+        Some(Arc::new(CliNodeResolver::new(
+          self.in_npm_pkg_checker().clone(),
+          DenoIsBuiltInNodeModuleChecker,
+          npm_resolver.clone(),
+          self.pkg_json_resolver.clone(),
+          self.node_resolution_sys.clone(),
+          NodeResolverOptions {
+            conditions: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
+        )))
       })
       .as_ref()
   }
