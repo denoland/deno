@@ -23,14 +23,15 @@ function addAbortListener(signal, listener) {
 
   let removeEventListener;
   if (signal.aborted) {
-    queueMicrotask(() => listener());
+    queueMicrotask(() => listener({ target: signal }));
   } else {
-    signal[abortSignal.add](() => {
+    const handler = () => {
       removeEventListener?.();
-      listener();
-    });
+      listener({ target: signal });
+    };
+    signal[abortSignal.add](handler);
     removeEventListener = () => {
-      signal[abortSignal.remove](listener);
+      signal[abortSignal.remove](handler);
     };
   }
   return {
