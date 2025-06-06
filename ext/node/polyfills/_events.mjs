@@ -276,8 +276,9 @@ export function getMaxListeners(emitterOrTarget) {
   } else if (emitterOrTarget instanceof AbortSignal) {
     return 0; // default for AbortController if not set by EventTarget prototype.
   } else if (
-    emitterOrTarget instanceof EventTarget) {
-     return defaultMaxListeners;
+    emitterOrTarget instanceof EventTarget
+  ) {
+    return defaultMaxListeners;
   }
 
   throw new ERR_INVALID_ARG_TYPE(
