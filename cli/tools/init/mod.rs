@@ -340,14 +340,27 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     reload: true,
     ..Default::default()
   };
-  crate::tools::run::run_script(
+  let result = crate::tools::run::run_script(
     WorkerExecutionMode::Run,
     new_flags.into(),
     None,
     None,
     Default::default(),
   )
-  .await
+  .await;
+
+  try_remove_tmp_node_modules_dir();
+
+  result
+}
+
+// Removes the `node_modules` directory if it exists in the current working directory.
+// Useful for cleaning up after npm init scripts that may create a temporary `node_modules` directory.
+fn try_remove_tmp_node_modules_dir() {
+  if let Ok(cwd) = std::env::current_dir() {
+    let node_modules_dir = cwd.join("node_modules");
+    std::fs::remove_dir_all(&node_modules_dir).ok();
+  };
 }
 
 fn create_json_file(
