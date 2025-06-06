@@ -1179,6 +1179,10 @@ const kDenoSubcommands = new Set([
 /** Wraps the script for (Node.js) --eval / --print argument
  * Note: Builtin modules are available as global variables */
 function wrapScriptForEval(sourceCode: string): string {
+  // Note: We need vm.runInThisContext call here to get the last evaluated
+  // value of the source with multiple statements. `deno eval -p` surrounds
+  // the source code like `console.log(${source})`, and it only allows a
+  // single expression.
   return `
     process.getBuiltinModule("module").builtinModules
       .filter((m) => !/\\/|crypto|process/.test(m))
