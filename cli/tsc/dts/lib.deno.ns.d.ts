@@ -5069,7 +5069,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeDefaultExport {
+  export interface ServeDefaultExport<Addr extends Deno.Addr = Deno.NetAddr> {
     /** A handler for HTTP requests. Consumes a request and returns a response.
      *
      * If a handler throws, the server calling the handler will assume the impact
@@ -5078,7 +5078,7 @@ declare namespace Deno {
      *
      * @category HTTP Server
      */
-    fetch: ServeHandler;
+    fetch: ServeHandler<Addr>;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
