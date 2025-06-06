@@ -104,7 +104,7 @@ interface NodeTestFileReport {
 type TestReports = Record<string, NodeTestFileReport>;
 
 type SingleResultInfo = {
-  usesNodeTest?: 1;
+  usesNodeTest?: 1; // Uses this form to minimize the size of the report.json
 }
 
 export type SingleResult = [
