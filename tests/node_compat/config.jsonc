@@ -533,6 +533,7 @@
       "test-event-emitter-special-event-names.js",
       "test-event-emitter-subclass.js",
       "test-event-emitter-symbols.js",
+      "test-event-target.js",
       "test-events-list.js",
       "test-events-on-async-iterator.js",
       "test-events-once.js",
