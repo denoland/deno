@@ -72,7 +72,6 @@
       "test-dsa-fips-invalid-key.js",
       "test-error-aggregateTwoErrors.js",
       "test-error-prepare-stack-trace.js",
-      "test-event-emitter-max-listeners.js",
       "test-event-emitter-no-error-provided-to-error-event.js",
       "test-event-emitter-prepend.js",
       "test-events-on-async-iterator.js",
