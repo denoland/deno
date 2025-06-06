@@ -105,7 +105,7 @@ type TestReports = Record<string, NodeTestFileReport>;
 
 type SingleResultInfo = {
   usesNodeTest?: 1; // Uses this form to minimize the size of the report.json
-}
+};
 
 export type SingleResult = [
   pass: boolean | "IGNORE",
@@ -208,7 +208,11 @@ async function runSingle(
       } catch {
         // ignore
       }
-      return { result: NodeTestFileResult.FAIL, error: { timeout: TIMEOUT }, usesNodeTest };
+      return {
+        result: NodeTestFileResult.FAIL,
+        error: { timeout: TIMEOUT },
+        usesNodeTest,
+      };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, retry + 1);
