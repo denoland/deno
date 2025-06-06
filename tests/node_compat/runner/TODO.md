@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1195 tests out of 3993 have been ported from Node 23.9.0 (29.93% ported, 70.67% remaining).
+1196 tests out of 3993 have been ported from Node 23.9.0 (29.95% ported, 70.65% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -745,7 +745,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-esm-loader-hooks-inspect-brk.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-esm-loader-hooks-inspect-brk.js)
 - [parallel/test-esm-loader-hooks-inspect-wait.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-esm-loader-hooks-inspect-wait.js)
 - [parallel/test-eval-disallow-code-generation-from-strings.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eval-disallow-code-generation-from-strings.js)
-- [parallel/test-event-target.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-event-target.js)
 - [parallel/test-eventemitter-asyncresource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventemitter-asyncresource.js)
 - [parallel/test-events-customevent.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-customevent.js)
 - [parallel/test-events-getmaxlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-getmaxlisteners.js)
