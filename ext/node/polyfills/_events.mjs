@@ -469,8 +469,8 @@ function _addListener(target, type, listener, prepend) {
       const w = new Error(
         "Possible EventEmitter memory leak detected. " +
           `${existing.length} ${String(type)} listeners ` +
-          `added to ${inspect(target, { depth: -1 })}. Use ` +
-          "emitter.setMaxListeners() to increase limit",
+          `added to ${inspect(target, { depth: -1 })}. ` +
+          `MaxListeners is ${m}.`,
       );
       w.name = "MaxListenersExceededWarning";
       w.emitter = target;
