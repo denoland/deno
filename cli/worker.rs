@@ -86,10 +86,13 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
 
-    log::debug!("main_module {}", self.worker.main_module());
-
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
+
+    log::debug!("main_module {}", self.worker.main_module());
+
+    // Run preload modules first if they were defined
+    self.worker.execute_preload_modules().await?;
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
@@ -356,11 +359,13 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
+    preload_modules: Vec<ModuleSpecifier>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
+        preload_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -373,12 +378,14 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
+    preload_modules: Vec<ModuleSpecifier>,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
+        preload_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -387,10 +394,12 @@ impl CliMainWorkerFactory {
       .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
+    preload_modules: Vec<ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -448,6 +457,7 @@ impl CliMainWorkerFactory {
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,
       main_module,
+      preload_modules,
       permissions,
       custom_extensions,
       stdio,
