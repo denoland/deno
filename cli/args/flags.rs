@@ -4365,8 +4365,11 @@ fn lock_args() -> [Arg; 3] {
 }
 
 fn node_conditions_arg() -> Arg {
-  Arg::new("unstable-node-conditions")
-    .long("unstable-node-conditions")
+  Arg::new("node-conditions")
+    .long("node-conditions")
+    .help("Specify conditions used when resolving 'conditional exports' for npm packages.
+    
+Docs: https://docs.deno.com/go/conditional-exports")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
 }
@@ -6029,9 +6032,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn node_conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(conditions) =
-    matches.remove_many::<String>("unstable-node-conditions")
-  {
+  if let Some(conditions) = matches.remove_many::<String>("node-conditions") {
     flags.node_conditions = conditions.collect();
   }
 }
@@ -12183,7 +12184,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--node-conditions",
       "development",
       "main.ts"
     ])
@@ -12204,7 +12205,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--node-conditions",
       "development,production",
       "main.ts"
     ])
@@ -12225,9 +12226,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--node-conditions",
       "development",
-      "--unstable-node-conditions",
+      "--node-conditions",
       "production",
       "main.ts"
     ])
