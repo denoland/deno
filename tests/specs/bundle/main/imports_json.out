@@ -1,4 +1,4 @@
-// foo.json
+// [WILDCARD]foo.json
 var foo_default = {
   hi: "bye",
   thing: {
@@ -6,6 +6,6 @@ var foo_default = {
   }
 };
 
-// imports_json.ts
+// [WILDCARD]imports_json.ts
 console.log(foo_default);
 
