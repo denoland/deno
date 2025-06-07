@@ -600,14 +600,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
+    let origin_storage_dir: Option<PathBuf> =
+      maybe_storage_key.as_ref().map(|key| {
+        shared
+          .options
+          .origin_data_folder_path
+          .as_ref()
+          .unwrap() // must be set if storage key resolver returns a value
+          .join(checksum::gen(&[key.as_bytes()]))
+      });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
       get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))

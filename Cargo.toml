@@ -39,6 +39,7 @@ members = [
   "runtime",
   "runtime/features",
   "runtime/permissions",
+  "runtime/subprocess_windows",
   "tests",
   "tests/ffi",
   "tests/napi",
@@ -119,6 +120,7 @@ deno_permissions = { version = "0.65.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.37.0", path = "./resolvers/deno" }
 deno_runtime = { version = "0.214.0", path = "./runtime" }
 deno_snapshots = { version = "0.21.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.1.0" }
 napi_sym = { version = "0.136.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.44.0", path = "./resolvers/node" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -396,7 +398,7 @@ debug = "line-tables-only"
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
-inherits = "release"
+inherits = "release-lite"
 debug = true
 
 # Faster to compile than `release` but with similar performance.
