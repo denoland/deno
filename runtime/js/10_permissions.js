@@ -37,7 +37,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "import">} */
 const permissionNames = [
   "read",
   "write",
@@ -46,6 +46,7 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
+  "import",
 ];
 
 /**
@@ -136,7 +137,10 @@ function cache(desc, rawStatus) {
     ReflectHas(desc, "path")
   ) {
     key += `-${desc.path}&`;
-  } else if (desc.name === "net" && desc.host) {
+  } else if (
+    ((desc.name === "net") || desc.name === "import") &&
+    ReflectHas(desc, "host")
+  ) {
     key += `-${desc.host}&`;
   } else if (desc.name === "run" && desc.command) {
     key += `-${desc.command}&`;

@@ -992,6 +992,12 @@ impl QueryDescriptor for NetDescriptor {
   }
 }
 
+impl NetDescriptor {
+  pub fn into_import(self) -> ImportDescriptor {
+    ImportDescriptor(self)
+  }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum NetDescriptorParseError {
   #[error("invalid value '{0}': URLs are not supported, only domains and ips")]
@@ -3266,6 +3272,29 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn query_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let inner = self.inner.lock();
+    let permission = &inner.import;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
+    Ok(
+      permission.query(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // revoke
 
   #[inline(always)]
@@ -3376,6 +3405,24 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn revoke_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.revoke(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // request
 
   #[inline(always)]
@@ -3482,6 +3529,24 @@ impl PermissionsContainer {
           })
           .transpose()?
           .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.request(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
       ),
     )
   }
