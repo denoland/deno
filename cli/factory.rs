@@ -1198,7 +1198,6 @@ impl CliFactory {
   pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
     self.services.resolver_factory.get_or_try_init(|| {
       let options = self.cli_options()?;
-      eprintln!("using node conditions {:#?}", options.node_conditions());
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
