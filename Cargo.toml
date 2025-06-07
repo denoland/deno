@@ -61,7 +61,7 @@ deno_cache_dir = "=0.22.2"
 deno_config = { version = "=0.55.0", features = ["workspace"] }
 deno_doc = "=0.178.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.95.0", default-features = false }
+deno_graph = { version = "=0.95.1", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.29.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
@@ -72,7 +72,7 @@ deno_path_util = "=0.4.0"
 deno_semver = "=0.8.0"
 deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
-deno_unsync = { version = "0.4.3", default-features = false }
+deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
 eszip = "=0.92.0"
 
