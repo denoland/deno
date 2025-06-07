@@ -137,6 +137,10 @@ impl ConditionResolver {
       ResolutionMode::Require => &self.require_conditions,
     }
   }
+
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    &self.require_conditions
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -308,6 +312,10 @@ impl<
       condition_resolver: ConditionResolver::new(options.conditions),
       typescript_version: options.typescript_version,
     }
+  }
+
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    self.condition_resolver.require_conditions()
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
