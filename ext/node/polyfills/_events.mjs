@@ -42,6 +42,7 @@ import {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
+  validateNumber,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
@@ -123,13 +124,7 @@ Object.defineProperty(EventEmitter, "defaultMaxListeners", {
     return defaultMaxListeners;
   },
   set: function (arg) {
-    if (typeof arg !== "number" || arg < 0 || Number.isNaN(arg)) {
-      throw new ERR_OUT_OF_RANGE(
-        "defaultMaxListeners",
-        "a non-negative number",
-        arg,
-      );
-    }
+    validateNumber(arg, "defaultMaxListeners", 0);
     defaultMaxListeners = arg;
   },
 });
@@ -159,9 +154,7 @@ export function setMaxListeners(
   n = defaultMaxListeners,
   ...eventTargets
 ) {
-  if (typeof n !== "number" || n < 0 || Number.isNaN(n)) {
-    throw new ERR_OUT_OF_RANGE("n", "a non-negative number", n);
-  }
+  validateNumber(n, "setMaxListeners", 0);
   if (eventTargets.length === 0) {
     defaultMaxListeners = n;
   } else {
@@ -253,9 +246,7 @@ function emitUnhandledRejectionOrErr(ee, err, type, args) {
  * @returns {EventEmitter}
  */
 EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
-  if (typeof n !== "number" || n < 0 || Number.isNaN(n)) {
-    throw new ERR_OUT_OF_RANGE("n", "a non-negative number", n);
-  }
+  validateNumber(n, "setMaxListeners", 0);
   this._maxListeners = n;
   return this;
 };
@@ -469,8 +460,8 @@ function _addListener(target, type, listener, prepend) {
       const w = new Error(
         "Possible EventEmitter memory leak detected. " +
           `${existing.length} ${String(type)} listeners ` +
-          `added to ${inspect(target, { depth: -1 })}. Use ` +
-          "emitter.setMaxListeners() to increase limit",
+          `added to ${inspect(target, { depth: -1 })}. ` +
+          `MaxListeners is ${m}.`,
       );
       w.name = "MaxListenersExceededWarning";
       w.emitter = target;
