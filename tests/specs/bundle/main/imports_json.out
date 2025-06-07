@@ -1,0 +1,11 @@
+// foo.json
+var foo_default = {
+  hi: "bye",
+  thing: {
+    other: "thing"
+  }
+};
+
+// imports_json.ts
+console.log(foo_default);
+
