@@ -7,7 +7,6 @@ use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
-use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -15,6 +14,7 @@ use url::Url;
 
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::spawn_blocking;
+use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::tarball_extract::verify_and_extract_tarball;
 use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;

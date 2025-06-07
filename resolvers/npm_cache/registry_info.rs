@@ -11,7 +11,6 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_unsync::sync::AtomicFlag;
-use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -21,6 +20,7 @@ use url::Url;
 
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::spawn_blocking;
+use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
