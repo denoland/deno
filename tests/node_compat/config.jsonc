@@ -414,6 +414,7 @@
       "test-crypto-publicDecrypt-fails-first-time.js",
       "test-crypto-randomfillsync-regression.js",
       "test-crypto-scrypt.js",
+      "test-crypto-sec-level.js",
       "test-crypto-secret-keygen.js",
       "test-crypto-stream.js",
       "test-crypto-subtle-zero-length.js",
