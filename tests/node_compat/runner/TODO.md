@@ -546,7 +546,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)
 - [parallel/test-crypto-rsa-dsa.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-rsa-dsa.js)
-- [parallel/test-crypto-sec-level.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sec-level.js)
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sign-verify.js)
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-verify-failure.js)

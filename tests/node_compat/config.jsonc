@@ -415,6 +415,7 @@
       "test-crypto-randomfillsync-regression.js",
       "test-crypto-randomuuid.js",
       "test-crypto-scrypt.js",
+      "test-crypto-sec-level.js",
       "test-crypto-secret-keygen.js",
       "test-crypto-stream.js",
       "test-crypto-subtle-zero-length.js",
