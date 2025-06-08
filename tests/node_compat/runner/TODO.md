@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1195 tests out of 3993 have been ported from Node 23.9.0 (29.93% ported, 70.67% remaining).
+1196 tests out of 3993 have been ported from Node 23.9.0 (29.95% ported, 70.65% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -551,7 +551,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sign-verify.js)
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-verify-failure.js)
-- [parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js)
 - [parallel/test-crypto-worker-thread.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-worker-thread.js)
 - [parallel/test-crypto.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto.js)
 - [parallel/test-cwd-enoent-preload.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-cwd-enoent-preload.js)

@@ -418,6 +418,7 @@
       "test-crypto-stream.js",
       "test-crypto-subtle-zero-length.js",
       "test-crypto-update-encoding.js",
+      "test-crypto-webcrypto-aes-decrypt-tag-too-small.js",
       "test-crypto-x509.js",
       "test-dgram-address.js",
       "test-dgram-bind-default-address.js",
