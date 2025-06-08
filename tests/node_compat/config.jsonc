@@ -413,6 +413,7 @@
       "test-crypto-psychic-signatures.js",
       "test-crypto-publicDecrypt-fails-first-time.js",
       "test-crypto-randomfillsync-regression.js",
+      "test-crypto-randomuuid.js",
       "test-crypto-scrypt.js",
       "test-crypto-secret-keygen.js",
       "test-crypto-stream.js",

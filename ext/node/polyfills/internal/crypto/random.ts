@@ -298,7 +298,18 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
   return Buffer.from(padded, "hex");
 }
 
-export const randomUUID = () => globalThis.crypto.randomUUID();
+export function randomUUID(options) {
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const {
+    disableEntropyCache = false,
+  } = options || {};
+
+  validateBoolean(disableEntropyCache, "options.disableEntropyCache");
+
+  return globalThis.crypto.randomUUID();
+}
 
 export default {
   checkPrime,

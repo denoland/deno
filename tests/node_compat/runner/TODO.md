@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1195 tests out of 3993 have been ported from Node 23.9.0 (29.93% ported, 70.67% remaining).
+1196 tests out of 3993 have been ported from Node 23.9.0 (29.95% ported, 70.65% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -545,7 +545,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)
-- [parallel/test-crypto-randomuuid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-randomuuid.js)
 - [parallel/test-crypto-rsa-dsa.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-rsa-dsa.js)
 - [parallel/test-crypto-sec-level.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sec-level.js)
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-secure-heap.js)
