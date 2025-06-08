@@ -2,6 +2,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::op2;
 use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
@@ -17,6 +18,16 @@ pub struct Hasher {
 impl GarbageCollected for Hasher {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Hasher"
+  }
+}
+
+// Make prototype available for JavaScript
+#[op2]
+impl Hasher {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Hasher {
+    unreachable!()
   }
 }
 

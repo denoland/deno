@@ -406,6 +406,7 @@
       "test-crypto-keygen-rfc8017-a-2-3.js",
       "test-crypto-lazy-transform-writable.js",
       "test-crypto-no-algorithm.js",
+      "test-crypto-oneshot-hash.js",
       "test-crypto-op-during-process-exit.js",
       "test-crypto-padding-aes256.js",
       "test-crypto-pbkdf2.js",
