@@ -549,7 +549,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sign-verify.js)
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-verify-failure.js)
-- [parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js)
 - [parallel/test-crypto-worker-thread.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-worker-thread.js)
 - [parallel/test-crypto.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto.js)
 - [parallel/test-cwd-enoent-preload.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-cwd-enoent-preload.js)
