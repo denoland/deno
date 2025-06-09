@@ -7,11 +7,11 @@
     },
     {
       "args": "run -A out/foo/main.js",
-      "output": "Hello from foo\n"
+      "output": "hello from foo\n"
     },
     {
       "args": "run -A out/bar/main.js",
-      "output": "Hello from bar\n"
+      "output": "hello from bar\n"
     }
   ]
 }
