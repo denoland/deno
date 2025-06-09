@@ -323,6 +323,9 @@ Object.defineProperties(
     eventPhase: kEnumerableProperty,
     cancelBubble: kEnumerableProperty,
     stopPropagation: kEnumerableProperty,
+    // The parent class `WebEvent` has this field defined, which has greater
+    // precedence than Symbol.for('nodejs.util.inspect.custom') and shadow it.
+    // Overwriting it to `undefined` cancels the shadowing.
     [SymbolFor("Deno.privateCustomInspect")]: {
       value: undefined,
       writable: true,
