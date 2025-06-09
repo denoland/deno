@@ -186,8 +186,8 @@
     ],
     "common": [
       "child_process.js",
-      "crypto.js",
       "countdown.js",
+      "crypto.js",
       "dns.js",
       "duplexpair.js",
       "fixtures.js",
