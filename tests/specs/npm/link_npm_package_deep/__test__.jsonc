@@ -12,7 +12,7 @@
         "cwd": "main"
       }, {
         "args": "run main/main.ts",
-        "output": "PATCHED\n"
+        "output": "LINKED\n"
       }, {
         "args": [
           "eval",
