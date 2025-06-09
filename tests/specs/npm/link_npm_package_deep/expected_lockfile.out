@@ -19,7 +19,7 @@
         "npm:@denotest/different-nested-dep@*"
       ]
     },
-    "patches": {
+    "links": {
       "npm:@denotest/different-nested-dep-child@1.0.0": {}
     }
   }

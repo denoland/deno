@@ -20,7 +20,7 @@
         "npm:cowsay@1.2"
       ]
     },
-    "patches": {
+    "links": {
       "npm:cowsay@1.2.0": {
         "dependencies": [
           "npm:@denotest/add@1"
