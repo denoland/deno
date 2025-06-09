@@ -534,6 +534,7 @@
       "test-event-emitter-special-event-names.js",
       "test-event-emitter-subclass.js",
       "test-event-emitter-symbols.js",
+      "test-event-target.js",
       "test-events-add-abort-listener.mjs",
       "test-events-getmaxlisteners.js",
       "test-events-list.js",
