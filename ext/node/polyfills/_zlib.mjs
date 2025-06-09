@@ -16,6 +16,7 @@ import {
   isArrayBufferView,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
+import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 
 var kRangeErrorMessage = "Cannot create final Buffer. It would be larger " +
   "than 0x" + kMaxLength.toString(16) + " bytes";
@@ -308,12 +309,30 @@ function Zlib(opts, mode) {
     }
   }
 
-  if (opts.windowBits) {
+  if (opts.windowBits == null || opts.windowBits === 0) {
+    // windowBits is special. On the compression side, 0 is an invalid value.
+    // But on the decompression side, a value of 0 for windowBits tells zlib
+    // to use the window size in the zlib header of the compressed stream.
     if (
-      opts.windowBits < zlibConstants.Z_MIN_WINDOWBITS ||
-      opts.windowBits > zlibConstants.Z_MAX_WINDOWBITS
+      mode === binding.INFLATE ||
+      mode === binding.GUNZIP ||
+      mode === binding.UNZIP
     ) {
-      throw new Error("Invalid windowBits: " + opts.windowBits);
+      opts.windowBits = 0;
+    } else {
+      // `{ windowBits: 8 }` is valid for deflate but not gzip.
+      const min = zlibConstants.Z_MIN_WINDOWBITS +
+        (mode === binding.GZIP ? 1 : 0);
+      if (
+        opts.windowBits < zlibConstants.Z_MIN_WINDOWBITS ||
+        opts.windowBits > zlibConstants.Z_MAX_WINDOWBITS
+      ) {
+        throw new ERR_OUT_OF_RANGE(
+          "options.windowBits",
+          `>= ${min} and <= ${zlibConstants.Z_MAX_WINDOWBITS}`,
+          opts.windowBits,
+        );
+      }
     }
   }
 
