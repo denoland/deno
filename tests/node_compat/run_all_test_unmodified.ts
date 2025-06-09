@@ -72,6 +72,7 @@ const NODE_IGNORED_TEST_CASES = new Set([
   "parallel/test-benchmark-cli.js", // testing private benchmark utility
   "parallel/test-buffer-backing-arraybuffer.js", // Deno does not allow heap-allocated ArrayBuffer, and we can't change it (for now)
   "parallel/test-eventsource-disabled.js", // EventSource global is always available in Deno (Web API)
+  "parallel/test-crypto-secure-heap.js", // Secure heap is OpenSSL specific, not in Deno.
 ]);
 
 /** The group is the directory name of the test file.
