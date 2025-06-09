@@ -7,7 +7,7 @@ use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;
 
@@ -72,7 +72,7 @@ pub trait NpmPackageExtraInfoProviderSys:
 pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
 }
 
 impl std::fmt::Debug for NpmPackageExtraInfoProvider {
@@ -85,12 +85,12 @@ impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
     sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
   ) -> Self {
     Self {
       npm_registry_info_provider,
       sys,
-      workspace_patch_packages,
+      workspace_link_packages,
     }
   }
 
@@ -140,7 +140,7 @@ impl NpmPackageExtraInfoProvider {
       .await
       .map_err(JsErrorBox::from_err)?;
     let version_info = package_info
-      .version_info(package_nv, &self.workspace_patch_packages.0)
+      .version_info(package_nv, &self.workspace_link_packages.0)
       .map_err(JsErrorBox::from_err)?;
     Ok(NpmPackageExtraInfo {
       deprecated: version_info.deprecated.clone(),

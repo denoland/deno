@@ -135,7 +135,7 @@ pub struct SpecifiedImportMap {
 pub enum MappedResolutionDiagnostic {
   ConstraintNotMatchedLocalVersion {
     /// If it was for a patch (true) or workspace (false) member.
-    is_patch: bool,
+    is_link: bool,
     reference: JsrPackageReqReference,
     local_version: Version,
   },
@@ -145,15 +145,15 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::ConstraintNotMatchedLocalVersion {
-        is_patch,
+        is_link,
         reference,
         local_version,
       } => {
         write!(
           f,
           "{0} '{1}@{2}' was not used because it did not match '{1}@{3}'",
-          if *is_patch {
-            "Patch"
+          if *is_link {
+            "Linked package"
           } else {
             "Workspace member"
           },
@@ -1193,7 +1193,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .jsr_pkgs
       .into_iter()
       .map(|pkg| ResolverWorkspaceJsrPackage {
-        is_patch: false, // only used for enhancing the diagnostics, which are discarded when serializing
+        is_link: false, // only used for enhancing the diagnostics, which are discarded when serializing
         base: root_dir_url.join(&pkg.relative_base).unwrap(),
         name: pkg.name.into_owned(),
         version: pkg.version.into_owned(),
@@ -1430,7 +1430,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             } else {
               maybe_diagnostic = Some(Box::new(
                 MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-                  is_patch: pkg.is_patch,
+                  is_link: pkg.is_link,
                   reference: package_req_ref.clone(),
                   local_version: version.clone(),
                 },
@@ -1679,53 +1679,41 @@ impl ScopedJsxImportSourceConfig {
 }
 
 #[allow(clippy::disallowed_types)] // ok, because definition
-pub type WorkspaceNpmPatchPackagesRc =
-  crate::sync::MaybeArc<WorkspaceNpmPatchPackages>;
+pub type WorkspaceNpmLinkPackagesRc =
+  crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
 
 #[derive(Debug, Default)]
-pub struct WorkspaceNpmPatchPackages(
+pub struct WorkspaceNpmLinkPackages(
   pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
 );
 
-impl WorkspaceNpmPatchPackages {
+impl WorkspaceNpmLinkPackages {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
-    if workspace.has_unstable("npm-patch") {
-      for pkg_json in workspace.patch_pkg_jsons() {
-        let Some(name) = pkg_json.name.as_ref() else {
+    for pkg_json in workspace.link_pkg_jsons() {
+      let Some(name) = pkg_json.name.as_ref() else {
+        log::warn!(
+        "{} Link package ignored because package.json was missing name field.\n    at {}",
+        colors::yellow("Warning"),
+        pkg_json.path.display(),
+      );
+        continue;
+      };
+      match pkg_json_to_version_info(pkg_json) {
+        Ok(version_info) => {
+          let entry = entries.entry(PackageName::from_str(name)).or_default();
+          entry.push(version_info);
+        }
+        Err(err) => {
           log::warn!(
-          "{} Patch package ignored because package.json was missing name field.\n    at {}",
-          colors::yellow("Warning"),
-          pkg_json.path.display(),
-        );
-          continue;
-        };
-        match pkg_json_to_version_info(pkg_json) {
-          Ok(version_info) => {
-            let entry = entries.entry(PackageName::from_str(name)).or_default();
-            entry.push(version_info);
-          }
-          Err(err) => {
-            log::warn!(
-              "{} {}\n    at {}",
-              colors::yellow("Warning"),
-              err,
-              pkg_json.path.display(),
-            );
-          }
+            "{} {}\n    at {}",
+            colors::yellow("Warning"),
+            err,
+            pkg_json.path.display(),
+          );
         }
       }
-    } else if workspace.patch_pkg_jsons().next().is_some() {
-      log::warn!(
-        "{} {}\n    at {}",
-        colors::yellow("Warning"),
-        "Patching npm packages is only supported when setting \"unstable\": [\"npm-patch\"] in the root deno.json",
-        workspace
-          .root_deno_json()
-          .map(|d| d.specifier.to_string())
-          .unwrap_or_else(|| workspace.root_dir().to_string()),
-      );
     }
     Self(entries)
   }
@@ -2638,7 +2626,7 @@ mod test {
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "patch": ["../patch"]
+        "links": ["../patch"]
       }),
     );
     sys.fs_insert_json(
@@ -2698,7 +2686,7 @@ mod test {
           maybe_diagnostic,
           Some(Box::new(
             MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-              is_patch: true,
+              is_link: true,
               reference: JsrPackageReqReference::from_str("jsr:@scope/patch@2")
                 .unwrap(),
               local_version: Version::parse_from_npm("1.0.0").unwrap(),
@@ -2716,7 +2704,7 @@ mod test {
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "patch": ["../patch"]
+        "links": ["../patch"]
       }),
     );
     sys.fs_insert_json(
@@ -2824,7 +2812,7 @@ mod test {
           maybe_diagnostic,
           Some(Box::new(
             MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-              is_patch: false,
+              is_link: false,
               reference: JsrPackageReqReference::from_str(
                 "jsr:@scope/member@2"
               )
@@ -2847,7 +2835,7 @@ mod test {
         "imports": {
           "@std/fs": "jsr:@std/fs@0.200.0"
         },
-        "patch": ["../patch"]
+        "links": ["../patch"]
       }),
     );
     sys.fs_insert_json(

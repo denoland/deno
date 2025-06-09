@@ -1048,7 +1048,7 @@ impl CliOptions {
       let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by

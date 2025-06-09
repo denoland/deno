@@ -12,7 +12,7 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::package::PackageReq;
 
 mod bin_entries;
@@ -166,7 +166,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
@@ -176,7 +176,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
             Arc::new(sys.clone()),
-            workspace_patch_packages,
+            workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
           reporter.clone(),
