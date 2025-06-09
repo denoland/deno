@@ -19,14 +19,14 @@ const invalidArgTypeError = {
   name: 'TypeError'
 };
 
-const waitCommand = common.isLinux ?
-  'sleep 2m' :
-  `${process.execPath} eval "setInterval(()=>{}, 99)"`;
+const waitCommand = common.isLinux
+  ? { command: 'sleep', args: ['2m'] }
+  : { command: process.execPath, args: ['eval', 'setInterval(()=>{}, 99)'] };
 
 {
   const ac = new AbortController();
   const signal = ac.signal;
-  const promise = execPromisifed(waitCommand, { signal });
+  const promise = execPromisifed(`${waitCommand.command} ${waitCommand.args.join(' ')}`, { signal });
   assert.rejects(promise, /AbortError/, 'post aborted sync signal failed')
         .then(common.mustCall());
   ac.abort();
@@ -34,20 +34,20 @@ const waitCommand = common.isLinux ?
 
 {
   assert.throws(() => {
-    execPromisifed(waitCommand, { signal: {} });
+    execPromisifed(`${waitCommand.command} ${waitCommand.args.join(' ')}`, { signal: {} });
   }, invalidArgTypeError);
 }
 
 {
   function signal() {}
   assert.throws(() => {
-    execPromisifed(waitCommand, { signal });
+    execPromisifed(`${waitCommand.command} ${waitCommand.args.join(' ')}`, { signal });
   }, invalidArgTypeError);
 }
 
 {
   const signal = AbortSignal.abort(); // Abort in advance
-  const promise = execPromisifed(waitCommand, { signal });
+  const promise = execPromisifed(`${waitCommand.command} ${waitCommand.args.join(' ')}`, { signal });
 
   assert.rejects(promise, /AbortError/, 'pre aborted signal failed')
         .then(common.mustCall());
