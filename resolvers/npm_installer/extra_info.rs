@@ -144,10 +144,10 @@ impl NpmPackageExtraInfoProvider {
     {
       Ok(version_info) => version_info,
       Err(deno_npm::resolution::NpmPackageVersionNotFound { .. }) => {
-        // Note: Don't bother checking the return value of mark_force_reload to
-        // tell whether to reload because we could race here with another task
-        // within this method. That said, ideally this code would only reload
-        // the specific packument that's out of date to be a bit more efficient.
+        // Don't bother checking the return value of mark_force_reload to tell
+        // whether to reload because we could race here with another task within
+        // this method. That said, ideally this code would only reload the
+        // specific packument that's out of date to be a bit more efficient.
         self.npm_registry_info_provider.mark_force_reload();
         package_info = self
           .npm_registry_info_provider
