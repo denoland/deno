@@ -750,7 +750,9 @@ const _listenerCount = function listenerCount(type, listener) {
 
     if (typeof evlistener === "function") {
       if (listener != null) {
-        return listener === evlistener || listener === evlistener.listener ? 1 : 0;
+        return listener === evlistener || listener === evlistener.listener
+          ? 1
+          : 0;
       }
       return 1;
     } else if (evlistener !== undefined) {
@@ -758,7 +760,9 @@ const _listenerCount = function listenerCount(type, listener) {
         let matching = 0;
 
         for (let i = 0, l = evlistener.length; i < l; i++) {
-          if (evlistener[i] === listener || evlistener[i].listener === listener) {
+          if (
+            evlistener[i] === listener || evlistener[i].listener === listener
+          ) {
             matching++;
           }
         }
