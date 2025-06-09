@@ -134,7 +134,7 @@ pub struct SpecifiedImportMap {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MappedResolutionDiagnostic {
   ConstraintNotMatchedLocalVersion {
-    /// If it was for a patch (true) or workspace (false) member.
+    /// If it was for a link (true) or workspace (false) member.
     is_link: bool,
     reference: JsrPackageReqReference,
     local_version: Version,
@@ -1722,10 +1722,10 @@ impl WorkspaceNpmLinkPackages {
 #[derive(Debug, Error)]
 enum PkgJsonToVersionInfoError {
   #[error(
-    "Patch package ignored because package.json was missing version field."
+    "Linked package ignored because package.json was missing version field."
   )]
   VersionMissing,
-  #[error("Patch package ignored because package.json version field could not be parsed.")]
+  #[error("Linked package ignored because package.json version field could not be parsed.")]
   VersionInvalid {
     #[source]
     source: deno_semver::npm::NpmVersionParseError,
@@ -1785,7 +1785,7 @@ fn pkg_json_to_version_info(
       })
       .unwrap_or_default(),
     // not worth increasing memory for showing a deprecated
-    // message for patched packages
+    // message for linked packages
     deprecated: None,
   })
 }
@@ -2621,18 +2621,18 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_member_with_version() {
+  fn resolves_link_member_with_version() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "links": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "version": "1.0.0",
         "exports": "./mod.ts"
       }),
@@ -2642,35 +2642,35 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "@scope/patch",
+        "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // matching version
     match resolver
       .resolve(
-        "jsr:@scope/patch@1",
+        "jsr:@scope/link@1",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // not matching version
     match resolver
       .resolve(
-        "jsr:@scope/patch@2",
+        "jsr:@scope/link@2",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
@@ -2681,13 +2681,13 @@ mod test {
         maybe_diagnostic,
         ..
       } => {
-        assert_eq!(specifier, Url::parse("jsr:@scope/patch@2").unwrap());
+        assert_eq!(specifier, Url::parse("jsr:@scope/link@2").unwrap());
         assert_eq!(
           maybe_diagnostic,
           Some(Box::new(
             MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
               is_link: true,
-              reference: JsrPackageReqReference::from_str("jsr:@scope/patch@2")
+              reference: JsrPackageReqReference::from_str("jsr:@scope/link@2")
                 .unwrap(),
               local_version: Version::parse_from_npm("1.0.0").unwrap(),
             }
@@ -2699,18 +2699,18 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_member_no_version() {
+  fn resolves_link_member_no_version() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "links": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "exports": "./mod.ts"
       }),
     );
@@ -2719,28 +2719,28 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "@scope/patch",
+        "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // always resolves, no matter what version
     match resolver
       .resolve(
-        "jsr:@scope/patch@12",
+        "jsr:@scope/link@12",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
@@ -2827,7 +2827,7 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_workspace() {
+  fn resolves_link_workspace() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
@@ -2835,19 +2835,19 @@ mod test {
         "imports": {
           "@std/fs": "jsr:@std/fs@0.200.0"
         },
-        "links": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
         "workspace": ["./member"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/member/deno.json"),
+      root_dir().join("../link/member/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "version": "1.0.0",
         "exports": "./mod.ts",
         "imports": {
@@ -2860,14 +2860,14 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "jsr:@scope/patch@1",
+        "jsr:@scope/link@1",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/member/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/member/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
@@ -2885,11 +2885,11 @@ mod test {
       }
       _ => unreachable!(),
     }
-    // resolving @std/fs in patched package
+    // resolving @std/fs in linked package
     match resolver
       .resolve(
         "@std/fs",
-        &root.join("../patch/member/mod.ts").unwrap(),
+        &root.join("../link/member/mod.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
