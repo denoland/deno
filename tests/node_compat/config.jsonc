@@ -536,6 +536,7 @@
       "test-event-emitter-symbols.js",
       "test-event-target.js",
       "test-events-add-abort-listener.mjs",
+      "test-events-customevent.js",
       "test-events-getmaxlisteners.js",
       "test-events-list.js",
       "test-events-on-async-iterator.js",

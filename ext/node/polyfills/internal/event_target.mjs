@@ -4,6 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { primordials } from "ext:core/mod.js";
+const {
+  NumberIsInteger,
+  ObjectAssign,
+  SymbolFor,
+  SymbolToStringTag,
+} = primordials;
 import {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
@@ -105,7 +112,7 @@ class Event extends WebEvent {
       return name;
     }
 
-    const opts = Object.assign({}, options, {
+    const opts = ObjectAssign({}, options, {
       depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
@@ -316,6 +323,12 @@ Object.defineProperties(
     eventPhase: kEnumerableProperty,
     cancelBubble: kEnumerableProperty,
     stopPropagation: kEnumerableProperty,
+    [SymbolFor("Deno.privateCustomInspect")]: {
+      value: undefined,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    },
   },
 );
 
@@ -340,6 +353,7 @@ class CustomEvent extends Event {
     }
     super(type, options);
     this[kDetail] = options?.detail ?? null;
+    this[SymbolToStringTag] = "CustomEvent";
   }
 
   /**
@@ -352,17 +366,6 @@ class CustomEvent extends Event {
     return this[kDetail];
   }
 }
-
-Object.defineProperties(CustomEvent.prototype, {
-  [Symbol.toStringTag]: {
-    __proto__: null,
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    value: "CustomEvent",
-  },
-  detail: kEnumerableProperty,
-});
 
 class NodeCustomEvent extends Event {
   constructor(type, options) {
@@ -763,9 +766,7 @@ class EventTarget extends WebEventTarget {
     }
 
     const opts = ObjectAssign({}, options, {
-      depth: Number.isInteger(options.depth)
-        ? options.depth - 1
-        : options.depth,
+      depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
     return `${name} ${inspect({}, opts)}`;
