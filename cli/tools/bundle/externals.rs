@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -88,8 +90,8 @@ impl ExternalsMatcher {
         pre_resolve
           .patterns
           .push(Pattern::new_with_wildcard(external, wildcard_index));
-        if !is_package_path(&external) {
-          let normalized = to_absolute_path(external, &cwd);
+        if !is_package_path(external) {
+          let normalized = to_absolute_path(external, cwd);
           if let Some(index) = normalized.find('*') {
             post_resolve
               .patterns
@@ -103,7 +105,7 @@ impl ExternalsMatcher {
             .patterns
             .push(Pattern::new_prefix([external, "/"].join("")));
         } else {
-          let normalized = to_absolute_path(external, &cwd);
+          let normalized = to_absolute_path(external, cwd);
           post_resolve.exact.insert(normalized);
         }
       }
@@ -125,6 +127,7 @@ impl ExternalsMatcher {
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::print_stderr)]
   use super::ExternalsMatcher;
 
   struct Matches {
@@ -143,25 +146,24 @@ mod tests {
       .collect::<Vec<_>>();
     let cwd = std::env::current_dir().unwrap();
     let matcher = ExternalsMatcher::new(&patterns, &cwd);
-    for path in &matches.pre_resolve {
+    for path in matches.pre_resolve {
       if !matcher.is_pre_resolve_match(&path) {
         eprintln!("failed to match pre resolve: {}", path);
         return false;
       }
     }
-    for path in &matches.post_resolve {
+    for path in matches.post_resolve {
       if !matcher.is_post_resolve_match(&path) {
         eprintln!("failed to match post resolve: {}", path);
         return false;
       }
     }
     for path in no_match {
-      let path = path.as_ref();
-      if matcher.is_pre_resolve_match(&path) {
+      if matcher.is_pre_resolve_match(path) {
         eprintln!("matched pre resolve when it should not: {}", path);
         return false;
       }
-      if matcher.is_post_resolve_match(&path) {
+      if matcher.is_post_resolve_match(path) {
         eprintln!("matched post resolve when it should not: {}", path);
         return false;
       }
@@ -242,12 +244,7 @@ mod tests {
         pre_resolve: s(["./foo/bar", "./foo/baz"]),
         post_resolve: vec![format!("{cwd}/foo/bar"), format!("{cwd}/foo/baz")],
       },
-      [
-        "other/foo/bar",
-        "./bar/foo",
-        "./foo/bar/baz",
-        "./foo/baz"
-      ]
+      ["other/foo/bar", "./bar/foo", "./foo/bar/baz", "./foo/baz"]
     ));
   }
 }
