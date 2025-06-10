@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -605,16 +604,6 @@ impl CliFactory {
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.npm_resolver()
-  }
-
-  pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
-    Ok(&self.workspace_directory()?.workspace)
-  }
-
-  pub fn workspace_directory(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectory>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory()?)
   }
 
   fn workspace_factory(&self) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
