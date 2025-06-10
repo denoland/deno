@@ -134,14 +134,31 @@ impl NpmPackageExtraInfoProvider {
     &self,
     package_nv: &PackageNv,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    let package_info = self
+    let mut package_info = self
       .npm_registry_info_provider
       .package_info(&package_nv.name)
       .await
       .map_err(JsErrorBox::from_err)?;
-    let version_info = package_info
+    let version_info = match package_info
       .version_info(package_nv, &self.workspace_patch_packages.0)
-      .map_err(JsErrorBox::from_err)?;
+    {
+      Ok(version_info) => version_info,
+      Err(deno_npm::resolution::NpmPackageVersionNotFound { .. }) => {
+        // Don't bother checking the return value of mark_force_reload to tell
+        // whether to reload because we could race here with another task within
+        // this method. That said, ideally this code would only reload the
+        // specific packument that's out of date to be a bit more efficient.
+        self.npm_registry_info_provider.mark_force_reload();
+        package_info = self
+          .npm_registry_info_provider
+          .package_info(&package_nv.name)
+          .await
+          .map_err(JsErrorBox::from_err)?;
+        package_info
+          .version_info(package_nv, &self.workspace_patch_packages.0)
+          .map_err(JsErrorBox::from_err)?
+      }
+    };
     Ok(NpmPackageExtraInfo {
       deprecated: version_info.deprecated.clone(),
       bin: version_info.bin.clone(),
