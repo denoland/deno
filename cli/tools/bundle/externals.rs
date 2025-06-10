@@ -128,6 +128,8 @@ impl ExternalsMatcher {
 #[cfg(test)]
 mod tests {
   #![allow(clippy::print_stderr)]
+  use std::path::Path;
+
   use super::ExternalsMatcher;
 
   struct Matches {
@@ -175,6 +177,10 @@ mod tests {
     s.into_iter().map(|p| p.as_ref().to_string()).collect()
   }
 
+  fn path_str(path: impl AsRef<Path>) -> String {
+    path.as_ref().to_string_lossy().to_string()
+  }
+
   #[test]
   fn matches_package_path() {
     assert!(matches_all(
@@ -207,12 +213,11 @@ mod tests {
     ));
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd = cwd.to_string_lossy();
     assert!(matches_all(
       ["./foo"],
       Matches {
         pre_resolve: s(["./foo"]),
-        post_resolve: s([format!("{cwd}/foo")]),
+        post_resolve: s([cwd.join("foo").to_string_lossy().to_string()]),
       },
       ["other/foo", "./foo.ts", "./foo/bar", "thing/./foo"]
     ));
@@ -237,12 +242,14 @@ mod tests {
       ["other/@std/fs", "./@std/fs/foo.ts", "./@std/fs"]
     ));
     let cwd = std::env::current_dir().unwrap();
-    let cwd = cwd.to_string_lossy();
     assert!(matches_all(
       ["./foo/*"],
       Matches {
         pre_resolve: s(["./foo/bar", "./foo/baz"]),
-        post_resolve: vec![format!("{cwd}/foo/bar"), format!("{cwd}/foo/baz")],
+        post_resolve: vec![
+          path_str(cwd.join("foo/bar")),
+          path_str(cwd.join("foo/baz")),
+        ],
       },
       ["other/foo/bar", "./bar/foo", "./bar/./foo/bar"]
     ));
