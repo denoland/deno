@@ -121,7 +121,6 @@ pub async fn bundle(
 
   let entrypoint = bundle_flags
     .entrypoints
-    .first()
     .iter()
     .map(|e| resolve_url_or_path(e, &init_cwd).unwrap())
     .collect::<Vec<_>>();

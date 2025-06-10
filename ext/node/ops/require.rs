@@ -26,7 +26,6 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
-use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -534,7 +533,7 @@ pub fn op_require_try_self<
       exports,
       Some(&referrer),
       ResolutionMode::Require,
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(r)?))
@@ -641,7 +640,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    REQUIRE_CONDITIONS,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))
@@ -720,7 +719,7 @@ pub fn op_require_package_imports_resolve<
       Some(&UrlOrPathRef::from_path(&referrer_path)),
       ResolutionMode::Require,
       Some(&pkg),
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))
