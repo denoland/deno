@@ -14,12 +14,14 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tar::Builder;
 
+use crate::root_path;
 use crate::tests_path;
 use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
 pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
+pub const ESBUILD_VERSION: &str = "0.25.5";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -197,6 +199,15 @@ impl TestNpmRegistry {
       }
     }
 
+    let prefix1 = format!("/{}/", "@esbuild");
+    let prefix2 = format!("/{}%2f", "@esbuild");
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some(("@esbuild", package_name_with_path));
+    }
+
     None
   }
 }
@@ -255,11 +266,210 @@ fn append_dir_all<W: std::io::Write>(
   Ok(())
 }
 
+fn create_package_version_info(
+  version_folder: &PathRef,
+  version: &str,
+  package_name: &str,
+  registry_hostname: &str,
+) -> Result<(Vec<u8>, serde_json::Map<String, serde_json::Value>)> {
+  let tarball_bytes = create_tarball_from_dir(version_folder.as_path())?;
+
+  let mut dist = serde_json::Map::new();
+  if package_name != "@denotest/no-shasums" {
+    let tarball_checksum = get_tarball_checksum(&tarball_bytes);
+    dist.insert(
+      "integrity".to_string(),
+      format!("sha512-{tarball_checksum}").into(),
+    );
+    dist.insert("shasum".to_string(), "dummy-value".into());
+  }
+  dist.insert(
+    "tarball".to_string(),
+    format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
+  );
+
+  let package_json_path = version_folder.join("package.json");
+  let package_json_bytes = fs::read(&package_json_path).with_context(|| {
+    format!("Error reading package.json at {}", package_json_path)
+  })?;
+  let package_json_text = String::from_utf8_lossy(&package_json_bytes);
+  let mut version_info: serde_json::Map<String, serde_json::Value> =
+    serde_json::from_str(&package_json_text)?;
+  version_info.insert("dist".to_string(), dist.into());
+
+  Ok((tarball_bytes, version_info))
+}
+
+fn get_esbuild_platform_info(
+  platform_name: &str,
+) -> Option<(&'static str, &'static str, bool)> {
+  match platform_name {
+    "linux-x64" => Some(("esbuild-x64", "linux64", false)),
+    "linux-arm64" => Some(("esbuild-aarch64", "linux64", false)),
+    "darwin-x64" => Some(("esbuild-x64", "mac", false)),
+    "darwin-arm64" => Some(("esbuild-aarch64", "mac", false)),
+    "win32-x64" => Some(("esbuild-x64.exe", "win", true)),
+    "win32-arm64" => Some(("esbuild-arm64.exe", "win", true)),
+    _ => None,
+  }
+}
+
+fn setup_esbuild_binary(
+  package_dir: &Path,
+  esbuild_prebuilt: &Path,
+  is_windows: bool,
+) -> Result<&'static str> {
+  let binary_name = if is_windows { "esbuild.exe" } else { "esbuild" };
+
+  if is_windows {
+    std::fs::copy(esbuild_prebuilt, package_dir.join(binary_name))?;
+    Ok(binary_name)
+  } else {
+    let bin_dir = package_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir)?;
+    let binary_path = bin_dir.join(binary_name);
+    std::fs::copy(esbuild_prebuilt, &binary_path)?;
+
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let mut perms = std::fs::metadata(&binary_path)?.permissions();
+      perms.set_mode(0o755); // rwxr-xr-x
+      std::fs::set_permissions(&binary_path, perms)?;
+    }
+
+    Ok("bin/esbuild")
+  }
+}
+
+fn create_tarball_from_dir(package_dir: &Path) -> Result<Vec<u8>> {
+  let mut tarball_bytes = Vec::new();
+  {
+    let mut encoder =
+      GzEncoder::new(&mut tarball_bytes, Compression::default());
+    {
+      let mut builder = Builder::new(&mut encoder);
+      append_dir_all(&mut builder, Path::new("package"), package_dir)?;
+      builder.finish()?;
+    }
+    encoder.finish()?;
+  }
+  Ok(tarball_bytes)
+}
+
+fn create_npm_registry_response(
+  package_name: &str,
+  version: &str,
+  description: &str,
+  bin_path: &str,
+  tarball_bytes: Vec<u8>,
+  registry_hostname: &str,
+) -> Result<CustomNpmPackage> {
+  let tarball_checksum = get_tarball_checksum(&tarball_bytes);
+  let mut dist = serde_json::Map::new();
+  dist.insert(
+    "integrity".to_string(),
+    format!("sha512-{tarball_checksum}").into(),
+  );
+  dist.insert("shasum".to_string(), "dummy-value".into());
+  dist.insert(
+    "tarball".to_string(),
+    format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
+  );
+
+  let mut version_info = serde_json::Map::new();
+  version_info.insert("name".to_string(), package_name.into());
+  version_info.insert("version".to_string(), version.into());
+  version_info.insert("description".to_string(), description.into());
+  version_info.insert("bin".to_string(), bin_path.into());
+  version_info.insert("dist".to_string(), dist.into());
+
+  let mut versions = serde_json::Map::new();
+  versions.insert(version.to_string(), version_info.into());
+
+  let mut dist_tags = serde_json::Map::new();
+  dist_tags.insert("latest".to_string(), version.into());
+
+  let mut registry_file = serde_json::Map::new();
+  registry_file.insert("name".to_string(), package_name.into());
+  registry_file.insert("versions".to_string(), versions.into());
+  registry_file.insert("dist-tags".to_string(), dist_tags.into());
+
+  let mut tarballs = HashMap::new();
+  tarballs.insert(version.to_string(), tarball_bytes);
+
+  Ok(CustomNpmPackage {
+    registry_file: serde_json::to_string(&registry_file)?,
+    tarballs,
+  })
+}
+
+fn create_esbuild_package(
+  registry_hostname: &str,
+  package_name: &str,
+) -> Result<Option<CustomNpmPackage>> {
+  let platform_name = package_name.strip_prefix("@esbuild/").unwrap();
+
+  let (bin_name, folder, is_windows) =
+    match get_esbuild_platform_info(platform_name) {
+      Some(info) => info,
+      None => return Ok(None),
+    };
+
+  let esbuild_prebuilt = root_path()
+    .join("third_party/prebuilt")
+    .join(folder)
+    .join(bin_name);
+
+  if !esbuild_prebuilt.exists() {
+    return Ok(None);
+  }
+
+  let temp_dir = tempfile::tempdir()?;
+  let package_dir = temp_dir.path().join("package");
+  std::fs::create_dir_all(&package_dir)?;
+
+  let bin_path =
+    setup_esbuild_binary(&package_dir, esbuild_prebuilt.as_path(), is_windows)?;
+
+  let package_json = serde_json::json!({
+    "name": package_name,
+    "version": ESBUILD_VERSION,
+    "description": format!("The {} binary for esbuild", platform_name),
+    "bin": bin_path
+  });
+
+  std::fs::write(
+    package_dir.join("package.json"),
+    serde_json::to_string_pretty(&package_json)?,
+  )?;
+
+  let tarball_bytes = create_tarball_from_dir(&package_dir)?;
+  let package = create_npm_registry_response(
+    package_name,
+    ESBUILD_VERSION,
+    &format!("The {} binary for esbuild", platform_name),
+    bin_path,
+    tarball_bytes,
+    registry_hostname,
+  )?;
+
+  Ok(Some(package))
+}
+
 fn get_npm_package(
   registry_hostname: &str,
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
+  if package_name.starts_with("@esbuild/") {
+    if let Some(esbuild_package) =
+      create_esbuild_package(registry_hostname, package_name)?
+    {
+      return Ok(Some(esbuild_package));
+    }
+  }
+
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
@@ -288,51 +498,14 @@ fn get_npm_package(
     let version = entry.file_name().to_string_lossy().to_string();
     let version_folder = package_folder.join(&version);
 
-    // create the tarball
-    let mut tarball_bytes = Vec::new();
-    {
-      let mut encoder =
-        GzEncoder::new(&mut tarball_bytes, Compression::default());
-      {
-        let mut builder = Builder::new(&mut encoder);
-        append_dir_all(
-          &mut builder,
-          Path::new("package"),
-          version_folder.as_path(),
-        )
-        .with_context(|| {
-          format!("Error adding tarball for directory {}", version_folder,)
-        })?;
-        builder.finish()?;
-      }
-      encoder.finish()?;
-    }
-
-    // create the registry file JSON for this version
-    let mut dist = serde_json::Map::new();
-    if package_name != "@denotest/no-shasums" {
-      let tarball_checksum = get_tarball_checksum(&tarball_bytes);
-      dist.insert(
-        "integrity".to_string(),
-        format!("sha512-{tarball_checksum}").into(),
-      );
-      dist.insert("shasum".to_string(), "dummy-value".into());
-    }
-    dist.insert(
-      "tarball".to_string(),
-      format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
-    );
+    let (tarball_bytes, mut version_info) = create_package_version_info(
+      &version_folder,
+      &version,
+      package_name,
+      registry_hostname,
+    )?;
 
     tarballs.insert(version.clone(), tarball_bytes);
-    let package_json_path = version_folder.join("package.json");
-    let package_json_bytes =
-      fs::read(&package_json_path).with_context(|| {
-        format!("Error reading package.json at {}", package_json_path)
-      })?;
-    let package_json_text = String::from_utf8_lossy(&package_json_bytes);
-    let mut version_info: serde_json::Map<String, serde_json::Value> =
-      serde_json::from_str(&package_json_text)?;
-    version_info.insert("dist".to_string(), dist.into());
 
     if let Some(maybe_optional_deps) = version_info.get("optionalDependencies")
     {

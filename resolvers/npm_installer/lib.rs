@@ -28,16 +28,20 @@ mod local;
 pub mod package_json;
 pub mod process_state;
 pub mod resolution;
+mod rt;
 
 pub use bin_entries::BinEntries;
 pub use bin_entries::BinEntriesError;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
+use deno_unsync::sync::TaskQueue;
+use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 
 pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
 pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
+use self::extra_info::NpmPackageExtraInfoProviderSys;
 pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
@@ -118,7 +122,7 @@ pub(crate) trait NpmPackageFsInstaller:
 
 #[sys_traits::auto_impl]
 pub trait NpmInstallerSys:
-  NpmResolutionInstallerSys + LocalNpmInstallSys
+  NpmResolutionInstallerSys + LocalNpmInstallSys + NpmPackageExtraInfoProviderSys
 {
 }
 
@@ -135,7 +139,8 @@ pub struct NpmInstaller<
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
-  cached_reqs: tokio::sync::Mutex<FxHashSet<PackageReq>>,
+  install_queue: TaskQueue,
+  cached_reqs: Mutex<FxHashSet<PackageReq>>,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
@@ -170,6 +175,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_cache.clone(),
           Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
+            Arc::new(sys.clone()),
             workspace_patch_packages,
           )),
           npm_install_deps_provider.clone(),
@@ -184,6 +190,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
           tarball_cache,
+          sys,
           npm_resolution.clone(),
           lifecycle_scripts,
           system_info,
@@ -197,6 +204,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       npm_resolution_installer,
       maybe_lockfile,
       top_level_install_flag: Default::default(),
+      install_queue: Default::default(),
       cached_reqs: Default::default(),
     }
   }
@@ -272,8 +280,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         //
         // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
         // while caching typically takes micro or milli seconds.
-        let mut cached_reqs = self.cached_reqs.lock().await;
+        let _permit = self.install_queue.acquire().await;
         let uncached = {
+          let cached_reqs = self.cached_reqs.lock();
           packages
             .iter()
             .filter(|req| !cached_reqs.contains(req))
@@ -283,6 +292,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         if !uncached.is_empty() {
           result.dependencies_result = self.cache_packages(caching).await;
           if result.dependencies_result.is_ok() {
+            let mut cached_reqs = self.cached_reqs.lock();
             for req in uncached {
               cached_reqs.insert(req.clone());
             }

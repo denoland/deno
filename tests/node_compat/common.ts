@@ -37,7 +37,7 @@ export const ignoreList = Object.entries(config.ignore).reduce(
     paths.forEach((path) => total.push(new RegExp(join(suite, path))));
     return total;
   },
-  [/package\.json/],
+  [],
 );
 
 export function getPathsFromTestSuites(suites: TestSuites): string[] {
@@ -170,6 +170,9 @@ export async function runNodeCompatTestCase(
         break;
       case "--no-warnings":
         nodeOptions.push("--no-warnings");
+        break;
+      case "--pending-deprecation":
+        nodeOptions.push("--pending-deprecation");
         break;
       case "--allow-natives-syntax":
         v8Flags.push("--allow-natives-syntax");

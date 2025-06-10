@@ -57,11 +57,11 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.350.0" }
 
-deno_cache_dir = "=0.22.1"
+deno_cache_dir = "=0.22.2"
 deno_config = { version = "=0.55.0", features = ["workspace"] }
-deno_doc = "=0.177.0"
+deno_doc = "=0.178.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.94.2", default-features = false }
+deno_graph = { version = "=0.95.1", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.29.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
@@ -72,9 +72,9 @@ deno_path_util = "=0.4.0"
 deno_semver = "=0.8.0"
 deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
-deno_unsync = "0.4.3"
+deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.91.0"
+eszip = "=0.92.0"
 
 denokv_proto = "0.11.0"
 denokv_remote = "0.11.0"
@@ -237,7 +237,7 @@ simd-json = "0.14.0"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
-sys_traits = "=0.1.14"
+sys_traits = "=0.1.16"
 tar = "=0.4.43"
 # temporarily using until https://github.com/harryfei/which-rs/pull/109 is released
 temp_deno_which = { version = "0.1.0", default-features = false }
@@ -257,7 +257,7 @@ tower-service = "0.3.2"
 tracing = "0.1"
 tracing-opentelemetry = "0.28.0"
 tracing-subscriber = "0.3.19"
-twox-hash = "=1.6.3"
+twox-hash = { version = "=2.1.0", features = ["std", "xxhash64"], default-features = false }
 typed-arena = "=2.0.2"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"

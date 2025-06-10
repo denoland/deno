@@ -6,8 +6,9 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::ModuleInfo;
-use deno_graph::ParserModuleAnalyzer;
+use deno_error::JsErrorBox;
+use deno_graph::analysis::ModuleInfo;
+use deno_graph::ast::ParserModuleAnalyzer;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -142,7 +143,7 @@ impl deno_graph::source::ModuleInfoCacher for ModuleInfoCache {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
+    module_info: &deno_graph::analysis::ModuleInfo,
   ) {
     log::debug!("Caching module info for {}", specifier);
     let source_hash = CacheDBHash::from_hashable(source);
@@ -243,13 +244,15 @@ impl ModuleInfoCacheModuleAnalyzer<'_> {
 }
 
 #[async_trait::async_trait(?Send)]
-impl deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'_> {
+impl deno_graph::analysis::ModuleAnalyzer
+  for ModuleInfoCacheModuleAnalyzer<'_>
+{
   async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
     source: Arc<str>,
     media_type: MediaType,
-  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
+  ) -> Result<ModuleInfo, JsErrorBox> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_hashable(&source);
     if let Some(info) =
@@ -265,7 +268,9 @@ impl deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'_> {
       move || {
         let parser = cache.as_capturing_parser();
         let analyzer = ParserModuleAnalyzer::new(&parser);
-        analyzer.analyze_sync(&specifier, source, media_type)
+        analyzer
+          .analyze_sync(&specifier, source, media_type)
+          .map_err(JsErrorBox::from_err)
       }
     })
     .await
@@ -311,9 +316,9 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
 
 #[cfg(test)]
 mod test {
-  use deno_graph::JsDocImportInfo;
+  use deno_graph::analysis::JsDocImportInfo;
+  use deno_graph::analysis::SpecifierWithRange;
   use deno_graph::PositionRange;
-  use deno_graph::SpecifierWithRange;
 
   use super::*;
 
