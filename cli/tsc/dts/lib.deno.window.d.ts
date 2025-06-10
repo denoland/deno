@@ -9,7 +9,7 @@
 
 /**
  * Defines the mapping between event names and their corresponding event types
- * for the Window interface in Deno.
+ * for the `Window` interface in Deno.
  *
  * This interface provides type safety for event handlers by associating event names
  * with their proper event types.
@@ -99,9 +99,9 @@ interface Window extends EventTarget {
 }
 
 /**
- * Constructor for Window objects.
+ * Constructor for `Window` objects.
  *
- * Note: This constructor cannot be used to create new Window instances in Deno.
+ * Note: This constructor cannot be used to create new `Window` instances in Deno.
  * The global `window` object is pre-defined in the runtime environment.
  *
  * @category Platform
@@ -200,7 +200,7 @@ declare var onunload: ((this: Window, ev: Event) => any) | null;
 
 /**
  * Event handler for unhandled promise rejections.
- * Triggered when a Promise is rejected and no rejection handler is attached to it.
+ * Triggered when a `Promise` is rejected and no rejection handler is attached to it.
  *
  * @example
  * ```ts
@@ -339,7 +339,7 @@ declare var caches: CacheStorage;
 
 /**
  * Provides information about the Deno runtime environment and the system
- * on which it's running. Similar to the browser Navigator object but
+ * on which it's running. Similar to the browser `Navigator` object but
  * adapted for the Deno context.
  *
  * @example
@@ -365,9 +365,9 @@ interface Navigator {
 }
 
 /**
- * Constructor for Navigator objects.
+ * Constructor for `Navigator` objects.
  *
- * Note: This constructor cannot be used to create new Navigator instances in Deno.
+ * Note: This constructor cannot be used to create new `Navigator` instances in Deno.
  * The global `navigator` object is pre-defined in the runtime environment.
  *
  * @category Platform
@@ -378,7 +378,7 @@ declare var Navigator: {
 };
 
 /**
- * Provides access to the Deno runtime's Navigator interface, which contains
+ * Provides access to the Deno runtime's `Navigator` interface, which contains
  * information about the environment in which the script is running.
  *
  * @example
