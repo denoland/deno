@@ -61,8 +61,15 @@ pub async fn ensure_esbuild(
   let nv =
     PackageNv::from_str(&format!("{}@{}", pkg_name, ESBUILD_VERSION)).unwrap();
   let api = npm_registry_info.as_npm_registry_api();
-  let info = api.package_info(&pkg_name).await?;
-  let version_info = info.version_info(&nv, &workspace_link_packages.0)?;
+  let mut info = api.package_info(&pkg_name).await?;
+  let version_info = match info.version_info(&nv, &workspace_link_packages.0) {
+    Ok(version_info) => version_info,
+    Err(_) => {
+      api.mark_force_reload();
+      info = api.package_info(&pkg_name).await?;
+      info.version_info(&nv, &workspace_link_packages.0)?
+    }
+  };
   if let Some(dist) = &version_info.dist {
     let registry_url = npmrc.get_registry_url(&nv.name);
     let package_folder =
