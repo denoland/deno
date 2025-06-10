@@ -57,7 +57,8 @@ use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
-
+use crate::args::BundleFlags;
+use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::CliTsConfigResolver;
@@ -1218,6 +1219,15 @@ impl CliFactory {
                 .node_conditions()
                 .iter()
                 .map(|c| Cow::Owned(c.clone()))
+                .chain({
+                  match &self.flags.subcommand {
+                    DenoSubcommand::Bundle(BundleFlags {
+                      platform: BundlePlatform::Browser,
+                      ..
+                    }) => vec![Cow::Borrowed("browser")],
+                    _ => vec![],
+                  }
+                })
                 .collect(),
               import_conditions_override: None,
               require_conditions_override: None,
@@ -1227,6 +1237,17 @@ impl CliFactory {
                 deno_lib::version::DENO_VERSION_INFO.typescript,
               )
               .unwrap(),
+            ),
+            bundle_mode: matches!(
+              self.flags.subcommand,
+              DenoSubcommand::Bundle(_)
+            ),
+            prefer_browser_field: matches!(
+              self.flags.subcommand,
+              DenoSubcommand::Bundle(BundleFlags {
+                platform: BundlePlatform::Browser,
+                ..
+              })
             ),
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),

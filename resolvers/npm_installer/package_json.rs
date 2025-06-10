@@ -138,8 +138,8 @@ impl NpmInstallDepsProvider {
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
-                // do not resolve to the current package
-                && pkg.pkg_json.path != pkg_json.path
+                        // do not resolve to the current package
+                        && pkg.pkg_json.path != pkg_json.path
               });
 
               if let Some(pkg) = workspace_pkg {
@@ -173,6 +173,9 @@ impl NpmInstallDepsProvider {
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }
+            }
+            PackageJsonDepValue::JsrReq(_) => {
+              // ignore for now
             }
           }
         }

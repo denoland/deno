@@ -355,7 +355,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           ..
         } => match dep_result {
           Ok(dep) => match dep {
-            PackageJsonDepValue::File(_) => {
+            PackageJsonDepValue::File(_) | PackageJsonDepValue::JsrReq(_) => {
               return Err(
                 UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
                   package_name: alias.to_string(),
