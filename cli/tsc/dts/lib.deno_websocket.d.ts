@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /**
- * Configuration options for a WebSocket close event.
+ * Configuration options for a `WebSocket` "close" event.
  *
  * @example
  * ```ts
@@ -29,10 +29,10 @@ interface CloseEventInit extends EventInit {
 }
 
 /**
- * The `CloseEvent` interface represents an event that occurs when a WebSocket connection is closed.
+ * The `CloseEvent` interface represents an event that occurs when a `WebSocket` connection is closed.
  *
  * This event is sent to the client when the connection is closed, providing information about
- * why the connection was closed through the code, reason, and wasClean properties.
+ * why the connection was closed through the `code`, `reason`, and `wasClean` properties.
  *
  * @example
  * ```ts
@@ -91,8 +91,8 @@ declare var CloseEvent: {
 };
 
 /**
- * Interface mapping WebSocket event names to their corresponding event types.
- * Used for strongly typed event handling with addEventListener and removeEventListener.
+ * Interface mapping `WebSocket` event names to their corresponding event types.
+ * Used for strongly typed event handling with `addEventListener` and `removeEventListener`.
  *
  * @example
  * ```ts
@@ -248,10 +248,10 @@ interface WebSocket extends EventTarget {
 }
 
 /**
- * Constructor interface for creating WebSocket instances.
+ * Constructor interface for creating `WebSocket` instances.
  *
- * The WebSocket constructor creates and returns a new WebSocket object
- * that represents a connection to a WebSocket server.
+ * The `WebSocket` constructor creates and returns a new `WebSocket` object
+ * that represents a connection to a `WebSocket` server.
  *
  * @example
  * ```ts
@@ -282,10 +282,10 @@ declare var WebSocket: {
 };
 
 /**
- * Specifies the type of binary data being received over a WebSocket connection.
+ * Specifies the type of binary data being received over a `WebSocket` connection.
  *
- * - "blob": Binary data is returned as Blob objects
- * - "arraybuffer": Binary data is returned as ArrayBuffer objects
+ * - `"blob"`: Binary data is returned as `Blob` objects
+ * - `"arraybuffer"`: Binary data is returned as `ArrayBuffer` objects
  *
  * @example
  * ```ts
