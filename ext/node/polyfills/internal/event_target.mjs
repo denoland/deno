@@ -31,13 +31,13 @@ import { inspect } from "node:util";
 const kIsEventTarget = Symbol.for("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
+import { kEvents } from "ext:deno_node/_events.mjs";
 import { EventEmitter } from "node:events";
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,
 } = EventEmitter;
 
-const kEvents = Symbol("kEvents");
 const kIsBeingDispatched = Symbol("kIsBeingDispatched");
 const kStop = Symbol("kStop");
 const kTarget = Symbol("kTarget");

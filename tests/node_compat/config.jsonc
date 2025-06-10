@@ -73,7 +73,6 @@
       "test-error-aggregateTwoErrors.js",
       "test-error-prepare-stack-trace.js",
       "test-event-emitter-prepend.js",
-      "test-events-on-async-iterator.js",
       "test-events-once.js",
       "test-fs-access.js",
       "test-fs-append-file.js",
