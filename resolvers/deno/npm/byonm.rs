@@ -197,7 +197,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       {
         if let Ok(value) = value {
           match value {
-            PackageJsonDepValue::File(_) => {
+            PackageJsonDepValue::File(_) | PackageJsonDepValue::JsrReq(_) => {
               // skip
             }
             PackageJsonDepValue::Req(dep_req) => {
@@ -214,7 +214,6 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Some(key.clone());
               }
             }
-            PackageJsonDepValue::JsrReq(_) => todo!(),
           }
         }
       }

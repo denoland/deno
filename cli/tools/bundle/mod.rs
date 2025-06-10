@@ -180,6 +180,14 @@ pub async fn bundle(
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
   }
+  match bundle_flags.platform {
+    crate::args::BundlePlatform::Browser => {
+      builder.platform(esbuild_client::Platform::Browser);
+    }
+    crate::args::BundlePlatform::Deno => {
+      builder.platform(esbuild_client::Platform::Neutral);
+    }
+  }
   let flags = builder.build().unwrap();
 
   let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
