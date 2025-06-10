@@ -65,8 +65,8 @@ use crate::sync::MaybeSync;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
-use crate::workspace::WorkspaceNpmPatchPackages;
-use crate::workspace::WorkspaceNpmPatchPackagesRc;
+use crate::workspace::WorkspaceNpmLinkPackages;
+use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
@@ -255,7 +255,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
-  workspace_npm_patch_packages: Deferred<WorkspaceNpmPatchPackagesRc>,
+  workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
 }
@@ -288,7 +288,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
-      workspace_npm_patch_packages: Default::default(),
+      workspace_npm_link_packages: Default::default(),
       initial_cwd,
       options,
     }
@@ -614,18 +614,18 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       })
   }
 
-  pub fn workspace_npm_patch_packages(
+  pub fn workspace_npm_link_packages(
     &self,
-  ) -> Result<&WorkspaceNpmPatchPackagesRc, anyhow::Error> {
+  ) -> Result<&WorkspaceNpmLinkPackagesRc, anyhow::Error> {
     self
-      .workspace_npm_patch_packages
+      .workspace_npm_link_packages
       .get_or_try_init(|| {
         let workspace_dir = self.workspace_directory()?;
-        let npm_packages = new_rc(WorkspaceNpmPatchPackages::from_workspace(
+        let npm_packages = new_rc(WorkspaceNpmLinkPackages::from_workspace(
           workspace_dir.workspace.as_ref(),
         ));
         if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
-          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+          bail!("Linking npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
         } else {
           Ok(npm_packages)
         }

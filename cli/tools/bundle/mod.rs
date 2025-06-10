@@ -60,7 +60,7 @@ pub async fn bundle(
     deno_dir,
     npmrc,
     npm_registry_info,
-    workspace_factory.workspace_npm_patch_packages()?,
+    workspace_factory.workspace_npm_link_packages()?,
     installer_factory.tarball_cache()?,
     factory.npm_cache()?,
   )

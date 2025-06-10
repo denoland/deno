@@ -14,7 +14,7 @@ use deno_unsync::sync::TaskQueue;
 use parking_lot::Mutex;
 use thiserror::Error;
 
-use super::WorkspaceNpmPatchPackages;
+use super::WorkspaceNpmLinkPackages;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
@@ -32,7 +32,7 @@ enum SyncState<TSys: LockfileSys> {
 #[derive(Debug)]
 pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
-  patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  link_packages: Arc<WorkspaceNpmLinkPackages>,
   queue: TaskQueue,
   sync_state: Mutex<SyncState<TSys>>,
 }
@@ -40,12 +40,12 @@ pub struct NpmResolutionInitializer<TSys: LockfileSys> {
 impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
-    patch_packages: Arc<WorkspaceNpmPatchPackages>,
+    link_packages: Arc<WorkspaceNpmLinkPackages>,
     snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
       npm_resolution,
-      patch_packages,
+      link_packages,
       queue: Default::default(),
       sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
     }
@@ -91,7 +91,7 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
       }
     };
 
-    match resolve_snapshot(snapshot_option, &self.patch_packages) {
+    match resolve_snapshot(snapshot_option, &self.link_packages) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -124,13 +124,13 @@ pub struct ResolveSnapshotError {
 #[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
-  patch_packages: &WorkspaceNpmPatchPackages,
+  link_packages: &WorkspaceNpmLinkPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
     NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), patch_packages)
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), link_packages)
           .map_err(|source| ResolveSnapshotError {
             lockfile_path: lockfile.filename.clone(),
             source,
@@ -153,11 +153,11 @@ pub enum SnapshotFromLockfileError {
 
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
-  patch_packages: &WorkspaceNpmPatchPackages,
+  link_packages: &WorkspaceNpmLinkPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
-      patch_packages: &patch_packages.0,
+      link_packages: &link_packages.0,
       lockfile: &lockfile.lock(),
       default_tarball_url: Default::default(),
     },

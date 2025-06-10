@@ -6004,7 +6004,7 @@ fn lsp_jsr_auto_import_completion_patch() {
       "imports": {
         "@org/package": "jsr:@org/package"
       },
-      "patch": ["package"],
+      "links": ["package"],
     })
     .to_string(),
   );
