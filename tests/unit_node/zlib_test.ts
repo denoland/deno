@@ -133,7 +133,9 @@ Deno.test(
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -164,7 +166,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },

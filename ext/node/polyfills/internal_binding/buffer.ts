@@ -5,10 +5,20 @@
 
 import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
 
+export function fill(
+  buffer,
+  value,
+  start,
+  end,
+) {
+  return buffer.fill(value, start, end);
+}
+
 export function indexOfNeedle(
   source: Uint8Array,
   needle: Uint8Array,
   start = 0,
+  step = 1,
 ): number {
   if (start >= source.length) {
     return -1;
@@ -17,7 +27,7 @@ export function indexOfNeedle(
     start = Math.max(0, source.length + start);
   }
   const s = needle[0];
-  for (let i = start; i < source.length; i++) {
+  for (let i = start; i < source.length; i += step) {
     if (source[i] !== s) continue;
     const pin = i;
     let matched = 1;
@@ -100,9 +110,11 @@ function indexOfBuffer(
     throw new Error(`Unknown encoding code ${encoding}`);
   }
 
+  const isUcs2 = encoding === Encodings.UCS2;
+
   // If the encoding is UCS2 and haystack or needle has a length less than 2, the search will always fail
   // https://github.com/nodejs/node/blob/fbdfe9399cf6c660e67fd7d6ceabfb106e32d787/src/node_buffer.cc#L1067-L1069
-  if (encoding === Encodings.UCS2) {
+  if (isUcs2) {
     if (buffer.length < 2 || targetBuffer.length < 2) {
       return -1;
     }
@@ -128,7 +140,7 @@ function indexOfBuffer(
     return byteOffset <= targetBuffer.length ? byteOffset : targetBuffer.length;
   }
 
-  return indexOfNeedle(targetBuffer, buffer, byteOffset);
+  return indexOfNeedle(targetBuffer, buffer, byteOffset, isUcs2 ? 2 : 1);
 }
 
 function indexOfNumber(

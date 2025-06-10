@@ -49,6 +49,8 @@ url.workspace = true
 sys_traits = { workspace = true, features = ["real", "wasm"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
+deno_unsync = { workspace = true, features = ["tokio"] }
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]

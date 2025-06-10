@@ -794,11 +794,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let mut entries = fs::read_dir(&pending_dir)
-            .with_context(|| {
-              format!("Failed reading: {}", pending_dir.display())
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+          let Ok(entries) = fs::read_dir(&pending_dir) else {
+            // Don't bother surfacing this error as it might be an error
+            // like "access denied". In this case, just skip over it.
+            continue;
+          };
+          let mut entries = entries.filter_map(|e| e.ok()).collect::<Vec<_>>();
           entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
             let path = entry.path();

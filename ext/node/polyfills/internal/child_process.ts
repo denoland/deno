@@ -259,6 +259,7 @@ export class ChildProcess extends EventEmitter {
       command,
       args || [],
       shell,
+      env,
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
@@ -881,10 +882,22 @@ function buildCommand(
   file: string,
   args: string[],
   shell: string | boolean,
+  env: Record<string, string | number | boolean>,
 ): [string, string[]] {
   if (file === Deno.execPath()) {
+    let nodeOptions: string[];
     // The user is trying to spawn another Deno process as Node.js.
-    args = toDenoArgs(args);
+    [args, nodeOptions] = toDenoArgs(args);
+
+    // Update NODE_OPTIONS if it exists
+    if (nodeOptions.length > 0) {
+      const options = nodeOptions.join(" ");
+      if (env.NODE_OPTIONS) {
+        env.NODE_OPTIONS += " " + options;
+      } else {
+        env.NODE_OPTIONS = options;
+      }
+    }
   }
 
   if (shell) {
@@ -912,6 +925,7 @@ function buildCommand(
       args = ["-c", command];
     }
   }
+
   return [file, args];
 }
 
@@ -1030,7 +1044,7 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  [command, args] = buildCommand(command, args ?? [], shell);
+  [command, args] = buildCommand(command, args ?? [], shell, env);
   const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
@@ -1162,13 +1176,30 @@ const kDenoSubcommands = new Set([
   "vendor",
 ]);
 
-function toDenoArgs(args: string[]): string[] {
+/** Wraps the script for (Node.js) --eval / --print argument
+ * Note: Builtin modules are available as global variables */
+function wrapScriptForEval(sourceCode: string): string {
+  // Note: We need vm.runInThisContext call here to get the last evaluated
+  // value of the source with multiple statements. `deno eval -p` surrounds
+  // the source code like `console.log(${source})`, and it only allows a
+  // single expression.
+  return `
+    process.getBuiltinModule("module").builtinModules
+      .filter((m) => !/\\/|crypto|process/.test(m))
+      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
+    vm.runInThisContext(${JSON.stringify(sourceCode)})
+  `;
+}
+
+/** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
+function toDenoArgs(args: string[]): [string[], string[]] {
   if (args.length === 0) {
-    return args;
+    return [args, args];
   }
 
   // Update this logic as more CLI arguments are mapped from Node to Deno.
   const denoArgs: string[] = [];
+  const nodeOptions: string[] = [];
   let useRunArgs = true;
 
   for (let i = 0; i < args.length; i++) {
@@ -1181,7 +1212,7 @@ function toDenoArgs(args: string[]): string[] {
       // spawned as Deno, not Deno in Node compat mode. In this case, bail out
       // and return the original args.
       if (kDenoSubcommands.has(arg)) {
-        return args;
+        return [args, []];
       }
 
       // Copy of the rest of the arguments to the output.
@@ -1220,10 +1251,13 @@ function toDenoArgs(args: string[]): string[] {
     if (flagInfo === undefined) {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
+        nodeOptions.push(arg);
       } else if (arg === "--expose-internals") {
         // internals are always exposed in Deno.
       } else if (arg === "--permission") {
         // ignore --permission flag
+      } else if (arg === "--pending-deprecation") {
+        nodeOptions.push(arg);
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);
@@ -1248,7 +1282,10 @@ function toDenoArgs(args: string[]): string[] {
 
     // Remap Node's eval flags to Deno.
     if (flag === "-e" || flag === "--eval") {
-      denoArgs.push("eval", flagValue);
+      denoArgs.push("eval", wrapScriptForEval(flagValue));
+      useRunArgs = false;
+    } else if (flag === "-p" || flag === "--print") {
+      denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
       useRunArgs = false;
     } else if (isLongWithValue) {
       denoArgs.push(arg);
@@ -1262,7 +1299,7 @@ function toDenoArgs(args: string[]): string[] {
     denoArgs.unshift("run", "-A");
   }
 
-  return denoArgs;
+  return [denoArgs, nodeOptions];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");

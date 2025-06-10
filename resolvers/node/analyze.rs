@@ -228,7 +228,12 @@ impl<
               &referrer,
               // FIXME(bartlomieju): check if these conditions are okay, probably
               // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-              &["deno", "node", "require", "default"],
+              &[
+                Cow::Borrowed("deno"),
+                Cow::Borrowed("node"),
+                Cow::Borrowed("require"),
+                Cow::Borrowed("default"),
+              ],
               NodeResolutionKind::Execution,
             )
             .and_then(|value| {
@@ -328,7 +333,7 @@ impl<
     &self,
     specifier: &str,
     referrer: &Url,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<UrlOrPath>, JsErrorBox> {
     if specifier.starts_with('/') {
@@ -523,6 +528,13 @@ pub struct NodeCodeTranslator<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  mode: NodeCodeTranslatorMode,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NodeCodeTranslatorMode {
+  Bundling,
+  ModuleLoader,
 }
 
 impl<
@@ -548,9 +560,11 @@ impl<
       TNpmPackageFolderResolver,
       TSys,
     >,
+    mode: NodeCodeTranslatorMode,
   ) -> Self {
     Self {
       module_export_analyzer,
+      mode,
     }
   }
 
@@ -565,32 +579,37 @@ impl<
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let analysis = self
-      .module_export_analyzer
-      .analyze_all_exports(entry_specifier, source)
-      .await?;
+    let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Bundling) {
+      // let the bundler handle it instead of the module loader
+      return Ok(source.unwrap());
+    } else {
+      let analysis = self
+        .module_export_analyzer
+        .analyze_all_exports(entry_specifier, source)
+        .await?;
 
-    let all_exports = match analysis {
-      ResolvedCjsAnalysis::Esm(source) => return Ok(source),
-      ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
+      match analysis {
+        ResolvedCjsAnalysis::Esm(source) => return Ok(source),
+        ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
+      }
     };
 
     // todo(dsherret): use capacity_builder here to remove all these heap
     // allocations and make the string writing faster
     let mut temp_var_count = 0;
     let mut source = vec![
-      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
-      const require = __internalCreateRequire(import.meta.url);"#
-        .to_string(),
-    ];
+        r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
+        const require = __internalCreateRequire(import.meta.url);"#
+          .to_string(),
+      ];
 
     source.push(format!(
       r#"let mod;
-      if (import.meta.main) {{
-        mod = __internalModule._load("{0}", null, true)
-      }} else {{
-        mod = require("{0}");
-      }}"#,
+        if (import.meta.main) {{
+          mod = __internalModule._load("{0}", null, true)
+        }} else {{
+          mod = require("{0}");
+        }}"#,
       url_to_file_path(entry_specifier)
         .unwrap()
         .to_str()
