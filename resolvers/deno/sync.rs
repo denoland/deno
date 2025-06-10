@@ -11,7 +11,6 @@ mod inner {
   pub use std::sync::Arc as MaybeArc;
 
   pub use dashmap::DashMap as MaybeDashMap;
-  #[cfg(feature = "graph")]
   pub use dashmap::DashSet as MaybeDashSet;
 }
 

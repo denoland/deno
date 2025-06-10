@@ -2578,6 +2578,7 @@ dependencies = [
  "base32",
  "boxed_error",
  "dashmap",
+ "deno_ast",
  "deno_cache_dir",
  "deno_config",
  "deno_error",
@@ -2605,6 +2606,7 @@ dependencies = [
  "sys_traits",
  "test_server",
  "thiserror 2.0.12",
+ "twox-hash 2.1.0",
  "url",
 ]
 
