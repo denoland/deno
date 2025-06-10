@@ -76,7 +76,7 @@ pub async fn bundle(
     .create_for_main(root_permissions.clone())
     .module_loader;
   let sys = factory.sys();
-  let init_cwd = cli_options.initial_cwd().canonicalize()?;
+  let init_cwd = cli_options.initial_cwd().to_path_buf();
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
