@@ -331,7 +331,6 @@ struct CliFactoryServices {
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   text_only_progress_bar: Deferred<ProgressBar>,
-  tsconfig_resolver: Deferred<Arc<CliTsConfigResolver>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
 }
@@ -792,13 +791,7 @@ impl CliFactory {
   pub fn tsconfig_resolver(
     &self,
   ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
-    self.services.tsconfig_resolver.get_or_try_init(|| {
-      let workspace = self.workspace()?;
-      Ok(Arc::new(CliTsConfigResolver::from_workspace(
-        &self.sys(),
-        workspace,
-      )))
-    })
+    Ok(self.workspace_factory()?.tsconfig_resolver()?)
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {

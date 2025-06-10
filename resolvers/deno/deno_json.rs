@@ -20,6 +20,10 @@ use crate::factory::WorkspaceRc;
 use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
+pub type TsConfigResolverRc<TSys> =
+  crate::sync::MaybeArc<TsConfigResolver<TSys>>;
+
+#[allow(clippy::disallowed_types)]
 type TsConfigRc = crate::sync::MaybeArc<TsConfig>;
 #[allow(clippy::disallowed_types)]
 type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
