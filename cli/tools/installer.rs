@@ -191,8 +191,7 @@ pub async fn infer_name_from_url(
       return Some(npm_ref.req.name.into_string());
     }
     if let Some(scope_and_pkg) = npm_ref.req.name.strip_prefix('@') {
-      if let Some((scope, package)) = scope_and_pkg.split_once('/')
-      {
+      if let Some((scope, package)) = scope_and_pkg.split_once('/') {
         if package == "cli" {
           return Some(scope.to_string());
         }
