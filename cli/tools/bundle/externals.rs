@@ -217,7 +217,7 @@ mod tests {
       ["./foo"],
       Matches {
         pre_resolve: s(["./foo"]),
-        post_resolve: s([cwd.join("foo").to_string_lossy().to_string()]),
+        post_resolve: s([path_str(cwd.join("foo"))]),
       },
       ["other/foo", "./foo.ts", "./foo/bar", "thing/./foo"]
     ));
@@ -247,8 +247,8 @@ mod tests {
       Matches {
         pre_resolve: s(["./foo/bar", "./foo/baz"]),
         post_resolve: vec![
-          path_str(cwd.join("foo/bar")),
-          path_str(cwd.join("foo/baz")),
+          path_str(cwd.join("foo").join("bar")),
+          path_str(cwd.join("foo").join("baz")),
         ],
       },
       ["other/foo/bar", "./bar/foo", "./bar/./foo/bar"]
