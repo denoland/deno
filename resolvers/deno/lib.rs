@@ -336,7 +336,7 @@ impl<
                 .into_box()
             })
             .and_then(|dep| match dep {
-              PackageJsonDepValue::File(_) => {
+              PackageJsonDepValue::File(_) | PackageJsonDepValue::JsrReq(_) => {
                 // We don't support --node-modules-dir=auto/none because it's too
                 // much work to get this to work with a lockfile properly and for
                 // multiple managed node_modules directories to work. If someone wants

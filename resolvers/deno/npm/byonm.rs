@@ -214,6 +214,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Some(key.clone());
               }
             }
+            PackageJsonDepValue::JsrReq(_) => todo!(),
           }
         }
       }

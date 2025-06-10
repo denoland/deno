@@ -282,6 +282,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
+          PackageJsonDepValue::JsrReq(req) => {
+            Some(JsrDepPackageReq::jsr(req.clone()))
+          }
           PackageJsonDepValue::Workspace(_) => None,
         })
         .collect()
@@ -381,7 +384,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_) => None,
+                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::JsrReq(_) => None,
                   })
                   .collect()
               })

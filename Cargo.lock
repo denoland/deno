@@ -1720,9 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.56.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3949619345af4e06c803af7a4347083104651f67e6313810f09a15c0798a72c"
+checksum = "cede8eaf636037d9f3d9206eeecb0bdcea042810da5eb00be74ecb0d17b95acc"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -2511,9 +2511,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.7.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77aee446076be3e2ed9e175b77f423cb20d5d7e1080338f4c77b0b4d290599da"
+checksum = "fc681ccdd5319c96bdacdd6d6b1a1e1272829fa10687120eba1d2a0c336d77f7"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -6594,7 +6594,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.13.0",
  "log",
  "multimap",
