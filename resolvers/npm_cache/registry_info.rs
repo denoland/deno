@@ -11,7 +11,6 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_unsync::sync::AtomicFlag;
-use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -21,6 +20,7 @@ use url::Url;
 
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::spawn_blocking;
+use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
@@ -226,7 +226,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoInnerError> {
-    let (cache_item, clear_id) = {
+    let (value_creator, clear_id) = {
       let mut mem_cache = self.memory_cache.lock();
       let cache_item = if let Some(cache_item) = mem_cache.get(name) {
         cache_item.clone()
@@ -240,53 +240,53 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         mem_cache.insert(name.to_string(), cache_item.clone());
         cache_item
       };
-      (cache_item, mem_cache.clear_id)
+      match cache_item {
+        MemoryCacheItem::FsCached(info) => return Ok(Some(info)),
+        MemoryCacheItem::MemoryCached(maybe_info) => {
+          return maybe_info.map_err(LoadPackageInfoInnerError)
+        }
+        MemoryCacheItem::Pending(value_creator) => {
+          (value_creator, mem_cache.clear_id)
+        }
+      }
     };
 
-    match cache_item {
-      MemoryCacheItem::FsCached(info) => Ok(Some(info)),
-      MemoryCacheItem::MemoryCached(maybe_info) => {
-        maybe_info.clone().map_err(LoadPackageInfoInnerError)
+    match value_creator.get().await {
+      Ok(FutureResult::SavedFsCache(info)) => {
+        // return back the future and mark this package as having
+        // been saved in the cache for next time it's requested
+        self.memory_cache.lock().try_insert(
+          clear_id,
+          name,
+          MemoryCacheItem::FsCached(info.clone()),
+        );
+        Ok(Some(info))
       }
-      MemoryCacheItem::Pending(value_creator) => {
-        match value_creator.get().await {
-          Ok(FutureResult::SavedFsCache(info)) => {
-            // return back the future and mark this package as having
-            // been saved in the cache for next time it's requested
-            self.memory_cache.lock().try_insert(
-              clear_id,
-              name,
-              MemoryCacheItem::FsCached(info.clone()),
-            );
-            Ok(Some(info))
-          }
-          Ok(FutureResult::ErroredFsCache(info)) => {
-            // since saving to the fs cache failed, keep the package information in memory
-            self.memory_cache.lock().try_insert(
-              clear_id,
-              name,
-              MemoryCacheItem::MemoryCached(Ok(Some(info.clone()))),
-            );
-            Ok(Some(info))
-          }
-          Ok(FutureResult::PackageNotExists) => {
-            self.memory_cache.lock().try_insert(
-              clear_id,
-              name,
-              MemoryCacheItem::MemoryCached(Ok(None)),
-            );
-            Ok(None)
-          }
-          Err(err) => {
-            let return_err = err.clone();
-            self.memory_cache.lock().try_insert(
-              clear_id,
-              name,
-              MemoryCacheItem::MemoryCached(Err(err)),
-            );
-            Err(LoadPackageInfoInnerError(return_err))
-          }
-        }
+      Ok(FutureResult::ErroredFsCache(info)) => {
+        // since saving to the fs cache failed, keep the package information in memory
+        self.memory_cache.lock().try_insert(
+          clear_id,
+          name,
+          MemoryCacheItem::MemoryCached(Ok(Some(info.clone()))),
+        );
+        Ok(Some(info))
+      }
+      Ok(FutureResult::PackageNotExists) => {
+        self.memory_cache.lock().try_insert(
+          clear_id,
+          name,
+          MemoryCacheItem::MemoryCached(Ok(None)),
+        );
+        Ok(None)
+      }
+      Err(err) => {
+        let return_err = err.clone();
+        self.memory_cache.lock().try_insert(
+          clear_id,
+          name,
+          MemoryCacheItem::MemoryCached(Err(err)),
+        );
+        Err(LoadPackageInfoInnerError(return_err))
       }
     }
   }

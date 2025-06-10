@@ -1559,7 +1559,7 @@ impl EszipModuleLoader {
 
 #[cfg(test)]
 mod tests {
-  use deno_graph::ParsedSourceStore;
+  use deno_graph::ast::ParsedSourceStore;
 
   use super::*;
 
