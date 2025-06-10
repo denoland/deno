@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod esbuild;
+mod externals;
 
 use std::path::Path;
 use std::rc::Rc;
@@ -26,7 +27,6 @@ use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use regex::Regex;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
@@ -42,27 +42,7 @@ use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
-
-/// Given a set of pattern indicating files to mark as external,
-/// return a regex that matches any of those patterns.
-///
-/// For instance given, `--external="*.node" --external="*.wasm"`, the regex will match
-/// any path that ends with `.node` or `.wasm`.
-pub fn externals_regex(external: &[String]) -> Regex {
-  let mut regex_str = String::new();
-  for (i, e) in external.iter().enumerate() {
-    if i > 0 {
-      regex_str.push('|');
-    }
-    regex_str.push_str("(^");
-    if e.starts_with("/") {
-      regex_str.push_str(".*");
-    }
-    regex_str.push_str(&regex::escape(e).replace("\\*", ".*"));
-    regex_str.push(')');
-  }
-  regex::Regex::new(&regex_str).unwrap()
-}
+use crate::tools::bundle::externals::ExternalsMatcher;
 
 pub async fn bundle(
   flags: Arc<Flags>,
@@ -97,7 +77,7 @@ pub async fn bundle(
     .create_for_main(root_permissions.clone())
     .module_loader;
   let sys = factory.sys();
-  let init_cwd = cli_options.initial_cwd().canonicalize()?;
+  let init_cwd = cli_options.initial_cwd().to_path_buf();
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
@@ -111,11 +91,10 @@ pub async fn bundle(
     npm_resolver: npm_resolver.clone(),
     node_resolver: node_resolver.clone(),
     module_loader: module_loader.clone(),
-    // TODO(nathanwhit): look at the external patterns to give diagnostics for probably incorrect patterns
-    externals_regex: if bundle_flags.external.is_empty() {
+    externals_matcher: if bundle_flags.external.is_empty() {
       None
     } else {
-      Some(externals_regex(&bundle_flags.external))
+      Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
   });
   let start = std::time::Instant::now();
@@ -367,7 +346,7 @@ struct DenoPluginHandler {
   npm_resolver: CliNpmResolver,
   node_resolver: Arc<CliNodeResolver>,
   module_loader: Rc<dyn ModuleLoader>,
-  externals_regex: Option<Regex>,
+  externals_matcher: Option<ExternalsMatcher>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -377,8 +356,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(reg) = &self.externals_regex {
-      if reg.is_match(&args.path) {
+    if let Some(matcher) = &self.externals_matcher {
+      if matcher.is_pre_resolve_match(&args.path) {
         return Ok(Some(esbuild_client::OnResolveResult {
           external: Some(true),
           path: Some(args.path),
@@ -397,6 +376,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     )?;
 
     Ok(result.map(|r| {
+      // TODO(nathanwhit): remap the resolved path to be relative
+      // to the output file. It will be tricky to figure out which
+      // output file this import will end up in. We may have to use the metafile and rewrite at the end
+      let is_external = r.starts_with("node:")
+        || self
+          .externals_matcher
+          .as_ref()
+          .map(|matcher| matcher.is_post_resolve_match(&r))
+          .unwrap_or(false);
+
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
           || r.starts_with("https:")
@@ -407,14 +396,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         } else {
           None
         },
-        external: Some(
-          r.starts_with("node:")
-            || self
-              .externals_regex
-              .as_ref()
-              .map(|reg| reg.is_match(&r))
-              .unwrap_or(false),
-        ),
+        external: Some(is_external),
         path: Some(r),
         plugin_name: Some("deno".to_string()),
         plugin_data: None,
