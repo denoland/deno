@@ -244,7 +244,7 @@ mod tests {
         pre_resolve: s(["./foo/bar", "./foo/baz"]),
         post_resolve: vec![format!("{cwd}/foo/bar"), format!("{cwd}/foo/baz")],
       },
-      ["other/foo/bar", "./bar/foo", "./foo/bar/baz", "./foo/baz"]
+      ["other/foo/bar", "./bar/foo", "./bar/./foo/bar"]
     ));
   }
 }
