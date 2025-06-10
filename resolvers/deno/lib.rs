@@ -41,6 +41,8 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod collections;
+pub mod deno_json;
 pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]

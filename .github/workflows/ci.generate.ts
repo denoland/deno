@@ -1247,7 +1247,7 @@ const ci = {
         {
           name: "Cargo check (deno_resolver)",
           run:
-            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
         },
         {
           name: "Cargo check (deno_npm_installer)",

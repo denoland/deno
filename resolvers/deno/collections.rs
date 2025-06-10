@@ -1,9 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use deno_core::url::Url;
+use url::Url;
+
+#[allow(clippy::disallowed_types)]
+type UrlRc = crate::sync::MaybeArc<Url>;
 
 /// A map that stores values scoped to a specific directory
 /// on the file system.
@@ -12,7 +14,7 @@ use deno_core::url::Url;
 /// fall outside the other directories land here (ex. remote modules).
 pub struct FolderScopedMap<TValue> {
   unscoped: TValue,
-  scoped: BTreeMap<Arc<Url>, TValue>,
+  scoped: BTreeMap<UrlRc, TValue>,
 }
 
 impl<TValue> std::fmt::Debug for FolderScopedMap<TValue>
@@ -62,7 +64,7 @@ impl<TValue> FolderScopedMap<TValue> {
       .unwrap_or(&self.unscoped)
   }
 
-  pub fn insert(&mut self, dir_url: Arc<Url>, value: TValue) {
+  pub fn insert(&mut self, dir_url: UrlRc, value: TValue) {
     debug_assert!(dir_url.path().ends_with("/")); // must be a dir url
     debug_assert_eq!(dir_url.scheme(), "file");
     self.scoped.insert(dir_url, value);

@@ -1,53 +1,38 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
-
-use deno_ast::SourceMapOption;
 use deno_config::deno_json::CompilerOptionsParseError;
 use deno_config::deno_json::TsConfig;
 use deno_config::deno_json::TsConfigType;
 use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::deno_json::TsTypeLib;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url::Url;
-use deno_lib::util::hash::FastInsecureHasher;
-use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
+#[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
+#[cfg(not(feature = "sync"))]
+use once_cell::unsync::OnceCell;
+use sys_traits::FsRead;
+use url::Url;
 
-use crate::sys::CliSys;
-use crate::util::collections::FolderScopedMap;
+use crate::collections::FolderScopedMap;
+use crate::factory::WorkspaceRc;
+use crate::sync::new_rc;
 
-fn check_warn_tsconfig(
-  ts_config: &TsConfigWithIgnoredOptions,
-  logged_warnings: &LoggedWarnings,
-) {
-  for ignored_options in &ts_config.ignored_options {
-    if ignored_options
-      .maybe_specifier
-      .as_ref()
-      .map(|s| logged_warnings.folders.insert(s.clone()))
-      .unwrap_or(true)
-    {
-      log::warn!("{}", ignored_options);
-    }
-  }
-  let serde_json::Value::Object(obj) = &ts_config.ts_config.0 else {
-    return;
-  };
-  if obj.get("experimentalDecorators") == Some(&serde_json::Value::Bool(true))
-    && logged_warnings.experimental_decorators.raise()
-  {
-    log::warn!(
-        "{} experimentalDecorators compiler option is deprecated and may be removed at any time",
-        deno_runtime::colors::yellow("Warning"),
-      );
-  }
-}
+#[allow(clippy::disallowed_types)]
+pub type TsConfigResolverRc<TSys> =
+  crate::sync::MaybeArc<TsConfigResolver<TSys>>;
 
+#[allow(clippy::disallowed_types)]
+type TsConfigRc = crate::sync::MaybeArc<TsConfig>;
+#[allow(clippy::disallowed_types)]
+type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
+#[cfg(feature = "deno_ast")]
+#[allow(clippy::disallowed_types)]
+pub type TranspileAndEmitOptionsRc =
+  crate::sync::MaybeArc<TranspileAndEmitOptions>;
+
+#[cfg(feature = "deno_ast")]
 #[derive(Debug)]
 pub struct TranspileAndEmitOptions {
   pub transpile: deno_ast::TranspileOptions,
@@ -59,63 +44,65 @@ pub struct TranspileAndEmitOptions {
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
-  folders: dashmap::DashSet<Url>,
+  folders: crate::sync::MaybeDashSet<Url>,
 }
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
-  deno_window_check_tsconfig: OnceCell<Arc<TsConfig>>,
-  deno_worker_check_tsconfig: OnceCell<Arc<TsConfig>>,
-  emit_tsconfig: OnceCell<Arc<TsConfig>>,
-  transpile_options: OnceCell<Arc<TranspileAndEmitOptions>>,
+  deno_window_check_tsconfig: OnceCell<TsConfigRc>,
+  deno_worker_check_tsconfig: OnceCell<TsConfigRc>,
+  emit_tsconfig: OnceCell<TsConfigRc>,
+  #[cfg(feature = "deno_ast")]
+  transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
 }
 
 #[derive(Debug)]
-pub struct TsConfigFolderInfo {
+pub struct TsConfigFolderInfo<TSys: FsRead> {
   pub dir: WorkspaceDirectory,
-  logged_warnings: Arc<LoggedWarnings>,
+  logged_warnings: LoggedWarningsRc,
   memoized: MemoizedValues,
+  sys: TSys,
 }
 
-impl TsConfigFolderInfo {
+impl<TSys: FsRead> TsConfigFolderInfo<TSys> {
   pub fn lib_tsconfig(
     &self,
     lib: TsTypeLib,
-  ) -> Result<&Arc<TsConfig>, CompilerOptionsParseError> {
+  ) -> Result<&TsConfigRc, CompilerOptionsParseError> {
     let cell = match lib {
       TsTypeLib::DenoWindow => &self.memoized.deno_window_check_tsconfig,
       TsTypeLib::DenoWorker => &self.memoized.deno_worker_check_tsconfig,
     };
 
     cell.get_or_try_init(|| {
-      let tsconfig_result = self.dir.to_resolved_ts_config(
-        &CliSys::default(),
-        TsConfigType::Check { lib },
-      )?;
+      let tsconfig_result = self
+        .dir
+        .to_resolved_ts_config(&self.sys, TsConfigType::Check { lib })?;
       check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
-      Ok(Arc::new(tsconfig_result.ts_config))
+      Ok(new_rc(tsconfig_result.ts_config))
     })
   }
 
   pub fn emit_tsconfig(
     &self,
-  ) -> Result<&Arc<TsConfig>, CompilerOptionsParseError> {
+  ) -> Result<&TsConfigRc, CompilerOptionsParseError> {
     self.memoized.emit_tsconfig.get_or_try_init(|| {
       let tsconfig_result = self
         .dir
-        .to_resolved_ts_config(&CliSys::default(), TsConfigType::Emit)?;
+        .to_resolved_ts_config(&self.sys, TsConfigType::Emit)?;
       check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
-      Ok(Arc::new(tsconfig_result.ts_config))
+      Ok(new_rc(tsconfig_result.ts_config))
     })
   }
 
+  #[cfg(feature = "deno_ast")]
   pub fn transpile_options(
     &self,
-  ) -> Result<&Arc<TranspileAndEmitOptions>, CompilerOptionsParseError> {
+  ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
     self.memoized.transpile_options.get_or_try_init(|| {
       let ts_config = self.emit_tsconfig()?;
       ts_config_to_transpile_and_emit_options(ts_config.as_ref().clone())
-        .map(Arc::new)
+        .map(new_rc)
         .map_err(|source| CompilerOptionsParseError {
           specifier: self
             .dir
@@ -134,19 +121,20 @@ impl TsConfigFolderInfo {
 }
 
 #[derive(Debug)]
-pub struct TsConfigResolver {
-  map: FolderScopedMap<TsConfigFolderInfo>,
+pub struct TsConfigResolver<TSys: FsRead> {
+  map: FolderScopedMap<TsConfigFolderInfo<TSys>>,
 }
 
-impl TsConfigResolver {
-  pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
+impl<TSys: FsRead + Clone> TsConfigResolver<TSys> {
+  pub fn from_workspace(sys: &TSys, workspace: &WorkspaceRc) -> Self {
     // separate the workspace into directories that have a tsconfig
     let root_dir = workspace.resolve_member_dir(workspace.root_dir());
-    let logged_warnings = Arc::new(LoggedWarnings::default());
+    let logged_warnings = new_rc(LoggedWarnings::default());
     let mut map = FolderScopedMap::new(TsConfigFolderInfo {
       dir: root_dir,
       logged_warnings: logged_warnings.clone(),
       memoized: Default::default(),
+      sys: sys.clone(),
     });
     for (url, folder) in workspace.config_folders() {
       let folder_has_compiler_options = folder
@@ -162,48 +150,40 @@ impl TsConfigResolver {
             dir,
             logged_warnings: logged_warnings.clone(),
             memoized: Default::default(),
+            sys: sys.clone(),
           },
         );
       }
     }
     Self { map }
   }
+}
 
+impl<TSys: FsRead> TsConfigResolver<TSys> {
   pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
     self.folder_for_specifier(specifier).dir.check_js()
   }
 
-  pub fn deno_lint_config(
-    &self,
-    specifier: &Url,
-  ) -> Result<DenoLintConfig, AnyError> {
-    let transpile_options =
-      &self.transpile_and_emit_options(specifier)?.transpile;
-    // don't bother storing this in a cell because deno_lint requires an owned value
-    Ok(DenoLintConfig {
-      default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
-      default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
-    })
-  }
-
+  #[cfg(feature = "deno_ast")]
   pub fn transpile_and_emit_options(
     &self,
     specifier: &Url,
-  ) -> Result<&Arc<TranspileAndEmitOptions>, CompilerOptionsParseError> {
+  ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
     let value = self.map.get_for_specifier(specifier);
     value.transpile_options()
   }
 
-  pub fn folder_for_specifier(&self, specifier: &Url) -> &TsConfigFolderInfo {
+  pub fn folder_for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> &TsConfigFolderInfo<TSys> {
     self.folder_for_specifier_str(specifier.as_str())
   }
 
   pub fn folder_for_specifier_str(
     &self,
     specifier: &str,
-  ) -> &TsConfigFolderInfo {
+  ) -> &TsConfigFolderInfo<TSys> {
     self.map.get_for_specifier_str(specifier)
   }
 
@@ -212,12 +192,16 @@ impl TsConfigResolver {
   }
 }
 
-impl deno_graph::CheckJsResolver for TsConfigResolver {
+#[cfg(feature = "graph")]
+impl<TSys: FsRead + std::fmt::Debug> deno_graph::CheckJsResolver
+  for TsConfigResolver<TSys>
+{
   fn resolve(&self, specifier: &deno_graph::ModuleSpecifier) -> bool {
     self.check_js_for_specifier(specifier)
   }
 }
 
+#[cfg(feature = "deno_ast")]
 fn ts_config_to_transpile_and_emit_options(
   config: deno_config::deno_json::TsConfig,
 ) -> Result<TranspileAndEmitOptions, serde_json::Error> {
@@ -238,11 +222,11 @@ fn ts_config_to_transpile_and_emit_options(
       _ => (false, false, false, false),
     };
   let source_map = if options.inline_source_map {
-    SourceMapOption::Inline
+    deno_ast::SourceMapOption::Inline
   } else if options.source_map {
-    SourceMapOption::Separate
+    deno_ast::SourceMapOption::Separate
   } else {
-    SourceMapOption::None
+    deno_ast::SourceMapOption::None
   };
   let transpile = deno_ast::TranspileOptions {
     use_ts_decorators: options.experimental_decorators,
@@ -270,9 +254,11 @@ fn ts_config_to_transpile_and_emit_options(
     source_map_file: None,
   };
   let transpile_and_emit_options_hash = {
-    let mut hasher = FastInsecureHasher::new_without_deno_version();
-    hasher.write_hashable(&transpile);
-    hasher.write_hashable(&emit);
+    use std::hash::Hash;
+    use std::hash::Hasher;
+    let mut hasher = twox_hash::XxHash64::default();
+    transpile.hash(&mut hasher);
+    emit.hash(&mut hasher);
     hasher.finish()
   };
   Ok(TranspileAndEmitOptions {
@@ -280,4 +266,31 @@ fn ts_config_to_transpile_and_emit_options(
     emit,
     pre_computed_hash: transpile_and_emit_options_hash,
   })
+}
+
+fn check_warn_tsconfig(
+  ts_config: &TsConfigWithIgnoredOptions,
+  logged_warnings: &LoggedWarnings,
+) {
+  for ignored_options in &ts_config.ignored_options {
+    if ignored_options
+      .maybe_specifier
+      .as_ref()
+      .map(|s| logged_warnings.folders.insert(s.clone()))
+      .unwrap_or(true)
+    {
+      log::warn!("{}", ignored_options);
+    }
+  }
+  let serde_json::Value::Object(obj) = &ts_config.ts_config.0 else {
+    return;
+  };
+  if obj.get("experimentalDecorators") == Some(&serde_json::Value::Bool(true))
+    && logged_warnings.experimental_decorators.raise()
+  {
+    log::warn!(
+      "{} experimentalDecorators compiler option is deprecated and may be removed at any time",
+      colors::yellow("Warning"),
+    );
+  }
 }
