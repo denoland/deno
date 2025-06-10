@@ -155,7 +155,7 @@ impl NpmPackageExtraInfoProvider {
           .await
           .map_err(JsErrorBox::from_err)?;
         package_info
-          .version_info(package_nv, &self.workspace_patch_packages.0)
+          .version_info(package_nv, &self.workspace_link_packages.0)
           .map_err(JsErrorBox::from_err)?
       }
     };
