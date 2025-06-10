@@ -6560,7 +6560,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.13.0",
  "log",
  "multimap",
@@ -6750,9 +6750,9 @@ dependencies = [
 
 [[package]]
 name = "raffia"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c36f58fa7ad2f26bca656054c902becddeac5582df2bb31d4b4d2a148c62cfd5"
+checksum = "fffe6643ba09b12af3816c6d3687d8c16c8a306bdbf60e2804b4bbd2c1f5447e"
 dependencies = [
  "raffia_macro",
  "smallvec",
