@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::ModuleLoader;
+use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::Position;
 use deno_lib::worker::ModuleLoaderFactory;
@@ -347,6 +348,17 @@ enum BundleError {
   HttpCache,
 }
 
+fn requested_type_from_map(
+  map: &IndexMap<String, String>,
+) -> RequestedModuleType {
+  let type_ = map.get("type").map(|s| s.as_str());
+  match type_ {
+    Some("json") => RequestedModuleType::Json,
+    Some(other) => RequestedModuleType::Other(other.to_string().into()),
+    None => RequestedModuleType::None,
+  }
+}
+
 struct DenoPluginHandler {
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
@@ -415,7 +427,9 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
-    let result = self.bundle_load(&args.path, "").await?;
+    let result = self
+      .bundle_load(&args.path, requested_type_from_map(&args.with))
+      .await?;
     log::trace!(
       "{}: {:?}",
       deno_terminal::colors::magenta("on_load"),
@@ -466,7 +480,6 @@ impl DenoPluginHandler {
     importer: Option<&str>,
     resolve_dir: Option<&str>,
     kind: esbuild_client::protocol::ImportKind,
-    // TODO: use this / store it for later usage when loading
     with: IndexMap<String, String>,
   ) -> Result<Option<String>, AnyError> {
     log::debug!(
@@ -562,18 +575,19 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    resolve_dir: &str,
+    requested_type: RequestedModuleType,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, AnyError> {
     log::debug!(
       "{}: {:?} {:?}",
       deno_terminal::colors::magenta("bundle_load"),
       specifier,
-      resolve_dir
+      requested_type
     );
 
-    let resolve_dir = Path::new(&resolve_dir);
-    let specifier = deno_core::resolve_url_or_path(specifier, resolve_dir)?;
-
+    let specifier = deno_core::resolve_url_or_path(
+      specifier,
+      Path::new(""), // should be absolute already, feels kind of hacky though
+    )?;
     let (specifier, loader) = if let Some((specifier, loader)) =
       self.specifier_and_type_from_graph(&specifier)?
     {
@@ -601,12 +615,10 @@ impl DenoPluginHandler {
       }
       (specifier, media_type_to_loader(media_type))
     };
-    let loaded = self.module_loader.load(
-      &specifier,
-      None,
-      false,
-      deno_core::RequestedModuleType::None,
-    );
+    let loaded =
+      self
+        .module_loader
+        .load(&specifier, None, false, requested_type);
 
     match loaded {
       deno_core::ModuleLoadResponse::Sync(module_source) => {
