@@ -233,10 +233,7 @@ pub async fn bundle(
 
   if let Some(stdout) = response.write_to_stdout {
     let stdout = replace_require_shim(&String::from_utf8_lossy(&stdout));
-    #[allow(clippy::print_stdout)]
-    {
-      println!("{}", stdout);
-    }
+    crate::display::write_to_stdout_ignore_sigpipe(stdout.as_bytes())?;
   } else if response.errors.is_empty() {
     if bundle_flags.output_dir.is_none()
       && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
