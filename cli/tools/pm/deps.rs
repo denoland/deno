@@ -185,7 +185,8 @@ impl KeyPath {
 
 #[derive(Clone, Debug)]
 pub struct Dep {
-  pub req: PackageReq,
+  pub req_ref: PackageReqReference,
+  pub raw_specifier: Option<ModuleSpecifier>,
   pub kind: DepKind,
   pub location: DepLocation,
   #[allow(dead_code)]
@@ -196,7 +197,10 @@ pub struct Dep {
 
 impl Dep {
   pub fn alias_or_name(&self) -> &str {
-    self.alias.as_deref().unwrap_or_else(|| &self.req.name)
+    self
+      .alias
+      .as_deref()
+      .unwrap_or_else(|| &self.req_ref.req.name)
   }
 }
 
@@ -302,15 +306,15 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req.clone(),
+      Ok(req) => req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
       }
     };
     let alias: &str = key_path.last().unwrap().as_str().trim_end_matches('/');
-    let alias = (alias != req.name).then(|| alias.to_string());
-    if !filter.should_include(alias.as_deref(), &req, kind) {
+    let alias = (alias != req.req.name).then(|| alias.to_string());
+    if !filter.should_include(alias.as_deref(), &req.req, kind) {
       continue;
     }
     let id = DepId(deps.len());
@@ -320,8 +324,9 @@ fn add_deps_from_deno_json(
         key_path,
         import_map_kind.clone(),
       ),
+      raw_specifier: Some(value.clone()),
       kind,
-      req,
+      req_ref: req,
       id,
       alias,
     });
@@ -371,7 +376,11 @@ fn add_deps_from_package_json(
                 KeyPart::String(k.clone()),
               ]),
             ),
-            req: req.clone(),
+            raw_specifier: None,
+            req_ref: PackageReqReference {
+              req: req.clone(),
+              sub_path: None,
+            },
             alias,
           })
         }
@@ -562,9 +571,9 @@ impl DepManager {
     if self.deps.iter().all(|dep| match dep.kind {
       DepKind::Npm => npm_resolver
         .resolution()
-        .resolve_pkg_id_from_pkg_req(&dep.req)
+        .resolve_pkg_id_from_pkg_req(&dep.req_ref.req)
         .is_ok(),
-      DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
+      DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req_ref.req),
     }) {
       self.dependencies_resolved.raise();
       graph_permit.commit();
@@ -581,22 +590,45 @@ impl DepManager {
       if dep.location.is_deno_json() {
         match dep.kind {
           DepKind::Npm => roots.push(
-            ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
+            ModuleSpecifier::parse(&format!("npm:/{}/", dep.req_ref)).unwrap(),
           ),
-          DepKind::Jsr => info_futures.push(async {
-            if let Some(nv) = self.jsr_fetch_resolver.req_to_nv(&dep.req).await
-            {
+          DepKind::Jsr => {
+            if let Some(sub_path) = &dep.req_ref.sub_path {
+              if sub_path.ends_with('/') {
+                continue;
+              }
+              roots.push(
+                ModuleSpecifier::parse(&format!("jsr:/{}", &dep.req_ref))
+                  .unwrap(),
+              );
+              continue;
+            }
+            let resolved_nv =
+              graph.packages.mappings().get(&dep.req_ref.req).cloned();
+            info_futures.push(async {
+              let nv = if let Some(nv) = resolved_nv {
+                nv
+              } else {
+                let res =
+                  self.jsr_fetch_resolver.req_to_nv(&dep.req_ref.req).await;
+                res?
+              };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
               {
                 let specifier =
-                  ModuleSpecifier::parse(&format!("jsr:/{}/", dep.req))
-                    .unwrap();
+                  dep.raw_specifier.clone().unwrap_or_else(|| {
+                    ModuleSpecifier::parse(&format!(
+                      "jsr:/{}/",
+                      &dep.req_ref.req
+                    ))
+                    .unwrap()
+                  });
                 return Some((specifier, info));
               }
-            }
-            None
-          }),
+              None
+            });
+          }
         }
       }
     }
@@ -655,11 +687,11 @@ impl DepManager {
     for dep in &self.deps {
       match dep.kind {
         DepKind::Npm => {
-          let resolved_version = resolved_npm.get(&dep.req).cloned();
+          let resolved_version = resolved_npm.get(&dep.req_ref.req).cloned();
           resolved.push(resolved_version);
         }
         DepKind::Jsr => {
-          let resolved_version = resolved_jsr.get(&dep.req).cloned();
+          let resolved_version = resolved_jsr.get(&dep.req_ref.req).cloned();
           resolved.push(resolved_version)
         }
       }
@@ -686,7 +718,7 @@ impl DepManager {
       match dep.kind {
         DepKind::Npm => futs.push_back(
           async {
-            let semver_req = &dep.req;
+            let semver_req = &dep.req_ref.req;
             let _permit = npm_sema.acquire().await;
             let semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
@@ -726,7 +758,7 @@ impl DepManager {
         ),
         DepKind::Jsr => futs.push_back(
           async {
-            let semver_req = &dep.req;
+            let semver_req = &dep.req_ref.req;
             let _permit = jsr_sema.acquire().await;
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
@@ -812,7 +844,8 @@ impl DepManager {
         Change::Update(dep_id, version_req) => {
           // TODO: move most of this to ConfigUpdater
           let dep = &mut self.deps[dep_id.0];
-          dep.req.version_req = version_req.clone();
+          dep.req_ref.req.version_req = version_req.clone();
+          dep.raw_specifier = None;
           match &dep.location {
             DepLocation::DenoJson(arc, key_path, _) => {
               let updater =
