@@ -1945,6 +1945,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-socks",
  "tokio-util",
+ "tokio-vsock",
  "tower 0.5.2",
  "tower-http",
  "tower-service",

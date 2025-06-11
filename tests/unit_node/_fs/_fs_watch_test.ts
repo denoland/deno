@@ -44,6 +44,8 @@ Deno.test({
     await wait(100);
     assertEquals(spyFn.calls.length, 1);
     unwatchFile(file);
+    await wait(100);
+    assertEquals(spyFn.calls.length, 1);
   },
 });
 
