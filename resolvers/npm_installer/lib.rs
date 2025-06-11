@@ -355,6 +355,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
+          scheme,
+        } if scheme == "jsr" => {
+          return Err(Box::new(err.clone()));
+        }
+        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
         } => {
           // only warn for this one

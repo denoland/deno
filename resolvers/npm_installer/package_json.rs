@@ -175,7 +175,17 @@ impl NpmInstallDepsProvider {
               }
             }
             PackageJsonDepValue::JsrReq(_) => {
-              // ignore for now
+              pkg_json_dep_errors.push(
+                PackageJsonDepValueParseWithLocationError {
+                  location: pkg_json.specifier(),
+                  alias: alias.clone(),
+                  source: PackageJsonDepValueParseError(Box::new(
+                    deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
+                      scheme: "jsr".to_string(),
+                    },
+                  )),
+                },
+              );
             }
           }
         }
