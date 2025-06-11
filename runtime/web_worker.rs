@@ -100,7 +100,7 @@ impl Default for WorkerId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum WebWorkerType {
+pub enum WorkerThreadType {
   // Used only for testing
   Classic,
   // Regular Web Worker
@@ -110,7 +110,7 @@ pub enum WebWorkerType {
   Node,
 }
 
-impl<'s> WebWorkerType {
+impl<'s> WorkerThreadType {
   pub fn to_v8(
     &self,
     scope: &mut v8::HandleScope<'s>,
@@ -118,9 +118,9 @@ impl<'s> WebWorkerType {
     v8::String::new(
       scope,
       match self {
-        WebWorkerType::Classic => "classic",
-        WebWorkerType::Module => "module",
-        WebWorkerType::Node => "node",
+        WorkerThreadType::Classic => "classic",
+        WorkerThreadType::Module => "module",
+        WorkerThreadType::Node => "node",
       },
     )
     .unwrap()
@@ -184,7 +184,7 @@ pub struct WebWorkerInternalHandle {
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
 }
 
 impl WebWorkerInternalHandle {
@@ -333,7 +333,7 @@ impl WebWorkerHandle {
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -401,7 +401,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
@@ -420,7 +420,7 @@ pub struct WebWorker {
   pub name: String,
   close_on_idle: bool,
   internal_handle: WebWorkerInternalHandle,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
@@ -960,7 +960,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        if self.worker_type == WebWorkerType::Module {
+        if self.worker_type == WorkerThreadType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
