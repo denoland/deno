@@ -9,7 +9,7 @@ const {
   encode,
 } = core;
 const {
-  SymbolSpecies
+  SymbolSpecies,
 } = primordials;
 import {
   op_node_cipheriv_encrypt,
