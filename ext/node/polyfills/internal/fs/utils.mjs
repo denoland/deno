@@ -1033,7 +1033,6 @@ export const arrayBufferViewToUint8Array = hideStackFrames(
           DataViewPrototypeGetByteOffset(buffer),
           DataViewPrototypeGetByteLength(buffer),
         );
-        */
       } else {
         return new Uint8Array(
           TypedArrayPrototypeGetBuffer(buffer),
