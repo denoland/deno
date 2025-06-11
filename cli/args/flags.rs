@@ -465,11 +465,56 @@ pub struct CleanFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BundleFlags {
+  pub entrypoints: Vec<String>,
+  pub output_path: Option<String>,
+  pub output_dir: Option<String>,
+  pub external: Vec<String>,
+  pub format: BundleFormat,
+  pub minify: bool,
+  pub code_splitting: bool,
+  pub one_file: bool,
+  pub packages: PackageHandling,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum BundleFormat {
+  Esm,
+  Cjs,
+  Iife,
+}
+
+impl std::fmt::Display for BundleFormat {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      BundleFormat::Esm => write!(f, "esm"),
+      BundleFormat::Cjs => write!(f, "cjs"),
+      BundleFormat::Iife => write!(f, "iife"),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum PackageHandling {
+  Bundle,
+  External,
+}
+
+impl std::fmt::Display for PackageHandling {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      PackageHandling::Bundle => write!(f, "bundle"),
+      PackageHandling::External => write!(f, "external"),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
-  Bundle,
+  Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
   Clean(CleanFlags),
@@ -1417,7 +1462,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "add" => add_parse(&mut flags, &mut m)?,
       "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m)?,
-      "bundle" => bundle_parse(&mut flags, &mut m),
+      "bundle" => bundle_parse(&mut flags, &mut m)?,
       "cache" => cache_parse(&mut flags, &mut m)?,
       "check" => check_parse(&mut flags, &mut m)?,
       "clean" => clean_parse(&mut flags, &mut m),
@@ -1879,10 +1924,105 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "`deno bundle` was removed in Deno 2.
+  fn format_parser(s: &str) -> Result<BundleFormat, clap::Error> {
+    match s {
+      "esm" => Ok(BundleFormat::Esm),
+      "cjs" => Ok(BundleFormat::Cjs),
+      "iife" => Ok(BundleFormat::Iife),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
+  fn packages_parser(s: &str) -> Result<PackageHandling, clap::Error> {
+    match s {
+      "bundle" => Ok(PackageHandling::Bundle),
+      "external" => Ok(PackageHandling::External),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
+  command(
+    "bundle",
+    "Output a single JavaScript file with all dependencies.
 
-See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
-    .hide(true)
+  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+
+If no output file is given, the output is written to standard output:
+
+  deno bundle https://deno.land/std/examples/colors.ts
+",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    compile_args(cmd)
+      .arg(check_arg(false))
+      .arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required_unless_present("help")
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .short('o')
+          .help("Output path`")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("outdir")
+          .long("outdir")
+          .help("Output directory for bundled files")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("external")
+          .long("external")
+          .action(ArgAction::Append)
+          .num_args(1)
+          .value_parser(value_parser!(String)),
+      )
+      .arg(
+        Arg::new("format")
+          .long("format")
+          .value_parser(clap::builder::ValueParser::new(format_parser))
+          .default_value("esm"),
+      )
+      .arg(
+        Arg::new("packages")
+          .long("packages")
+          .help("How to handle packages. Accepted values are 'bundle' or 'external'")
+          .value_parser(clap::builder::ValueParser::new(packages_parser))
+          .default_value("bundle"),
+      )
+      .arg(
+        Arg::new("minify")
+          .long("minify")
+          .help("Minify the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("code-splitting")
+          .long("code-splitting")
+          .help("Enable code splitting")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("one-file")
+          .long("one-file")
+          .help("Bundle into one file")
+          .require_equals(true)
+          .default_value("true")
+          .default_missing_value("true")
+          .value_parser(value_parser!(bool))
+          .num_args(0..=1)
+          .action(ArgAction::Set),
+      )
+      .arg(allow_scripts_arg())
+      .arg(allow_import_arg())
+  })
 }
 
 fn cache_subcommand() -> Command {
@@ -4717,8 +4857,30 @@ fn bench_parse(
   Ok(())
 }
 
-fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Bundle;
+fn bundle_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let file = matches.remove_many::<String>("file").unwrap();
+  let output = matches.remove_one::<String>("output");
+  let outdir = matches.remove_one::<String>("outdir");
+  compile_args_without_check_parse(flags, matches)?;
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
+    entrypoints: file.collect(),
+    output_path: output,
+    output_dir: outdir,
+    external: matches
+      .remove_many::<String>("external")
+      .map(|f| f.collect::<Vec<_>>())
+      .unwrap_or_default(),
+    format: matches.remove_one::<BundleFormat>("format").unwrap(),
+    packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
+    minify: matches.get_flag("minify"),
+    code_splitting: matches.get_flag("code-splitting"),
+    one_file: matches.get_flag("one-file"),
+  });
+  Ok(())
 }
 
 fn cache_parse(

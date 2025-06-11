@@ -31,6 +31,8 @@ use tokio::net::UnixStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_socks::tcp::Socks5Stream;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use tokio_vsock::VsockStream;
 use tower_service::Service;
 
 #[derive(Debug, Clone)]
@@ -74,6 +76,11 @@ pub(crate) enum Target {
   #[cfg(not(windows))]
   Unix {
     path: PathBuf,
+  },
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  Vsock {
+    cid: u32,
+    port: u32,
   },
 }
 
@@ -163,6 +170,10 @@ impl Intercept {
       Target::Unix { .. } => {
         // Auth not supported for Unix sockets
       }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Target::Vsock { .. } => {
+        // Auth not supported for Vsock sockets
+      }
     }
   }
 }
@@ -244,6 +255,11 @@ impl Target {
   #[cfg(not(windows))]
   pub(crate) fn new_unix(path: PathBuf) -> Self {
     Target::Unix { path }
+  }
+
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  pub(crate) fn new_vsock(cid: u32, port: u32) -> Self {
+    Target::Vsock { cid, port }
   }
 }
 
@@ -449,6 +465,9 @@ pub enum Proxied<T> {
   /// Forwarded via Unix socket
   #[cfg(not(windows))]
   Unix(TokioIo<UnixStream>),
+  /// Forwarded via Vsock socket
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  Vsock(TokioIo<VsockStream>),
 }
 
 impl<C> Service<Uri> for ProxyConnector<C>
@@ -553,6 +572,12 @@ where
             Ok(Proxied::Unix(TokioIo::new(io)))
           })
         }
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Target::Vsock { cid, port } => Box::pin(async move {
+          let addr = tokio_vsock::VsockAddr::new(cid, port);
+          let io = VsockStream::connect(addr).await?;
+          Ok(Proxied::Vsock(TokioIo::new(io)))
+        }),
       };
     }
 
@@ -664,6 +689,8 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref mut p) => Pin::new(p).poll_read(cx, buf),
     }
   }
 }
@@ -685,6 +712,8 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref mut p) => Pin::new(p).poll_write(cx, buf),
     }
   }
 
@@ -700,6 +729,8 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_flush(cx),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref mut p) => Pin::new(p).poll_flush(cx),
     }
   }
 
@@ -715,6 +746,8 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref mut p) => Pin::new(p).poll_shutdown(cx),
     }
   }
 
@@ -727,6 +760,8 @@ where
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
       #[cfg(not(windows))]
       Proxied::Unix(ref p) => p.is_write_vectored(),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref p) => p.is_write_vectored(),
     }
   }
 
@@ -749,6 +784,8 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
     }
   }
 }
@@ -780,6 +817,8 @@ where
       }
       #[cfg(not(windows))]
       Proxied::Unix(_) => Connected::new(),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxied::Vsock(_) => Connected::new(),
     }
   }
 }

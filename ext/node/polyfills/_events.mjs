@@ -76,6 +76,7 @@ EventEmitter.on = on;
 EventEmitter.once = once;
 EventEmitter.getEventListeners = getEventListeners;
 EventEmitter.setMaxListeners = setMaxListeners;
+EventEmitter.getMaxListeners = getMaxListeners;
 EventEmitter.listenerCount = listenerCount;
 // Backwards-compat with node 0.10.x
 EventEmitter.EventEmitter = EventEmitter;
@@ -250,6 +251,33 @@ EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
   this._maxListeners = n;
   return this;
 };
+
+/**
+ * Returns the max listeners set.
+ * @param {EventEmitter | EventTarget} emitterOrTarget
+ * @returns {number}
+ */
+export function getMaxListeners(emitterOrTarget) {
+  if (typeof emitterOrTarget?.getMaxListeners === "function") {
+    return _getMaxListeners(emitterOrTarget);
+  } else if (
+    typeof emitterOrTarget?.[kMaxEventTargetListeners] === "number"
+  ) {
+    return emitterOrTarget[kMaxEventTargetListeners] ?? defaultMaxListeners;
+  } else if (emitterOrTarget instanceof AbortSignal) {
+    return 0; // default for AbortController if not set by EventTarget prototype.
+  } else if (
+    emitterOrTarget instanceof EventTarget
+  ) {
+    return defaultMaxListeners;
+  }
+
+  throw new ERR_INVALID_ARG_TYPE(
+    "emitter",
+    ["EventEmitter", "EventTarget"],
+    emitterOrTarget,
+  );
+}
 
 function _getMaxListeners(that) {
   if (that._maxListeners === undefined) {
@@ -711,17 +739,36 @@ EventEmitter.prototype.rawListeners = function rawListeners(type) {
  * Returns the number of listeners listening to event name
  * specified as `type`.
  * @param {string | symbol} type
+ * @param {Function} listener
  * @returns {number}
  */
-const _listenerCount = function listenerCount(type) {
+const _listenerCount = function listenerCount(type, listener) {
   const events = this._events;
 
   if (events !== undefined) {
     const evlistener = events[type];
 
     if (typeof evlistener === "function") {
+      if (listener != null) {
+        return listener === evlistener || listener === evlistener.listener
+          ? 1
+          : 0;
+      }
       return 1;
     } else if (evlistener !== undefined) {
+      if (listener != null) {
+        let matching = 0;
+
+        for (let i = 0, l = evlistener.length; i < l; i++) {
+          if (
+            evlistener[i] === listener || evlistener[i].listener === listener
+          ) {
+            matching++;
+          }
+        }
+
+        return matching;
+      }
       return evlistener.length;
     }
   }
@@ -797,7 +844,9 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    return emitterOrTarget[eventTargetData]?.listeners?.[type] || [];
+    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
+      listener,
+    ) => listener.callback) || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",

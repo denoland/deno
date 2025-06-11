@@ -42,8 +42,8 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
@@ -194,7 +194,7 @@ impl ReplSession {
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     resolver: Arc<CliResolver>,
-    tsconfig_resolver: &TsConfigResolver,
+    tsconfig_resolver: &CliTsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,

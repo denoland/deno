@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod deno_json;
 mod flags;
 mod flags_net;
 
@@ -60,6 +59,8 @@ use thiserror::Error;
 use crate::sys::CliSys;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
+pub type CliTsConfigResolver =
+  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
@@ -1049,7 +1050,7 @@ impl CliOptions {
       let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by

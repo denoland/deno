@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -59,9 +58,9 @@ use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -331,7 +330,6 @@ struct CliFactoryServices {
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   text_only_progress_bar: Deferred<ProgressBar>,
-  tsconfig_resolver: Deferred<Arc<TsConfigResolver>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
 }
@@ -608,16 +606,6 @@ impl CliFactory {
     self.resolver_factory()?.npm_resolver()
   }
 
-  pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
-    Ok(&self.workspace_directory()?.workspace)
-  }
-
-  pub fn workspace_directory(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectory>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory()?)
-  }
-
   fn workspace_factory(&self) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
@@ -755,6 +743,12 @@ impl CliFactory {
             self.cjs_module_export_analyzer().await?;
           Ok(Arc::new(NodeCodeTranslator::new(
             module_export_analyzer.clone(),
+            match self.cli_options()?.sub_command() {
+              DenoSubcommand::Bundle(_) => {
+                node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+              }
+              _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+            },
           )))
         }
         .boxed_local(),
@@ -783,11 +777,10 @@ impl CliFactory {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
-  pub fn tsconfig_resolver(&self) -> Result<&Arc<TsConfigResolver>, AnyError> {
-    self.services.tsconfig_resolver.get_or_try_init(|| {
-      let workspace = self.workspace()?;
-      Ok(Arc::new(TsConfigResolver::from_workspace(workspace)))
-    })
+  pub fn tsconfig_resolver(
+    &self,
+  ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
+    Ok(self.workspace_factory()?.tsconfig_resolver()?)
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -1014,24 +1007,14 @@ impl CliFactory {
       .await
   }
 
-  pub async fn create_cli_main_worker_factory_with_roots(
+  pub async fn create_module_loader_factory(
     &self,
-    roots: LibWorkerFactoryRoots,
-  ) -> Result<CliMainWorkerFactory, AnyError> {
+  ) -> Result<CliModuleLoaderFactory, AnyError> {
     let cli_options = self.cli_options()?;
-    let fs = self.fs();
-    let node_resolver = self.node_resolver().await?;
-    let npm_resolver = self.npm_resolver().await?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
-    let maybe_file_watcher_communicator = if cli_options.has_hmr() {
-      Some(self.watcher_communicator.clone().unwrap())
-    } else {
-      None
-    };
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
-    let pkg_json_resolver = self.pkg_json_resolver()?;
     let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
@@ -1079,6 +1062,25 @@ impl CliFactory {
       self.sys(),
       maybe_eszip_loader,
     );
+
+    Ok(module_loader_factory)
+  }
+
+  pub async fn create_cli_main_worker_factory_with_roots(
+    &self,
+    roots: LibWorkerFactoryRoots,
+  ) -> Result<CliMainWorkerFactory, AnyError> {
+    let cli_options = self.cli_options()?;
+    let fs = self.fs();
+    let node_resolver = self.node_resolver().await?;
+    let npm_resolver = self.npm_resolver().await?;
+    let maybe_file_watcher_communicator = if cli_options.has_hmr() {
+      Some(self.watcher_communicator.clone().unwrap())
+    } else {
+      None
+    };
+    let pkg_json_resolver = self.pkg_json_resolver()?;
+    let module_loader_factory = self.create_module_loader_factory().await?;
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),

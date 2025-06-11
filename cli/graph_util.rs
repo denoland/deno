@@ -43,10 +43,10 @@ use deno_semver::SmallStackString;
 use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::DenoSubcommand;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -672,7 +672,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -694,7 +694,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       caches,
