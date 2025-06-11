@@ -4,6 +4,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { primordials } from "ext:core/mod.js";
+
+const {
+  SymbolSpecies,
+} = primordials;
+
 import {
   op_node_create_private_key,
   op_node_create_public_key,
@@ -38,6 +44,8 @@ import {
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
+
+const FastBuffer = Buffer[SymbolSpecies];
 
 export type DSAEncoding = "der" | "ieee-p1363";
 
@@ -261,7 +269,7 @@ export function signOneShot(
     if (algorithm != null && algorithm !== "sha512") {
       throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
-    result = new Buffer(64);
+    result = new FastBuffer(64);
     op_node_sign_ed25519(handle, data, result);
   } else if (algorithm == null) {
     throw new TypeError(
