@@ -1023,10 +1023,11 @@ function bootstrapWorkerRuntime(
     hasBootstrapped = true;
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    core.print(`bootstrapping worker runtime, type ${workerType}\n`, true);
+    // if (workerType === "node") {
+    // delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+    // }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    if (workerType === "node") {
-      globalThis.WorkerGlobalScope = undefined;
-    }
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
       // TODO(bartlomieju): should be readonly?
