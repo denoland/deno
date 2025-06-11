@@ -86,9 +86,8 @@ import {
   AI_ALL as ALL,
   AI_V4MAPPED as V4MAPPED,
 } from "ext:deno_node/internal_binding/ares.ts";
-import {
-  ChannelWrapQuery,
-  getaddrinfo,
+import cares, {
+  type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
@@ -281,12 +280,12 @@ export function lookup(
   req.oncomplete = all ? onlookupall : onlookup;
   req.port = port;
 
-  const err = getaddrinfo(
+  const err = cares.getaddrinfo(
     req,
     domainToASCII(hostname),
     family,
     hints,
-    verbatim,
+    verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
   );
 
   if (err) {

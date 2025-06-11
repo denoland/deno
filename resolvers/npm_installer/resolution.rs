@@ -21,7 +21,7 @@ use deno_resolver::display::DisplayTreeNode;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -53,7 +53,7 @@ pub struct NpmResolutionInstaller<
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-  patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  link_packages: Arc<WorkspaceNpmLinkPackages>,
   update_queue: TaskQueue,
 }
 
@@ -68,13 +68,13 @@ impl<
     >,
     resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    patch_packages: Arc<WorkspaceNpmPatchPackages>,
+    link_packages: Arc<WorkspaceNpmLinkPackages>,
   ) -> Self {
     Self {
       registry_info_provider,
       resolution,
       maybe_lockfile,
-      patch_packages,
+      link_packages,
       update_queue: Default::default(),
     }
   }
@@ -143,7 +143,7 @@ impl<
         AddPkgReqsOptions {
           package_reqs,
           types_node_version_req: Some(get_types_node_version()),
-          patch_packages: &self.patch_packages.0,
+          link_packages: &self.link_packages.0,
         },
       )
       .await;
@@ -162,7 +162,7 @@ impl<
             AddPkgReqsOptions {
               package_reqs,
               types_node_version_req: Some(get_types_node_version()),
-              patch_packages: &self.patch_packages.0,
+              link_packages: &self.link_packages.0,
             },
           )
           .await

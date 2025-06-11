@@ -882,7 +882,9 @@ pub fn handle_log(record: &log::Record) {
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_severity_number(match record.level() {
     Level::Error => Severity::Error,
     Level::Warn => Severity::Warn,
@@ -1124,7 +1126,9 @@ fn op_otel_log<'s>(
   };
 
   let mut log_record = LogRecord::default();
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   let Ok(message) = message.try_cast() else {
     return;
   };
@@ -1188,7 +1192,9 @@ fn op_otel_log_foreign(
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_body(message.into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());

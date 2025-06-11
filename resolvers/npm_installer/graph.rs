@@ -53,12 +53,20 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   for NpmDenoGraphResolver<TNpmCacheHttpClient, TSys>
 {
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
-    if let Some(npm_installer) = &self.npm_installer {
-      let npm_installer = npm_installer.clone();
-      let package_name = package_name.to_string();
-      deno_unsync::spawn(async move {
-        let _ignore = npm_installer.cache_package_info(&package_name).await;
-      });
+    // ok not to do this in Wasm because this is just an optimization
+    #[cfg(target_arch = "wasm32")]
+    {
+      _ = package_name;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+      if let Some(npm_installer) = &self.npm_installer {
+        let npm_installer = npm_installer.clone();
+        let package_name = package_name.to_string();
+        deno_unsync::spawn(async move {
+          let _ignore = npm_installer.cache_package_info(&package_name).await;
+        });
+      }
     }
   }
 
