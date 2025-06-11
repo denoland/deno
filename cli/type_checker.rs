@@ -22,8 +22,8 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::DenoSubcommand;
 use crate::args::TsConfig;
 use crate::args::TsTypeLib;
@@ -106,7 +106,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
@@ -120,7 +120,7 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
     Self {
@@ -390,7 +390,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
-  tsconfig_resolver: &'a TsConfigResolver,
+  tsconfig_resolver: &'a CliTsConfigResolver,
   type_check_cache: TypeCheckCache,
   grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
   log_level: Option<log::Level>,
@@ -641,7 +641,7 @@ struct GraphWalker<'a> {
   sys: &'a CliSys,
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
-  tsconfig_resolver: &'a TsConfigResolver,
+  tsconfig_resolver: &'a CliTsConfigResolver,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
@@ -657,7 +657,7 @@ impl<'a> GraphWalker<'a> {
     sys: &'a CliSys,
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
-    tsconfig_resolver: &'a TsConfigResolver,
+    tsconfig_resolver: &'a CliTsConfigResolver,
     npm_cache_state_hash: Option<u64>,
     ts_config: &TsConfig,
     type_check_mode: TypeCheckMode,

@@ -892,7 +892,7 @@ dependencies = [
  "chrono",
  "deno_bench_util",
  "deno_cache_dir",
- "deno_lockfile",
+ "deno_lockfile 0.30.0",
  "deno_semver",
  "deno_terminal 0.2.2",
  "deno_tower_lsp",
@@ -1469,9 +1469,9 @@ dependencies = [
  "deno_graph",
  "deno_lib",
  "deno_lint",
- "deno_lockfile",
+ "deno_lockfile 0.30.0",
  "deno_media_type",
- "deno_npm",
+ "deno_npm 0.35.0",
  "deno_npm_cache",
  "deno_npm_installer",
  "deno_package_json",
@@ -1720,9 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.55.0"
+version = "0.56.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0804c8e7d732b962cb1a5543a79b1a1edd76dcf322656dd5cb540b79166e185d"
+checksum = "a3949619345af4e06c803af7a4347083104651f67e6313810f09a15c0798a72c"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -2139,7 +2139,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
- "deno_npm",
+ "deno_npm 0.35.0",
  "deno_npm_installer",
  "deno_path_util",
  "deno_resolver",
@@ -2185,6 +2185,19 @@ name = "deno_lockfile"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b66d23224880993944b71a6f552ba14e1bd61b63909ecad45eaff988b6bc90f"
+dependencies = [
+ "async-trait",
+ "deno_semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_lockfile"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7608e79ea3c0aef4860fb2f7319f1b98d0eeb4562df566e8099e5051886e2f95"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2356,7 +2369,28 @@ dependencies = [
  "async-trait",
  "capacity_builder",
  "deno_error",
- "deno_lockfile",
+ "deno_lockfile 0.29.0",
+ "deno_semver",
+ "futures",
+ "indexmap 2.9.0",
+ "log",
+ "monch",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "url",
+]
+
+[[package]]
+name = "deno_npm"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "536a02c258d4a3fcbbbb898562e230bbe5939ac2eb7c2058718508304e4ab7cf"
+dependencies = [
+ "async-trait",
+ "capacity_builder",
+ "deno_error",
+ "deno_lockfile 0.30.0",
  "deno_semver",
  "futures",
  "indexmap 2.9.0",
@@ -2377,7 +2411,7 @@ dependencies = [
  "boxed_error",
  "deno_cache_dir",
  "deno_error",
- "deno_npm",
+ "deno_npm 0.35.0",
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
@@ -2411,8 +2445,8 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile",
- "deno_npm",
+ "deno_lockfile 0.30.0",
+ "deno_npm 0.35.0",
  "deno_npm_cache",
  "deno_package_json",
  "deno_path_util",
@@ -2578,13 +2612,14 @@ dependencies = [
  "base32",
  "boxed_error",
  "dashmap",
+ "deno_ast",
  "deno_cache_dir",
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile",
+ "deno_lockfile 0.30.0",
  "deno_media_type",
- "deno_npm",
+ "deno_npm 0.35.0",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
@@ -2605,6 +2640,7 @@ dependencies = [
  "sys_traits",
  "test_server",
  "thiserror 2.0.12",
+ "twox-hash 2.1.0",
  "url",
 ]
 
@@ -2995,7 +3031,7 @@ dependencies = [
  "deno_error",
  "deno_lib",
  "deno_media_type",
- "deno_npm",
+ "deno_npm 0.35.0",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -3601,7 +3637,7 @@ dependencies = [
  "deno_ast",
  "deno_error",
  "deno_graph",
- "deno_npm",
+ "deno_npm 0.34.0",
  "deno_semver",
  "futures",
  "hashlink 0.8.4",
@@ -6560,7 +6596,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.13.0",
  "log",
  "multimap",
@@ -6750,9 +6786,9 @@ dependencies = [
 
 [[package]]
 name = "raffia"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c36f58fa7ad2f26bca656054c902becddeac5582df2bb31d4b4d2a148c62cfd5"
+checksum = "fffe6643ba09b12af3816c6d3687d8c16c8a306bdbf60e2804b4bbd2c1f5447e"
 dependencies = [
  "raffia_macro",
  "smallvec",

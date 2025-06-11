@@ -739,17 +739,36 @@ EventEmitter.prototype.rawListeners = function rawListeners(type) {
  * Returns the number of listeners listening to event name
  * specified as `type`.
  * @param {string | symbol} type
+ * @param {Function} listener
  * @returns {number}
  */
-const _listenerCount = function listenerCount(type) {
+const _listenerCount = function listenerCount(type, listener) {
   const events = this._events;
 
   if (events !== undefined) {
     const evlistener = events[type];
 
     if (typeof evlistener === "function") {
+      if (listener != null) {
+        return listener === evlistener || listener === evlistener.listener
+          ? 1
+          : 0;
+      }
       return 1;
     } else if (evlistener !== undefined) {
+      if (listener != null) {
+        let matching = 0;
+
+        for (let i = 0, l = evlistener.length; i < l; i++) {
+          if (
+            evlistener[i] === listener || evlistener[i].listener === listener
+          ) {
+            matching++;
+          }
+        }
+
+        return matching;
+      }
       return evlistener.length;
     }
   }
@@ -825,7 +844,9 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    return emitterOrTarget[eventTargetData]?.listeners?.[type] || [];
+    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
+      listener,
+    ) => listener.callback) || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",

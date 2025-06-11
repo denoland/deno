@@ -9,7 +9,7 @@ use deno_core::error::AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm_cache::TarballCache;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::package::PackageNv;
 
 use crate::cache::DenoDir;
@@ -40,7 +40,7 @@ pub async fn ensure_esbuild(
   deno_dir: &DenoDir,
   npmrc: &ResolvedNpmRc,
   npm_registry_info: &Arc<CliNpmRegistryInfoProvider>,
-  workspace_patch_packages: &Arc<WorkspaceNpmPatchPackages>,
+  workspace_link_packages: &Arc<WorkspaceNpmLinkPackages>,
   tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
@@ -61,8 +61,15 @@ pub async fn ensure_esbuild(
   let nv =
     PackageNv::from_str(&format!("{}@{}", pkg_name, ESBUILD_VERSION)).unwrap();
   let api = npm_registry_info.as_npm_registry_api();
-  let info = api.package_info(&pkg_name).await?;
-  let version_info = info.version_info(&nv, &workspace_patch_packages.0)?;
+  let mut info = api.package_info(&pkg_name).await?;
+  let version_info = match info.version_info(&nv, &workspace_link_packages.0) {
+    Ok(version_info) => version_info,
+    Err(_) => {
+      api.mark_force_reload();
+      info = api.package_info(&pkg_name).await?;
+      info.version_info(&nv, &workspace_link_packages.0)?
+    }
+  };
   if let Some(dist) = &version_info.dist {
     let registry_url = npmrc.get_registry_url(&nv.name);
     let package_folder =
