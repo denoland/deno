@@ -96,6 +96,10 @@ pub async fn cache_top_level_deps(
             }
             let resolved_req = graph.packages.mappings().get(req.req());
             let resolved_req = resolved_req.and_then(|nv| {
+              // the version might end up being upgraded to a newer version that's already in
+              // the graph (due to a reverted change), in which case our exports could end up
+              // being wrong. to avoid that, see if there's a newer version that matches the version
+              // req.
               let versions =
                 graph.packages.versions_by_name(&req.req().name)?;
               let mut best = nv;
