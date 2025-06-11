@@ -19,7 +19,7 @@
     },
     "@denotest/multiple-exports@0.7.1": {
       "integrity": "1554a62f7434dbbeebc5dfc8eb0c690fb1eddb721579a12e918b4c4027b77f02",
-      "dependencies": [
+      "dependencies": [ 
         "jsr:@denotest/add",
         "jsr:@denotest/subtract"
       ]

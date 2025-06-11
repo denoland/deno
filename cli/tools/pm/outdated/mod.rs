@@ -149,15 +149,11 @@ fn print_outdated(
     };
 
     if latest > &resolved
-      && seen.insert((
-        dep.kind,
-        dep.req_ref.req.name.clone(),
-        resolved.version.clone(),
-      ))
+      && seen.insert((dep.kind, dep.req.name.clone(), resolved.version.clone()))
     {
       outdated.push(OutdatedPackage {
         kind: dep.kind,
-        name: dep.req_ref.req.name.clone(),
+        name: dep.req.name.clone(),
         current: resolved.version.to_string(),
         latest: latest_versions
           .latest
@@ -276,7 +272,7 @@ fn choose_new_version_req(
   filter_set: &filter::FilterSet,
 ) -> ChosenVersionReq {
   let explicit_version_req = filter_set
-    .matching_filter(dep.alias.as_deref().unwrap_or(&dep.req_ref.req.name))
+    .matching_filter(dep.alias.as_deref().unwrap_or(&dep.req.name))
     .version_spec()
     .cloned();
 
@@ -314,7 +310,7 @@ fn choose_new_version_req(
             .is_some_and(|nv| nv.version > resolved.version),
       };
     }
-    let exact = if let Some(range) = dep.req_ref.req.version_req.range() {
+    let exact = if let Some(range) = dep.req.version_req.range() {
       range.0[0].start == range.0[0].end
     } else {
       false
@@ -363,7 +359,7 @@ async fn update(
 
     to_update.push((
       dep_id,
-      format!("{}:{}", dep.kind.scheme(), dep.req_ref.req.name),
+      format!("{}:{}", dep.kind.scheme(), dep.req.name),
       deps.resolved_version(dep.id).cloned(),
       new_version_req.clone(),
     ));

@@ -95,6 +95,20 @@ pub async fn cache_top_level_deps(
               continue;
             }
             let resolved_req = graph.packages.mappings().get(req.req());
+            let resolved_req = resolved_req.and_then(|nv| {
+              let versions =
+                graph.packages.versions_by_name(&req.req().name)?;
+              let mut best = nv;
+              for version in versions {
+                if version.version > best.version
+                  && req.req().version_req.matches(&version.version)
+                {
+                  best = version;
+                }
+              }
+              Some(best)
+            });
+
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
               let nv = if let Some(req) = resolved_req {
@@ -146,10 +160,17 @@ pub async fn cache_top_level_deps(
       }
     }
 
+    let skeep = std::env::var("SKEEP").is_ok();
     while let Some(info_future) = info_futures.next().await {
       if let Some((specifier, info)) = info_future {
         let exports = info.exports();
         for (k, _) in exports {
+          if skeep && k.starts_with("./unstable")
+            || k.starts_with("./posix/unstable")
+            || k.starts_with("./windows/unstable")
+          {
+            continue;
+          }
           if let Ok(spec) = specifier.join(k) {
             roots.push(spec);
           }
@@ -157,6 +178,11 @@ pub async fn cache_top_level_deps(
       }
     }
     drop(info_futures);
+
+    // eprintln!(
+    //   "roots: {:#?}",
+    //   roots.iter().map(ToString::to_string).collect::<Vec<_>>()
+    // );
 
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder
