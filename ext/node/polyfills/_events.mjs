@@ -844,7 +844,9 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    return emitterOrTarget[eventTargetData]?.listeners?.[type] || [];
+    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
+      listener,
+    ) => listener.callback) || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",

@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1202 tests out of 3993 have been ported from Node 23.9.0 (30.10% ported, 70.50% remaining).
+1203 tests out of 3993 have been ported from Node 23.9.0 (30.13% ported, 70.47% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -743,7 +743,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-esm-loader-hooks-inspect-wait.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-esm-loader-hooks-inspect-wait.js)
 - [parallel/test-eval-disallow-code-generation-from-strings.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eval-disallow-code-generation-from-strings.js)
 - [parallel/test-eventemitter-asyncresource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventemitter-asyncresource.js)
-- [parallel/test-events-static-geteventlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-static-geteventlisteners.js)
 - [parallel/test-eventsource-disabled.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventsource-disabled.js)
 - [parallel/test-eventsource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventsource.js)
 - [parallel/test-eventtarget-memoryleakwarning.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventtarget-memoryleakwarning.js)
