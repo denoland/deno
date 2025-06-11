@@ -302,15 +302,15 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req,
+      Ok(req) => req.req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
       }
     };
     let alias: &str = key_path.last().unwrap().as_str().trim_end_matches('/');
-    let alias = (alias != req.req.name).then(|| alias.to_string());
-    if !filter.should_include(alias.as_deref(), &req.req, kind) {
+    let alias = (alias != req.name).then(|| alias.to_string());
+    if !filter.should_include(alias.as_deref(), &req, kind) {
       continue;
     }
     let id = DepId(deps.len());
@@ -321,7 +321,7 @@ fn add_deps_from_deno_json(
         import_map_kind.clone(),
       ),
       kind,
-      req: req.req,
+      req,
       id,
       alias,
     });
@@ -584,16 +584,6 @@ impl DepManager {
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
           DepKind::Jsr => {
-            // if let Some(sub_path) = &dep.req_ref.sub_path {
-            //   if sub_path.ends_with('/') {
-            //     continue;
-            //   }
-            //   roots.push(
-            //     ModuleSpecifier::parse(&format!("jsr:/{}", &dep.req_ref))
-            //       .unwrap(),
-            //   );
-            //   continue;
-            // }
             let resolved_nv = graph.packages.mappings().get(&dep.req);
             let resolved_nv = resolved_nv
               .and_then(|nv| {
@@ -614,8 +604,7 @@ impl DepManager {
               let nv = if let Some(nv) = resolved_nv {
                 nv
               } else {
-                let res = self.jsr_fetch_resolver.req_to_nv(&dep.req).await;
-                res?
+                self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
               };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
@@ -642,11 +631,6 @@ impl DepManager {
         }
       }
     }
-
-    // eprintln!(
-    //   "roots: {:#?}",
-    //   roots.iter().map(ToString::to_string).collect::<Vec<_>>()
-    // );
 
     self
       .module_load_preparer
