@@ -24,10 +24,10 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
+use crate::web_worker::WorkerThreadType;
 use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
@@ -38,7 +38,7 @@ pub struct CreateWebWorkerArgs {
   pub parent_permissions: PermissionsContainer,
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
@@ -117,7 +117,7 @@ pub struct CreateWorkerArgs {
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
   close_on_idle: bool,
 }
 
@@ -156,7 +156,7 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WebWorkerType::Classic = worker_type {
+  if let WorkerThreadType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
       return Err(CreateWorkerError::ClassicWorkers);
     }
