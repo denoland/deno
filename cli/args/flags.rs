@@ -708,6 +708,7 @@ pub struct PermissionFlags {
   pub deny_write: Option<Vec<String>>,
   pub no_prompt: bool,
   pub allow_import: Option<Vec<String>>,
+  pub deny_import: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -728,6 +729,7 @@ impl PermissionFlags {
       || self.allow_write.is_some()
       || self.deny_write.is_some()
       || self.allow_import.is_some()
+      || self.deny_import.is_some()
   }
 }
 
@@ -924,6 +926,17 @@ impl Flags {
       }
       Some(allowlist) => {
         let s = format!("--allow-import={}", allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.deny_import {
+      Some(denylist) if denylist.is_empty() => {
+        args.push("--deny-import".to_string());
+      }
+      Some(denylist) => {
+        let s = format!("--deny-import={}", denylist.join(","));
         args.push(s);
       }
       _ => {}
@@ -3613,6 +3626,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+  <g>    --deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
+                                             <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
       <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
 "#))
@@ -3938,6 +3953,18 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
+    .arg(
+      {
+        let mut arg = deny_import_arg().hide(true);
+        if let Some(requires) = requires {
+          // allow this for install --global
+          if requires != "global" {
+            arg = arg.requires(requires)
+          }
+        }
+        arg
+      }
+    )
 }
 
 fn allow_all_arg() -> Arg {
@@ -4011,6 +4038,19 @@ fn allow_import_arg() -> Arg {
       "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
+}
+
+fn deny_import_arg() -> Arg {
+  Arg::new("deny-import")
+  .long("deny-import")
+  .num_args(0..)
+  .use_value_delimiter(true)
+  .require_equals(true)
+  .value_name("IP_OR_HOSTNAME")
+  .help(cstr!(
+    "Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."
+  ))
+  .value_parser(flags_net::validator)
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -5838,6 +5878,8 @@ fn permission_args_parse(
 
   allow_import_parse(flags, matches)?;
 
+  deny_import_parse(flags, matches)?;
+
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
@@ -5852,6 +5894,17 @@ fn allow_import_parse(
   if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
     let imports_allowlist = flags_net::parse(imports_wl.collect())?;
     flags.permissions.allow_import = Some(imports_allowlist);
+  }
+  Ok(())
+}
+
+fn deny_import_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  if let Some(imports_wl) = matches.remove_many::<String>("deny-import") {
+    let imports_denylist = flags_net::parse(imports_wl.collect())?;
+    flags.permissions.deny_import = Some(imports_denylist);
   }
   Ok(())
 }
@@ -12010,6 +12063,20 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       "run",
       "--allow-import=https://example.com",
       "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
+  fn deny_import_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-import=https://example.com",
+      "script.ts",
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),

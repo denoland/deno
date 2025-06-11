@@ -867,6 +867,7 @@ impl CliOptions {
         allow_write: handle_allow(flags.allow_all, flags.allow_write.clone()),
         deny_write: flags.deny_write.clone(),
         allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
+        deny_import: flags.deny_import.clone(),
         prompt: !resolve_no_prompt(flags),
       }
     }
