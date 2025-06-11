@@ -734,7 +734,7 @@ class SubtleCrypto {
             normalizedAlgorithm.tagLength / 8
         ) {
           throw new DOMException(
-            "Tag length overflows ciphertext",
+            "The provided data is too small",
             "OperationError",
           );
         }

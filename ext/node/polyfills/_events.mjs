@@ -42,10 +42,12 @@ import {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
+  validateNumber,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
+import { eventTargetData } from "ext:deno_web/02_event.js";
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 
@@ -74,6 +76,7 @@ EventEmitter.on = on;
 EventEmitter.once = once;
 EventEmitter.getEventListeners = getEventListeners;
 EventEmitter.setMaxListeners = setMaxListeners;
+EventEmitter.getMaxListeners = getMaxListeners;
 EventEmitter.listenerCount = listenerCount;
 // Backwards-compat with node 0.10.x
 EventEmitter.EventEmitter = EventEmitter;
@@ -122,13 +125,7 @@ Object.defineProperty(EventEmitter, "defaultMaxListeners", {
     return defaultMaxListeners;
   },
   set: function (arg) {
-    if (typeof arg !== "number" || arg < 0 || Number.isNaN(arg)) {
-      throw new ERR_OUT_OF_RANGE(
-        "defaultMaxListeners",
-        "a non-negative number",
-        arg,
-      );
-    }
+    validateNumber(arg, "defaultMaxListeners", 0);
     defaultMaxListeners = arg;
   },
 });
@@ -158,9 +155,7 @@ export function setMaxListeners(
   n = defaultMaxListeners,
   ...eventTargets
 ) {
-  if (typeof n !== "number" || n < 0 || Number.isNaN(n)) {
-    throw new ERR_OUT_OF_RANGE("n", "a non-negative number", n);
-  }
+  validateNumber(n, "setMaxListeners", 0);
   if (eventTargets.length === 0) {
     defaultMaxListeners = n;
   } else {
@@ -252,12 +247,37 @@ function emitUnhandledRejectionOrErr(ee, err, type, args) {
  * @returns {EventEmitter}
  */
 EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
-  if (typeof n !== "number" || n < 0 || Number.isNaN(n)) {
-    throw new ERR_OUT_OF_RANGE("n", "a non-negative number", n);
-  }
+  validateNumber(n, "setMaxListeners", 0);
   this._maxListeners = n;
   return this;
 };
+
+/**
+ * Returns the max listeners set.
+ * @param {EventEmitter | EventTarget} emitterOrTarget
+ * @returns {number}
+ */
+export function getMaxListeners(emitterOrTarget) {
+  if (typeof emitterOrTarget?.getMaxListeners === "function") {
+    return _getMaxListeners(emitterOrTarget);
+  } else if (
+    typeof emitterOrTarget?.[kMaxEventTargetListeners] === "number"
+  ) {
+    return emitterOrTarget[kMaxEventTargetListeners] ?? defaultMaxListeners;
+  } else if (emitterOrTarget instanceof AbortSignal) {
+    return 0; // default for AbortController if not set by EventTarget prototype.
+  } else if (
+    emitterOrTarget instanceof EventTarget
+  ) {
+    return defaultMaxListeners;
+  }
+
+  throw new ERR_INVALID_ARG_TYPE(
+    "emitter",
+    ["EventEmitter", "EventTarget"],
+    emitterOrTarget,
+  );
+}
 
 function _getMaxListeners(that) {
   if (that._maxListeners === undefined) {
@@ -468,8 +488,8 @@ function _addListener(target, type, listener, prepend) {
       const w = new Error(
         "Possible EventEmitter memory leak detected. " +
           `${existing.length} ${String(type)} listeners ` +
-          `added to ${inspect(target, { depth: -1 })}. Use ` +
-          "emitter.setMaxListeners() to increase limit",
+          `added to ${inspect(target, { depth: -1 })}. ` +
+          `MaxListeners is ${m}.`,
       );
       w.name = "MaxListenersExceededWarning";
       w.emitter = target;
@@ -719,17 +739,36 @@ EventEmitter.prototype.rawListeners = function rawListeners(type) {
  * Returns the number of listeners listening to event name
  * specified as `type`.
  * @param {string | symbol} type
+ * @param {Function} listener
  * @returns {number}
  */
-const _listenerCount = function listenerCount(type) {
+const _listenerCount = function listenerCount(type, listener) {
   const events = this._events;
 
   if (events !== undefined) {
     const evlistener = events[type];
 
     if (typeof evlistener === "function") {
+      if (listener != null) {
+        return listener === evlistener || listener === evlistener.listener
+          ? 1
+          : 0;
+      }
       return 1;
     } else if (evlistener !== undefined) {
+      if (listener != null) {
+        let matching = 0;
+
+        for (let i = 0, l = evlistener.length; i < l; i++) {
+          if (
+            evlistener[i] === listener || evlistener[i].listener === listener
+          ) {
+            matching++;
+          }
+        }
+
+        return matching;
+      }
       return evlistener.length;
     }
   }
@@ -805,18 +844,9 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    // TODO: kEvents is not defined
-    const root = emitterOrTarget[kEvents].get(type);
-    const listeners = [];
-    let handler = root?.next;
-    while (handler?.listener !== undefined) {
-      const listener = handler.listener?.deref
-        ? handler.listener.deref()
-        : handler.listener;
-      listeners.push(listener);
-      handler = handler.next;
-    }
-    return listeners;
+    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
+      listener,
+    ) => listener.callback) || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",

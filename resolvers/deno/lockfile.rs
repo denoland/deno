@@ -28,7 +28,7 @@ use parking_lot::MutexGuard;
 
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
-use crate::workspace::WorkspaceNpmPatchPackagesRc;
+use crate::workspace::WorkspaceNpmLinkPackagesRc;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
@@ -39,17 +39,17 @@ type NpmRegistryApiRc = crate::sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
   api: NpmRegistryApiRc,
-  workspace_patch_packages: WorkspaceNpmPatchPackagesRc,
+  workspace_link_packages: WorkspaceNpmLinkPackagesRc,
 }
 
 impl LockfileNpmPackageInfoApiAdapter {
   pub fn new(
     api: NpmRegistryApiRc,
-    workspace_patch_packages: WorkspaceNpmPatchPackagesRc,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
   ) -> Self {
     Self {
       api,
-      workspace_patch_packages,
+      workspace_link_packages,
     }
   }
 
@@ -65,7 +65,7 @@ impl LockfileNpmPackageInfoApiAdapter {
       .map(|v| async move {
         let info = self.api.package_info(v.name.as_str()).await?;
         let version_info =
-          info.version_info(v, &self.workspace_patch_packages.0)?;
+          info.version_info(v, &self.workspace_link_packages.0)?;
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
           deno_lockfile::Lockfile5NpmInfo {
             tarball_url: version_info.dist.as_ref().and_then(|d| {
@@ -209,6 +209,12 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     Guard {
       guard: self.lockfile.lock(),
     }
+  }
+
+  /// Creates an adapter for the lockfile that can be provided to deno_graph.
+  #[cfg(feature = "graph")]
+  pub fn as_deno_graph_locker(&self) -> DenoGraphLocker<'_, TSys> {
+    DenoGraphLocker(self)
   }
 
   pub fn set_workspace_config(
@@ -359,54 +365,50 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           ))
         })
         .collect(),
-      patches: if workspace.has_unstable("npm-patch") {
-        workspace
-          .patch_pkg_jsons()
-          .filter_map(|pkg_json| {
-            fn collect_deps(
-              deps: Option<&IndexMap<String, String>>,
-            ) -> HashSet<JsrDepPackageReq> {
-              deps
-                .map(|i| {
-                  i.iter()
-                    .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
-                    .filter_map(|dep| match dep {
-                      PackageJsonDepValue::Req(req) => {
-                        Some(JsrDepPackageReq::npm(req.clone()))
-                      }
-                      // not supported
-                      PackageJsonDepValue::File(_)
-                      | PackageJsonDepValue::Workspace(_) => None,
-                    })
-                    .collect()
-                })
-                .unwrap_or_default()
-            }
+      links: workspace
+        .link_pkg_jsons()
+        .filter_map(|pkg_json| {
+          fn collect_deps(
+            deps: Option<&IndexMap<String, String>>,
+          ) -> HashSet<JsrDepPackageReq> {
+            deps
+              .map(|i| {
+                i.iter()
+                  .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
+                  .filter_map(|dep| match dep {
+                    PackageJsonDepValue::Req(req) => {
+                      Some(JsrDepPackageReq::npm(req.clone()))
+                    }
+                    // not supported
+                    PackageJsonDepValue::File(_)
+                    | PackageJsonDepValue::Workspace(_) => None,
+                  })
+                  .collect()
+              })
+              .unwrap_or_default()
+          }
 
-            let key = format!(
-              "npm:{}@{}",
-              pkg_json.name.as_ref()?,
-              pkg_json.version.as_ref()?
-            );
-            // anything that affects npm resolution should go here in order to bust
-            // the npm resolution when it changes
-            let value = deno_lockfile::LockfilePatchContent {
-              dependencies: collect_deps(pkg_json.dependencies.as_ref()),
-              peer_dependencies: collect_deps(
-                pkg_json.peer_dependencies.as_ref(),
-              ),
-              peer_dependencies_meta: pkg_json
-                .peer_dependencies_meta
-                .clone()
-                .and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default(),
-            };
-            Some((key, value))
-          })
-          .collect()
-      } else {
-        Default::default()
-      },
+          let key = format!(
+            "npm:{}@{}",
+            pkg_json.name.as_ref()?,
+            pkg_json.version.as_ref()?
+          );
+          // anything that affects npm resolution should go here in order to bust
+          // the npm resolution when it changes
+          let value = deno_lockfile::LockfileLinkContent {
+            dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+            peer_dependencies: collect_deps(
+              pkg_json.peer_dependencies.as_ref(),
+            ),
+            peer_dependencies_meta: pkg_json
+              .peer_dependencies_meta
+              .clone()
+              .and_then(|v| serde_json::from_value(v).ok())
+              .unwrap_or_default(),
+          };
+          Some((key, value))
+        })
+        .collect(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
@@ -469,6 +471,69 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     } else {
       Ok(())
     }
+  }
+}
+
+/// An adapter to use the lockfile with `deno_graph`.
+#[cfg(feature = "graph")]
+pub struct DenoGraphLocker<'a, TSys: LockfileSys>(&'a LockfileLock<TSys>);
+
+#[cfg(feature = "graph")]
+impl<TSys: LockfileSys> deno_graph::source::Locker
+  for DenoGraphLocker<'_, TSys>
+{
+  fn get_remote_checksum(
+    &self,
+    specifier: &url::Url,
+  ) -> Option<deno_graph::source::LoaderChecksum> {
+    self
+      .0
+      .lock()
+      .remote()
+      .get(specifier.as_str())
+      .map(|s| deno_graph::source::LoaderChecksum::new(s.clone()))
+  }
+
+  fn has_remote_checksum(&self, specifier: &url::Url) -> bool {
+    self.0.lock().remote().contains_key(specifier.as_str())
+  }
+
+  fn set_remote_checksum(
+    &mut self,
+    specifier: &url::Url,
+    checksum: deno_graph::source::LoaderChecksum,
+  ) {
+    self
+      .0
+      .lock()
+      .insert_remote(specifier.to_string(), checksum.into_string())
+  }
+
+  fn get_pkg_manifest_checksum(
+    &self,
+    package_nv: &PackageNv,
+  ) -> Option<deno_graph::source::LoaderChecksum> {
+    self
+      .0
+      .lock()
+      .content
+      .packages
+      .jsr
+      .get(package_nv)
+      .map(|s| deno_graph::source::LoaderChecksum::new(s.integrity.clone()))
+  }
+
+  fn set_pkg_manifest_checksum(
+    &mut self,
+    package_nv: &PackageNv,
+    checksum: deno_graph::source::LoaderChecksum,
+  ) {
+    // a value would only exist in here if two workers raced
+    // to insert the same package manifest checksum
+    self
+      .0
+      .lock()
+      .insert_package(package_nv.clone(), checksum.into_string());
   }
 }
 

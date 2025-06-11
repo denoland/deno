@@ -133,7 +133,9 @@ Deno.test(
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -164,7 +166,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
@@ -238,6 +242,13 @@ Deno.test("crc32()", () => {
   assertEquals(crc32("hello world"), 222957957);
   // @ts-expect-error: passing an object
   assertThrows(() => crc32({}), TypeError);
+});
+
+Deno.test("crc32 doesn't overflow", () => {
+  let checksum = 0;
+  checksum = crc32(Buffer.from("H4sIAAAAAAAACg==", "base64"), checksum);
+  checksum = crc32("aaa", checksum);
+  assertEquals(checksum, 1466848669);
 });
 
 Deno.test("BrotliCompress", async () => {

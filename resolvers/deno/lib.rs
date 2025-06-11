@@ -32,6 +32,7 @@ use npm::ResolveReqWithSubPathErrorKind;
 use thiserror::Error;
 use url::Url;
 
+use self::npm::NpmResolver;
 use self::npm::NpmResolverSys;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
@@ -40,8 +41,12 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod collections;
+pub mod deno_json;
 pub mod display;
 pub mod factory;
+#[cfg(feature = "graph")]
+pub mod file_fetcher;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod import_map;
@@ -112,7 +117,7 @@ pub enum DenoResolveErrorKind {
 }
 
 #[derive(Debug)]
-pub struct NodeAndNpmReqResolver<
+pub struct NodeAndNpmResolvers<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
@@ -124,6 +129,7 @@ pub struct NodeAndNpmReqResolver<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  pub npm_resolver: NpmResolver<TSys>,
   pub npm_req_resolver: NpmReqResolverRc<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -144,7 +150,7 @@ pub struct DenoResolverOptions<
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
   pub node_and_req_resolver: Option<
-    NodeAndNpmReqResolver<
+    NodeAndNpmResolvers<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
@@ -196,7 +202,7 @@ pub struct RawDenoResolver<
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   node_and_npm_resolver: Option<
-    NodeAndNpmReqResolver<
+    NodeAndNpmResolvers<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
@@ -257,6 +263,14 @@ impl<
       if referrer.scheme() == "file"
         && self.in_npm_pkg_checker.in_npm_package(referrer)
       {
+        log::debug!(
+          "{}: specifier={} referrer={} mode={:?} kind={:?}",
+          deno_terminal::colors::magenta("resolving in npm package"),
+          raw_specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind
+        );
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
           .and_then(|res| {
@@ -392,9 +406,10 @@ impl<
       }
     }
 
-    let Some(NodeAndNpmReqResolver {
+    let Some(NodeAndNpmResolvers {
       node_resolver,
       npm_req_resolver,
+      ..
     }) = &self.node_and_npm_resolver
     else {
       return Ok(DenoResolution {

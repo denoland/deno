@@ -7,7 +7,7 @@ use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;
 
@@ -63,9 +63,16 @@ impl ExpectedExtraInfo {
   }
 }
 
+#[sys_traits::auto_impl]
+pub trait NpmPackageExtraInfoProviderSys:
+  sys_traits::BaseFsRead + Send + Sync
+{
+}
+
 pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-  workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+  sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
+  workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
 }
 
 impl std::fmt::Debug for NpmPackageExtraInfoProvider {
@@ -77,16 +84,16 @@ impl std::fmt::Debug for NpmPackageExtraInfoProvider {
 impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
-    workspace_patch_packages: Arc<WorkspaceNpmPatchPackages>,
+    sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
+    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
   ) -> Self {
     Self {
       npm_registry_info_provider,
-      workspace_patch_packages,
+      sys,
+      workspace_link_packages,
     }
   }
-}
 
-impl NpmPackageExtraInfoProvider {
   pub async fn get_package_extra_info(
     &self,
     package_nv: &PackageNv,
@@ -127,14 +134,31 @@ impl NpmPackageExtraInfoProvider {
     &self,
     package_nv: &PackageNv,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
-    let package_info = self
+    let mut package_info = self
       .npm_registry_info_provider
       .package_info(&package_nv.name)
       .await
       .map_err(JsErrorBox::from_err)?;
-    let version_info = package_info
-      .version_info(package_nv, &self.workspace_patch_packages.0)
-      .map_err(JsErrorBox::from_err)?;
+    let version_info = match package_info
+      .version_info(package_nv, &self.workspace_link_packages.0)
+    {
+      Ok(version_info) => version_info,
+      Err(deno_npm::resolution::NpmPackageVersionNotFound { .. }) => {
+        // Don't bother checking the return value of mark_force_reload to tell
+        // whether to reload because we could race here with another task within
+        // this method. That said, ideally this code would only reload the
+        // specific packument that's out of date to be a bit more efficient.
+        self.npm_registry_info_provider.mark_force_reload();
+        package_info = self
+          .npm_registry_info_provider
+          .package_info(&package_nv.name)
+          .await
+          .map_err(JsErrorBox::from_err)?;
+        package_info
+          .version_info(package_nv, &self.workspace_link_packages.0)
+          .map_err(JsErrorBox::from_err)?
+      }
+    };
     Ok(NpmPackageExtraInfo {
       deprecated: version_info.deprecated.clone(),
       bin: version_info.bin.clone(),
@@ -147,12 +171,15 @@ impl NpmPackageExtraInfoProvider {
     package_path: &Path,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
     let package_json_path = package_path.join("package.json");
+    let sys = self.sys.clone();
     let extra_info: NpmPackageExtraInfo =
-      deno_unsync::spawn_blocking(move || {
-        let package_json = std::fs::read_to_string(&package_json_path)
+      crate::rt::spawn_blocking(move || {
+        let package_json = sys
+          .base_fs_read(&package_json_path)
           .map_err(JsErrorBox::from_err)?;
         let extra_info: NpmPackageExtraInfo =
-          serde_json::from_str(&package_json).map_err(JsErrorBox::from_err)?;
+          serde_json::from_slice(&package_json)
+            .map_err(JsErrorBox::from_err)?;
 
         Ok::<_, JsErrorBox>(extra_info)
       })

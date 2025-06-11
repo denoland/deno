@@ -11,7 +11,6 @@ mod inner {
   pub use std::sync::Arc as MaybeArc;
 
   pub use dashmap::DashMap as MaybeDashMap;
-  #[cfg(feature = "graph")]
   pub use dashmap::DashSet as MaybeDashSet;
 }
 
@@ -62,13 +61,11 @@ mod inner {
   }
 
   // Wrapper struct that exposes a subset of `DashMap` API.
-  #[cfg(feature = "graph")]
   #[derive(Debug)]
   pub struct MaybeDashSet<V, S = RandomState>(
     RefCell<std::collections::HashSet<V, S>>,
   );
 
-  #[cfg(feature = "graph")]
   impl<V, S> Default for MaybeDashSet<V, S>
   where
     V: Eq + Hash,
@@ -79,7 +76,6 @@ mod inner {
     }
   }
 
-  #[cfg(feature = "graph")]
   impl<V: Eq + Hash, S: BuildHasher> MaybeDashSet<V, S> {
     pub fn insert(&self, value: V) -> bool {
       let mut inner = self.0.borrow_mut();

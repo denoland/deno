@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
-use dashmap::DashMap;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -25,9 +24,11 @@ use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
+use crate::errors::FinalizeResolutionErrorKind;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
+use crate::errors::LegacyResolveErrorKind;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -59,37 +60,86 @@ use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
-pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
-pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
-static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
+pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
+  Cow::Borrowed("deno"),
+  Cow::Borrowed("node"),
+  Cow::Borrowed("import"),
+];
+pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
+  &[Cow::Borrowed("require"), Cow::Borrowed("node")];
+static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
-#[allow(clippy::disallowed_types)]
-type ConditionsFromResolutionModeFn = crate::sync::MaybeArc<
-  dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
->;
-
-#[derive(Default, Clone)]
-pub struct ConditionsFromResolutionMode(Option<ConditionsFromResolutionModeFn>);
-
-impl Debug for ConditionsFromResolutionMode {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("ConditionsFromResolutionMode").finish()
-  }
+#[derive(Debug, Default, Clone)]
+pub struct NodeConditionOptions {
+  pub conditions: Vec<Cow<'static, str>>,
+  /// Provide a value to override the default import conditions.
+  ///
+  /// Defaults to `["deno", "node", "import"]`
+  pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
+  /// Provide a value to override the default require conditions.
+  ///
+  /// Defaults to `["require", "node"]`
+  pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
-impl ConditionsFromResolutionMode {
-  pub fn new(func: ConditionsFromResolutionModeFn) -> Self {
-    Self(Some(func))
+#[derive(Debug, Clone)]
+struct ConditionResolver {
+  import_conditions: Cow<'static, [Cow<'static, str>]>,
+  require_conditions: Cow<'static, [Cow<'static, str>]>,
+}
+
+impl ConditionResolver {
+  pub fn new(options: NodeConditionOptions) -> Self {
+    fn combine_conditions(
+      user_conditions: Cow<'_, [Cow<'static, str>]>,
+      override_default: Option<Vec<Cow<'static, str>>>,
+      default_conditions: &'static [Cow<'static, str>],
+    ) -> Cow<'static, [Cow<'static, str>]> {
+      if user_conditions.is_empty() {
+        Cow::Borrowed(default_conditions)
+      } else {
+        let default_conditions = override_default
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(default_conditions));
+        let mut new =
+          Vec::with_capacity(user_conditions.len() + default_conditions.len());
+        let mut append =
+          |conditions: Cow<'_, [Cow<'static, str>]>| match conditions {
+            Cow::Borrowed(conditions) => new.extend(conditions.iter().cloned()),
+            Cow::Owned(conditions) => new.extend(conditions),
+          };
+        append(user_conditions);
+        append(default_conditions);
+        Cow::Owned(new)
+      }
+    }
+
+    Self {
+      import_conditions: combine_conditions(
+        Cow::Borrowed(&options.conditions),
+        options.import_conditions_override,
+        IMPORT_CONDITIONS,
+      ),
+      require_conditions: combine_conditions(
+        Cow::Owned(options.conditions),
+        options.require_conditions_override,
+        REQUIRE_CONDITIONS,
+      ),
+    }
   }
 
-  fn resolve(
+  pub fn resolve(
     &self,
     resolution_mode: ResolutionMode,
-  ) -> &'static [&'static str] {
-    match &self.0 {
-      Some(func) => func(ResolutionMode::Import),
-      None => resolution_mode.default_conditions(),
+  ) -> &[Cow<'static, str>] {
+    match resolution_mode {
+      ResolutionMode::Import => &self.import_conditions,
+      ResolutionMode::Require => &self.require_conditions,
     }
+  }
+
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    &self.require_conditions
   }
 }
 
@@ -100,9 +150,9 @@ pub enum ResolutionMode {
 }
 
 impl ResolutionMode {
-  pub fn default_conditions(&self) -> &'static [&'static str] {
+  pub fn default_conditions(&self) -> &'static [Cow<'static, str>] {
     match self {
-      ResolutionMode::Import => DEFAULT_CONDITIONS,
+      ResolutionMode::Import => IMPORT_CONDITIONS,
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
   }
@@ -192,7 +242,7 @@ enum ResolvedMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
-  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  pub conditions: NodeConditionOptions,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
@@ -228,9 +278,8 @@ pub struct NodeResolver<
   npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: NodeResolutionSys<TSys>,
-  conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  condition_resolver: ConditionResolver,
   typescript_version: Option<Version>,
-  package_resolution_lookup_cache: Option<DashMap<Url, String>>,
 }
 
 impl<
@@ -260,17 +309,13 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      conditions_from_resolution_mode: options.conditions_from_resolution_mode,
+      condition_resolver: ConditionResolver::new(options.conditions),
       typescript_version: options.typescript_version,
-      package_resolution_lookup_cache: None,
     }
   }
 
-  pub fn with_package_resolution_lookup_cache(self) -> Self {
-    Self {
-      package_resolution_lookup_cache: Some(Default::default()),
-      ..self
-    }
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    self.condition_resolver.require_conditions()
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -300,9 +345,7 @@ impl<
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
-    let mut specifier_is_url = false;
     if let Ok(url) = Url::parse(specifier) {
-      specifier_is_url = true;
       if url.scheme() == "data" {
         return Ok(NodeResolution::Module(UrlOrPath::Url(url)));
       }
@@ -333,9 +376,7 @@ impl<
       }
     }
 
-    let conditions = self
-      .conditions_from_resolution_mode
-      .resolve(resolution_mode);
+    let conditions = self.condition_resolver.resolve(resolution_mode);
     let referrer = UrlOrPathRef::from_url(referrer);
     let (url, resolved_kind) = self.module_resolve(
       specifier,
@@ -345,23 +386,13 @@ impl<
       resolution_kind,
     )?;
 
-    let url_or_path =
-      self.finalize_resolution(url, resolved_kind, Some(&referrer))?;
-    let maybe_cache_resolution = || {
-      let package_resolution_lookup_cache =
-        self.package_resolution_lookup_cache.as_ref()?;
-      if specifier_is_url
-        || specifier.starts_with("./")
-        || specifier.starts_with("../")
-        || specifier.starts_with("/")
-      {
-        return None;
-      }
-      let url = url_or_path.clone().into_url().ok()?;
-      package_resolution_lookup_cache.insert(url, specifier.to_string());
-      Some(())
-    };
-    maybe_cache_resolution();
+    let url_or_path = self.finalize_resolution(
+      url,
+      resolved_kind,
+      resolution_mode,
+      resolution_kind,
+      Some(&referrer),
+    )?;
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -373,7 +404,7 @@ impl<
     specifier: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -434,6 +465,8 @@ impl<
     &self,
     resolved: MaybeTypesResolvedUrl,
     resolved_method: ResolvedMethod,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
     maybe_referrer: Option<&UrlOrPathRef>,
   ) -> Result<UrlOrPath, FinalizeResolutionError> {
     let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
@@ -493,17 +526,44 @@ impl<
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
-          .into_iter()
-          .find(|e| self.sys.is_file(&path.join(e)));
-        Err(
-          UnsupportedDirImportError {
-            dir_url: UrlOrPath::Path(path),
-            maybe_referrer: maybe_referrer.map(|r| r.display()),
-            suggested_file_name,
+        if resolution_mode == ResolutionMode::Import {
+          let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
+            .into_iter()
+            .find(|e| self.sys.is_file(&path.join(e)));
+          Err(
+            UnsupportedDirImportError {
+              dir_url: UrlOrPath::Path(path),
+              maybe_referrer: maybe_referrer.map(|r| r.display()),
+              suggested_file_name,
+            }
+            .into(),
+          )
+        } else {
+          // prefer the file over the directory
+          let path_with_ext = with_known_extension(&path, "js");
+          if self.sys.is_file(&path_with_ext) {
+            Ok(UrlOrPath::Path(path_with_ext))
+          } else {
+            Ok(
+              self
+                .legacy_index_resolve(
+                  &path,
+                  maybe_referrer,
+                  resolution_mode,
+                  resolution_kind,
+                )
+                .map(|url| url.0.into_url_or_path())
+                .map_err(|err| match err.into_kind() {
+                  LegacyResolveErrorKind::TypesNotFound(err) => {
+                    FinalizeResolutionErrorKind::TypesNotFound(err)
+                  }
+                  LegacyResolveErrorKind::ModuleNotFound(err) => {
+                    FinalizeResolutionErrorKind::ModuleNotFound(err)
+                  }
+                })?,
+            )
           }
-          .into(),
-        )
+        }
       }
       Ok(FileType::File) => {
         // prefer returning the url to avoid re-allocating in the CLI crate
@@ -513,28 +573,29 @@ impl<
             .unwrap_or(UrlOrPath::Path(path)),
         )
       }
-      _ => Err(
-        ModuleNotFoundError {
-          suggested_ext: self
-            .module_not_found_ext_suggestion(&path, resolved_method),
-          specifier: UrlOrPath::Path(path),
-          maybe_referrer: maybe_referrer.map(|r| r.display()),
-          typ: "module",
+      _ => {
+        if let Err(e) = maybe_file_type {
+          if resolution_mode == ResolutionMode::Require
+            && e.kind() == std::io::ErrorKind::NotFound
+          {
+            let file_with_ext = with_known_extension(&path, "js");
+            if self.sys.is_file(&file_with_ext) {
+              return Ok(UrlOrPath::Path(file_with_ext));
+            }
+          }
         }
-        .into(),
-      ),
-    }
-  }
 
-  pub fn lookup_package_specifier_for_resolution(
-    &self,
-    url: &Url,
-  ) -> Option<String> {
-    self
-      .package_resolution_lookup_cache
-      .as_ref()?
-      .get(url)
-      .map(|r| r.value().clone())
+        Err(
+          ModuleNotFoundError {
+            suggested_ext: self
+              .module_not_found_ext_suggestion(&path, resolved_method),
+            specifier: UrlOrPath::Path(path),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+          }
+          .into(),
+        )
+      }
+    }
   }
 
   fn module_not_found_ext_suggestion(
@@ -584,14 +645,14 @@ impl<
       &package_subpath,
       maybe_referrer.as_ref(),
       resolution_mode,
-      self
-        .conditions_from_resolution_mode
-        .resolve(resolution_mode),
+      self.condition_resolver.resolve(resolution_mode),
       resolution_kind,
     )?;
     let url_or_path = self.finalize_resolution(
       resolved_url,
       resolved_method,
+      resolution_mode,
+      resolution_kind,
       maybe_referrer.as_ref(),
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -667,7 +728,7 @@ impl<
     url: LocalUrlOrPath,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     if resolution_kind.is_types() {
@@ -702,7 +763,7 @@ impl<
     local_path: LocalPath,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
       sys: &NodeResolutionSys<TSys>,
@@ -806,7 +867,7 @@ impl<
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageImportsResolveError> {
     self
@@ -828,7 +889,7 @@ impl<
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
@@ -930,7 +991,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageTargetResolveError> {
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
@@ -1114,7 +1175,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<MaybeTypesResolvedUrl>, PackageTargetResolveError> {
     let result = self.resolve_package_target_inner(
@@ -1170,7 +1231,7 @@ impl<
     resolution_mode: ResolutionMode,
     pattern: bool,
     internal: bool,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<MaybeTypesResolvedUrl>, PackageTargetResolveError> {
     if let Some(target) = target.as_str() {
@@ -1237,7 +1298,7 @@ impl<
         // ));
 
         if key == "default"
-          || conditions.contains(&key.as_str())
+          || conditions.contains(&Cow::Borrowed(key))
           || resolution_kind.is_types() && self.matches_types_key(key)
         {
           let resolved = self.resolve_package_target(
@@ -1300,7 +1361,7 @@ impl<
     package_exports: &Map<String, Value>,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageExportsResolveError> {
     self
@@ -1324,7 +1385,7 @@ impl<
     package_exports: &Map<String, Value>,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageExportsResolveError> {
     if let Some(target) = package_exports.get(package_subpath) {
@@ -1437,7 +1498,7 @@ impl<
     specifier: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let (package_name, package_subpath, _is_scoped) =
@@ -1483,7 +1544,7 @@ impl<
     package_subpath: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let result = self.resolve_package_subpath_for_package_inner(
@@ -1518,7 +1579,7 @@ impl<
     package_subpath: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
     let package_dir_path = self
@@ -1558,7 +1619,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
@@ -1598,7 +1659,7 @@ impl<
     package_subpath: &str,
     referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
@@ -1704,7 +1765,7 @@ impl<
     package_json: Option<&PackageJson>,
     referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
@@ -1733,7 +1794,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
     if package_subpath == "." {
@@ -1763,7 +1824,7 @@ impl<
     package_json: &PackageJson,
     maybe_referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
-    conditions: &[&str],
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
     let pkg_json_kind = match resolution_mode {
@@ -1882,6 +1943,7 @@ impl<
         }
       }
     } else {
+      // Node only resolves index.js and not index.cjs/mjs
       vec!["index.js"]
     };
     for index_file_name in index_file_names {
@@ -1908,7 +1970,6 @@ impl<
       Err(
         ModuleNotFoundError {
           specifier: UrlOrPath::Path(directory.join("index.js")),
-          typ: "module",
           maybe_referrer: maybe_referrer.map(|r| r.display()),
           suggested_ext: None,
         }

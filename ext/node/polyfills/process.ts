@@ -18,6 +18,7 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
+import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   validateNumber,
   validateObject,
@@ -996,12 +997,6 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
-
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
@@ -1024,6 +1019,16 @@ internals.__bootstrapNodeProcess = function (
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
+
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
 
     delete internals.__bootstrapNodeProcess;
   } else {

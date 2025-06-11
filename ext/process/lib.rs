@@ -254,7 +254,7 @@ pub enum ProcessError {
   BorrowMut(std::cell::BorrowMutError),
   #[class(generic)]
   #[error(transparent)]
-  Which(which::Error),
+  Which(deno_permissions::which::Error),
   #[class(type)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
@@ -510,19 +510,21 @@ fn create_command(
     }
 
     let detached = args.detached;
-    command.pre_exec(move || {
-      if detached {
-        libc::setsid();
-      }
-      for &(src, dst) in &fds_to_dup {
-        if src >= 0 && dst >= 0 {
-          let _fd = libc::dup2(src, dst);
-          libc::close(src);
+    if detached || !fds_to_dup.is_empty() || args.gid.is_some() {
+      command.pre_exec(move || {
+        if detached {
+          libc::setsid();
         }
-      }
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
+        for &(src, dst) in &fds_to_dup {
+          if src >= 0 && dst >= 0 {
+            let _fd = libc::dup2(src, dst);
+            libc::close(src);
+          }
+        }
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      });
+    }
 
     Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
   }
@@ -800,9 +802,14 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
-    match which::which_in(cmd, path, &env.cwd) {
+    match deno_permissions::which::which_in(
+      sys_traits::impls::RealSys,
+      cmd,
+      path.cloned(),
+      env.cwd.clone(),
+    ) {
       Ok(cmd) => Ok(cmd),
-      Err(which::Error::CannotFindBinaryPath) => {
+      Err(deno_permissions::which::Error::CannotFindBinaryPath) => {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
       }
       Err(err) => Err(ProcessError::Which(err)),

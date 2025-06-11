@@ -1128,13 +1128,26 @@ fn common_runtime(
       validate_import_attributes_callback,
     )),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops.then(|| {
-      Box::new(|stack| {
-        deno_permissions::prompter::set_current_stacktrace(stack)
-      }) as _
-    }),
+    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops
+      .then(create_permissions_stack_trace_callback),
     ..Default::default()
   })
+}
+
+pub fn create_permissions_stack_trace_callback(
+) -> deno_core::OpStackTraceCallback {
+  Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+      stack
+        .into_iter()
+        .map(|frame| {
+          deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
+            &frame,
+          )
+        })
+        .collect()
+    }))
+  }) as _
 }
 
 pub struct UnconfiguredRuntime {

@@ -120,6 +120,7 @@ import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
+import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -166,7 +167,7 @@ import zlib from "node:zlib";
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
-// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfill.rs`
+// NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,
@@ -223,6 +224,7 @@ function setupBuiltinModules() {
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
+    "internal/http2/util": internalHttp2Util,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,

@@ -1691,7 +1691,7 @@ impl ConfigData {
           .fetch_bypass_permissions(import_map_url)
           .await;
 
-        let value_result = fetch_result.and_then(|f| {
+        let value_result = fetch_result.map_err(AnyError::from).and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
         });
         match value_result {
@@ -2026,11 +2026,14 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_url, ws_settings) in
-      settings.by_workspace_folder.iter().chain([(
-        &Arc::new(Url::parse("file:///").unwrap()),
-        &Some(settings.unscoped.clone()),
-      )])
+    let fs_root_url = std::fs::canonicalize("/")
+      .ok()
+      .and_then(|p| Url::from_directory_path(p).ok())
+      .unwrap_or_else(|| Url::parse("file:///").unwrap());
+    for (folder_url, ws_settings) in settings
+      .by_workspace_folder
+      .iter()
+      .chain([(&Arc::new(fs_root_url), &Some(settings.unscoped.clone()))])
     {
       let mut ws_settings = ws_settings.as_ref();
       if Some(folder_url) == settings.first_folder.as_ref() {
