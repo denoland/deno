@@ -1354,6 +1354,7 @@ impl DocumentModules {
 
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
+  // TODO(nayeemrmn): Support notebook scopes here.
   pub fn inspect_or_temp_modules_by_scope(
     &self,
     document: &Document,
@@ -1993,7 +1994,7 @@ fn analyze_module(
         deno_graph::ModuleError::Parse {
           specifier,
           mtime: None,
-          diagnostic: diagnostic.clone(),
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
         },
       )),
       ResolutionMode::Import,

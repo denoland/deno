@@ -20,7 +20,7 @@ use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
-use deno_npm::NpmSystemInfo;
+pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
@@ -41,6 +41,8 @@ use url::Url;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
+use crate::deno_json::TsConfigResolver;
+use crate::deno_json::TsConfigResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
 use crate::lockfile::LockfileLock;
@@ -65,12 +67,12 @@ use crate::sync::MaybeSync;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
-use crate::workspace::WorkspaceNpmPatchPackages;
-use crate::workspace::WorkspaceNpmPatchPackagesRc;
+use crate::workspace::WorkspaceNpmLinkPackages;
+use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 use crate::DefaultRawDenoResolverRc;
 use crate::DenoResolverOptions;
-use crate::NodeAndNpmReqResolver;
+use crate::NodeAndNpmResolvers;
 use crate::NpmCacheDirRc;
 use crate::RawDenoResolver;
 use crate::WorkspaceResolverRc;
@@ -252,10 +254,11 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
+  tsconfig_resolver: Deferred<TsConfigResolverRc<TSys>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
-  workspace_npm_patch_packages: Deferred<WorkspaceNpmPatchPackagesRc>,
+  workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
 }
@@ -286,9 +289,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
+      tsconfig_resolver: Default::default(),
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
-      workspace_npm_patch_packages: Default::default(),
+      workspace_npm_link_packages: Default::default(),
       initial_cwd,
       options,
     }
@@ -532,6 +536,17 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
+  pub fn tsconfig_resolver(
+    &self,
+  ) -> Result<&TsConfigResolverRc<TSys>, WorkspaceDiscoverError> {
+    self.tsconfig_resolver.get_or_try_init(|| {
+      Ok(new_rc(TsConfigResolver::from_workspace(
+        self.sys(),
+        &self.workspace_directory()?.workspace,
+      )))
+    })
+  }
+
   pub fn sys(&self) -> &TSys {
     &self.sys
   }
@@ -614,18 +629,18 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       })
   }
 
-  pub fn workspace_npm_patch_packages(
+  pub fn workspace_npm_link_packages(
     &self,
-  ) -> Result<&WorkspaceNpmPatchPackagesRc, anyhow::Error> {
+  ) -> Result<&WorkspaceNpmLinkPackagesRc, anyhow::Error> {
     self
-      .workspace_npm_patch_packages
+      .workspace_npm_link_packages
       .get_or_try_init(|| {
         let workspace_dir = self.workspace_directory()?;
-        let npm_packages = new_rc(WorkspaceNpmPatchPackages::from_workspace(
+        let npm_packages = new_rc(WorkspaceNpmLinkPackages::from_workspace(
           workspace_dir.workspace.as_ref(),
         ));
         if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
-          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+          bail!("Linking npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
         } else {
           Ok(npm_packages)
         }
@@ -732,8 +747,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             node_and_req_resolver: if self.workspace_factory.no_npm() {
               None
             } else {
-              Some(NodeAndNpmReqResolver {
+              Some(NodeAndNpmResolvers {
                 node_resolver: self.node_resolver()?.clone(),
+                npm_resolver: self.npm_resolver()?.clone(),
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
@@ -781,6 +797,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       .get_or_try_init(async {
         Ok(new_rc(crate::graph::DenoResolver::new(
           self.raw_deno_resolver().await?.clone(),
+          self.workspace_factory.sys.clone(),
           self.found_package_json_dep_flag.clone(),
           self.options.on_mapped_resolution_diagnostic.clone(),
         )))

@@ -32,10 +32,9 @@ use deno_lint::diagnostic::LintDiagnostic;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
-use serde::Serialize;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -246,7 +245,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
@@ -259,7 +258,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
@@ -341,9 +340,10 @@ impl WorkspaceLinter {
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
-      deno_lint_config: self
-        .tsconfig_resolver
-        .deno_lint_config(member_dir.dir_url())?,
+      deno_lint_config: resolve_lint_config(
+        &self.tsconfig_resolver,
+        member_dir.dir_url(),
+      )?,
       maybe_plugin_runner: plugin_runner,
     }));
 
@@ -577,7 +577,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  tsconfig_resolver: &TsConfigResolver,
+  tsconfig_resolver: &CliTsConfigResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(
@@ -586,7 +586,7 @@ fn lint_stdin(
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
   let deno_lint_config =
-    tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
+    resolve_lint_config(tsconfig_resolver, start_dir.dir_url())?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
@@ -653,16 +653,26 @@ fn handle_lint_result(
   }
 }
 
-#[derive(Serialize)]
-struct LintError {
-  file_path: String,
-  message: String,
+fn resolve_lint_config(
+  tsconfig_resolver: &CliTsConfigResolver,
+  specifier: &ModuleSpecifier,
+) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  let transpile_options = &tsconfig_resolver
+    .transpile_and_emit_options(specifier)?
+    .transpile;
+  Ok(deno_lint::linter::LintConfig {
+    default_jsx_factory: (!transpile_options.jsx_automatic)
+      .then(|| transpile_options.jsx_factory.clone()),
+    default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
+      .then(|| transpile_options.jsx_fragment_factory.clone()),
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
+  use serde::Serialize;
   use test_util as util;
 
   use super::*;

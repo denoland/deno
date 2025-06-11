@@ -11,6 +11,10 @@ const EqualDivider = styled.div`
       ${OTHER_STYLES};
     }
   }
+
+  span {
+    ${SOME_STYLE};
+  }
 `;
 
 cssString = css`

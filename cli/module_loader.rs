@@ -42,10 +42,8 @@ use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
-use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::Resolution;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
@@ -55,6 +53,7 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -91,7 +90,6 @@ use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
-use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -330,7 +328,6 @@ struct SharedCliModuleLoaderState {
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
@@ -393,7 +390,6 @@ impl CliModuleLoaderFactory {
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
-    node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: CliNpmModuleLoader,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
@@ -423,7 +419,6 @@ impl CliModuleLoaderFactory {
         main_module_graph_container,
         module_load_preparer,
         node_code_translator,
-        node_resolver,
         npm_module_loader,
         npm_registry_permission_checker,
         npm_req_resolver,
@@ -550,16 +545,6 @@ pub enum LoadMaybeCjsError {
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(inherit)]
-#[error("Could not resolve '{reference}'")]
-pub struct CouldNotResolveError {
-  reference: deno_semver::npm::NpmPackageNvReference,
-  #[source]
-  #[inherit]
-  source: node_resolver::errors::PackageSubpathResolveError,
 }
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
@@ -804,38 +789,24 @@ impl<TGraphContainer: ModuleGraphContainer>
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let graph = self.graph_container.graph();
-    let resolution = match graph.get(referrer) {
-      Some(Module::Js(module)) => module
-        .dependencies
-        .get(raw_specifier)
-        .map(|d| &d.maybe_code)
-        .unwrap_or(&Resolution::None),
-      _ => &Resolution::None,
-    };
-
-    let specifier = match resolution {
-      Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
-      Resolution::Err(err) => {
-        return Err(
+    let specifier = self
+      .shared
+      .resolver
+      .resolve_with_graph(
+        graph.as_ref(),
+        raw_specifier,
+        referrer,
+        deno_graph::Position::zeroed(),
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
+      )
+      .map_err(|err| match err.into_kind() {
+        ResolveWithGraphErrorKind::Resolution(err) => {
+          // todo(dsherret): why do we have a newline here? Document it.
           JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
-            .into(),
-        );
-      }
-      Resolution::None => Cow::Owned(
-        self
-          .shared
-          .resolver
-          .resolve(
-            raw_specifier,
-            referrer,
-            deno_graph::Position::zeroed(),
-            // if we're here, that means it's resolving a dynamic import
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(JsErrorBox::from_err)?,
-      ),
-    };
+        }
+        err => JsErrorBox::from_err(err),
+      })?;
 
     if self.shared.is_repl {
       if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
@@ -858,46 +829,6 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
     }
 
-    let specifier = match graph.get(&specifier) {
-      Some(Module::Npm(module)) => {
-        let package_folder = self
-          .shared
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())
-          .map_err(JsErrorBox::from_err)?;
-        self
-          .shared
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
-            Some(referrer),
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(|source| {
-            JsErrorBox::from_err(CouldNotResolveError {
-              reference: module.nv_reference.clone(),
-              source,
-            })
-          })?
-          .into_url()
-          .map_err(JsErrorBox::from_err)?
-      }
-      Some(Module::Node(module)) => module.specifier.clone(),
-      Some(Module::Js(module)) => module.specifier.clone(),
-      Some(Module::Json(module)) => module.specifier.clone(),
-      Some(Module::Wasm(module)) => module.specifier.clone(),
-      Some(Module::External(module)) => {
-        node_resolver::resolve_specifier_into_node_modules(
-          &self.shared.sys,
-          &module.specifier,
-        )
-      }
-      None => specifier.into_owned(),
-    };
     Ok(specifier)
   }
 
@@ -1628,7 +1559,7 @@ impl EszipModuleLoader {
 
 #[cfg(test)]
 mod tests {
-  use deno_graph::ParsedSourceStore;
+  use deno_graph::ast::ParsedSourceStore;
 
   use super::*;
 

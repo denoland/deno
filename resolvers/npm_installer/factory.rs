@@ -135,7 +135,7 @@ impl<
         Arc::new(self.registry_info_provider()?.as_npm_registry_api()),
         self
           .workspace_factory()
-          .workspace_npm_patch_packages()?
+          .workspace_npm_link_packages()?
           .clone(),
       ))
     })
@@ -196,7 +196,7 @@ impl<
         let workspace_factory = self.workspace_factory();
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.resolver_factory.npm_resolution().clone(),
-          workspace_factory.workspace_npm_patch_packages()?.clone(),
+          workspace_factory.workspace_npm_link_packages()?.clone(),
           match (self.options.resolve_npm_resolution_snapshot)()? {
             Some(snapshot) => {
               NpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -230,7 +230,7 @@ impl<
           self.maybe_lockfile().await?.cloned(),
           self
             .workspace_factory()
-            .workspace_npm_patch_packages()?
+            .workspace_npm_link_packages()?
             .clone(),
         )))
       })
@@ -263,8 +263,8 @@ impl<
           let registry_info_provider = self.registry_info_provider()?;
           let registry_info_provider =
             Arc::new(registry_info_provider.as_npm_registry_api());
-          let workspace_npm_patch_packages =
-            workspace_factory.workspace_npm_patch_packages()?;
+          let workspace_npm_link_packages =
+            workspace_factory.workspace_npm_link_packages()?;
           Ok(Arc::new(NpmInstaller::new(
             self.lifecycle_scripts_executor.clone(),
             npm_cache.clone(),
@@ -284,7 +284,7 @@ impl<
               .map(|p| p.to_path_buf()),
             self.options.lifecycle_scripts_config.clone(),
             self.resolver_factory.npm_system_info().clone(),
-            workspace_npm_patch_packages.clone(),
+            workspace_npm_link_packages.clone(),
           )))
         }
         .boxed_local(),
