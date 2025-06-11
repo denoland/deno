@@ -6205,6 +6205,8 @@ declare namespace Deno {
    *    through a different server.
    *  - Unix domain socket: this sends all requests to a local Unix domain
    *    socket rather than a TCP socket. *Not supported on Windows.*
+   *  - Vsock socket: this sends all requests to a local vsock socket.
+   *    *Only supported on Linux and macOS.*
    *
    * @category Fetch
    */
@@ -6226,6 +6228,12 @@ declare namespace Deno {
     transport: "unix";
     /** The path to the unix domain socket to use. */
     path: string;
+  } | {
+    transport: "vsock";
+    /** The CID (Context Identifier) of the vsock to connect to. */
+    cid: number;
+    /** The port of the vsock to connect to. */
+    port: number;
   };
 
   /**
