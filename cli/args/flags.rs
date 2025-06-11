@@ -1805,6 +1805,7 @@ Or multiple dependencies at once:
       .arg(allow_scripts_arg())
       .args(lock_args())
       .args(default_registry_args())
+      .arg(config_arg()) 
   })
 }
 
@@ -4706,6 +4707,7 @@ fn add_parse(
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
+  config_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -11787,6 +11789,54 @@ mod tests {
         );
       }
     }
+  }
+
+  #[test]
+  fn add_subcommand_with_config() {
+    // Test --config flag
+    let r = flags_from_vec(svec!["deno", "add", "--config", "deno.json", "@std/path"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@std/path"],
+          dev: false,
+          default_registry: None,
+        }),
+        config_flag: ConfigFlag::Path("deno.json".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    // Test --no-config flag
+    let r = flags_from_vec(svec!["deno", "add", "--no-config", "@std/path"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@std/path"],
+          dev: false,
+          default_registry: None,
+        }),
+        config_flag: ConfigFlag::Disabled,
+        ..Flags::default()
+      }
+    );
+
+    // Test short form -c
+    let r = flags_from_vec(svec!["deno", "add", "-c", "custom.json", "@std/path"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@std/path"],
+          dev: false,
+          default_registry: None,
+        }),
+        config_flag: ConfigFlag::Path("custom.json".to_string()),
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
