@@ -1023,10 +1023,9 @@ function bootstrapWorkerRuntime(
     hasBootstrapped = true;
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
-    core.print(`bootstrapping worker runtime, type ${workerType}\n`, true);
-    // if (workerType === "node") {
-    // delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
-    // }
+    if (workerType === "node") {
+      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
