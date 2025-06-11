@@ -160,17 +160,10 @@ pub async fn cache_top_level_deps(
       }
     }
 
-    let skeep = std::env::var("SKEEP").is_ok();
     while let Some(info_future) = info_futures.next().await {
       if let Some((specifier, info)) = info_future {
         let exports = info.exports();
         for (k, _) in exports {
-          if skeep && k.starts_with("./unstable")
-            || k.starts_with("./posix/unstable")
-            || k.starts_with("./windows/unstable")
-          {
-            continue;
-          }
           if let Ok(spec) = specifier.join(k) {
             roots.push(spec);
           }
@@ -178,11 +171,6 @@ pub async fn cache_top_level_deps(
       }
     }
     drop(info_futures);
-
-    // eprintln!(
-    //   "roots: {:#?}",
-    //   roots.iter().map(ToString::to_string).collect::<Vec<_>>()
-    // );
 
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder
