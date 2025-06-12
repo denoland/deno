@@ -1025,6 +1025,7 @@ function bootstrapWorkerRuntime(
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     if (workerType === "node") {
       delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+      delete workerRuntimeGlobalProperties["self"];
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
