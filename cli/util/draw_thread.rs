@@ -179,19 +179,17 @@ impl DrawThread {
         let mut delay_ms = 120;
         {
           // Get the entries to render.
-          let (should_display, entries) = {
+          let maybe_entries = {
             let internal_state = &*INTERNAL_STATE;
             let internal_state = internal_state.lock();
             if internal_state.should_exit_draw_thread(drawer_id) {
               break;
             }
-            (
-              internal_state.hide_count == 0,
-              internal_state.entries.clone(),
-            )
+            let should_display = internal_state.hide_count == 0;
+            should_display.then(|| internal_state.entries.clone())
           };
 
-          if should_display {
+          if let Some(entries) = maybe_entries {
             // this should always be set, but have the code handle
             // it not being for some reason
             let size = console_size();
