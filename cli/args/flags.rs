@@ -2025,8 +2025,9 @@ If no output file is given, the output is written to standard output:
       )
       .arg(
         Arg::new("platform")
-          .long("platform")
-          .help("Platform to bundle for. Accepted values are 'browser' or 'deno'")
+          .long("runtime")
+          .alias("platform")
+          .help("Runtime to bundle for. Accepted values are 'browser' or 'deno'")
           .num_args(1)
           .value_parser(clap::builder::ValueParser::new(platform_parser))
           .default_value("deno"),
