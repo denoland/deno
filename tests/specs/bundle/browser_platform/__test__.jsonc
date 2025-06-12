@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "run -A entry.ts",
-          "output": "[WILDCARD]module\n"
+          "output": "[WILDCARD]main\n"
         },
         {
           "args": "bundle --platform browser --output bundled.js entry.ts",

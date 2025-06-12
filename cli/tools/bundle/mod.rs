@@ -184,9 +184,7 @@ pub async fn bundle(
     crate::args::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
     }
-    crate::args::BundlePlatform::Deno => {
-      builder.platform(esbuild_client::Platform::Neutral);
-    }
+    crate::args::BundlePlatform::Deno => {}
   }
   let flags = builder.build().unwrap();
 
