@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#![allow(nonstandard_style, dead_code)]
+#![allow(nonstandard_style)]
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::ffi::OsStr;
@@ -79,6 +79,7 @@ use windows_sys::Win32::System::Threading::OpenProcess;
 use windows_sys::Win32::System::Threading::RegisterWaitForSingleObject;
 use windows_sys::Win32::System::Threading::ResumeThread;
 use windows_sys::Win32::System::Threading::TerminateProcess;
+use windows_sys::Win32::System::Threading::UnregisterWaitEx;
 use windows_sys::Win32::System::Threading::WaitForSingleObject;
 use windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
@@ -217,6 +218,18 @@ struct Waiting {
   rx: oneshot::Receiver<()>,
   wait_object: HANDLE,
   tx: *mut Option<oneshot::Sender<()>>,
+}
+
+impl Drop for Waiting {
+  fn drop(&mut self) {
+    unsafe {
+      let rc = UnregisterWaitEx(self.wait_object, INVALID_HANDLE_VALUE);
+      if rc == 0 {
+        panic!("failed to unregister: {}", io::Error::last_os_error());
+      }
+      drop(Box::from_raw(self.tx));
+    }
+  }
 }
 
 unsafe impl Sync for Waiting {}
@@ -366,8 +379,6 @@ fn cvt(result: BOOL) -> Result<(), std::io::Error> {
 #[derive(Debug)]
 pub struct ChildProcess {
   pid: i32,
-  exit_signal: Option<i32>,
-  exit_code: Option<i64>,
   handle: OwnedHandle,
   waiting: Option<Waiting>,
 }
@@ -684,8 +695,6 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
 
   let child = ChildProcess {
     pid: info.dwProcessId as i32,
-    exit_signal: None,
-    exit_code: None,
     handle: unsafe { OwnedHandle::from_raw_handle(info.hProcess) },
     waiting: None,
   };
@@ -771,12 +780,6 @@ pub enum uv_process_flags {
   /// extensions like '.exe' or '.cmd'.
   WindowsFilePathExactName = 1 << 7,
 }
-
-// Constants for stdio handle types
-pub const UV_IGNORE: u32 = 0;
-pub const UV_CREATE_PIPE: u32 = 1;
-pub const UV_INHERIT_FD: u32 = 2;
-pub const UV_INHERIT_STREAM: u32 = 4;
 
 fn search_path_join_test(
   dir: &[u16],
@@ -912,127 +915,6 @@ fn search_path_walk_ext(
   }
 
   None
-}
-
-/// Compares two environment variable strings, just comparing the part before the = sign.
-///
-/// This is case-insensitive as Windows environment variables are case-insensitive.
-/// If `na` is negative, this function will find the equals sign in string `a`.
-/// Otherwise, it will use `na-1` as the length to compare.
-///
-/// Returns negative if a < b, positive if a > b, 0 if they are equal.
-fn env_strncmp(a: &[u16], na: isize, b: &[u16]) -> i32 {
-  use windows_sys::Win32::Globalization::CompareStringOrdinal;
-  use windows_sys::Win32::Globalization::CSTR_EQUAL;
-
-  let na = if na < 0 {
-    // Find the equals sign to determine variable name length
-    let mut a_eq = None;
-    for (i, &c) in a.iter().enumerate() {
-      if c == wchar!('=') {
-        a_eq = Some(i);
-        break;
-      }
-    }
-    assert!(a_eq.is_some());
-    a_eq.unwrap()
-  } else {
-    // na is already the correct length minus 1
-    (na - 1) as usize
-  };
-
-  // Find equals sign in b
-  let mut b_eq = None;
-  for (i, &c) in b.iter().enumerate() {
-    if c == wchar!('=') {
-      b_eq = Some(i);
-      break;
-    }
-  }
-  assert!(b_eq.is_some());
-  let nb = b_eq.unwrap();
-
-  // Compare the strings case-insensitively
-  let r = unsafe {
-    CompareStringOrdinal(
-      a.as_ptr(),
-      na as i32,
-      b.as_ptr(),
-      nb as i32,
-      true as i32, // Case insensitive
-    )
-  };
-
-  // Subtract CSTR_EQUAL to get the comparison result
-  r - CSTR_EQUAL
-}
-
-/// Comparison function for sorting environment variables
-///
-/// This passes a -1 for `na` to env_strncmp, which will make it find the equals sign
-/// in the first string.
-fn qsort_wcscmp(a: &[u16], b: &[u16]) -> i32 {
-  env_strncmp(a, -1, b)
-}
-
-/// Helper function to find PATH environment variable in the environment block
-///
-/// The environment block is a series of null-terminated strings, with an
-/// additional null character at the end. This function traverses the block
-/// looking for the PATH entry and returns the value portion (after the equals sign).
-///
-/// Returns None if no PATH is found.
-fn find_path(env: &[u16]) -> Option<&[u16]> {
-  let mut current = 0;
-
-  while current < env.len() && env[current] != 0 {
-    // Find length of current environment string
-    let mut len = 0;
-    while current + len < env.len() && env[current + len] != 0 {
-      len += 1;
-    }
-
-    // Check if it's the PATH variable (case-insensitive)
-    if len > 5
-      && (env[current] == wchar!('P') || env[current] == wchar!('p'))
-      && (env[current + 1] == wchar!('A') || env[current + 1] == wchar!('a'))
-      && (env[current + 2] == wchar!('T') || env[current + 2] == wchar!('t'))
-      && (env[current + 3] == wchar!('H') || env[current + 3] == wchar!('h'))
-      && (env[current + 4] == wchar!('='))
-    {
-      // Return the value part (after '=')
-      return Some(&env[current + 5..current + len]);
-    }
-
-    // Move to next environment string
-    current += len + 1;
-  }
-
-  None
-}
-
-fn get_raw(wide: *const u16) -> Vec<u16> {
-  let len = unsafe { wcslen(wide) };
-  let mut parts = Vec::<u16>::with_capacity(len);
-  unsafe {
-    std::ptr::copy_nonoverlapping(wide, parts.as_mut_ptr(), len);
-    parts.set_len(len);
-  }
-  parts
-}
-
-fn raw_str(wide: *const u16) -> String {
-  String::from_utf16_lossy(get_raw(wide).as_slice())
-}
-
-trait RawToString {
-  fn to_string(self) -> String;
-}
-
-impl RawToString for *const u16 {
-  fn to_string(self) -> String {
-    raw_str(self)
-  }
 }
 
 fn search_path(
