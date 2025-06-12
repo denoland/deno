@@ -1805,7 +1805,7 @@ Or multiple dependencies at once:
       .arg(allow_scripts_arg())
       .args(lock_args())
       .args(default_registry_args())
-      .arg(config_arg()) 
+      .arg(config_arg())
   })
 }
 
@@ -11794,7 +11794,13 @@ mod tests {
   #[test]
   fn add_subcommand_with_config() {
     // Test --config flag
-    let r = flags_from_vec(svec!["deno", "add", "--config", "deno.json", "@std/path"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "add",
+      "--config",
+      "deno.json",
+      "@std/path"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -11824,7 +11830,8 @@ mod tests {
     );
 
     // Test short form -c
-    let r = flags_from_vec(svec!["deno", "add", "-c", "custom.json", "@std/path"]);
+    let r =
+      flags_from_vec(svec!["deno", "add", "-c", "custom.json", "@std/path"]);
     assert_eq!(
       r.unwrap(),
       Flags {
