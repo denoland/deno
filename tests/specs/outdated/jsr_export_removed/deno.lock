@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@denotest/add@1": "1.0.0",
     "jsr:@denotest/multiple-exports@0.7": "0.7.0",
+    "jsr:@denotest/multiple-exports@0.7.1": "0.7.1",
     "jsr:@denotest/subtract@1": "1.0.0"
   },
   "jsr": {
@@ -11,6 +12,13 @@
     },
     "@denotest/multiple-exports@0.7.0": {
       "integrity": "e2dff9c6b3b083d80b869f14e12be35178baeb065e08a1fb48d30dc6afbd43a8",
+      "dependencies": [
+        "jsr:@denotest/add",
+        "jsr:@denotest/subtract"
+      ]
+    },
+    "@denotest/multiple-exports@0.7.1": {
+      "integrity": "1554a62f7434dbbeebc5dfc8eb0c690fb1eddb721579a12e918b4c4027b77f02",
       "dependencies": [
         "jsr:@denotest/add",
         "jsr:@denotest/subtract"
