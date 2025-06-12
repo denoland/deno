@@ -39,6 +39,7 @@ members = [
   "runtime",
   "runtime/features",
   "runtime/permissions",
+  "runtime/subprocess_windows",
   "tests",
   "tests/ffi",
   "tests/napi",
@@ -63,7 +64,7 @@ deno_doc = "=0.178.0"
 deno_error = "=0.6.1"
 deno_graph = { version = "=0.95.1", default-features = false }
 deno_lint = "=0.76.0"
-deno_lockfile = "=0.30.0"
+deno_lockfile = "=0.30.1"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.35.0"
@@ -119,6 +120,7 @@ deno_permissions = { version = "0.65.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.37.0", path = "./resolvers/deno" }
 deno_runtime = { version = "0.214.0", path = "./runtime" }
 deno_snapshots = { version = "0.21.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.1.0" }
 napi_sym = { version = "0.136.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.44.0", path = "./resolvers/node" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -295,7 +297,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.95.5"
+dprint-plugin-typescript = "=0.95.6"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
@@ -396,7 +398,7 @@ debug = "line-tables-only"
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
-inherits = "release"
+inherits = "release-lite"
 debug = true
 
 # Faster to compile than `release` but with similar performance.

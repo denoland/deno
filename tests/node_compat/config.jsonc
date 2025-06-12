@@ -72,7 +72,6 @@
       "test-error-aggregateTwoErrors.js",
       "test-error-prepare-stack-trace.js",
       "test-event-emitter-prepend.js",
-      "test-events-on-async-iterator.js",
       "test-events-once.js",
       "test-fs-access.js",
       "test-fs-append-file.js",
@@ -1423,7 +1422,6 @@
   },
   "windowsIgnore": {
     "parallel": [
-      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-console-log-throw-primitive.js",
       "test-console-no-swallow-stack-overflow.js",
