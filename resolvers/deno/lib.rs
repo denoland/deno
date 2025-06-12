@@ -451,18 +451,20 @@ impl<
         if let Ok(npm_req_ref) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self
-            .resolve_npm_req_ref(
-              &npm_req_ref,
-              resolution_mode,
-              resolution_kind,
-              referrer,
-            )
-            .map(|url| DenoResolution {
+          let maybe_url = self.maybe_resolve_npm_req_ref(
+            &npm_req_ref,
+            referrer,
+            resolution_mode,
+            resolution_kind,
+            /* resolve_non_workspace_to_file_specifier */ self.is_byonm,
+          )?;
+          if let Some(url) = maybe_url {
+            return Ok(DenoResolution {
               url,
               maybe_diagnostic,
               found_package_json_dep,
             });
+          }
         }
 
         Ok(DenoResolution {
@@ -527,13 +529,33 @@ impl<
     }
   }
 
-  pub fn resolve_npm_req_ref(
+  #[cfg(feature = "graph")]
+  pub(crate) fn resolve_npm_req_ref_to_file(
     &self,
     npm_req_ref: &NpmPackageReqReference,
+    referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-    referrer: &Url,
   ) -> Result<Url, DenoResolveError> {
+    self
+      .maybe_resolve_npm_req_ref(
+        npm_req_ref,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+        /* resolve_non_workspace_to_file_specifier */ true,
+      )
+      .map(|maybe_url| maybe_url.unwrap()) // ok because it will never return `None`
+  }
+
+  fn maybe_resolve_npm_req_ref(
+    &self,
+    npm_req_ref: &NpmPackageReqReference,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+    resolve_non_workspace_to_file_specifier: bool,
+  ) -> Result<Option<Url>, DenoResolveError> {
     let Some(NodeAndNpmResolvers {
       node_resolver,
       npm_req_resolver,
@@ -561,27 +583,32 @@ impl<
           resolution_kind,
         )
         .map_err(DenoResolveError::from)
-        .and_then(|url_or_path| Ok(url_or_path.into_url()?));
+        .and_then(|url_or_path| Ok(Some(url_or_path.into_url()?)));
     }
 
-    npm_req_resolver
-      .resolve_req_reference(
-        npm_req_ref,
-        referrer,
-        resolution_mode,
-        resolution_kind,
-      )
-      .map_err(|err| match err.into_kind() {
-        ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
-          err,
-        ) => err.into(),
-        ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(err) => {
-          err.into()
-        }
-        ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
-          err.into()
-        }
-      })
-      .and_then(|url_or_path| Ok(url_or_path.into_url()?))
+    if resolve_non_workspace_to_file_specifier {
+      npm_req_resolver
+        .resolve_req_reference(
+          npm_req_ref,
+          referrer,
+          resolution_mode,
+          resolution_kind,
+        )
+        .map_err(|err| match err.into_kind() {
+          ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
+            err,
+          ) => err.into(),
+          ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(err) => {
+            err.into()
+          }
+          ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
+            err.into()
+          }
+        })
+        .and_then(|url_or_path| Ok(Some(url_or_path.into_url()?)))
+    } else {
+      // leave managed npm specifiers as-is when managed so they get stored in the graph
+      Ok(None)
+    }
   }
 }

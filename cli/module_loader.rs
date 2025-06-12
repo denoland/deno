@@ -60,7 +60,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -92,7 +91,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -331,7 +329,6 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
-  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -394,7 +391,6 @@ impl CliModuleLoaderFactory {
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
-    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
@@ -421,7 +417,6 @@ impl CliModuleLoaderFactory {
         node_code_translator,
         npm_module_loader,
         npm_registry_permission_checker,
-        npm_req_resolver,
         npm_resolver,
         parsed_source_cache,
         resolver,
@@ -807,27 +802,6 @@ impl<TGraphContainer: ModuleGraphContainer>
         }
         err => JsErrorBox::from_err(err),
       })?;
-
-    if self.shared.is_repl {
-      if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
-      {
-        return self
-          .shared
-          .npm_req_resolver
-          .resolve_req_reference(
-            &reference,
-            referrer,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(|e| JsErrorBox::from_err(e).into())
-          .and_then(|url_or_path| {
-            url_or_path
-              .into_url()
-              .map_err(|e| JsErrorBox::from_err(e).into())
-          });
-      }
-    }
 
     Ok(specifier)
   }

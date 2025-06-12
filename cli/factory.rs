@@ -101,7 +101,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
@@ -767,10 +766,6 @@ impl CliFactory {
     ))
   }
 
-  pub fn npm_req_resolver(&self) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
-    self.resolver_factory()?.npm_req_resolver()
-  }
-
   pub fn pkg_json_resolver(
     &self,
   ) -> Result<&Arc<CliPackageJsonResolver>, AnyError> {
@@ -1015,7 +1010,6 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
-    let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
       let mode = if self.resolver_factory()?.use_byonm()? {
@@ -1055,7 +1049,6 @@ impl CliFactory {
         self.sys(),
       ),
       npm_registry_permission_checker,
-      npm_req_resolver.clone(),
       cli_npm_resolver.clone(),
       self.parsed_source_cache().clone(),
       self.resolver().await?.clone(),

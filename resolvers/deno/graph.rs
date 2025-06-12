@@ -8,6 +8,7 @@ use deno_graph::source::ResolveError;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -236,7 +237,23 @@ impl<
           &module.specifier,
         )
       }
-      None => specifier.into_owned(),
+      None => {
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          self
+            .resolver
+            .resolve_npm_req_ref_to_file(
+              &reference,
+              referrer,
+              resolution_mode,
+              resolution_kind,
+            )
+            .map_err(resolve_into_deno_graph_resolve)?
+        } else {
+          specifier.into_owned()
+        }
+      }
     };
     Ok(specifier)
   }
@@ -285,19 +302,7 @@ impl<
     let resolution = self
       .resolver
       .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-      .map_err(|err| match err.into_kind() {
-        DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
-          match mapped_resolution_error {
-            MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
-            // deno_graph checks specifically for an ImportMapError
-            MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-            MappedResolutionError::Workspace(e) => {
-              ResolveError::Other(JsErrorBox::from_err(e))
-            }
-          }
-        }
-        err => ResolveError::Other(JsErrorBox::from_err(err)),
-      })?;
+      .map_err(resolve_into_deno_graph_resolve)?;
 
     if resolution.found_package_json_dep {
       // mark that we need to do an "npm install" later
@@ -438,5 +443,23 @@ impl<
         }),
       node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
     )
+  }
+}
+
+fn resolve_into_deno_graph_resolve(
+  err: crate::DenoResolveError,
+) -> deno_graph::source::ResolveError {
+  match err.into_kind() {
+    DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
+      match mapped_resolution_error {
+        MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
+        // deno_graph checks specifically for an ImportMapError
+        MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+        MappedResolutionError::Workspace(e) => {
+          ResolveError::Other(JsErrorBox::from_err(e))
+        }
+      }
+    }
+    err => ResolveError::Other(JsErrorBox::from_err(err)),
   }
 }
