@@ -33,6 +33,7 @@ use crate::args::BundleFlags;
 use crate::args::BundleFormat;
 use crate::args::Flags;
 use crate::args::PackageHandling;
+use crate::args::SourceMapType;
 use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
@@ -179,6 +180,13 @@ pub async fn bundle(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
+  if let Some(sourcemap_type) = bundle_flags.sourcemap {
+    builder.sourcemap(match sourcemap_type {
+      SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
+      SourceMapType::Inline => esbuild_client::Sourcemap::Inline,
+      SourceMapType::External => esbuild_client::Sourcemap::External,
+    });
+  }
   if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
@@ -437,6 +445,13 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnStartArgs,
   ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
+    Ok(None)
+  }
+
+  async fn on_end(
+    &self,
+    _args: esbuild_client::OnEndArgs,
+  ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
     Ok(None)
   }
 }

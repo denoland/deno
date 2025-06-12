@@ -475,6 +475,7 @@ pub struct BundleFlags {
   pub code_splitting: bool,
   pub one_file: bool,
   pub packages: PackageHandling,
+  pub sourcemap: Option<SourceMapType>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -484,12 +485,29 @@ pub enum BundleFormat {
   Iife,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum SourceMapType {
+  Linked,
+  Inline,
+  External,
+}
+
 impl std::fmt::Display for BundleFormat {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       BundleFormat::Esm => write!(f, "esm"),
       BundleFormat::Cjs => write!(f, "cjs"),
       BundleFormat::Iife => write!(f, "iife"),
+    }
+  }
+}
+
+impl std::fmt::Display for SourceMapType {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      SourceMapType::Linked => write!(f, "linked"),
+      SourceMapType::Inline => write!(f, "inline"),
+      SourceMapType::External => write!(f, "external"),
     }
   }
 }
@@ -1926,6 +1944,14 @@ fn bundle_subcommand() -> Command {
       _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
     }
   }
+  fn sourcemap_parser(s: &str) -> Result<SourceMapType, clap::Error> {
+    match s {
+      "linked" => Ok(SourceMapType::Linked),
+      "inline" => Ok(SourceMapType::Inline),
+      "external" => Ok(SourceMapType::External),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
   command(
     "bundle",
     "Output a single JavaScript file with all dependencies.
@@ -2004,6 +2030,16 @@ If no output file is given, the output is written to standard output:
           .default_value("true")
           .default_missing_value("true")
           .value_parser(value_parser!(bool))
+          .num_args(0..=1)
+          .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("sourcemap")
+          .long("sourcemap")
+          .help("Generate source map. Accepted values are 'linked', 'inline', or 'external'")
+          .require_equals(true)
+          .default_missing_value("linked")
+          .value_parser(clap::builder::ValueParser::new(sourcemap_parser))
           .num_args(0..=1)
           .action(ArgAction::Set),
       )
@@ -4839,6 +4875,7 @@ fn bundle_parse(
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
     one_file: matches.get_flag("one-file"),
+    sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
   });
   Ok(())
 }
