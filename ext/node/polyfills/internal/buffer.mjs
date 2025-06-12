@@ -64,6 +64,7 @@ import {
   op_is_utf8,
   op_node_call_is_from_dependency,
   op_transcode,
+  op_node_decode_utf8,
 } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -667,7 +668,13 @@ Buffer.prototype.swap64 = function swap64() {
 
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
-    return this.utf8Slice(0, this.length);
+    return op_node_decode_utf8(
+      TypedArrayPrototypeGetBuffer(this),
+      TypedArrayPrototypeGetByteOffset(this),
+      TypedArrayPrototypeGetByteLength(this),
+      0,
+      this.length,
+    );
   }
 
   const len = this.length;
@@ -691,7 +698,23 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
   }
 
   if (encoding === undefined) {
-    return this.utf8Slice(start, end);
+    return op_node_decode_utf8(
+      TypedArrayPrototypeGetBuffer(this),
+      TypedArrayPrototypeGetByteOffset(this),
+      TypedArrayPrototypeGetByteLength(this),
+      start,
+      end,
+    );
+  }
+  
+  if (encoding === "utf8") {
+    return op_node_decode_utf8(
+      TypedArrayPrototypeGetBuffer(this),
+      TypedArrayPrototypeGetByteOffset(this),
+      TypedArrayPrototypeGetByteLength(this),
+      start,
+      end,
+    );
   }
 
   const ops = getEncodingOps(encoding);
@@ -1041,8 +1064,16 @@ Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
   );
 };
 
-Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
-  return _utf8Slice(this, string, offset, length);
+Buffer.prototype.utf8Slice = utf8Slice;
+
+function utf8Slice(start, end) {
+  return op_node_decode_utf8(
+    TypedArrayPrototypeGetBuffer(this),
+    TypedArrayPrototypeGetByteOffset(this),
+    TypedArrayPrototypeGetByteLength(this),
+    start,
+    end,
+  );
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
@@ -1191,6 +1222,31 @@ function _hexSlice(buf, start, end) {
   }
   return out;
 }
+
+function adjustOffset(offset, length) {
+  // Use Math.trunc() to convert offset to an integer value that can be larger
+  // than an Int32. Hence, don't use offset | 0 or similar techniques.
+  offset = Math.trunc(offset);
+  if (offset === 0) {
+    return 0;
+  }
+  if (offset < 0) {
+    offset += length;
+    return offset > 0 ? offset : 0;
+  }
+  if (offset < length) {
+    return offset;
+  }
+  return NumberIsNaN(offset) ? 0 : length;
+}
+
+Buffer.prototype.subarray = function subarray(start, end) {
+  const srcLength = this.length;
+  start = adjustOffset(start, srcLength);
+  end = end !== undefined ? adjustOffset(end, srcLength) : srcLength;
+  const newLength = end > start ? end - start : 0;
+  return new FastBuffer(this.buffer, this.byteOffset + start, newLength);
+};
 
 Buffer.prototype.slice = function slice(start, end) {
   return this.subarray(start, end);

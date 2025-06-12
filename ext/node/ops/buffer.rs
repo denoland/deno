@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 #[op2(fast)]
@@ -118,4 +119,144 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
     }
   }
   ascii_bytes
+}
+
+// #[op2]
+// pub fn op_node_decode_utf8<'a>(
+//   scope: &mut v8::HandleScope<'a>,
+//   #[varargs] args: Option<&v8::FunctionCallbackArguments<'a>>,
+//   // buf: v8::Local<'a, v8::ArrayBuffer>,
+//   // #[number] byte_offset: usize,
+//   // #[number] byte_length: usize,
+//   // #[number] start: Option<usize>,
+//   // #[number] end: Option<usize>,
+// ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+//   let Some(args) = args else {
+//     return Err(JsErrorBox::generic("Invalid arguments"));
+//   };
+//   let buf = args
+//     .this()
+//     .try_cast::<v8::Uint8Array>()
+//     .map_err(|_| JsErrorBox::not_supported())?;
+//   let byte_offset = buf.byte_offset();
+//   let byte_length = buf.byte_length();
+
+//   let zero_copy = {
+//     let store = buf
+//       .get_backing_store()
+//       .ok_or_else(|| JsErrorBox::generic("Invalid buffer"))?;
+//     unsafe {
+//       deno_core::serde_v8::V8Slice::from_parts(
+//         store,
+//         byte_offset..byte_offset + byte_length,
+//       )
+//     }
+//   };
+//   let start = args.get(0);
+//   let end = args.get(1);
+//   let start = if start.is_null_or_undefined() {
+//     0usize
+//   } else {
+//     start
+//       .to_uint32(scope)
+//       .ok_or_else(|| JsErrorBox::generic("Invalid start"))?
+//       .value() as usize
+//   };
+//   let end = if end.is_null_or_undefined() {
+//     byte_length as usize
+//   } else {
+//     end
+//       .to_uint32(scope)
+//       .ok_or_else(|| JsErrorBox::generic("Invalid end"))?
+//       .value() as usize
+//   };
+//   // let start = start.unwrap_or(0);
+//   // let end = end.unwrap_or(zero_copy.len());
+//   if start > end {
+//     return Err(JsErrorBox::generic("Invalid start and end"));
+//   } else if end > zero_copy.len() {
+//     return Err(JsErrorBox::generic("Invalid end"));
+//   }
+//   v8::String::new_from_utf8(
+//     scope,
+//     &zero_copy[start..end],
+//     v8::NewStringType::Normal,
+//   )
+//   .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+// }
+
+// #[op2]
+// pub fn op_node_decode_utf8<'a>(
+//   #[this] this: v8::Global<v8::Object>,
+//   scope: &mut v8::HandleScope<'a>,
+//   // buf: v8::Local<'a, v8::ArrayBuffer>,
+//   // #[number] byte_offset: usize,
+//   // #[number] byte_length: usize,
+//   #[number] start: Option<usize>,
+//   #[number] end: Option<usize>,
+// ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+//   let this = v8::Local::new(scope, this);
+//   let buf = this
+//     .try_cast::<v8::Uint8Array>()
+//     .map_err(|_| JsErrorBox::not_supported())?;
+//   let byte_offset = buf.byte_offset();
+//   let byte_length = buf.byte_length();
+
+//   let zero_copy = {
+//     let store = buf
+//       .get_backing_store()
+//       .ok_or_else(|| JsErrorBox::generic("Invalid buffer"))?;
+//     unsafe {
+//       deno_core::serde_v8::V8Slice::from_parts(
+//         store,
+//         byte_offset..byte_offset + byte_length,
+//       )
+//     }
+//   };
+//   let start = start.unwrap_or(0);
+//   let end = end.unwrap_or(byte_length as usize);
+//   if start > end {
+//     return Err(JsErrorBox::generic("Invalid start and end"));
+//   } else if end > zero_copy.len() {
+//     return Err(JsErrorBox::generic("Invalid end"));
+//   }
+//   v8::String::new_from_utf8(
+//     scope,
+//     &zero_copy[start..end],
+//     v8::NewStringType::Normal,
+//   )
+//   .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+// }
+
+#[op2(no_side_effects)]
+pub fn op_node_decode_utf8<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: v8::Local<'a, v8::ArrayBuffer>,
+  #[number] byte_offset: usize,
+  #[number] byte_length: usize,
+  #[number] start: Option<usize>,
+  #[number] end: Option<usize>,
+) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  let zero_copy = {
+    let store = buf.get_backing_store();
+    unsafe {
+      deno_core::serde_v8::V8Slice::from_parts(
+        store,
+        byte_offset..byte_offset + byte_length,
+      )
+    }
+  };
+  let start = start.unwrap_or(0);
+  let end = end.unwrap_or(byte_length as usize);
+  if start > end {
+    return Err(JsErrorBox::generic("Invalid start and end"));
+  } else if end > zero_copy.len() {
+    return Err(JsErrorBox::generic("Invalid end"));
+  }
+  v8::String::new_from_utf8(
+    scope,
+    &zero_copy[start..end],
+    v8::NewStringType::Normal,
+  )
+  .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
 }
