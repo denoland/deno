@@ -27,6 +27,9 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypeMap,
+  ObjectDefineProperty,
+  ObjectEntries,
   SafeMap,
   SafeSet,
 } = primordials;
@@ -934,7 +937,7 @@ const kEventsGetter = {
       return new SafeMap();
     }
     return new SafeMap(
-      Object.entries(data.listeners).map((
+      ArrayPrototypeMap(ObjectEntries(data.listeners), (
         [key, listeners],
       ) => [key, new SafeSet(listeners)]),
     );
@@ -961,7 +964,7 @@ export function on(emitter, event, options = kEmptyObject) {
     // This is necessary to pass `paralle/test-events-on-async-iterator.js` test
     // TODO(kt3k): This can be removed if events.getEventListeners() is used
     // instead of `signal[kEvents]` in upstream.
-    Object.defineProperty(signal, kEvents, kEventsGetter);
+    ObjectDefineProperty(signal, kEvents, kEventsGetter);
   }
 
   const unconsumedEvents = [];
