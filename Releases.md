@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.3.6 / 2025.06.12
 
-- Revert "refactor(node): improve `ResolutionMode::Require` resolution …
-  (#29579)
 - feat(bundle, unstable): bundling backed by esbuild (#29470)
 - feat(ext/fetch): add support for fetch on vsock sockets (#29692)
 - feat(unstable): add --unstable-node-conditions flag for node resolution
