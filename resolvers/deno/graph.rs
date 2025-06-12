@@ -24,7 +24,6 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveErrorKind;
 use crate::DenoResolverSys;
-use crate::NpmSpecifierNoNpmError;
 use crate::RawDenoResolverRc;
 
 #[allow(clippy::disallowed_types)]
@@ -49,6 +48,9 @@ pub enum ResolveWithGraphErrorKind {
   ResolvePkgFolderFromDenoModule(
     #[from] npm::managed::ResolvePkgFolderFromDenoModuleError,
   ),
+  #[error(transparent)]
+  #[class(inherit)]
+  ResolveNpmReqRef(#[from] npm::ResolveNpmReqRefError),
   #[error(transparent)]
   #[class(inherit)]
   Resolution(#[from] deno_graph::ResolutionError),
@@ -241,15 +243,18 @@ impl<
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          self
-            .resolver
-            .resolve_npm_req_ref_to_file(
+          if let Some(url) =
+            self.resolver.resolve_non_workspace_npm_req_ref_to_file(
               &reference,
               referrer,
               resolution_mode,
               resolution_kind,
-            )
-            .map_err(resolve_into_deno_graph_resolve)?
+            )?
+          {
+            url.into_url()?
+          } else {
+            specifier.into_owned()
+          }
         } else {
           specifier.into_owned()
         }
@@ -270,7 +275,6 @@ impl<
     let package_folder = node_and_npm_resolver
       .npm_resolver
       .as_managed()
-      .ok_or_else(|| NpmSpecifierNoNpmError(nv_ref.nv().clone().into_req()))
       .unwrap() // we won't have an nv ref when not managed
       .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
     Ok(
@@ -302,7 +306,19 @@ impl<
     let resolution = self
       .resolver
       .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-      .map_err(resolve_into_deno_graph_resolve)?;
+      .map_err(|err| match err.into_kind() {
+        DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
+          match mapped_resolution_error {
+            MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
+            // deno_graph checks specifically for an ImportMapError
+            MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+            MappedResolutionError::Workspace(e) => {
+              ResolveError::Other(JsErrorBox::from_err(e))
+            }
+          }
+        }
+        err => ResolveError::Other(JsErrorBox::from_err(err)),
+      })?;
 
     if resolution.found_package_json_dep {
       // mark that we need to do an "npm install" later
@@ -443,23 +459,5 @@ impl<
         }),
       node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
     )
-  }
-}
-
-fn resolve_into_deno_graph_resolve(
-  err: crate::DenoResolveError,
-) -> deno_graph::source::ResolveError {
-  match err.into_kind() {
-    DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
-      match mapped_resolution_error {
-        MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
-        // deno_graph checks specifically for an ImportMapError
-        MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-        MappedResolutionError::Workspace(e) => {
-          ResolveError::Other(JsErrorBox::from_err(e))
-        }
-      }
-    }
-    err => ResolveError::Other(JsErrorBox::from_err(err)),
   }
 }

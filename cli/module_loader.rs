@@ -784,26 +784,33 @@ impl<TGraphContainer: ModuleGraphContainer>
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let graph = self.graph_container.graph();
-    let specifier = self
-      .shared
-      .resolver
-      .resolve_with_graph(
-        graph.as_ref(),
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .map_err(|err| match err.into_kind() {
+    let result = self.shared.resolver.resolve_with_graph(
+      graph.as_ref(),
+      raw_specifier,
+      referrer,
+      deno_graph::Position::zeroed(),
+      ResolutionMode::Import,
+      NodeResolutionKind::Execution,
+    );
+    match result {
+      Ok(specifier) => Ok(specifier),
+      Err(err) => match err.into_kind() {
+        ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
+          // this is a npm specifier not in the graph... we've always
+          // returned these as-is, so continue to do that even though it's
+          // questionable and should probably throw
+          Ok(ModuleSpecifier::parse(&err.npm_req_ref.to_string()).unwrap())
+        }
         ResolveWithGraphErrorKind::Resolution(err) => {
           // todo(dsherret): why do we have a newline here? Document it.
-          JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
+          Err(
+            JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
+              .into(),
+          )
         }
-        err => JsErrorBox::from_err(err),
-      })?;
-
-    Ok(specifier)
+        err => Err(JsErrorBox::from_err(err).into()),
+      },
+    }
   }
 
   async fn load_prepared_module(
