@@ -499,9 +499,9 @@ impl TsServer {
     let modified_scripts = documents
       .iter()
       .filter_map(|(document, change_kind)| {
-        let specifier =
+        let (specifier, media_type) =
           snapshot.document_modules.primary_specifier(document)?;
-        let specifier = self.specifier_map.denormalize(&specifier);
+        let specifier = self.specifier_map.denormalize(&specifier, media_type);
         Some((specifier, *change_kind))
       })
       .collect::<Vec<_>>();
@@ -542,7 +542,7 @@ impl TsServer {
     };
     let specifiers = modules
       .iter()
-      .map(|m| self.specifier_map.denormalize(&m.specifier))
+      .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
       .collect();
     let req =
       TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
@@ -591,7 +591,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
     let req = TscRequest::FindReferences((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -623,7 +625,7 @@ impl TsServer {
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
-      .denormalize(&module.specifier),));
+      .denormalize(&module.specifier, module.media_type),));
     self
       .request(
         snapshot,
@@ -659,7 +661,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<QuickInfo>, AnyError> {
     let req = TscRequest::GetQuickInfoAtPosition((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -684,7 +688,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Vec<CodeFixAction>, AnyError> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       range.start,
       range.end,
       codes,
@@ -733,7 +739,9 @@ impl TsServer {
       _ => unreachable!(),
     });
     let req = TscRequest::GetApplicableRefactors(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       range.into(),
       UserPreferences::from_config_for_specifier(
         &snapshot.config,
@@ -769,7 +777,9 @@ impl TsServer {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
         r#type: "file",
-        file_name: self.specifier_map.denormalize(&module.specifier),
+        file_name: self
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),
       },
       fix_id.to_string(),
       (&snapshot
@@ -810,7 +820,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<RefactorEditInfo, AnyError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       (&snapshot
         .config
         .tree
@@ -850,8 +862,12 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
-      self.specifier_map.denormalize(new_specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
+      self
+        .specifier_map
+        .denormalize(new_specifier, module.media_type),
       (&snapshot
         .config
         .tree
@@ -894,16 +910,15 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
     position: u32,
-    files_to_search: Vec<ModuleSpecifier>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DocumentHighlights>>, AnyError> {
+    let denormalized_specifier = self
+      .specifier_map
+      .denormalize(&module.specifier, module.media_type);
     let req = TscRequest::GetDocumentHighlights(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      denormalized_specifier.clone(),
       position,
-      files_to_search
-        .into_iter()
-        .map(|s| self.specifier_map.denormalize(&s))
-        .collect::<Vec<_>>(),
+      vec![denormalized_specifier],
     )));
     self
       .request(
@@ -925,7 +940,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, AnyError> {
     let req = TscRequest::GetDefinitionAndBoundSpan((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -954,7 +971,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<DefinitionInfo>>, AnyError> {
     let req = TscRequest::GetTypeDefinitionAtPosition((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -989,7 +1008,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
       GetCompletionsAtPositionOptions {
         user_preferences: UserPreferences::from_config_for_specifier(
@@ -1036,7 +1057,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
       name,
       (&snapshot
@@ -1078,7 +1101,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
     let req = TscRequest::GetImplementationAtPosition((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -1110,7 +1135,7 @@ impl TsServer {
   ) -> Result<Vec<OutliningSpan>, AnyError> {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
-      .denormalize(&module.specifier),));
+      .denormalize(&module.specifier, module.media_type),));
     self
       .request(
         snapshot,
@@ -1131,7 +1156,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -1160,7 +1187,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyOutgoingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyOutgoingCalls((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -1192,7 +1221,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, AnyError> {
     let req = TscRequest::PrepareCallHierarchy((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -1230,7 +1261,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
       false,
       false,
@@ -1268,7 +1301,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<SelectionRange, AnyError> {
     let req = TscRequest::GetSmartSelectionRange((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
     ));
     self
@@ -1291,7 +1326,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Classifications, AnyError> {
     let req = TscRequest::GetEncodedSemanticClassifications((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       TextSpan {
         start: range.start,
         length: range.end - range.start,
@@ -1320,7 +1357,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<SignatureHelpItems>, AnyError> {
     let req = TscRequest::GetSignatureHelpItems((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       position,
       options,
     ));
@@ -1371,7 +1410,9 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<InlayHint>>, AnyError> {
     let req = TscRequest::ProvideInlayHints((
-      self.specifier_map.denormalize(&module.specifier),
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
       text_span,
       UserPreferences::from_config_for_specifier(
         &snapshot.config,
@@ -4450,7 +4491,11 @@ impl TscSpecifierMap {
   /// Convert the specifier to one compatible with tsc. Cache the resulting
   /// mapping in case it needs to be reversed.
   // TODO(nayeemrmn): Factor in out-of-band media type here.
-  pub fn denormalize(&self, specifier: &ModuleSpecifier) -> String {
+  pub fn denormalize(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> String {
     let original = specifier;
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
@@ -4461,8 +4506,7 @@ impl TscSpecifierMap {
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
     }
-    let media_type = MediaType::from_specifier(original);
-    // If the URL-inferred media type doesn't correspond to tsc's path-inferred
+    // If the module's media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
       specifier += media_type.as_ts_extension();
@@ -4792,7 +4836,7 @@ fn op_resolve_inner(
     .map(|o| {
       o.map(|(s, mt)| {
         (
-          state.specifier_map.denormalize(&s),
+          state.specifier_map.denormalize(&s, mt),
           if matches!(mt, MediaType::Unknown) {
             None
           } else {
@@ -4946,8 +4990,9 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .get_scoped_resolver(Some(scope));
     for (_, specifiers) in scoped_resolver.graph_imports_by_referrer() {
       for specifier in specifiers {
+        let mut specifier = Cow::Borrowed(specifier);
         if let Ok(req_ref) =
-          deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
+          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
         {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
@@ -4958,10 +5003,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
             lsp_log!("failed to resolve {req_ref} to file URL");
             continue;
           };
-          script_names.insert(resolved.to_string());
-        } else {
-          script_names.insert(specifier.to_string());
+          specifier = Cow::Owned(resolved);
         }
+        let Some(module) = state
+          .state_snapshot
+          .document_modules
+          .module_for_specifier(&specifier, Some(scope.as_ref()))
+        else {
+          continue;
+        };
+        script_names.insert(
+          state
+            .specifier_map
+            .denormalize(&module.specifier, module.media_type),
+        );
       }
     }
   }
@@ -4987,13 +5042,17 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     script_names.extend(global_script_names.iter().cloned());
 
     // Add the cells as roots.
-    script_names.extend(cell_uris.iter().flat_map(|u| {
+    script_names.extend(cell_uris.iter().filter_map(|u| {
       let document = state.state_snapshot.document_modules.documents.get(u)?;
       let module = state
         .state_snapshot
         .document_modules
         .module(&document, scope.map(|s| s.as_ref()))?;
-      Some(module.specifier.to_string())
+      Some(
+        state
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),
+      )
     }));
 
     result
@@ -5013,49 +5072,38 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .unwrap_or(&mut result.unscoped);
     for module in modules {
       let is_open = module.open_data.is_some();
-      let types_specifier = (|| {
+      let types_entry = (|| {
         let types_specifier = module
           .types_dependency
           .as_ref()?
           .dependency
           .maybe_specifier()?;
-        Some(
-          state
-            .state_snapshot
-            .document_modules
-            .resolve_dependency(
-              types_specifier,
-              &module.specifier,
-              module.resolution_mode,
-              module.scope.as_deref(),
-            )?
-            .0,
+        state.state_snapshot.document_modules.resolve_dependency(
+          types_specifier,
+          &module.specifier,
+          module.resolution_mode,
+          module.scope.as_deref(),
         )
       })();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
-      if let Some(types_specifier) = &types_specifier {
-        script_names.insert(types_specifier.to_string());
+      if let Some((types_specifier, types_media_type)) = &types_entry {
+        script_names.insert(
+          state
+            .specifier_map
+            .denormalize(types_specifier, *types_media_type),
+        );
       }
-      if types_specifier.is_none() || is_open {
-        script_names.insert(module.specifier.to_string());
+      if types_entry.is_none() || is_open {
+        script_names.insert(
+          state
+            .specifier_map
+            .denormalize(&module.specifier, module.media_type),
+        );
       }
     }
   }
 
-  for script_names in result
-    .by_scope
-    .values_mut()
-    .chain(std::iter::once(&mut result.unscoped))
-  {
-    *script_names = std::mem::take(script_names)
-      .into_iter()
-      .map(|s| match ModuleSpecifier::parse(&s) {
-        Ok(s) => state.specifier_map.denormalize(&s),
-        Err(_) => s,
-      })
-      .collect();
-  }
   state.performance.measure(mark);
   result
 }
