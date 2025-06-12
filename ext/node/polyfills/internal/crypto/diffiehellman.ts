@@ -102,7 +102,7 @@ export class DiffieHellman {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
       if (this.#primeLength < 2) {
-        throw new NodeError("ERR_OSSL_BN_BITS_TOO_SMALL", "bits too small");
+        throw new NodeError("ERR_OSSL_DH_MODULUS_TOO_SMALL", "modulus too small");
       }
 
       this.#prime = Buffer.from(
