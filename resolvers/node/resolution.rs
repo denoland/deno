@@ -149,11 +149,6 @@ pub enum ResolutionMode {
   Require,
 }
 
-pub enum NodeModuleKind {
-  Esm,
-  Cjs,
-}
-
 impl ResolutionMode {
   pub fn default_conditions(&self) -> &'static [Cow<'static, str>] {
     match self {
@@ -1840,7 +1835,6 @@ impl<
   pub(crate) fn legacy_fallback_resolve<'a>(
     &self,
     package_json: &'a PackageJson,
-    node_module_kind: NodeModuleKind,
   ) -> Option<&'a str> {
     if self.resolution_config.bundle_mode {
       let maybe_browser = if self.resolution_config.prefer_browser_field {
@@ -1852,13 +1846,7 @@ impl<
         .or(package_json.module.as_deref())
         .or(package_json.main.as_deref())
     } else {
-      match node_module_kind {
-        NodeModuleKind::Esm => package_json
-          .module
-          .as_deref()
-          .or(package_json.main.as_deref()),
-        NodeModuleKind::Cjs => package_json.main.as_deref(),
-      }
+      package_json.main.as_deref()
     }
   }
 
@@ -1870,11 +1858,6 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
-    let pkg_json_kind = match resolution_mode {
-      ResolutionMode::Require => NodeModuleKind::Cjs,
-      ResolutionMode::Import => NodeModuleKind::Esm,
-    };
-
     let maybe_main = if resolution_kind.is_types() {
       match package_json.types.as_ref() {
         Some(types) => {
@@ -1889,9 +1872,7 @@ impl<
         None => {
           // fallback to checking the main entrypoint for
           // a corresponding declaration file
-          if let Some(main) =
-            self.legacy_fallback_resolve(package_json, pkg_json_kind)
-          {
+          if let Some(main) = self.legacy_fallback_resolve(package_json) {
             let main = package_json.path.parent().unwrap().join(main).clean();
             let decl_path_result = self.path_to_declaration_path(
               LocalPath {
@@ -1912,7 +1893,7 @@ impl<
       }
     } else {
       self
-        .legacy_fallback_resolve(package_json, pkg_json_kind)
+        .legacy_fallback_resolve(package_json)
         .map(Cow::Borrowed)
     };
 

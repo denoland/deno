@@ -407,10 +407,9 @@ impl<
             .load_package_json(&package_json_path)
             .map_err(JsErrorBox::from_err)?;
           if let Some(package_json) = maybe_package_json {
-            if let Some(main) = self.node_resolver.legacy_fallback_resolve(
-              &package_json,
-              crate::resolution::NodeModuleKind::Cjs,
-            ) {
+            if let Some(main) =
+              self.node_resolver.legacy_fallback_resolve(&package_json)
+            {
               return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
             }
           }
@@ -420,10 +419,9 @@ impl<
         return self
           .file_extension_probe(d, referrer_path)
           .map(|p| Some(UrlOrPath::Path(p)));
-      } else if let Some(main) = self.node_resolver.legacy_fallback_resolve(
-        &package_json,
-        crate::resolution::NodeModuleKind::Cjs,
-      ) {
+      } else if let Some(main) =
+        self.node_resolver.legacy_fallback_resolve(&package_json)
+      {
         return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
