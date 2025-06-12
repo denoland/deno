@@ -7,6 +7,7 @@ use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
 use deno_graph::Module;
 use deno_graph::Resolution;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -22,6 +23,7 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveErrorKind;
 use crate::DenoResolverSys;
+use crate::NpmSpecifierNoNpmError;
 use crate::RawDenoResolverRc;
 
 #[allow(clippy::disallowed_types)]
@@ -218,29 +220,12 @@ impl<
     };
 
     let specifier = match graph.get(&specifier) {
-      Some(Module::Npm(module)) => {
-        let node_and_npm_resolver =
-          self.resolver.node_and_npm_resolver.as_ref().unwrap();
-        let package_folder = node_and_npm_resolver
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        node_and_npm_resolver
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
-            Some(referrer),
-            resolution_mode,
-            resolution_kind,
-          )
-          .map_err(|source| CouldNotResolveError {
-            reference: module.nv_reference.clone(),
-            source,
-          })?
-          .into_url()?
-      }
+      Some(Module::Npm(module)) => self.resolve_npm_nv_ref(
+        &module.nv_reference,
+        Some(referrer),
+        resolution_mode,
+        resolution_kind,
+      )?,
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
       Some(Module::Json(module)) => module.specifier.clone(),
@@ -254,6 +239,39 @@ impl<
       None => specifier.into_owned(),
     };
     Ok(specifier)
+  }
+
+  pub fn resolve_npm_nv_ref(
+    &self,
+    nv_ref: &NpmPackageNvReference,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<Url, ResolveWithGraphError> {
+    let node_and_npm_resolver =
+      self.resolver.node_and_npm_resolver.as_ref().unwrap();
+    let package_folder = node_and_npm_resolver
+      .npm_resolver
+      .as_managed()
+      .ok_or_else(|| NpmSpecifierNoNpmError(nv_ref.nv().clone().into_req()))
+      .unwrap() // we won't have an nv ref when not managed
+      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
+    Ok(
+      node_and_npm_resolver
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          &package_folder,
+          nv_ref.sub_path(),
+          maybe_referrer,
+          resolution_mode,
+          resolution_kind,
+        )
+        .map_err(|source| CouldNotResolveError {
+          reference: nv_ref.clone(),
+          source,
+        })?
+        .into_url()?,
+    )
   }
 
   pub fn resolve(

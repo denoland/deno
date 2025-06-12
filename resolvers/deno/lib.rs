@@ -11,6 +11,7 @@ use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
@@ -63,6 +64,11 @@ pub type WorkspaceResolverRc<TSys> =
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
 
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("npm package 'npm:{}' was requested; but --no-npm is specified", .0)]
+pub struct NpmSpecifierNoNpmError(pub PackageReq);
+
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
   pub url: Url,
@@ -93,6 +99,9 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmSpecifierNoNpm(#[from] NpmSpecifierNoNpmError),
   #[class(inherit)]
   #[error(transparent)]
   PackageJsonDepValueParse(#[from] PackageJsonDepValueParseError),
@@ -442,59 +451,18 @@ impl<
         if let Ok(npm_req_ref) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          // check if the npm specifier resolves to a workspace member
-          if let Some(pkg_folder) = self
-            .workspace_resolver
-            .resolve_workspace_pkg_json_folder_for_npm_specifier(
-              npm_req_ref.req(),
+          return self
+            .resolve_npm_req_ref(
+              &npm_req_ref,
+              resolution_mode,
+              resolution_kind,
+              referrer,
             )
-          {
-            return node_resolver
-              .resolve_package_subpath_from_deno_module(
-                pkg_folder,
-                npm_req_ref.sub_path(),
-                Some(referrer),
-                resolution_mode,
-                resolution_kind,
-              )
-              .map_err(DenoResolveError::from)
-              .and_then(|url_or_path| {
-                Ok(DenoResolution {
-                  url: url_or_path.into_url()?,
-                  maybe_diagnostic,
-                  found_package_json_dep,
-                })
-              });
-          }
-
-          // do npm resolution for byonm
-          if self.is_byonm {
-            return npm_req_resolver
-              .resolve_req_reference(
-                &npm_req_ref,
-                referrer,
-                resolution_mode,
-                resolution_kind,
-              )
-              .map_err(|err| {
-                match err.into_kind() {
-                  ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
-                    err.into()
-                  }
-                }
-              })
-              .and_then(|url_or_path| Ok(DenoResolution {
-                url: url_or_path.into_url()?,
-                maybe_diagnostic,
-                found_package_json_dep,
-              }));
-          }
+            .map(|url| DenoResolution {
+              url,
+              maybe_diagnostic,
+              found_package_json_dep,
+            });
         }
 
         Ok(DenoResolution {
@@ -557,5 +525,63 @@ impl<
         Err(err)
       }
     }
+  }
+
+  pub fn resolve_npm_req_ref(
+    &self,
+    npm_req_ref: &NpmPackageReqReference,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+    referrer: &Url,
+  ) -> Result<Url, DenoResolveError> {
+    let Some(NodeAndNpmResolvers {
+      node_resolver,
+      npm_req_resolver,
+      ..
+    }) = &self.node_and_npm_resolver
+    else {
+      return Err(
+        DenoResolveErrorKind::NpmSpecifierNoNpm(NpmSpecifierNoNpmError(
+          npm_req_ref.req().clone(),
+        ))
+        .into_box(),
+      );
+    };
+    // check if the npm specifier resolves to a workspace member
+    if let Some(pkg_folder) = self
+      .workspace_resolver
+      .resolve_workspace_pkg_json_folder_for_npm_specifier(npm_req_ref.req())
+    {
+      return node_resolver
+        .resolve_package_subpath_from_deno_module(
+          pkg_folder,
+          npm_req_ref.sub_path(),
+          Some(referrer),
+          resolution_mode,
+          resolution_kind,
+        )
+        .map_err(DenoResolveError::from)
+        .and_then(|url_or_path| Ok(url_or_path.into_url()?));
+    }
+
+    npm_req_resolver
+      .resolve_req_reference(
+        npm_req_ref,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map_err(|err| match err.into_kind() {
+        ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
+          err,
+        ) => err.into(),
+        ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(err) => {
+          err.into()
+        }
+        ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
+          err.into()
+        }
+      })
+      .and_then(|url_or_path| Ok(url_or_path.into_url()?))
   }
 }
