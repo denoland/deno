@@ -1481,6 +1481,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_snapshots",
+ "deno_subprocess_windows",
  "deno_task_shell",
  "deno_telemetry",
  "deno_terminal 0.2.2",
@@ -2083,6 +2084,7 @@ dependencies = [
  "async-trait",
  "deno_core",
  "deno_error",
+ "deno_subprocess_windows",
  "filetime",
  "fs3",
  "libc",
@@ -2298,6 +2300,7 @@ dependencies = [
  "deno_path_util",
  "deno_permissions",
  "deno_process",
+ "deno_subprocess_windows",
  "deno_whoami",
  "der",
  "digest",
@@ -2587,6 +2590,7 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_subprocess_windows",
  "libc",
  "log",
  "memchr",
@@ -2732,6 +2736,17 @@ name = "deno_snapshots"
 version = "0.21.0"
 dependencies = [
  "deno_runtime",
+]
+
+[[package]]
+name = "deno_subprocess_windows"
+version = "0.1.0"
+dependencies = [
+ "fastrand",
+ "futures-channel",
+ "libc",
+ "pretty_assertions",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3039,6 +3054,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_snapshots",
+ "deno_subprocess_windows",
  "deno_terminal 0.2.2",
  "import_map",
  "indexmap 2.9.0",
@@ -3699,9 +3715,9 @@ dependencies = [
 
 [[package]]
 name = "fastrand"
-version = "2.0.2"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "658bd65b1cf4c852a3cc96f18a8ce7b5640f6b703f905c7d74532294c2a63984"
+checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "fastwebsockets"
@@ -5249,9 +5265,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
+checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "libffi"

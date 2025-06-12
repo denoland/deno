@@ -104,3 +104,4 @@ errno = "0.3.10"
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
 winapi = { workspace = true, features = ["consoleapi"] }
+deno_subprocess_windows.workspace = true
