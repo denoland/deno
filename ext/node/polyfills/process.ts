@@ -326,7 +326,8 @@ memoryUsage.rss = function (): number {
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
-    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
+    // the windows implementation is ported from libuv, so the error numbers already match libuv and don't need mapping
+    res === 0 ? res : isWindows ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));

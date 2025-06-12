@@ -183,26 +183,24 @@ impl NpmInstallDepsProvider {
       }
     }
 
-    if workspace.has_unstable("npm-patch") {
-      for pkg in workspace.patch_pkg_jsons() {
-        let Some(name) = pkg.name.as_ref() else {
-          continue;
-        };
-        let Some(version) = pkg
-          .version
-          .as_ref()
-          .and_then(|v| Version::parse_from_npm(v).ok())
-        else {
-          continue;
-        };
-        patch_pkgs.push(InstallPatchPkg {
-          nv: PackageNv {
-            name: PackageName::from_str(name),
-            version,
-          },
-          target_dir: pkg.dir_path().to_path_buf(),
-        })
-      }
+    for pkg in workspace.link_pkg_jsons() {
+      let Some(name) = pkg.name.as_ref() else {
+        continue;
+      };
+      let Some(version) = pkg
+        .version
+        .as_ref()
+        .and_then(|v| Version::parse_from_npm(v).ok())
+      else {
+        continue;
+      };
+      patch_pkgs.push(InstallPatchPkg {
+        nv: PackageNv {
+          name: PackageName::from_str(name),
+          version,
+        },
+        target_dir: pkg.dir_path().to_path_buf(),
+      })
     }
 
     remote_pkgs.shrink_to_fit();

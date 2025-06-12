@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod esbuild;
+mod externals;
 
 use std::path::Path;
 use std::rc::Rc;
@@ -12,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::ModuleLoader;
+use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::Position;
 use deno_lib::worker::ModuleLoaderFactory;
@@ -25,7 +27,6 @@ use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use regex::Regex;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
@@ -41,27 +42,7 @@ use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
-
-/// Given a set of pattern indicating files to mark as external,
-/// return a regex that matches any of those patterns.
-///
-/// For instance given, `--external="*.node" --external="*.wasm"`, the regex will match
-/// any path that ends with `.node` or `.wasm`.
-pub fn externals_regex(external: &[String]) -> Regex {
-  let mut regex_str = String::new();
-  for (i, e) in external.iter().enumerate() {
-    if i > 0 {
-      regex_str.push('|');
-    }
-    regex_str.push_str("(^");
-    if e.starts_with("/") {
-      regex_str.push_str(".*");
-    }
-    regex_str.push_str(&regex::escape(e).replace("\\*", ".*"));
-    regex_str.push(')');
-  }
-  regex::Regex::new(&regex_str).unwrap()
-}
+use crate::tools::bundle::externals::ExternalsMatcher;
 
 pub async fn bundle(
   flags: Arc<Flags>,
@@ -79,7 +60,7 @@ pub async fn bundle(
     deno_dir,
     npmrc,
     npm_registry_info,
-    workspace_factory.workspace_npm_patch_packages()?,
+    workspace_factory.workspace_npm_link_packages()?,
     installer_factory.tarball_cache()?,
     factory.npm_cache()?,
   )
@@ -96,7 +77,7 @@ pub async fn bundle(
     .create_for_main(root_permissions.clone())
     .module_loader;
   let sys = factory.sys();
-  let init_cwd = cli_options.initial_cwd().canonicalize()?;
+  let init_cwd = cli_options.initial_cwd().to_path_buf();
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
@@ -110,18 +91,16 @@ pub async fn bundle(
     npm_resolver: npm_resolver.clone(),
     node_resolver: node_resolver.clone(),
     module_loader: module_loader.clone(),
-    // TODO(nathanwhit): look at the external patterns to give diagnostics for probably incorrect patterns
-    externals_regex: if bundle_flags.external.is_empty() {
+    externals_matcher: if bundle_flags.external.is_empty() {
       None
     } else {
-      Some(externals_regex(&bundle_flags.external))
+      Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
   });
   let start = std::time::Instant::now();
 
   let entrypoint = bundle_flags
     .entrypoints
-    .first()
     .iter()
     .map(|e| resolve_url_or_path(e, &init_cwd).unwrap())
     .collect::<Vec<_>>();
@@ -254,10 +233,7 @@ pub async fn bundle(
 
   if let Some(stdout) = response.write_to_stdout {
     let stdout = replace_require_shim(&String::from_utf8_lossy(&stdout));
-    #[allow(clippy::print_stdout)]
-    {
-      println!("{}", stdout);
-    }
+    crate::display::write_to_stdout_ignore_sigpipe(stdout.as_bytes())?;
   } else if response.errors.is_empty() {
     if bundle_flags.output_dir.is_none()
       && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
@@ -348,6 +324,17 @@ enum BundleError {
   HttpCache,
 }
 
+fn requested_type_from_map(
+  map: &IndexMap<String, String>,
+) -> RequestedModuleType {
+  let type_ = map.get("type").map(|s| s.as_str());
+  match type_ {
+    Some("json") => RequestedModuleType::Json,
+    Some(other) => RequestedModuleType::Other(other.to_string().into()),
+    None => RequestedModuleType::None,
+  }
+}
+
 struct DenoPluginHandler {
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
@@ -356,7 +343,7 @@ struct DenoPluginHandler {
   npm_resolver: CliNpmResolver,
   node_resolver: Arc<CliNodeResolver>,
   module_loader: Rc<dyn ModuleLoader>,
-  externals_regex: Option<Regex>,
+  externals_matcher: Option<ExternalsMatcher>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -366,8 +353,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(reg) = &self.externals_regex {
-      if reg.is_match(&args.path) {
+    if let Some(matcher) = &self.externals_matcher {
+      if matcher.is_pre_resolve_match(&args.path) {
         return Ok(Some(esbuild_client::OnResolveResult {
           external: Some(true),
           path: Some(args.path),
@@ -386,6 +373,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     )?;
 
     Ok(result.map(|r| {
+      // TODO(nathanwhit): remap the resolved path to be relative
+      // to the output file. It will be tricky to figure out which
+      // output file this import will end up in. We may have to use the metafile and rewrite at the end
+      let is_external = r.starts_with("node:")
+        || self
+          .externals_matcher
+          .as_ref()
+          .map(|matcher| matcher.is_post_resolve_match(&r))
+          .unwrap_or(false);
+
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
           || r.starts_with("https:")
@@ -396,14 +393,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         } else {
           None
         },
-        external: Some(
-          r.starts_with("node:")
-            || self
-              .externals_regex
-              .as_ref()
-              .map(|reg| reg.is_match(&r))
-              .unwrap_or(false),
-        ),
+        external: Some(is_external),
         path: Some(r),
         plugin_name: Some("deno".to_string()),
         plugin_data: None,
@@ -416,7 +406,9 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
-    let result = self.bundle_load(&args.path, "").await?;
+    let result = self
+      .bundle_load(&args.path, requested_type_from_map(&args.with))
+      .await?;
     log::trace!(
       "{}: {:?}",
       deno_terminal::colors::magenta("on_load"),
@@ -467,7 +459,6 @@ impl DenoPluginHandler {
     importer: Option<&str>,
     resolve_dir: Option<&str>,
     kind: esbuild_client::protocol::ImportKind,
-    // TODO: use this / store it for later usage when loading
     with: IndexMap<String, String>,
   ) -> Result<Option<String>, AnyError> {
     log::debug!(
@@ -563,18 +554,19 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    resolve_dir: &str,
+    requested_type: RequestedModuleType,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, AnyError> {
     log::debug!(
       "{}: {:?} {:?}",
       deno_terminal::colors::magenta("bundle_load"),
       specifier,
-      resolve_dir
+      requested_type
     );
 
-    let resolve_dir = Path::new(&resolve_dir);
-    let specifier = deno_core::resolve_url_or_path(specifier, resolve_dir)?;
-
+    let specifier = deno_core::resolve_url_or_path(
+      specifier,
+      Path::new(""), // should be absolute already, feels kind of hacky though
+    )?;
     let (specifier, loader) = if let Some((specifier, loader)) =
       self.specifier_and_type_from_graph(&specifier)?
     {
@@ -602,12 +594,10 @@ impl DenoPluginHandler {
       }
       (specifier, media_type_to_loader(media_type))
     };
-    let loaded = self.module_loader.load(
-      &specifier,
-      None,
-      false,
-      deno_core::RequestedModuleType::None,
-    );
+    let loaded =
+      self
+        .module_loader
+        .load(&specifier, None, false, requested_type);
 
     match loaded {
       deno_core::ModuleLoadResponse::Sync(module_source) => {
