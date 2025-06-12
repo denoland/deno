@@ -52,10 +52,11 @@ import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 const DH_GENERATOR = 2;
 
 export function DiffieHellman(
-    sizeOrKey: number | string | ArrayBufferView,
-    keyEncoding?: unknown,
-    generator?: unknown,
-    genEncoding?: unknown,) {
+  sizeOrKey: number | string | ArrayBufferView,
+  keyEncoding?: unknown,
+  generator?: unknown,
+  genEncoding?: unknown,
+) {
   return new DiffieHellman_(
     sizeOrKey,
     keyEncoding,
