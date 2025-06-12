@@ -223,6 +223,7 @@ enum DotEnvLoadErr {
 }
 
 #[op2(fast)]
+#[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
