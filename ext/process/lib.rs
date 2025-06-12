@@ -532,7 +532,7 @@ fn create_command(
 
   #[cfg(windows)]
   {
-    let mut extra_pipe_rids = Vec::new();
+    let mut extra_pipe_rids = Vec::with_capacity(args.extra_stdio.len());
 
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
@@ -582,6 +582,7 @@ fn create_command(
         command.extra_handle(Some(fd2));
         extra_pipe_rids.push(Some(rid));
       } else {
+        // no handle, push an empty handle so we need get the right fds for following handles
         command.extra_handle(None);
         extra_pipe_rids.push(None);
       }
