@@ -90,6 +90,7 @@ use deno_ast::view::VarDeclKind;
 use deno_ast::ParsedSource;
 
 use super::buffer::AstBufSerializer;
+use super::buffer::CommentKind;
 use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
 use super::ts_estree::MethodKind as TsEstreeMethodKind;
@@ -132,6 +133,14 @@ pub fn serialize_swc_to_buffer(
 
       ctx.write_program(&script.span, SourceKind::Script, children);
     }
+  }
+
+  for comment in parsed_source.comments().get_vec() {
+    let kind = match comment.kind {
+      deno_ast::swc::common::comments::CommentKind::Line => CommentKind::Line,
+      deno_ast::swc::common::comments::CommentKind::Block => CommentKind::Block,
+    };
+    ctx.write_comment(kind, &comment.text, &comment.span);
   }
 
   ctx.map_utf8_spans_to_utf16(utf16_map);
@@ -294,6 +303,13 @@ fn serialize_module_decl(
 
           let body = ctx.write_class_body(&node.class.span, members);
 
+          let decorators = node
+            .class
+            .decorators
+            .iter()
+            .map(|deco| serialize_decorator(ctx, deco))
+            .collect::<Vec<_>>();
+
           let decl = ctx.write_class_decl(
             &node.class.span,
             false,
@@ -302,6 +318,7 @@ fn serialize_module_decl(
             super_class,
             implements,
             body,
+            decorators,
           );
 
           (false, decl)
@@ -320,7 +337,15 @@ fn serialize_module_decl(
           let params = fn_obj
             .params
             .iter()
-            .map(|param| serialize_pat(ctx, &param.pat))
+            .map(|param| {
+              let decorators = param
+                .decorators
+                .iter()
+                .map(|deco| serialize_decorator(ctx, deco))
+                .collect::<Vec<_>>();
+
+              serialize_pat(ctx, &param.pat, Some(decorators))
+            })
             .collect::<Vec<_>>();
 
           let return_type =
@@ -564,7 +589,10 @@ fn serialize_stmt(ctx: &mut TsEsTreeBuilder, stmt: &Stmt) -> NodeRef {
       let block = serialize_stmt(ctx, &Stmt::Block(node.block.clone()));
 
       let handler = node.handler.as_ref().map(|catch| {
-        let param = catch.param.as_ref().map(|param| serialize_pat(ctx, param));
+        let param = catch
+          .param
+          .as_ref()
+          .map(|param| serialize_pat(ctx, param, None));
 
         let body = serialize_stmt(ctx, &Stmt::Block(catch.body.clone()));
 
@@ -665,7 +693,15 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
       let params = fn_obj
         .params
         .iter()
-        .map(|param| serialize_pat(ctx, &param.pat))
+        .map(|param| {
+          let decorators = param
+            .decorators
+            .iter()
+            .map(|deco| serialize_decorator(ctx, deco))
+            .collect::<Vec<_>>();
+
+          serialize_pat(ctx, &param.pat, Some(decorators))
+        })
         .collect::<Vec<_>>();
 
       let return_id = maybe_serialize_ts_type_ann(ctx, &fn_obj.return_type);
@@ -716,7 +752,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         BinaryOp::EqEq => (AstNode::BinaryExpression, "=="),
         BinaryOp::NotEq => (AstNode::BinaryExpression, "!="),
         BinaryOp::EqEqEq => (AstNode::BinaryExpression, "==="),
-        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!="),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!=="),
         BinaryOp::Lt => (AstNode::BinaryExpression, "<"),
         BinaryOp::LtEq => (AstNode::BinaryExpression, "<="),
         BinaryOp::Gt => (AstNode::BinaryExpression, ">"),
@@ -755,7 +791,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         AssignTarget::Simple(simple_assign_target) => {
           match simple_assign_target {
             SimpleAssignTarget::Ident(target) => {
-              serialize_binding_ident(ctx, target)
+              serialize_binding_ident(ctx, target, None)
             }
             SimpleAssignTarget::Member(target) => {
               serialize_expr(ctx, &Expr::Member(target.clone()))
@@ -792,10 +828,10 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         }
         AssignTarget::Pat(target) => match target {
           AssignTargetPat::Array(array_pat) => {
-            serialize_pat(ctx, &Pat::Array(array_pat.clone()))
+            serialize_pat(ctx, &Pat::Array(array_pat.clone()), None)
           }
           AssignTargetPat::Object(object_pat) => {
-            serialize_pat(ctx, &Pat::Object(object_pat.clone()))
+            serialize_pat(ctx, &Pat::Object(object_pat.clone()), None)
           }
           AssignTargetPat::Invalid(_) => {
             // Ignore syntax errors
@@ -953,7 +989,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
       let params = node
         .params
         .iter()
-        .map(|param| serialize_pat(ctx, param))
+        .map(|param| serialize_pat(ctx, param, None))
         .collect::<Vec<_>>();
 
       let body = match node.body.as_ref() {
@@ -1035,12 +1071,12 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
     Expr::MetaProp(node) => {
       let (meta, prop) = match node.kind {
         MetaPropKind::NewTarget => (
-          ctx.write_identifier(&node.span, "new", false, None),
-          ctx.write_identifier(&node.span, "target", false, None),
+          ctx.write_identifier(&node.span, "new", false, None, None),
+          ctx.write_identifier(&node.span, "target", false, None, None),
         ),
         MetaPropKind::ImportMeta => (
-          ctx.write_identifier(&node.span, "import", false, None),
-          ctx.write_identifier(&node.span, "meta", false, None),
+          ctx.write_identifier(&node.span, "import", false, None, None),
+          ctx.write_identifier(&node.span, "meta", false, None, None),
         ),
       };
       ctx.write_meta_prop(&node.span, meta, prop)
@@ -1068,7 +1104,8 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
     Expr::TsConstAssertion(node) => {
       let expr = serialize_expr(ctx, node.expr.as_ref());
 
-      let type_name = ctx.write_identifier(&node.span, "const", false, None);
+      let type_name =
+        ctx.write_identifier(&node.span, "const", false, None, None);
       let type_ann = ctx.write_ts_type_ref(&node.span, type_name, None);
 
       ctx.write_ts_as_expr(&node.span, expr, type_ann)
@@ -1165,7 +1202,8 @@ fn serialize_prop_or_spread(
           let left = serialize_ident(ctx, &assign_prop.key, None);
           let right = serialize_expr(ctx, assign_prop.value.as_ref());
 
-          let child_pos = ctx.write_assign_pat(&assign_prop.span, left, right);
+          let child_pos =
+            ctx.write_assign_pat(&assign_prop.span, left, right, None);
 
           (left, child_pos)
         }
@@ -1294,6 +1332,7 @@ fn serialize_ident(
     ident.sym.as_str(),
     ident.optional,
     type_ann,
+    None,
   )
 }
 
@@ -1334,6 +1373,13 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
 
       let body = ctx.write_class_body(&node.class.span, members);
 
+      let decorators = node
+        .class
+        .decorators
+        .iter()
+        .map(|deco| serialize_decorator(ctx, deco))
+        .collect::<Vec<_>>();
+
       ctx.write_class_decl(
         &node.class.span,
         false,
@@ -1342,6 +1388,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         super_class,
         implements,
         body,
+        decorators,
       )
     }
     Decl::Fn(node) => {
@@ -1361,7 +1408,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .function
         .params
         .iter()
-        .map(|param| serialize_pat(ctx, &param.pat))
+        .map(|param| serialize_pat(ctx, &param.pat, None))
         .collect::<Vec<_>>();
 
       if let Some(body) = body {
@@ -1394,7 +1441,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .decls
         .iter()
         .map(|decl| {
-          let ident = serialize_pat(ctx, &decl.name);
+          let ident = serialize_pat(ctx, &decl.name, None);
           let init = decl
             .init
             .as_ref()
@@ -1423,7 +1470,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .decls
         .iter()
         .map(|decl| {
-          let ident = serialize_pat(ctx, &decl.name);
+          let ident = serialize_pat(ctx, &decl.name, None);
           let init = decl
             .init
             .as_ref()
@@ -1854,25 +1901,39 @@ fn serialize_jsx_identifier(
   ctx.write_jsx_identifier(&node.span, &node.sym)
 }
 
-fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
+fn serialize_pat(
+  ctx: &mut TsEsTreeBuilder,
+  pat: &Pat,
+  decorators: Option<Vec<NodeRef>>,
+) -> NodeRef {
   match pat {
-    Pat::Ident(node) => serialize_binding_ident(ctx, node),
+    Pat::Ident(node) => serialize_binding_ident(ctx, node, decorators),
     Pat::Array(node) => {
       let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
 
       let children = node
         .elems
         .iter()
-        .map(|pat| pat.as_ref().map_or(NodeRef(0), |v| serialize_pat(ctx, v)))
+        .map(|pat| {
+          pat
+            .as_ref()
+            .map_or(NodeRef(0), |v| serialize_pat(ctx, v, None))
+        })
         .collect::<Vec<_>>();
 
-      ctx.write_arr_pat(&node.span, node.optional, type_ann, children)
+      ctx.write_arr_pat(
+        &node.span,
+        node.optional,
+        type_ann,
+        children,
+        decorators,
+      )
     }
     Pat::Rest(node) => {
       let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
-      let arg = serialize_pat(ctx, &node.arg);
+      let arg = serialize_pat(ctx, &node.arg, None);
 
-      ctx.write_rest_elem(&node.span, type_ann, arg)
+      ctx.write_rest_elem(&node.span, type_ann, arg, decorators)
     }
     Pat::Object(node) => {
       let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
@@ -1885,7 +1946,7 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
             let computed = matches!(key_value_prop.key, PropName::Computed(_));
 
             let key = serialize_prop_name(ctx, &key_value_prop.key);
-            let value = serialize_pat(ctx, key_value_prop.value.as_ref());
+            let value = serialize_pat(ctx, key_value_prop.value.as_ref(), None);
 
             ctx.write_property(
               &key_value_prop.span(),
@@ -1898,40 +1959,47 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
             )
           }
           ObjectPatProp::Assign(assign_pat_prop) => {
-            let ident = serialize_binding_ident(ctx, &assign_pat_prop.key);
+            let key = serialize_binding_ident(ctx, &assign_pat_prop.key, None);
+            let mut value =
+              serialize_binding_ident(ctx, &assign_pat_prop.key, None);
 
             let shorthand = assign_pat_prop.value.is_none();
-            let value = assign_pat_prop.value.as_ref().map_or(
-              // SWC has value as optional with shorthand properties,
-              // but TSESTree expects the value to be a duplicate of
-              // the binding ident.
-              serialize_binding_ident(ctx, &assign_pat_prop.key),
-              |value| serialize_expr(ctx, value),
-            );
+
+            if let Some(assign) = &assign_pat_prop.value {
+              let expr = serialize_expr(ctx, assign);
+              value =
+                ctx.write_assign_pat(&assign_pat_prop.span, value, expr, None);
+            }
 
             ctx.write_property(
-              &assign_pat_prop.span,
+              &node.span,
               shorthand,
               false,
               false,
               PropertyKind::Init,
-              ident,
+              key,
               value,
             )
           }
           ObjectPatProp::Rest(rest_pat) => {
-            serialize_pat(ctx, &Pat::Rest(rest_pat.clone()))
+            serialize_pat(ctx, &Pat::Rest(rest_pat.clone()), None)
           }
         })
         .collect::<Vec<_>>();
 
-      ctx.write_obj_pat(&node.span, node.optional, type_ann, children)
+      ctx.write_obj_pat(
+        &node.span,
+        node.optional,
+        type_ann,
+        children,
+        decorators,
+      )
     }
     Pat::Assign(node) => {
-      let left = serialize_pat(ctx, &node.left);
+      let left = serialize_pat(ctx, &node.left, None);
       let right = serialize_expr(ctx, &node.right);
 
-      ctx.write_assign_pat(&node.span, left, right)
+      ctx.write_assign_pat(&node.span, left, right, decorators)
     }
     Pat::Invalid(_) => {
       // Ignore syntax errors
@@ -1952,7 +2020,7 @@ fn serialize_for_head(
     ForHead::UsingDecl(using_decl) => {
       serialize_decl(ctx, &Decl::Using(using_decl.clone()))
     }
-    ForHead::Pat(pat) => serialize_pat(ctx, pat),
+    ForHead::Pat(pat) => serialize_pat(ctx, pat, None),
   }
 }
 
@@ -1969,7 +2037,13 @@ fn serialize_ident_name(
   ctx: &mut TsEsTreeBuilder,
   ident_name: &IdentName,
 ) -> NodeRef {
-  ctx.write_identifier(&ident_name.span, ident_name.sym.as_str(), false, None)
+  ctx.write_identifier(
+    &ident_name.span,
+    ident_name.sym.as_str(),
+    false,
+    None,
+    None,
+  )
 }
 
 fn serialize_prop_name(
@@ -2073,10 +2147,10 @@ fn serialize_class_member(
 
             let paramter = match &prop.param {
               TsParamPropParam::Ident(binding_ident) => {
-                serialize_binding_ident(ctx, binding_ident)
+                serialize_binding_ident(ctx, binding_ident, None)
               }
               TsParamPropParam::Assign(assign_pat) => {
-                serialize_pat(ctx, &Pat::Assign(assign_pat.clone()))
+                serialize_pat(ctx, &Pat::Assign(assign_pat.clone()), None)
               }
             };
 
@@ -2089,7 +2163,9 @@ fn serialize_class_member(
               paramter,
             )
           }
-          ParamOrTsParamProp::Param(param) => serialize_pat(ctx, &param.pat),
+          ParamOrTsParamProp::Param(param) => {
+            serialize_pat(ctx, &param.pat, None)
+          }
         })
         .collect::<Vec<_>>();
 
@@ -2113,6 +2189,7 @@ fn serialize_class_member(
         a11y,
         key,
         value,
+        vec![],
       ))
     }
     ClassMember::Method(node) => {
@@ -2289,7 +2366,15 @@ fn serialize_class_method(
   let params = function
     .params
     .iter()
-    .map(|param| serialize_pat(ctx, &param.pat))
+    .map(|param| {
+      let decorators = param
+        .decorators
+        .iter()
+        .map(|deco| serialize_decorator(ctx, deco))
+        .collect::<Vec<_>>();
+
+      serialize_pat(ctx, &param.pat, Some(decorators))
+    })
     .collect::<Vec<_>>();
 
   let return_type = maybe_serialize_ts_type_ann(ctx, &function.return_type);
@@ -2337,6 +2422,12 @@ fn serialize_class_method(
       value,
     )
   } else {
+    let decorators = function
+      .decorators
+      .iter()
+      .map(|deco| serialize_decorator(ctx, deco))
+      .collect::<Vec<_>>();
+
     ctx.write_class_method(
       span,
       false,
@@ -2348,6 +2439,7 @@ fn serialize_class_method(
       a11y,
       key,
       value,
+      decorators,
     )
   }
 }
@@ -2373,9 +2465,16 @@ fn serialize_decorator(ctx: &mut TsEsTreeBuilder, node: &Decorator) -> NodeRef {
 fn serialize_binding_ident(
   ctx: &mut TsEsTreeBuilder,
   node: &BindingIdent,
+  decorators: Option<Vec<NodeRef>>,
 ) -> NodeRef {
   let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
-  ctx.write_identifier(&node.span, &node.sym, node.optional, type_ann)
+  ctx.write_identifier(
+    &node.span,
+    &node.sym,
+    node.optional,
+    type_ann,
+    decorators,
+  )
 }
 
 fn serialize_ts_param_inst(
@@ -2504,7 +2603,7 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
               Pat::Object(object_pat) => object_pat.optional,
               _ => false,
             };
-            let label = serialize_pat(ctx, label);
+            let label = serialize_pat(ctx, label, None);
             let type_id = serialize_ts_type(ctx, elem.ty.as_ref());
 
             ctx
@@ -2773,9 +2872,11 @@ fn serialize_ts_fn_param(
   node: &TsFnParam,
 ) -> NodeRef {
   match node {
-    TsFnParam::Ident(ident) => serialize_binding_ident(ctx, ident),
-    TsFnParam::Array(pat) => serialize_pat(ctx, &Pat::Array(pat.clone())),
-    TsFnParam::Rest(pat) => serialize_pat(ctx, &Pat::Rest(pat.clone())),
-    TsFnParam::Object(pat) => serialize_pat(ctx, &Pat::Object(pat.clone())),
+    TsFnParam::Ident(ident) => serialize_binding_ident(ctx, ident, None),
+    TsFnParam::Array(pat) => serialize_pat(ctx, &Pat::Array(pat.clone()), None),
+    TsFnParam::Rest(pat) => serialize_pat(ctx, &Pat::Rest(pat.clone()), None),
+    TsFnParam::Object(pat) => {
+      serialize_pat(ctx, &Pat::Object(pat.clone()), None)
+    }
   }
 }

@@ -212,7 +212,12 @@ export async function downloadPrebuilt(toolName) {
       url += ".gz";
     }
 
-    const resp = await fetch(url);
+    const headers = new Headers();
+    if (Deno.env.has("GITHUB_TOKEN")) {
+      headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
+    }
+
+    const resp = await fetch(url, { headers });
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }

@@ -87,13 +87,12 @@ impl LintRule for NoSloppyImportsRule {
       graph_kind: deno_graph::GraphKind::All,
       specifier: context.specifier().clone(),
       maybe_headers: None,
+      mtime: None,
       parsed_source: context.parsed_source(),
       // ignore resolving dynamic imports like import(`./dir/${something}`)
       file_system: &deno_graph::source::NullFileSystem,
       jsr_url_provider: &CliJsrUrlProvider,
       maybe_resolver: Some(&resolver),
-      // don't bother resolving npm specifiers
-      maybe_npm_resolver: None,
     });
 
     for (referrer, (specifier, sloppy_reason)) in

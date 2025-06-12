@@ -12,6 +12,7 @@ use std::future::poll_fn;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -49,6 +50,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -110,6 +112,8 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::cover_files;
+use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
@@ -348,28 +352,28 @@ impl TestFailure {
       }
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
-        write!(f, "Leaks detected:").unwrap();
+        write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).unwrap();
+          write!(f, "\n  - {}", detail).ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).unwrap();
+          write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
+        write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
         let mut f = String::new();
-        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
+        write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).unwrap();
+          write!(f, "\n  * {}", long_name).ok();
         }
         Cow::Owned(f)
       }
@@ -394,6 +398,38 @@ impl TestFailure {
         "Started test step with sanitizers while another test step was running"
           .to_string()
       }
+    }
+  }
+
+  pub fn error_location(&self) -> Option<TestLocation> {
+    const TEST_RUNNER: &str = "ext:cli/40_test.js";
+    match self {
+      TestFailure::JsError(js_error) => js_error
+        .frames
+        .iter()
+        // The first line of user code comes above the test file.
+        // The call stack usually contains the top 10 frames, and cuts off after that.
+        // We need to explicitly check for the test runner here.
+        // - Checking for a `ext:` is not enough, since other Deno `ext:`s can appear in the call stack.
+        // - This check guarantees that the next frame is inside of the Deno.test(),
+        //   and not somewhere else.
+        .position(|v| v.file_name.as_deref() == Some(TEST_RUNNER))
+        // Go one up in the stack frame, this is where the user code was
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| {
+          let user_frame = &js_error.frames[index];
+          let file_name = user_frame.file_name.as_ref()?.to_string();
+          // Turn into zero based indices
+          let line_number = user_frame.line_number.map(|v| v - 1)? as u32;
+          let column_number =
+            user_frame.column_number.map(|v| v - 1).unwrap_or(0) as u32;
+          Some(TestLocation {
+            file_name,
+            line_number,
+            column_number,
+          })
+        }),
+      _ => None,
     }
   }
 
@@ -629,15 +665,16 @@ async fn configure_main_worker(
       specifier.clone(),
       permissions_container,
       vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint_ext_for_test::init_ops(),
-        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
+        ops::testing::deno_test::init(worker_sender.sender),
+        ops::lint::deno_lint_ext_for_test::init(),
+        ops::jupyter::deno_jupyter_for_test::init(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
         stderr: StdioPipe::file(worker_sender.stderr),
       },
+      None,
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
@@ -648,7 +685,7 @@ async fn configure_main_worker(
     )?;
   }
   let res = worker.execute_side_module().await;
-  let mut worker = worker.into_main_worker();
+  let worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
     Err(CoreError::Js(err)) => {
@@ -1565,7 +1602,7 @@ pub async fn run_tests(
 ) -> Result<(), AnyError> {
   ignore_sigpipe();
 
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
@@ -1652,6 +1689,34 @@ pub async fn run_tests(
     },
   )
   .await?;
+
+  if test_flags.coverage_raw_data_only {
+    return Ok(());
+  }
+
+  if let Some(ref coverage) = test_flags.coverage_dir {
+    let reporters: [&dyn reporter::CoverageReporter; 3] = [
+      &reporter::SummaryCoverageReporter::new(),
+      &reporter::LcovCoverageReporter::new(),
+      &reporter::HtmlCoverageReporter::new(),
+    ];
+    if let Err(err) = cover_files(
+      flags,
+      vec![coverage.clone()],
+      vec![],
+      vec![],
+      vec![],
+      Some(
+        PathBuf::from(coverage)
+          .join("lcov.info")
+          .to_string_lossy()
+          .to_string(),
+      ),
+      &reporters,
+    ) {
+      log::info!("Error generating coverage report: {}", err);
+    }
+  }
 
   Ok(())
 }
@@ -1741,11 +1806,7 @@ pub async fn run_tests_with_watch(
           &cli_options.permissions_options(),
         )?;
         let graph = module_graph_creator
-          .create_graph(
-            graph_kind,
-            test_modules,
-            crate::graph_util::NpmCachingStrategy::Eager,
-          )
+          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
         let test_modules = &graph.roots;

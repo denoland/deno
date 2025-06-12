@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "lint main.ts",
+  "output": "comments.out",
+  "exitCode": 0
+}

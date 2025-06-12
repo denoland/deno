@@ -155,6 +155,12 @@ Deno.test("Plugin - visitor child combinator", () => {
   assertEquals(result[0].node.name, "foo");
 
   result = testVisit(
+    "class Foo { foo = 2 }",
+    "ClassBody > PropertyDefinition",
+  );
+  assertEquals(result[0].node.type, "PropertyDefinition");
+
+  result = testVisit(
     "if (false) foo; foo()",
     "IfStatement IfStatement",
   );
@@ -353,6 +359,105 @@ Deno.test("Plugin - visitor :nth-child", () => {
   );
   assertEquals(result[0].node.name, "bar");
   assertEquals(result[1].node.name, "foobar");
+});
+
+Deno.test("Plugin - visitor :has()", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // Multiple sub queries
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(CallExpression, Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // This should not match
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:has(CallExpression, Identifier[name='baz'])",
+  );
+  assertEquals(result, []);
+
+  // Attr match
+  result = testVisit(
+    "{ foo, bar }",
+    "Identifier:has([name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :is()/:where()/:matches()", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :is(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :where(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :matches(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :not", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(Identifier[name='baz'])",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // Multiple sub queries
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(Identifier[name='baz'], CallExpression)",
+  );
+  assertEquals(result[0].node.type, "BlockStatement");
+
+  // This should not match
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement:not(CallExpression, Identifier)",
+  );
+  assertEquals(result, []);
+
+  // Attr match
+  result = testVisit(
+    "{ foo, bar }",
+    "Identifier:not([name='foo'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - parent", () => {
+  let parent: Deno.lint.Node | undefined;
+
+  testPlugin("const foo = 1;", {
+    create() {
+      return {
+        VariableDeclaration(node) {
+          parent = node.parent;
+        },
+      };
+    },
+  });
+
+  assertEquals(parent?.type, "Program");
 });
 
 Deno.test("Plugin - Program", async (t) => {
@@ -766,6 +871,7 @@ Deno.test("Plugin - ObjectPattern", async (t) => {
   await testSnapshot(t, "const { 'a.b': A } = {}", "ObjectPattern");
   await testSnapshot(t, "const { prop = 2 } = {}", "ObjectPattern");
   await testSnapshot(t, "const { prop = 2, ...c } = {}", "ObjectPattern");
+  await testSnapshot(t, "({ a = b } = {})", "ObjectPattern");
 });
 
 Deno.test("Plugin - ArrayPattern", async (t) => {
@@ -811,6 +917,44 @@ Deno.test("Plugin - Abstract class", async (t) => {
   await testSnapshot(
     t,
     `abstract class SomeClass { abstract method(): string; }`,
+    "ClassDeclaration",
+  );
+});
+
+Deno.test("Plugin - Decorators", async (t) => {
+  // Class declaration
+  await testSnapshot(
+    t,
+    `@deco class Foo {}`,
+    "ClassDeclaration",
+  );
+
+  // Class expression
+  await testSnapshot(
+    t,
+    `let foo = class Foo { @deco foo() {} }`,
+    "ClassExpression",
+  );
+
+  // Other
+  await testSnapshot(
+    t,
+    `class Foo { @deco foobar() {} }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco get foo() { return 2 } }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco("arg") foo: string; constructor() { this.foo = "foo" } }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { foo(@deco foo: string) {} }`,
     "ClassDeclaration",
   );
 });

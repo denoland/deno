@@ -10,9 +10,13 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 #[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
@@ -26,14 +30,18 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -217,6 +225,10 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
+  ops = [
+    op_read_with_cancel_handle,
+    op_read_create_cancel_handle,
+  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -841,6 +853,47 @@ impl crate::fs::File for StdFileResourceInner {
     Err(FsError::NotSupported)
   }
 
+  fn chown_sync(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      let owner = _uid.map(nix::unistd::Uid::from_raw);
+      let group = _gid.map(nix::unistd::Gid::from_raw);
+      let res = nix::unistd::fchown(self.handle, owner, group);
+      if let Err(err) = res {
+        Err(io::Error::from_raw_os_error(err as i32).into())
+      } else {
+        Ok(())
+      }
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          use std::os::fd::AsFd;
+          let owner = _uid.map(nix::unistd::Uid::from_raw);
+          let group = _gid.map(nix::unistd::Gid::from_raw);
+          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+            .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
+        })
+        .await
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
     self.with_sync(|file| Ok(file.seek(pos)?))
   }
@@ -987,19 +1040,72 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
+}
+
+pub struct ReadCancelResource(Rc<CancelHandle>);
+
+impl Resource for ReadCancelResource {
+  fn name(&self) -> Cow<str> {
+    "readCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel();
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
+  state
+    .resource_table
+    .add(ReadCancelResource(CancelHandle::new_rc()))
+}
+
+#[op2(async)]
+pub async fn op_read_with_cancel_handle(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: u32,
+  #[smi] cancel_handle: u32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, JsErrorBox> {
+  let (fut, cancel_rc) = {
+    let state = state.borrow();
+    let cancel_handle = state
+      .resource_table
+      .get::<ReadCancelResource>(cancel_handle)
+      .unwrap()
+      .0
+      .clone();
+
+    (
+      FileResource::with_file(&state, rid, |file| {
+        let view = BufMutView::from(buf);
+        Ok(file.read_byob(view))
+      }),
+      cancel_handle,
+    )
+  };
+
+  fut?
+    .or_cancel(cancel_rc)
+    .await
+    .map_err(|_| JsErrorBox::generic("cancelled"))?
+    .map(|(n, _)| n as u32)
+    .map_err(JsErrorBox::from_err)
 }
 
 // override op_print to use the stdout and stderr in the resource table

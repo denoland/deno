@@ -81,7 +81,6 @@ nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
 nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
 nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
-nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
 
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],

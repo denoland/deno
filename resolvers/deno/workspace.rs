@@ -4,16 +4,21 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
+use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_media_type::MediaType;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -23,10 +28,14 @@ use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageReq;
 use deno_semver::RangeSetOrTag;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_terminal::colors;
 use import_map::specifier::SpecifierError;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
@@ -125,8 +134,8 @@ pub struct SpecifiedImportMap {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MappedResolutionDiagnostic {
   ConstraintNotMatchedLocalVersion {
-    /// If it was for a patch (true) or workspace (false) member.
-    is_patch: bool,
+    /// If it was for a link (true) or workspace (false) member.
+    is_link: bool,
     reference: JsrPackageReqReference,
     local_version: Version,
   },
@@ -136,15 +145,15 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::ConstraintNotMatchedLocalVersion {
-        is_patch,
+        is_link,
         reference,
         local_version,
       } => {
         write!(
           f,
           "{0} '{1}@{2}' was not used because it did not match '{1}@{3}'",
-          if *is_patch {
-            "Patch"
+          if *is_link {
+            "Linked package"
           } else {
             "Workspace member"
           },
@@ -161,8 +170,8 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
 pub enum MappedResolution<'a> {
   Normal {
     specifier: Url,
-    used_import_map: bool,
     sloppy_reason: Option<SloppyImportsResolutionReason>,
+    used_import_map: bool,
     used_compiler_options_root_dirs: bool,
     maybe_diagnostic: Option<Box<MappedResolutionDiagnostic>>,
   },
@@ -498,6 +507,8 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Json
             | MediaType::Wasm
             | MediaType::Css
+            | MediaType::Html
+            | MediaType::Sql
             | MediaType::SourceMap => {
               return None;
             }
@@ -1182,7 +1193,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .jsr_pkgs
       .into_iter()
       .map(|pkg| ResolverWorkspaceJsrPackage {
-        is_patch: false, // only used for enhancing the diagnostics, which are discarded when serializing
+        is_link: false, // only used for enhancing the diagnostics, which are discarded when serializing
         base: root_dir_url.join(&pkg.relative_base).unwrap(),
         name: pkg.name.into_owned(),
         version: pkg.version.into_owned(),
@@ -1291,9 +1302,9 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         return self.maybe_resolve_specifier_to_workspace_jsr_pkg(
           MappedResolution::Normal {
             specifier,
+            sloppy_reason,
             used_import_map,
             used_compiler_options_root_dirs,
-            sloppy_reason,
             maybe_diagnostic: None,
           },
         );
@@ -1330,8 +1341,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }
     }
 
+    // 3. Attempt to resolve from the package.json dependencies.
     if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      // 2. Attempt to resolve from the package.json dependencies.
       let mut previously_found_dir = false;
       for (dir_url, pkg_json_folder) in self.pkg_jsons.iter().rev() {
         if !referrer.as_str().starts_with(dir_url.as_str()) {
@@ -1367,7 +1378,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         }
       }
 
-      // 3. Finally try to resolve to a workspace npm package if inside the workspace.
+      // 4. Try to resolve to a workspace npm package if inside the workspace.
       if referrer.as_str().starts_with(self.workspace_root.as_str()) {
         for pkg_json_folder in self.pkg_jsons.values() {
           let Some(name) = &pkg_json_folder.pkg_json.name else {
@@ -1419,7 +1430,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             } else {
               maybe_diagnostic = Some(Box::new(
                 MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-                  is_patch: pkg.is_patch,
+                  is_link: pkg.is_link,
                   reference: package_req_ref.clone(),
                   local_version: version.clone(),
                 },
@@ -1435,15 +1446,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     Ok(match resolution {
       MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         ..
       } => MappedResolution::Normal {
         specifier,
+        sloppy_reason,
         used_import_map,
         used_compiler_options_root_dirs,
-        sloppy_reason,
         maybe_diagnostic,
       },
       _ => return Ok(resolution),
@@ -1632,6 +1643,153 @@ impl BaseUrl<'_> {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct ScopedJsxImportSourceConfig {
+  unscoped: Option<JsxImportSourceConfig>,
+  by_scope: BTreeMap<UrlRc, Option<JsxImportSourceConfig>>,
+}
+
+impl ScopedJsxImportSourceConfig {
+  pub fn from_workspace_dir(
+    start_dir: &WorkspaceDirectory,
+  ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
+    let unscoped = start_dir.to_maybe_jsx_import_source_config()?;
+    let mut by_scope = BTreeMap::default();
+    for (dir_url, _) in start_dir.workspace.config_folders() {
+      let dir = start_dir.workspace.resolve_member_dir(dir_url);
+      let jsx_import_source_config_unscoped =
+        dir.to_maybe_jsx_import_source_config()?;
+      by_scope.insert(dir_url.clone(), jsx_import_source_config_unscoped);
+    }
+    Ok(Self { unscoped, by_scope })
+  }
+
+  /// Resolves the `JsxImportSourceConfig` to use for the provided referrer.
+  pub fn resolve_by_referrer(
+    &self,
+    referrer: &Url,
+  ) -> Option<&JsxImportSourceConfig> {
+    self
+      .by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.unscoped.as_ref())
+  }
+}
+
+#[allow(clippy::disallowed_types)] // ok, because definition
+pub type WorkspaceNpmLinkPackagesRc =
+  crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
+
+#[derive(Debug, Default)]
+pub struct WorkspaceNpmLinkPackages(
+  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+);
+
+impl WorkspaceNpmLinkPackages {
+  pub fn from_workspace(workspace: &Workspace) -> Self {
+    let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
+      HashMap::new();
+    for pkg_json in workspace.link_pkg_jsons() {
+      let Some(name) = pkg_json.name.as_ref() else {
+        log::warn!(
+        "{} Link package ignored because package.json was missing name field.\n    at {}",
+        colors::yellow("Warning"),
+        pkg_json.path.display(),
+      );
+        continue;
+      };
+      match pkg_json_to_version_info(pkg_json) {
+        Ok(version_info) => {
+          let entry = entries.entry(PackageName::from_str(name)).or_default();
+          entry.push(version_info);
+        }
+        Err(err) => {
+          log::warn!(
+            "{} {}\n    at {}",
+            colors::yellow("Warning"),
+            err,
+            pkg_json.path.display(),
+          );
+        }
+      }
+    }
+    Self(entries)
+  }
+}
+
+#[derive(Debug, Error)]
+enum PkgJsonToVersionInfoError {
+  #[error(
+    "Linked package ignored because package.json was missing version field."
+  )]
+  VersionMissing,
+  #[error("Linked package ignored because package.json version field could not be parsed.")]
+  VersionInvalid {
+    #[source]
+    source: deno_semver::npm::NpmVersionParseError,
+  },
+}
+
+fn pkg_json_to_version_info(
+  pkg_json: &deno_package_json::PackageJson,
+) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+  fn parse_deps(
+    deps: Option<&IndexMap<String, String>>,
+  ) -> HashMap<StackString, StackString> {
+    deps
+      .map(|d| {
+        d.into_iter()
+          .map(|(k, v)| (StackString::from_str(k), StackString::from_str(v)))
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
+    v.iter().map(|s| SmallStackString::from_str(s)).collect()
+  }
+
+  let Some(version) = &pkg_json.version else {
+    return Err(PkgJsonToVersionInfoError::VersionMissing);
+  };
+
+  let version = Version::parse_from_npm(version)
+    .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
+  Ok(NpmPackageVersionInfo {
+    version,
+    dist: None,
+    bin: pkg_json
+      .bin
+      .as_ref()
+      .and_then(|v| serde_json::from_value(v.clone()).ok()),
+    dependencies: parse_deps(pkg_json.dependencies.as_ref()),
+    optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
+    peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
+    peer_dependencies_meta: pkg_json
+      .peer_dependencies_meta
+      .clone()
+      .and_then(|m| serde_json::from_value(m).ok())
+      .unwrap_or_default(),
+    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
+    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
+    scripts: pkg_json
+      .scripts
+      .as_ref()
+      .map(|scripts| {
+        scripts
+          .iter()
+          .map(|(k, v)| (SmallStackString::from_str(k), v.clone()))
+          .collect()
+      })
+      .unwrap_or_default(),
+    // not worth increasing memory for showing a deprecated
+    // message for linked packages
+    deprecated: None,
+  })
+}
+
 #[cfg(test)]
 mod test {
   use std::path::Path;
@@ -1640,6 +1798,7 @@ mod test {
   use deno_config::workspace::WorkspaceDirectory;
   use deno_config::workspace::WorkspaceDiscoverOptions;
   use deno_config::workspace::WorkspaceDiscoverStart;
+  use deno_npm::registry::NpmPeerDependencyMeta;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
@@ -2462,18 +2621,18 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_member_with_version() {
+  fn resolves_link_member_with_version() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "patch": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "version": "1.0.0",
         "exports": "./mod.ts"
       }),
@@ -2483,35 +2642,35 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "@scope/patch",
+        "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // matching version
     match resolver
       .resolve(
-        "jsr:@scope/patch@1",
+        "jsr:@scope/link@1",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // not matching version
     match resolver
       .resolve(
-        "jsr:@scope/patch@2",
+        "jsr:@scope/link@2",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
@@ -2522,13 +2681,13 @@ mod test {
         maybe_diagnostic,
         ..
       } => {
-        assert_eq!(specifier, Url::parse("jsr:@scope/patch@2").unwrap());
+        assert_eq!(specifier, Url::parse("jsr:@scope/link@2").unwrap());
         assert_eq!(
           maybe_diagnostic,
           Some(Box::new(
             MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-              is_patch: true,
-              reference: JsrPackageReqReference::from_str("jsr:@scope/patch@2")
+              is_link: true,
+              reference: JsrPackageReqReference::from_str("jsr:@scope/link@2")
                 .unwrap(),
               local_version: Version::parse_from_npm("1.0.0").unwrap(),
             }
@@ -2540,18 +2699,18 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_member_no_version() {
+  fn resolves_link_member_no_version() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "patch": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "exports": "./mod.ts"
       }),
     );
@@ -2560,28 +2719,28 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "@scope/patch",
+        "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
     // always resolves, no matter what version
     match resolver
       .resolve(
-        "jsr:@scope/patch@12",
+        "jsr:@scope/link@12",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
@@ -2653,7 +2812,7 @@ mod test {
           maybe_diagnostic,
           Some(Box::new(
             MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-              is_patch: false,
+              is_link: false,
               reference: JsrPackageReqReference::from_str(
                 "jsr:@scope/member@2"
               )
@@ -2668,7 +2827,7 @@ mod test {
   }
 
   #[test]
-  fn resolves_patch_workspace() {
+  fn resolves_link_workspace() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
@@ -2676,19 +2835,19 @@ mod test {
         "imports": {
           "@std/fs": "jsr:@std/fs@0.200.0"
         },
-        "patch": ["../patch"]
+        "links": ["../link"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/deno.json"),
+      root_dir().join("../link/deno.json"),
       json!({
         "workspace": ["./member"]
       }),
     );
     sys.fs_insert_json(
-      root_dir().join("../patch/member/deno.json"),
+      root_dir().join("../link/member/deno.json"),
       json!({
-        "name": "@scope/patch",
+        "name": "@scope/link",
         "version": "1.0.0",
         "exports": "./mod.ts",
         "imports": {
@@ -2701,14 +2860,14 @@ mod test {
     let root = url_from_directory_path(&root_dir()).unwrap();
     match resolver
       .resolve(
-        "jsr:@scope/patch@1",
+        "jsr:@scope/link@1",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
     {
       MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../patch/member/mod.ts").unwrap());
+        assert_eq!(specifier, root.join("../link/member/mod.ts").unwrap());
       }
       _ => unreachable!(),
     }
@@ -2726,11 +2885,11 @@ mod test {
       }
       _ => unreachable!(),
     }
-    // resolving @std/fs in patched package
+    // resolving @std/fs in linked package
     match resolver
       .resolve(
         "@std/fs",
-        &root.join("../patch/member/mod.ts").unwrap(),
+        &root.join("../link/member/mod.ts").unwrap(),
         ResolutionKind::Execution,
       )
       .unwrap()
@@ -2808,5 +2967,101 @@ mod test {
       },
     )
     .unwrap()
+  }
+
+  #[test]
+  fn test_pkg_json_to_version_info() {
+    fn convert(
+      text: &str,
+    ) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+      let pkg_json = deno_package_json::PackageJson::load_from_string(
+        PathBuf::from("package.json"),
+        text,
+      )
+      .unwrap();
+      pkg_json_to_version_info(&pkg_json)
+    }
+
+    assert_eq!(
+      convert(
+        r#"{
+  "name": "pkg",
+  "version": "1.0.0",
+  "bin": "./bin.js",
+  "dependencies": {
+    "my-dep": "1"
+  },
+  "optionalDependencies": {
+    "optional-dep": "~1"
+  },
+  "peerDependencies": {
+    "my-peer-dep": "^2"
+  },
+  "peerDependenciesMeta": {
+    "my-peer-dep": {
+      "optional": true
+    }
+  },
+  "os": ["win32"],
+  "cpu": ["x86_64"],
+  "scripts": {
+    "script": "testing",
+    "postInstall": "testing2"
+  },
+  "deprecated": "ignored for now"
+}"#
+      )
+      .unwrap(),
+      NpmPackageVersionInfo {
+        version: Version::parse_from_npm("1.0.0").unwrap(),
+        dist: None,
+        bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
+          "./bin.js".to_string()
+        )),
+        dependencies: HashMap::from([(
+          StackString::from_static("my-dep"),
+          StackString::from_static("1")
+        )]),
+        optional_dependencies: HashMap::from([(
+          StackString::from_static("optional-dep"),
+          StackString::from_static("~1")
+        )]),
+        peer_dependencies: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          StackString::from_static("^2")
+        )]),
+        peer_dependencies_meta: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          NpmPeerDependencyMeta { optional: true }
+        )]),
+        os: vec![SmallStackString::from_static("win32")],
+        cpu: vec![SmallStackString::from_static("x86_64")],
+        scripts: HashMap::from([
+          (
+            SmallStackString::from_static("script"),
+            "testing".to_string(),
+          ),
+          (
+            SmallStackString::from_static("postInstall"),
+            "testing2".to_string(),
+          )
+        ]),
+        // we don't bother ever setting this because we don't store it in deno_package_json
+        deprecated: None,
+      }
+    );
+
+    match convert("{}").unwrap_err() {
+      PkgJsonToVersionInfoError::VersionMissing => {
+        // ok
+      }
+      _ => unreachable!(),
+    }
+    match convert(r#"{ "version": "1.0.~" }"#).unwrap_err() {
+      PkgJsonToVersionInfoError::VersionInvalid { source: err } => {
+        assert_eq!(err.to_string(), "Invalid npm version");
+      }
+      _ => unreachable!(),
+    }
   }
 }

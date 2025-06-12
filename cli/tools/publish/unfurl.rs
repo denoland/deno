@@ -18,10 +18,10 @@ use deno_ast::SourceTextProvider;
 use deno_ast::TextChange;
 use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
-use deno_graph::DependencyDescriptor;
-use deno_graph::DynamicTemplatePart;
-use deno_graph::StaticDependencyKind;
-use deno_graph::TypeScriptReference;
+use deno_graph::analysis::DependencyDescriptor;
+use deno_graph::analysis::DynamicTemplatePart;
+use deno_graph::analysis::StaticDependencyKind;
+use deno_graph::analysis::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_resolver::workspace::MappedResolution;
@@ -49,6 +49,12 @@ pub enum SpecifierUnfurlerDiagnostic {
     range: SourceRange,
     reason: String,
   },
+  UnsupportedPkgJsonFileSpecifier {
+    specifier: ModuleSpecifier,
+    text_info: SourceTextInfo,
+    range: SourceRange,
+    package_name: String,
+  },
 }
 
 impl Diagnostic for SpecifierUnfurlerDiagnostic {
@@ -60,6 +66,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         DiagnosticLevel::Error
       }
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        ..
+      } => DiagnosticLevel::Error,
     }
   }
 
@@ -67,6 +76,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
     match self {
       Self::UnanalyzableDynamicImport { .. } => "unanalyzable-dynamic-import",
       Self::ResolvingNpmWorkspacePackage { .. } => "npm-workspace-package",
+      Self::UnsupportedPkgJsonFileSpecifier { .. } => {
+        "unsupported-file-specifier"
+      }
     }
     .into()
   }
@@ -85,6 +97,11 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         package_name, reason
       )
       .into(),
+      Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
+        "unsupported package.json file specifier for '{}'",
+        package_name
+      )
+      .into(),
     }
   }
 
@@ -100,6 +117,16 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
       },
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
+        specifier,
+        text_info,
+        range,
+        ..
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+      },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
         specifier,
         text_info,
         range,
@@ -144,6 +171,21 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
           description: Some("the unresolved import".into()),
         }],
       }),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        text_info,
+        range,
+        ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Warning,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the import".into()),
+        }],
+      }),
     }
   }
 
@@ -154,6 +196,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => Some(
         "make sure the npm workspace package is resolvable and has a version field in its package.json".into()
+      ),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => Some(
+        "change the package dependency to point to something on npm instead".into()
       ),
     }
   }
@@ -174,6 +219,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         Cow::Borrowed(&[])
       },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => {
+        Cow::Borrowed(&[])
+      },
     }
   }
 
@@ -183,6 +231,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
 }
 
 enum UnfurlSpecifierError {
+  UnsupportedPkgJsonFileSpecifier {
+    package_name: String,
+  },
   Workspace {
     package_name: String,
     reason: String,
@@ -220,27 +271,43 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   ) -> Option<String> {
     match self.unfurl_specifier(referrer, specifier, resolution_kind) {
       Ok(maybe_unfurled) => maybe_unfurled,
-      Err(diagnostic) => match diagnostic {
-        UnfurlSpecifierError::Workspace {
-          package_name,
-          reason,
-        } => {
-          let range = to_range(text_info, range);
-          diagnostic_reporter(
-            SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
-              specifier: referrer.clone(),
-              package_name,
-              text_info: text_info.clone(),
-              range: SourceRange::new(
-                text_info.start_pos() + range.start,
-                text_info.start_pos() + range.end,
-              ),
-              reason,
-            },
-          );
-          None
+      Err(diagnostic) => {
+        let range = to_range(text_info, range);
+        let range = SourceRange::new(
+          text_info.start_pos() + range.start,
+          text_info.start_pos() + range.end,
+        );
+        match diagnostic {
+          UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+            package_name,
+          } => {
+            diagnostic_reporter(
+              SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+                specifier: referrer.clone(),
+                package_name,
+                text_info: text_info.clone(),
+                range,
+              },
+            );
+            None
+          }
+          UnfurlSpecifierError::Workspace {
+            package_name,
+            reason,
+          } => {
+            diagnostic_reporter(
+              SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
+                specifier: referrer.clone(),
+                package_name,
+                text_info: text_info.clone(),
+                range,
+                reason,
+              },
+            );
+            None
+          }
         }
-      },
+      }
     }
   }
 
@@ -288,6 +355,13 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           ..
         } => match dep_result {
           Ok(dep) => match dep {
+            PackageJsonDepValue::File(_) => {
+              return Err(
+                UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+                  package_name: alias.to_string(),
+                },
+              );
+            }
             PackageJsonDepValue::Req(pkg_req) => {
               // todo(#24612): consider warning or error when this is an npm workspace
               // member that's also a jsr package?
@@ -436,12 +510,12 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     &self,
     module_url: &ModuleSpecifier,
     text_info: &SourceTextInfo,
-    dep: &deno_graph::DynamicDependencyDescriptor,
+    dep: &deno_graph::analysis::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> bool {
     match &dep.argument {
-      deno_graph::DynamicArgument::String(specifier) => {
+      deno_graph::analysis::DynamicArgument::String(specifier) => {
         let range = to_range(text_info, &dep.argument_range);
         let maybe_relative_index =
           text_info.text_str()[range.start..range.end].find(specifier);
@@ -465,49 +539,51 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
         }
         true
       }
-      deno_graph::DynamicArgument::Template(parts) => match parts.first() {
-        Some(DynamicTemplatePart::String { value: specifier }) => {
-          // relative doesn't need to be modified
-          let is_relative =
-            specifier.starts_with("./") || specifier.starts_with("../");
-          if is_relative {
-            return true;
+      deno_graph::analysis::DynamicArgument::Template(parts) => {
+        match parts.first() {
+          Some(DynamicTemplatePart::String { value: specifier }) => {
+            // relative doesn't need to be modified
+            let is_relative =
+              specifier.starts_with("./") || specifier.starts_with("../");
+            if is_relative {
+              return true;
+            }
+            if !specifier.ends_with('/') {
+              return false;
+            }
+            let unfurled = self.unfurl_specifier_reporting_diagnostic(
+              module_url,
+              specifier,
+              deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
+              text_info,
+              &dep.argument_range,
+              diagnostic_reporter,
+            );
+            let Some(unfurled) = unfurled else {
+              return true; // nothing to unfurl
+            };
+            let range = to_range(text_info, &dep.argument_range);
+            let maybe_relative_index =
+              text_info.text_str()[range.start..].find(specifier);
+            let Some(relative_index) = maybe_relative_index else {
+              return false;
+            };
+            let start = range.start + relative_index;
+            text_changes.push(deno_ast::TextChange {
+              range: start..start + specifier.len(),
+              new_text: unfurled,
+            });
+            true
           }
-          if !specifier.ends_with('/') {
-            return false;
+          Some(DynamicTemplatePart::Expr) => {
+            false // failed analyzing
           }
-          let unfurled = self.unfurl_specifier_reporting_diagnostic(
-            module_url,
-            specifier,
-            deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
-            text_info,
-            &dep.argument_range,
-            diagnostic_reporter,
-          );
-          let Some(unfurled) = unfurled else {
-            return true; // nothing to unfurl
-          };
-          let range = to_range(text_info, &dep.argument_range);
-          let maybe_relative_index =
-            text_info.text_str()[range.start..].find(specifier);
-          let Some(relative_index) = maybe_relative_index else {
-            return false;
-          };
-          let start = range.start + relative_index;
-          text_changes.push(deno_ast::TextChange {
-            range: start..start + specifier.len(),
-            new_text: unfurled,
-          });
-          true
+          None => {
+            true // ignore
+          }
         }
-        Some(DynamicTemplatePart::Expr) => {
-          false // failed analyzing
-        }
-        None => {
-          true // ignore
-        }
-      },
-      deno_graph::DynamicArgument::Expr => {
+      }
+      deno_graph::analysis::DynamicArgument::Expr => {
         false // failed analyzing
       }
     }
@@ -517,7 +593,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
-    module_info: &deno_graph::ModuleInfo,
+    module_info: &deno_graph::analysis::ModuleInfo,
     text_changes: &mut Vec<TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) {
@@ -645,7 +721,7 @@ fn relative_url(
   if resolved.scheme() == "file" {
     let relative = referrer.make_relative(resolved).unwrap();
     if relative.is_empty() {
-      let last = resolved.path_segments().unwrap().last().unwrap();
+      let last = resolved.path_segments().unwrap().next_back().unwrap();
       format!("./{last}")
     } else if relative.starts_with("../") {
       relative
@@ -683,7 +759,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_graph::ParserModuleAnalyzer;
+  use deno_graph::ast::ParserModuleAnalyzer;
   use deno_resolver::workspace::SloppyImportsOptions;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
@@ -737,7 +813,7 @@ mod tests {
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![ResolverWorkspaceJsrPackage {
-        is_patch: false,
+        is_link: false,
         base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
           .unwrap(),
         name: "@denotest/example".to_string(),
@@ -898,7 +974,7 @@ export type * from "./c.d.ts";
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       None,
       vec![ResolverWorkspaceJsrPackage {
-        is_patch: false,
+        is_link: false,
         base: ModuleSpecifier::from_directory_path(
           cwd.join("publish/jsr.json"),
         )

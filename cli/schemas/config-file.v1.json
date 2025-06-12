@@ -42,6 +42,12 @@
           "deprecated": true,
           "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
         },
+        "erasableSyntaxOnly": {
+          "description": "Do not allow runtime constructs that are not part of ECMAScript.",
+          "type": ["boolean", "null"],
+          "default": false,
+          "markdownDescription": "Do not allow runtime constructs that are not part of ECMAScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#erasableSyntaxOnly"
+        },
         "exactOptionalPropertyTypes": {
           "description": "Interpret optional property types as written, rather than adding 'undefined'.",
           "type": "boolean",
@@ -414,6 +420,94 @@
           "type": "boolean",
           "default": true
         },
+        "quoteProps": {
+          "description": "Change when properties in objects are quoted in JavaScript and TypeScript.",
+          "default": "preserve",
+          "enum": ["asNeeded", "consistent", "preserve"]
+        },
+        "newLineKind": {
+          "description": "The newline character to use.",
+          "default": "lf",
+          "enum": ["auto", "crlf", "lf", "system"]
+        },
+        "useBraces": {
+          "description": "Whether to use braces for if statements, for statements, and while statements in JavaScript and TypeScript.",
+          "default": "whenNotSingleLine",
+          "enum": ["maintain", "whenNotSingleLine", "always", "preferNone"]
+        },
+        "bracePosition": {
+          "description": "The position of opening braces for blocks in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "singleBodyPosition": {
+          "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
+          "default": "sameLineUnlessHanging",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "nextControlFlowPosition": {
+          "description": "Where to place the next control flow within a control flow statement in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "trailingCommas": {
+          "description": "Whether to add trailing commas in JavaScript and TypeScript.",
+          "default": "onlyMultiLine",
+          "enum": ["never", "always", "onlyMultiLine"]
+        },
+        "operatorPosition": {
+          "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "jsx.bracketPosition": {
+          "description": "If the end angle bracket of a jsx open element or self closing element should be on the same or next line when the attributes span multiple lines.",
+          "default": "nextLine",
+          "enum": ["maintain", "sameLine", "nextLine"]
+        },
+        "jsx.forceNewLineSurroundingContent": {
+          "description": "Forces newlines surrounding the content of JSX elements.",
+          "default": false,
+          "type": "boolean"
+        },
+        "jsx.multiLineParens": {
+          "description": "Surrounds the top-most JSX element or fragment in parentheses when it spans multiple lines.",
+          "default": "prefer",
+          "enum": ["never", "prefer", "always"]
+        },
+        "typeLiteral.separatorKind": {
+          "description": "The kind of separator to use in type literals.",
+          "default": "semiColon",
+          "enum": ["comma", "semiColon"]
+        },
+        "spaceAround": {
+          "description": "Whether to place spaces around enclosed expressions in JavaScript and TypeScript.",
+          "default": false,
+          "type": "boolean"
+        },
+        "spaceSurroundingProperties": {
+          "description": "Whether to add a space surrounding the properties of single line object-like nodes in JavaScript and TypeScript.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
@@ -615,8 +709,7 @@
     },
     "name": {
       "type": "string",
-      "description": "The name of this JSR package. Must be scoped",
-      "pattern": "^@[a-z0-9-]+/[a-z0-9-]+$"
+      "description": "The name of this JSR or workspace package."
     },
     "version": {
       "type": "string",
@@ -649,6 +742,14 @@
       ]
     },
     "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "deprecated": true,
+      "description": "This unstable property was renamed to \"links\" in Deno 2.3.6."
+    },
+    "links": {
       "type": "array",
       "items": {
         "type": "string"

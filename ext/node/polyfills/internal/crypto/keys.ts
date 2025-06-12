@@ -781,7 +781,7 @@ class AsymmetricKeyObject extends KeyObject {
   }
 
   get asymmetricKeyDetails() {
-    return op_node_get_asymmetric_key_details(this[kHandle]);
+    return { ...op_node_get_asymmetric_key_details(this[kHandle]) };
   }
 }
 

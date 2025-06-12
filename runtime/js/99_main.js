@@ -8,10 +8,13 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_stderr_tty,
-  op_bootstrap_is_stdout_tty,
+  op_bootstrap_is_from_unconfigured_runtime,
   op_bootstrap_no_color,
   op_bootstrap_pid,
+  op_bootstrap_stderr_no_color,
+  op_bootstrap_stdout_no_color,
+  op_get_ext_import_meta_proto,
+  op_internal_log,
   op_main_module,
   op_ppid,
   op_set_format_exception_callback,
@@ -59,6 +62,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -112,6 +116,26 @@ ObjectDefineProperties(Symbol, {
     configurable: false,
   },
 });
+
+internals.isFromUnconfiguredRuntime = op_bootstrap_is_from_unconfigured_runtime;
+
+// https://docs.rs/log/latest/log/enum.Level.html
+const LOG_LEVELS = {
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+  trace: 5,
+};
+
+op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log(this.url, level, message);
+};
 
 let windowIsClosing = false;
 let globalThis_;
@@ -240,7 +264,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (op_worker_get_type() === "module") {
+  if (op_worker_get_type() !== "classic") {
     throw new TypeError("Cannot import scripts in a module worker");
   }
 
@@ -278,8 +302,8 @@ function importScripts(...urls) {
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
 setNoColorFns(
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+  () => op_bootstrap_stdout_no_color(),
+  () => op_bootstrap_stderr_no_color(),
 );
 
 function formatException(error) {
@@ -781,18 +805,20 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: servePort,
       10: serveHost,
       11: serveIsMain,
-      12: serveWorkerCount,
+      12: serveWorkerCountOrIndex,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
 
+    denoNs.build.standalone = standalone;
+
     if (mode === executionModes.serve) {
-      if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-global-assign
-        console = new internalConsole.Console((msg, level) =>
-          core.print("[serve-worker-0 ] " + msg, level > 1)
-        );
-      } else if (serveWorkerCount !== null) {
-        const base = `serve-worker-${serveWorkerCount + 1}`;
+      const hasMultipleThreads = serveIsMain
+        ? serveWorkerCountOrIndex > 0 // count > 0
+        : true;
+      if (hasMultipleThreads) {
+        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const base = `serve-worker-${serveLogIndex}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
@@ -819,8 +845,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (mode === executionModes.serve && !serve) {
           if (serveIsMain) {
             // Only error if main worker
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -833,8 +859,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
         if (serve) {
           if (mode === executionModes.run) {
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
               "color: inherit;",
@@ -843,7 +869,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
+            serve({
+              servePort,
+              serveHost,
+              workerCountWhenMain: serveIsMain
+                ? serveWorkerCountOrIndex
+                : undefined,
+            });
           }
         }
       });
@@ -961,6 +993,7 @@ function bootstrapWorkerRuntime(
   name,
   internalName,
   workerId,
+  workerType,
   maybeWorkerMetadata,
   warmup = false,
 ) {
@@ -978,8 +1011,8 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
-      14: closeOnIdle_,
     } = runtimeOptions;
+    closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -990,6 +1023,9 @@ function bootstrapWorkerRuntime(
     hasBootstrapped = true;
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    if (workerType === "node") {
+      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
@@ -1031,7 +1067,6 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
-    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
@@ -1108,6 +1143,7 @@ removeImportedOps();
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
 bootstrapWorkerRuntime(
+  undefined,
   undefined,
   undefined,
   undefined,

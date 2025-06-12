@@ -9,7 +9,6 @@ use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_semver::Version;
 use indexmap::IndexMap;
-use node_resolver::analyze::CjsAnalysisExports;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -130,7 +129,8 @@ impl<'a> DenoRtDeserializable<'a> for SpecifierId {
 #[derive(Deserialize, Serialize)]
 pub enum CjsExportAnalysisEntry {
   Esm,
-  Cjs(CjsAnalysisExports),
+  Cjs(Vec<String>),
+  Error(String),
 }
 
 const HAS_TRANSPILED_FLAG: u8 = 1 << 0;
@@ -237,8 +237,10 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Json => 11,
     MediaType::Wasm => 12,
     MediaType::Css => 13,
-    MediaType::SourceMap => 14,
-    MediaType::Unknown => 15,
+    MediaType::Html => 14,
+    MediaType::SourceMap => 15,
+    MediaType::Sql => 16,
+    MediaType::Unknown => 17,
   }
 }
 
@@ -260,8 +262,10 @@ impl<'a> DenoRtDeserializable<'a> for MediaType {
       11 => MediaType::Json,
       12 => MediaType::Wasm,
       13 => MediaType::Css,
-      14 => MediaType::SourceMap,
-      15 => MediaType::Unknown,
+      14 => MediaType::Html,
+      15 => MediaType::SourceMap,
+      16 => MediaType::Sql,
+      17 => MediaType::Unknown,
       value => {
         return Err(std::io::Error::new(
           std::io::ErrorKind::InvalidData,

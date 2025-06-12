@@ -15,6 +15,7 @@ pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
 pub struct TaskDefinition {
   pub name: String,
   pub command: Option<String>,
+  pub description: Option<String>,
   pub source_uri: lsp::Uri,
 }
 
@@ -57,6 +58,7 @@ pub struct DenoConfigurationData {
 #[serde(rename_all = "camelCase")]
 pub struct DidRefreshDenoConfigurationTreeNotificationParams {
   pub data: Vec<DenoConfigurationData>,
+  pub deno_dir_npm_folder_uri: Option<lsp::Uri>,
 }
 
 pub enum DidRefreshDenoConfigurationTreeNotification {}

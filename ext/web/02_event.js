@@ -308,22 +308,6 @@ class Event {
     return Event.BUBBLING_PHASE;
   }
 
-  static get NONE() {
-    return 0;
-  }
-
-  static get CAPTURING_PHASE() {
-    return 1;
-  }
-
-  static get AT_TARGET() {
-    return 2;
-  }
-
-  static get BUBBLING_PHASE() {
-    return 3;
-  }
-
   get eventPhase() {
     return this[_attributes].eventPhase;
   }
@@ -385,6 +369,38 @@ class Event {
     return this[_attributes].timeStamp;
   }
 }
+
+ObjectDefineProperty(Event, "NONE", {
+  __proto__: null,
+  value: 0,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "CAPTURING_PHASE", {
+  __proto__: null,
+  value: 1,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "AT_TARGET", {
+  __proto__: null,
+  value: 2,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "BUBBLING_PHASE", {
+  __proto__: null,
+  value: 3,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
 
 const EventPrototype = Event.prototype;
 
@@ -845,7 +861,7 @@ function retarget(a, b) {
 
 // Accessors for non-public data
 
-const eventTargetData = Symbol();
+export const eventTargetData = Symbol();
 
 function setEventTargetData(target) {
   target[eventTargetData] = getDefaultTargetData();

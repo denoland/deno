@@ -32,6 +32,7 @@ use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
+use hyper_utils::run_server_with_remote_addr;
 use pretty_assertions::assert_eq;
 use prost::Message;
 use tokio::io::AsyncWriteExt;
@@ -84,6 +85,7 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
@@ -120,6 +122,7 @@ pub async fn run_all_servers() {
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
   let wss_server_fut = ws::run_wss_server(WSS_PORT);
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
@@ -162,6 +165,7 @@ pub async fn run_all_servers() {
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
+    ws_hang_server_fut.boxed_local(),
     another_redirect_server_fut.boxed_local(),
     auth_redirect_server_fut.boxed_local(),
     basic_auth_redirect_server_fut.boxed_local(),
@@ -449,6 +453,7 @@ async fn absolute_redirect(
 
 async fn main_server(
   req: Request<hyper::body::Incoming>,
+  remote_addr: SocketAddr,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
@@ -462,6 +467,11 @@ async fn main_server(
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
       response.headers_mut().extend(parts.headers);
+      Ok(response)
+    }
+    (_, "/local_addr") => {
+      let addr = remote_addr.ip().to_string();
+      let response = Response::new(string_body(&addr));
       Ok(response)
     }
     (&Method::POST, "/echo_multipart_file") => {
@@ -1265,7 +1275,7 @@ async fn wrap_abs_redirect_server(port: u16) {
 
 async fn wrap_main_server(port: u16) {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_server(
+  run_server_with_remote_addr(
     ServerOptions {
       addr: main_server_addr,
       kind: ServerKind::Auto,
@@ -1281,7 +1291,7 @@ async fn wrap_main_https_server(port: u16) {
   let tls_acceptor = tls.boxed_local();
   run_server_with_acceptor(
     tls_acceptor,
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTPS server error",
     ServerKind::Auto,
   )
@@ -1298,7 +1308,7 @@ async fn wrap_https_h1_only_tls_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTP1 only TLS server error",
     ServerKind::OnlyHttp1,
   )
@@ -1315,7 +1325,7 @@ async fn wrap_https_h2_only_tls_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTP2 only TLS server error",
     ServerKind::OnlyHttp2,
   )
@@ -1330,7 +1340,7 @@ async fn wrap_http_h1_only_server(port: u16) {
       error_msg: "HTTP1 only server error:",
       kind: ServerKind::OnlyHttp1,
     },
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
   )
   .await;
 }
@@ -1343,7 +1353,7 @@ async fn wrap_http_h2_only_server(port: u16) {
       error_msg: "HTTP1 only server error:",
       kind: ServerKind::OnlyHttp2,
     },
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
   )
   .await;
 }
@@ -1368,7 +1378,7 @@ async fn wrap_client_auth_https_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "Auth TLS server error",
     ServerKind::Auto,
   )
@@ -1413,7 +1423,7 @@ pub fn custom_headers(
   if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
-      .last()
+      .next_back()
       .unwrap()
       .trim_end_matches(".ts");
 

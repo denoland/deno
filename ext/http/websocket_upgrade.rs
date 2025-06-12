@@ -8,8 +8,6 @@ use httparse::Status;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
 use hyper::Response;
-use memmem::Searcher;
-use memmem::TwoWaySearcher;
 use once_cell::sync::OnceCell;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -81,8 +79,8 @@ enum WebSocketUpgradeState {
   Complete,
 }
 
-static HEADER_SEARCHER: OnceCell<TwoWaySearcher> = OnceCell::new();
-static HEADER_SEARCHER2: OnceCell<TwoWaySearcher> = OnceCell::new();
+static HEADER_SEARCHER: OnceCell<memchr::memmem::Finder> = OnceCell::new();
+static HEADER_SEARCHER2: OnceCell<memchr::memmem::Finder> = OnceCell::new();
 
 #[derive(Default)]
 pub struct WebSocketUpgrade<T: Default> {
@@ -155,12 +153,12 @@ impl<T: Default> WebSocketUpgrade<T> {
       }
       Headers => {
         self.buf.extend_from_slice(bytes);
-        let header_searcher =
-          HEADER_SEARCHER.get_or_init(|| TwoWaySearcher::new(b"\r\n\r\n"));
+        let header_searcher = HEADER_SEARCHER
+          .get_or_init(|| memchr::memmem::Finder::new(b"\r\n\r\n"));
         let header_searcher2 =
-          HEADER_SEARCHER2.get_or_init(|| TwoWaySearcher::new(b"\n\n"));
-        if header_searcher.search_in(&self.buf).is_some()
-          || header_searcher2.search_in(&self.buf).is_some()
+          HEADER_SEARCHER2.get_or_init(|| memchr::memmem::Finder::new(b"\n\n"));
+        if header_searcher.find(&self.buf).is_some()
+          || header_searcher2.find(&self.buf).is_some()
         {
           let (index, response) = parse_response(&self.buf)?;
           let mut buf = std::mem::take(&mut self.buf);

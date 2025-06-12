@@ -114,7 +114,7 @@ async fn rust_test_client_with_resolver(
     CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
-      proxy: prx_addr.map(|p| deno_tls::Proxy {
+      proxy: prx_addr.map(|p| deno_tls::Proxy::Http {
         url: format!("{}://{}", proto, p),
         basic_auth: None,
       }),
@@ -125,6 +125,7 @@ async fn rust_test_client_with_resolver(
       dns_resolver: resolver,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: None,
     },
   )

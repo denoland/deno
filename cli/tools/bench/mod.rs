@@ -20,6 +20,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
@@ -190,8 +191,9 @@ async fn bench_specifier_inner(
       WorkerExecutionMode::Bench,
       specifier.clone(),
       permissions_container,
-      vec![ops::bench::deno_bench::init_ops(sender.clone())],
+      vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
+      None,
     )
     .await?;
 
@@ -567,7 +569,7 @@ pub async fn run_benchmarks_with_watch(
           .create_graph(
             graph_kind,
             collected_bench_modules.clone(),
-            crate::graph_util::NpmCachingStrategy::Eager,
+            NpmCachingStrategy::Eager,
           )
           .await?;
         module_graph_creator.graph_valid(&graph)?;

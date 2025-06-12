@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.24.0"
+version = "0.37.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,8 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
+deno_ast = ["dep:deno_ast", "twox-hash"]
+graph = ["deno_graph", "node_resolver/graph", "http", "deno_permissions"]
 sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
 
 [dependencies]
@@ -23,16 +25,23 @@ async-trait.workspace = true
 base32.workspace = true
 boxed_error.workspace = true
 dashmap = { workspace = true, optional = true }
+deno_ast = { workspace = true, optional = true }
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
+deno_graph = { workspace = true, optional = true }
+deno_lockfile.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
+deno_permissions = { workspace = true, optional = true }
 deno_semver.workspace = true
 deno_terminal.workspace = true
+deno_unsync.workspace = true
+dissimilar.workspace = true
 futures.workspace = true
+http = { workspace = true, optional = true }
 import_map.workspace = true
 indexmap.workspace = true
 log.workspace = true
@@ -43,6 +52,7 @@ serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
+twox-hash = { workspace = true, optional = true }
 url.workspace = true
 
 [dev-dependencies]

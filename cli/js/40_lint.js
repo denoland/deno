@@ -82,6 +82,7 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
+/** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
 
 /** @type {LintState} */
 const state = {
@@ -263,6 +264,79 @@ export class SourceCode {
   }
 
   /**
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getAllComments() {
+    materializeComments(this.#ctx);
+    return this.#ctx.comments;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsBefore(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const before = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] <= node.range[0]) {
+        before.push(comment);
+      }
+    }
+
+    return before;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsAfter(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const after = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] >= node.range[1]) {
+        after.push(comment);
+      }
+    }
+
+    return after;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsInside(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const inside = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (
+        comment.range[0] >= node.range[0] && comment.range[1] <= node.range[1]
+      ) {
+        inside.push(comment);
+      }
+    }
+
+    return inside;
+  }
+
+  /**
    * @returns {string}
    */
   #getSource() {
@@ -341,6 +415,34 @@ export class Context {
       end,
       fixes,
     );
+  }
+}
+
+/**
+ * @param {AstContext} ctx
+ */
+function materializeComments(ctx) {
+  const { buf, commentsOffset, comments, strTable } = ctx;
+
+  let offset = commentsOffset;
+  const count = readU32(buf, offset);
+  offset += 4;
+
+  if (comments.length === count) return;
+
+  while (offset < buf.length && comments.length < count) {
+    const kind = buf[offset];
+    offset++;
+    const spanId = readU32(buf, offset);
+    offset += 4;
+    const strId = readU32(buf, offset);
+    offset += 4;
+
+    comments.push({
+      type: kind === 0 ? "Line" : "Block",
+      range: readSpan(ctx, spanId),
+      value: getString(strTable, strId),
+    });
   }
 }
 
@@ -488,6 +590,7 @@ class FacadeNode {
 
 /** @type {Set<number>} */
 const appliedGetters = new Set();
+let hasCommenstGetter = false;
 
 /**
  * Add getters for all potential properties found in the message.
@@ -511,6 +614,16 @@ function setNodeGetters(ctx) {
           i,
           getNode,
         );
+      },
+    });
+  }
+
+  if (!hasCommenstGetter) {
+    hasCommenstGetter = true;
+    Object.defineProperty(FacadeNode.prototype, "comments", {
+      get() {
+        materializeComments(ctx);
+        return ctx.comments;
       },
     });
   }
@@ -728,7 +841,12 @@ function readValue(ctx, idx, search, parseNode) {
   } else if (search === AST_PROP_RANGE) {
     return readSpan(ctx, idx);
   } else if (search === AST_PROP_PARENT) {
-    const parent = readParent(buf, idx);
+    let parent = readParent(buf, idx);
+
+    const parentType = readType(buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      parent = readParent(buf, parent);
+    }
     return getNode(ctx, parent);
   }
 
@@ -770,11 +888,15 @@ function getString(strTable, id) {
 
 /** @implements {MatchContext} */
 class MatchCtx {
+  parentLimitIdx = 0;
+
   /**
    * @param {AstContext} ctx
+   * @param {CancellationToken} cancellationToken
    */
-  constructor(ctx) {
+  constructor(ctx, cancellationToken) {
     this.ctx = ctx;
+    this.cancellationToken = cancellationToken;
   }
 
   /**
@@ -782,7 +904,15 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    return readParent(this.ctx.buf, idx);
+    if (idx === this.parentLimitIdx) return AST_IDX_INVALID;
+    const parent = readParent(this.ctx.buf, idx);
+
+    const parentType = readType(this.ctx.buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      return readParent(this.ctx.buf, parent);
+    }
+
+    return parent;
   }
 
   /**
@@ -946,18 +1076,37 @@ class MatchCtx {
 
     return out;
   }
+
+  /**
+   * Used for `:has()` and `:not()`
+   * @param {MatcherFn[]} selectors
+   * @param {number} idx
+   * @returns {boolean}
+   */
+  subSelect(selectors, idx) {
+    const prevLimit = this.parentLimitIdx;
+    this.parentLimitIdx = idx;
+
+    try {
+      return subTraverse(this.ctx, selectors, idx, idx, this.cancellationToken);
+    } finally {
+      this.parentLimitIdx = prevLimit;
+    }
+  }
 }
 
 /**
  * @param {Uint8Array} buf
+ * @param {CancellationToken} token
  * @returns {AstContext}
  */
-function createAstContext(buf) {
+function createAstContext(buf, token) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
+  const commentsOffset = readU32(buf, buf.length - 28);
   const propsOffset = readU32(buf, buf.length - 24);
   const spansOffset = readU32(buf, buf.length - 20);
   const typeMapOffset = readU32(buf, buf.length - 16);
@@ -1024,7 +1173,9 @@ function createAstContext(buf) {
     rootOffset,
     spansOffset,
     propsOffset,
+    commentsOffset,
     nodes: new Map(),
+    comments: [],
     strTableOffset,
     strByProp,
     strByType,
@@ -1032,7 +1183,7 @@ function createAstContext(buf) {
     propByStr,
     matcher: /** @type {*} */ (null),
   };
-  ctx.matcher = new MatchCtx(ctx);
+  ctx.matcher = new MatchCtx(ctx, token);
 
   setNodeGetters(ctx);
 
@@ -1053,7 +1204,8 @@ const NOOP = (_node) => {};
  * @param {Uint8Array} serializedAst
  */
 export function runPluginsForFile(fileName, serializedAst) {
-  const ctx = createAstContext(serializedAst);
+  const token = new CancellationToken();
+  const ctx = createAstContext(serializedAst, token);
 
   /** @type {Map<string, CompiledVisitor["info"]>}>} */
   const bySelector = new Map();
@@ -1162,7 +1314,6 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({ info, matcher });
   }
 
-  const token = new CancellationToken();
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
@@ -1184,11 +1335,12 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
+  const { buf } = ctx;
+
   while (idx !== AST_IDX_INVALID) {
     if (cancellationToken.isCancellationRequested()) return;
 
-    const { buf } = ctx;
-    const nodeType = readType(ctx.buf, idx);
+    const nodeType = readType(buf, idx);
 
     /** @type {VisitorFn[] | null} */
     let exits = null;
@@ -1231,6 +1383,51 @@ function traverse(ctx, visitors, idx, cancellationToken) {
 
     idx = readNext(buf, idx);
   }
+}
+
+/**
+ * Used for subqueries in `:has()` and `:not()`
+ * @param {AstContext} ctx
+ * @param {MatcherFn[]} selectors
+ * @param {number} rootIdx
+ * @param {number} idx
+ * @param {CancellationToken} cancellationToken
+ * @returns {boolean}
+ */
+function subTraverse(ctx, selectors, rootIdx, idx, cancellationToken) {
+  const { buf } = ctx;
+
+  while (idx > AST_IDX_INVALID) {
+    if (cancellationToken.isCancellationRequested()) return false;
+
+    const nodeType = readType(buf, idx);
+
+    if (nodeType !== AST_GROUP_TYPE) {
+      for (let i = 0; i < selectors.length; i++) {
+        const sel = selectors[i];
+
+        if (sel(ctx.matcher, idx)) {
+          return true;
+        }
+      }
+    }
+
+    const childIdx = readChild(buf, idx);
+    if (
+      childIdx > AST_IDX_INVALID &&
+      subTraverse(ctx, selectors, rootIdx, childIdx, cancellationToken)
+    ) {
+      return true;
+    }
+
+    if (idx === rootIdx) {
+      break;
+    }
+
+    idx = readNext(buf, idx);
+  }
+
+  return false;
 }
 
 /**

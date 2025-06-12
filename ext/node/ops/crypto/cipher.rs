@@ -176,7 +176,7 @@ pub enum CipherError {
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot pad the input data")]
+  #[error("bad decrypt")]
   CannotPadInputData,
   #[class(type)]
   #[error("Unknown cipher {0}")]
@@ -417,6 +417,8 @@ impl Cipher {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("library" = "Provider routines")]
+#[property("reason" = self.get_message().to_string())]
 pub enum DecipherError {
   #[class(type)]
   #[error("IV length must be 12 bytes")]
@@ -431,7 +433,7 @@ pub enum DecipherError {
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot unpad the input data")]
+  #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
   #[error("Failed to authenticate data")]

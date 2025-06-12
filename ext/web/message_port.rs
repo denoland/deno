@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::future::poll_fn;
 use std::rc::Rc;
 
 use deno_core::op2;
@@ -12,7 +13,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use futures::future::poll_fn;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc::error::TryRecvError;

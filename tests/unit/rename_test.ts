@@ -252,13 +252,6 @@ Deno.test(
       Error,
       "The directory is not empty",
     );
-    assertThrows(
-      () => {
-        Deno.renameSync(olddir, file);
-      },
-      Error,
-      "The directory name is invalid",
-    );
 
     // should succeed on Windows
     Deno.renameSync(olddir, emptydir);

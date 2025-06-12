@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.2.2"
+version = "2.3.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -48,6 +48,8 @@ hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry"]
+# Custom panic trace with `deno_panic`
+panic-trace = ["deno_panic"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
@@ -67,30 +69,33 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph.workspace = true
+deno_graph = { workspace = true, features = ["fast_check"] }
 deno_lib.workspace = true
 deno_lint.workspace = true
 deno_lockfile.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
+deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
+deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["sync"] }
+deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+eszip.workspace = true
 libsui.workspace = true
-node_resolver.workspace = true
+node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
 async-trait.workspace = true
@@ -110,10 +115,12 @@ dashmap.workspace = true
 dhat = { workspace = true, optional = true }
 dissimilar.workspace = true
 dotenvy.workspace = true
+dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
+esbuild_client = { version = "0.1.1" }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -122,7 +129,7 @@ fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
@@ -133,7 +140,7 @@ log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
-memmem.workspace = true
+memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open.workspace = true
@@ -176,16 +183,19 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
+weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
