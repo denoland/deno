@@ -1413,7 +1413,7 @@ console.log(getKind());
   );
   let output = test_context.new_command().args("run --check main.ts").run();
   output
-    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\ncjs\n");
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
 
   // should not have created the .deno directory
   assert!(!dir.path().join("node_modules/.deno").exists());
