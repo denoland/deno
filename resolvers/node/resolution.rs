@@ -1836,17 +1836,20 @@ impl<
     &self,
     package_json: &'a PackageJson,
   ) -> Option<&'a str> {
+    fn filter_empty(value: Option<&str>) -> Option<&str> {
+      value.map(|v| v.trim()).filter(|v| !v.is_empty())
+    }
     if self.resolution_config.bundle_mode {
       let maybe_browser = if self.resolution_config.prefer_browser_field {
-        package_json.browser.as_deref()
+        filter_empty(package_json.browser.as_deref())
       } else {
         None
       };
       maybe_browser
-        .or(package_json.module.as_deref())
-        .or(package_json.main.as_deref())
+        .or(filter_empty(package_json.module.as_deref()))
+        .or(filter_empty(package_json.main.as_deref()))
     } else {
-      package_json.main.as_deref()
+      filter_empty(package_json.main.as_deref())
     }
   }
 
