@@ -120,9 +120,10 @@ impl DrawThread {
 
     if is_showing {
       // Clear it on the current thread in order to stop it from
-      // showing immediately. Also, don't stop and start the draw
-      // thread here because the calling code might be called from
-      // outside a tokio runtime.
+      // showing immediately. Also, don't stop the draw thread here
+      // because the calling code might be called from outside a
+      // tokio runtime and when it goes to start the thread on the
+      // thread pool it might panic.
       internal_state.static_text.eprint_clear();
     }
   }
