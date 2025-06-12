@@ -190,6 +190,14 @@ pub async fn infer_name_from_url(
     if !npm_ref.req.name.contains('/') {
       return Some(npm_ref.req.name.into_string());
     }
+    if let Some(scope_and_pkg) = npm_ref.req.name.strip_prefix('@') {
+      if let Some((scope, package)) = scope_and_pkg.split_once('/') {
+        if package == "cli" {
+          return Some(scope.to_string());
+        }
+      }
+    }
+
     return None;
   }
 
@@ -901,6 +909,14 @@ mod tests {
       )
       .await,
       None
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("npm:@slidev/cli@1.2").unwrap()
+      )
+      .await,
+      Some("slidev".to_string())
     );
   }
 
