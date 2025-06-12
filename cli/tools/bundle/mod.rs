@@ -45,9 +45,13 @@ use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
 
 pub async fn bundle(
-  flags: Arc<Flags>,
+  mut flags: Arc<Flags>,
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.unstable_config.sloppy_imports = true;
+  }
   let factory = CliFactory::from_flags(flags);
 
   let installer_factory = factory.npm_installer_factory()?;
