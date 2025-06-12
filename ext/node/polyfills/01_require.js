@@ -719,7 +719,7 @@ Module._load = function (request, parent, isMain) {
   }
   // Don't call updateChildren(), Module constructor already does.
   const module = cachedModule || new Module(filename, parent);
-  console.log("create module", filename);
+
   if (isMain) {
     process.mainModule = module;
     mainModule = module;
@@ -914,7 +914,6 @@ Module.prototype.load = function (filename) {
     pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
-  console.log("Module.load", filename, extension, Module._extensions);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
@@ -983,7 +982,6 @@ function wrapSafe(
   format,
 ) {
   const wrapper = Module.wrap(content);
-  console.log("wrapped");
   const [f, err] = core.evalContext(
     wrapper,
     url.pathToFileURL(filename).toString(),
@@ -999,7 +997,6 @@ function wrapSafe(
 }
 
 Module.prototype._compile = function (content, filename, format) {
-  console.log("_compile", filename, format);
   if (format === "module") {
     return loadESMFromCJS(this, filename, content);
   }
@@ -1042,14 +1039,6 @@ Module.prototype._compile = function (content, filename, format) {
     setTimeout,
   } = nodeGlobals;
 
-  console.log(
-    "calling wrapped",
-    filename,
-    Buffer,
-    clearImmediate,
-    clearTimeout,
-    setImmediate,
-  );
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -1161,7 +1150,6 @@ function createRequireFromPath(filename) {
 
 function makeRequireFunction(mod) {
   const require = function require(path) {
-    console.log("require", path);
     return mod.require(path);
   };
 
