@@ -117,13 +117,24 @@ pub enum ResolveIfForNpmPackageErrorKind {
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
-#[derive(Debug, Error, JsError)]
-#[class(generic)]
-#[error("Could not resolve '{}'.", self.npm_req_ref)]
+#[derive(Debug, JsError)]
+#[class(inherit)]
 pub struct ResolveNpmReqRefError {
   pub npm_req_ref: NpmPackageReqReference,
-  #[source]
-  pub source: ResolveReqWithSubPathError,
+  #[inherit]
+  pub err: ResolveReqWithSubPathError,
+}
+
+impl std::error::Error for ResolveNpmReqRefError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.err.source()
+  }
+}
+
+impl std::fmt::Display for ResolveNpmReqRefError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.err, f)
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -377,7 +388,7 @@ impl<
           req: req.clone(),
           sub_path: sub_path.map(|s| s.into()),
         }),
-        source,
+        err: source,
       })
   }
 

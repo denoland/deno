@@ -456,10 +456,10 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map_err(|source| {
+              .map_err(|err| {
                 DenoResolveErrorKind::ResolveNpmReqRef(ResolveNpmReqRefError {
                   npm_req_ref: npm_req_ref.clone(),
-                  source: source.into(),
+                  err: err.into(),
                 })
                 .into_box()
               })
