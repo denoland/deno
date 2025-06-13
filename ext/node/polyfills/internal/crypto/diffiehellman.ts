@@ -57,7 +57,7 @@ export function DiffieHellman(
   generator?: unknown,
   genEncoding?: unknown,
 ) {
-  return new DiffieHellman_(
+  return new DiffieHellmanImpl(
     sizeOrKey,
     keyEncoding,
     generator,
@@ -65,7 +65,7 @@ export function DiffieHellman(
   );
 }
 
-export class DiffieHellman_ {
+export class DiffieHellmanImpl {
   verifyError!: number;
   #prime: Buffer;
   #primeLength: number;
@@ -1122,21 +1122,21 @@ const DH_GROUPS = {
   },
 };
 
-DiffieHellman.prototype = DiffieHellman_.prototype;
+DiffieHellman.prototype = DiffieHellmanImpl.prototype;
 
 export function DiffieHellmanGroup(name: string) {
-  return new DiffieHellmanGroup_(name);
+  return new DiffieHellmanGroupImpl(name);
 }
 
-export class DiffieHellmanGroup_ {
+export class DiffieHellmanGroupImpl {
   verifyError!: number;
-  #diffiehellman: DiffieHellman_;
+  #diffiehellman: DiffieHellmanImpl;
 
   constructor(name: string) {
     if (!DH_GROUP_NAMES.includes(name)) {
       throw new ERR_CRYPTO_UNKNOWN_DH_GROUP();
     }
-    this.#diffiehellman = new DiffieHellman_(
+    this.#diffiehellman = new DiffieHellmanImpl(
       Buffer.from(DH_GROUPS[name].prime),
       DH_GROUPS[name].generator,
     );
@@ -1200,13 +1200,13 @@ export class DiffieHellmanGroup_ {
   }
 }
 
-DiffieHellmanGroup.prototype = DiffieHellmanGroup_.prototype;
+DiffieHellmanGroup.prototype = DiffieHellmanGroupImpl.prototype;
 
 export function ECDH(curve: string) {
-  return new ECDH_(curve);
+  return new ECDHImpl(curve);
 }
 
-export class ECDH_ {
+export class ECDHImpl {
   #curve: EllipticCurve; // the selected curve
   #privbuf: Buffer; // the private key
   #pubbuf: Buffer; // the public key
@@ -1337,7 +1337,7 @@ export class ECDH_ {
   }
 }
 
-ECDH.prototype = ECDH_.prototype;
+ECDH.prototype = ECDHImpl.prototype;
 
 export function diffieHellman(options: {
   privateKey: KeyObject;
