@@ -38,7 +38,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -504,12 +503,41 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
+impl CliModuleLoaderFactory {
+  pub fn create_cli_module_loader(
+    &self,
+    root_permissions: PermissionsContainer,
+  ) -> CliModuleLoader<MainModuleGraphContainer> {
+    CliModuleLoader(Rc::new(CliModuleLoaderInner {
+      lib: self.shared.lib_window,
+      is_worker: false,
+      parent_permissions: root_permissions.clone(),
+      permissions: root_permissions,
+      graph_container: (*self.shared.main_module_graph_container).clone(),
+      node_code_translator: self.shared.node_code_translator.clone(),
+      emitter: self.shared.emitter.clone(),
+      parsed_source_cache: self.shared.parsed_source_cache.clone(),
+      shared: self.shared.clone(),
+      loaded_files: Default::default(),
+    }))
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
 #[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
 pub struct LoadUnpreparedModuleError {
   specifier: ModuleSpecifier,
   maybe_referrer: Option<ModuleSpecifier>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("{message}")]
+#[class(inherit)]
+pub struct EnhancedGraphError {
+  #[inherit]
+  pub error: deno_graph::ModuleError,
+  pub message: String,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -520,6 +548,9 @@ pub enum LoadPreparedModuleError {
   #[class(inherit)]
   #[error(transparent)]
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Graph(#[from] EnhancedGraphError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -551,9 +582,70 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CliModuleLoaderError {
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadCodeSource(#[from] LoadCodeSourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadPreparedModule(#[from] LoadPreparedModuleError),
+  #[class(generic)]
+  #[error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.")]
+  MissingJsonAttribute,
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
+impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
+  pub async fn load_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    requested_module_type: RequestedModuleType,
+  ) -> Result<ModuleSource, CliModuleLoaderError> {
+    self
+      .0
+      .load_module_source(specifier, maybe_referrer, requested_module_type)
+      .await
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
+  async fn load_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    requested_module_type: RequestedModuleType,
+  ) -> Result<ModuleSource, CliModuleLoaderError> {
+    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
+
+    let module_type = match code_source.media_type {
+      MediaType::Json => ModuleType::Json,
+      MediaType::Wasm => ModuleType::Wasm,
+      _ => ModuleType::JavaScript,
+    };
+
+    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
+    // import attributes) is not JSON we need to fail.
+    if module_type == ModuleType::Json
+      && requested_module_type != RequestedModuleType::Json
+    {
+      return Err(CliModuleLoaderError::MissingJsonAttribute);
+    }
+
+    Ok(ModuleSource::new_with_redirect(
+      module_type,
+      code_source.code,
+      specifier,
+      &code_source.found_url,
+      None,
+    ))
+  }
+
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
@@ -561,16 +653,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
     let code_source = self.load_code_source(specifier, maybe_referrer).await?;
-    let code = if self.shared.is_inspecting
-      || code_source.media_type == MediaType::Wasm
-    {
-      // we need the code with the source map in order for
-      // it to work with --inspect or --inspect-brk
-      code_source.code
-    } else {
-      // v8 is slower when source maps are present, so we strip them
-      code_without_source_map(code_source.code)
-    };
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
       MediaType::Wasm => ModuleType::Wasm,
@@ -584,6 +666,16 @@ impl<TGraphContainer: ModuleGraphContainer>
     {
       return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
+    let code = if self.shared.is_inspecting
+      || code_source.media_type == MediaType::Wasm
+    {
+      // we need the code with the source map in order for
+      // it to work with --inspect or --inspect-brk
+      code_source.code
+    } else {
+      // v8 is slower when source maps are present, so we strip them
+      code_without_source_map(code_source.code)
+    };
 
     let code_cache = if module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().map(|cache| {
@@ -959,22 +1051,21 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
-    let maybe_module = graph.try_get(specifier).map_err(|err| {
-      JsErrorBox::new(
-        err.get_class(),
-        enhance_graph_error(
+    let maybe_module =
+      graph.try_get(specifier).map_err(|err| EnhancedGraphError {
+        message: enhance_graph_error(
           &self.shared.sys,
           &ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
         ),
-      )
-    })?;
+        error: err.clone(),
+      })?;
 
     match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
@@ -1122,8 +1213,9 @@ enum CodeOrDeferredEmit<'a> {
   },
 }
 
+#[derive(Clone)]
 // todo(dsherret): this double Rc boxing is not ideal
-struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
+pub struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
   Rc<CliModuleLoaderInner<TGraphContainer>>,
 );
 

@@ -4,7 +4,6 @@ mod esbuild;
 mod externals;
 
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -13,11 +12,10 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
-use deno_core::ModuleLoader;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::Position;
-use deno_lib::worker::ModuleLoaderFactory;
+use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -40,6 +38,8 @@ use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::module_loader::CliModuleLoader;
+use crate::module_loader::CliModuleLoaderError;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::resolver::CliResolver;
@@ -79,8 +79,7 @@ pub async fn bundle(
   let module_loader = factory
     .create_module_loader_factory()
     .await?
-    .create_for_main(root_permissions.clone())
-    .module_loader;
+    .create_cli_module_loader(root_permissions.clone());
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
 
@@ -296,13 +295,22 @@ var __require = createRequire(import.meta.url);
 
 fn format_message(message: &esbuild_client::protocol::Message) -> String {
   format!(
-    "{}{}",
+    "{}{}{}",
     message.text,
+    if message.id.is_empty() {
+      String::new()
+    } else {
+      format!("[{}] ", message.id)
+    },
     if let Some(location) = &message.location {
-      format!(
-        "\n  at {} {}:{}",
-        location.file, location.line, location.column
-      )
+      if !message.text.contains(" at ") {
+        format!(
+          "\n  at {} {}:{}",
+          location.file, location.line, location.column
+        )
+      } else {
+        String::new()
+      }
     } else {
       String::new()
     }
@@ -356,7 +364,7 @@ struct DenoPluginHandler {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  module_loader: Rc<dyn ModuleLoader>,
+  module_loader: CliModuleLoader<MainModuleGraphContainer>,
   externals_matcher: Option<ExternalsMatcher>,
 }
 
@@ -384,7 +392,22 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       args.resolve_dir.as_deref(),
       args.kind,
       args.with,
-    )?;
+    );
+
+    let result = match result {
+      Ok(r) => r,
+      Err(e) => {
+        return Ok(Some(esbuild_client::OnResolveResult {
+          errors: Some(vec![esbuild_client::protocol::PartialMessage {
+            id: "myerror".into(),
+            plugin_name: "deno".into(),
+            text: e.to_string(),
+            ..Default::default()
+          }]),
+          ..Default::default()
+        }));
+      }
+    };
 
     Ok(result.map(|r| {
       // TODO(nathanwhit): remap the resolved path to be relative
@@ -422,7 +445,24 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     let result = self
       .bundle_load(&args.path, requested_type_from_map(&args.with))
-      .await?;
+      .await;
+    let result = match result {
+      Ok(r) => r,
+      Err(e) => {
+        return Ok(Some(esbuild_client::OnLoadResult {
+          errors: Some(vec![esbuild_client::protocol::PartialMessage {
+            id: "myerror".into(),
+            plugin_name: "deno".into(),
+            notes: Some(vec![]),
+            detail: Some(protocol::AnyValue::U32(0)),
+            text: e.to_string(),
+            ..Default::default()
+          }]),
+          plugin_name: Some("deno".to_string()),
+          ..Default::default()
+        }));
+      }
+    };
     log::trace!(
       "{}: {:?}",
       deno_terminal::colors::magenta("on_load"),
@@ -473,6 +513,19 @@ fn import_kind_to_resolution_mode(
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum BundleLoadError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CliModuleLoaderError(#[from] CliModuleLoaderError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveWithGraphError(#[from] ResolveWithGraphError),
+}
+
 impl DenoPluginHandler {
   fn bundle_resolve(
     &self,
@@ -481,7 +534,7 @@ impl DenoPluginHandler {
     resolve_dir: Option<&str>,
     kind: esbuild_client::protocol::ImportKind,
     with: IndexMap<String, String>,
-  ) -> Result<Option<String>, AnyError> {
+  ) -> Result<Option<String>, BundleError> {
     log::debug!(
       "bundle_resolve: {:?} {:?} {:?} {:?} {:?}",
       path,
@@ -579,7 +632,8 @@ impl DenoPluginHandler {
     &self,
     specifier: &str,
     requested_type: RequestedModuleType,
-  ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, AnyError> {
+  ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
+  {
     log::debug!(
       "{}: {:?} {:?}",
       deno_terminal::colors::magenta("bundle_load"),
@@ -618,27 +672,21 @@ impl DenoPluginHandler {
       }
       (specifier, media_type_to_loader(media_type))
     };
-    let loaded =
-      self
-        .module_loader
-        .load(&specifier, None, false, requested_type);
+    let loaded = self
+      .module_loader
+      .load_module_source(&specifier, None, requested_type)
+      .await?;
 
-    match loaded {
-      deno_core::ModuleLoadResponse::Sync(module_source) => {
-        Ok(Some((module_source?.code.as_bytes().to_vec(), loader)))
-      }
-      deno_core::ModuleLoadResponse::Async(pin) => {
-        let pin = pin.await?;
-        Ok(Some((pin.code.as_bytes().to_vec(), loader)))
-      }
-    }
+    Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
   }
 
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>, AnyError>
-  {
+  ) -> Result<
+    Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>,
+    ResolveWithGraphError,
+  > {
     let graph = self.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
       return Ok(None);
@@ -679,7 +727,9 @@ impl DenoPluginHandler {
   }
 }
 
-fn file_path_or_url(url: &Url) -> Result<String, AnyError> {
+fn file_path_or_url(
+  url: &Url,
+) -> Result<String, deno_path_util::UrlToFilePathError> {
   if url.scheme() == "file" {
     Ok(
       deno_path_util::url_to_file_path(url)?
