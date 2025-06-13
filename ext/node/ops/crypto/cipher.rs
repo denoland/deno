@@ -494,7 +494,7 @@ macro_rules! assert_block_len {
 }
 
 fn is_valid_gcm_tag_length(tag_len: usize) -> bool {
-  tag_len == 4 || tag_len == 8 || (tag_len >= 12 && tag_len <= 16)
+  tag_len == 4 || tag_len == 8 || (12..=16).contains(&tag_len)
 }
 
 impl Decipher {
