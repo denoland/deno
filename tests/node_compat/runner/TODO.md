@@ -540,7 +540,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-keygen-rsa-pss.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-rsa-pss.js)
 - [parallel/test-crypto-keygen-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-sync.js)
 - [parallel/test-crypto-keygen.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen.js)
-- [parallel/test-crypto-oneshot-hash.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-oneshot-hash.js)
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)
