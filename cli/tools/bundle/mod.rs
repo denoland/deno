@@ -312,7 +312,7 @@ fn format_message(
     if let Some(location) = &message.location {
       if !message.text.contains(" at ") {
         format!(
-          "\n  at {}:{}:{}",
+          "\n    at {}:{}:{}",
           deno_path_util::resolve_url_or_path(
             location.file.as_str(),
             current_dir
@@ -465,16 +465,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       Err(e) => {
         if matches!(
           e,
-          BundleLoadError::CliModuleLoaderError(
+          BundleLoadError::CliModuleLoader(
             CliModuleLoaderError::LoadCodeSource(
               LoadCodeSourceError::LoadPreparedModule(
-                LoadPreparedModuleError::Graph(EnhancedGraphError {
-                  error: ModuleError::UnsupportedMediaType { .. },
-                  ..
-                })
+                LoadPreparedModuleError::Graph(ref e)
               )
             )
-          )
+          ) if matches!(&**e, EnhancedGraphError {
+            error: ModuleError::UnsupportedMediaType { .. },
+            ..
+          })
         ) {
           log::debug!("unsupported media type: {:?}", e);
           return Ok(None);
@@ -544,13 +544,13 @@ fn import_kind_to_resolution_mode(
 pub enum BundleLoadError {
   #[class(inherit)]
   #[error(transparent)]
-  CliModuleLoaderError(#[from] CliModuleLoaderError),
+  CliModuleLoader(#[from] CliModuleLoaderError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
+  ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolveWithGraphError(#[from] ResolveWithGraphError),
+  ResolveWithGraph(#[from] ResolveWithGraphError),
 }
 
 impl DenoPluginHandler {
@@ -624,7 +624,7 @@ impl DenoPluginHandler {
       Ok(specifier) => Ok(Some(file_path_or_url(&specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
-        Err(BundleError::Resolver(e).into())
+        Err(BundleError::Resolver(e))
       }
     }
   }

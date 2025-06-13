@@ -550,7 +550,7 @@ pub enum LoadPreparedModuleError {
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
   #[class(inherit)]
   #[error(transparent)]
-  Graph(#[from] EnhancedGraphError),
+  Graph(#[from] Box<EnhancedGraphError>),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -1057,15 +1057,16 @@ impl<TGraphContainer: ModuleGraphContainer>
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
-    let maybe_module =
-      graph.try_get(specifier).map_err(|err| EnhancedGraphError {
+    let maybe_module = graph.try_get(specifier).map_err(|err| {
+      Box::new(EnhancedGraphError {
         message: enhance_graph_error(
           &self.shared.sys,
           &ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
         ),
         error: err.clone(),
-      })?;
+      })
+    })?;
 
     match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
