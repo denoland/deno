@@ -5,7 +5,7 @@ version = "0.57.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/denoland/deno_config"
+repository = "https://github.com/denoland/deno"
 description = "Config file implementation for the Deno CLI"
 
 [lib]
