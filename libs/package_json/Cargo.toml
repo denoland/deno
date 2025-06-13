@@ -8,6 +8,9 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "package.json implementation for the Deno CLI"
 
+[lib]
+path = "lib.rs"
+
 [features]
 sync = []
 
