@@ -825,6 +825,8 @@ impl<TGraphContainer: ModuleGraphContainer>
       ResolveWithGraphOptions {
         mode: ResolutionMode::Import,
         kind: NodeResolutionKind::Execution,
+        // leave npm specifiers as-is for dynamic imports so that
+        // the loader can properly install them if necessary
         maintain_npm_specifiers: matches!(
           kind,
           deno_core::ResolutionKind::DynamicImport
