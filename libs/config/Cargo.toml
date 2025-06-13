@@ -2,10 +2,10 @@
 [package]
 name = "deno_config"
 version = "0.57.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/denoland/deno_config"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Config file implementation for the Deno CLI"
 
 [lib]
