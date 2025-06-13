@@ -36,7 +36,7 @@ disallowed-methods = [
   { path = "std::fs::rename", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::fs::set_permissions", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::fs::symlink_metadata", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::fs::write", reason = "File system operations should be done using the sys_traits crate" }
+  { path = "std::fs::write", reason = "File system operations should be done using the sys_traits crate" },
 ]
 disallowed-types = [
   { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
