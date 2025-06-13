@@ -14,6 +14,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
+use deno_graph::ModuleError;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
@@ -40,6 +41,9 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
+use crate::module_loader::EnhancedGraphError;
+use crate::module_loader::LoadCodeSourceError;
+use crate::module_loader::LoadPreparedModuleError;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::resolver::CliResolver;
@@ -449,6 +453,22 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
+        if matches!(
+          e,
+          BundleLoadError::CliModuleLoaderError(
+            CliModuleLoaderError::LoadCodeSource(
+              LoadCodeSourceError::LoadPreparedModule(
+                LoadPreparedModuleError::Graph(EnhancedGraphError {
+                  error: ModuleError::UnsupportedMediaType { .. },
+                  ..
+                })
+              )
+            )
+          )
+        ) {
+          log::debug!("unsupported media type: {:?}", e);
+          return Ok(None);
+        }
         return Ok(Some(esbuild_client::OnLoadResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
             id: "myerror".into(),
