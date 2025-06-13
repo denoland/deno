@@ -32,6 +32,7 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "libs/config",
   "resolvers/deno",
   "resolvers/node",
   "resolvers/npm_cache",
@@ -59,7 +60,7 @@ deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.350.0" }
 
 deno_cache_dir = "=0.22.2"
-deno_config = { version = "=0.57.0", features = ["workspace"] }
+deno_config = { version = "=0.57.0", features = ["workspace"], path = "./libs/config" }
 deno_doc = "=0.178.0"
 deno_error = "=0.6.1"
 deno_graph = { version = "=0.95.1", default-features = false }
@@ -179,6 +180,7 @@ hyper-rustls = { version = "0.27.2", default-features = false, features = ["http
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
+ignore = "0.4"
 import_map = { version = "0.22.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
