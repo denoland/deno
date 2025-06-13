@@ -455,7 +455,7 @@ pub fn op_node_pbkdf2(
   #[string] digest: &str,
   #[buffer] derived_key: &mut [u8],
 ) -> bool {
-  pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
+  pbkdf2_sync(password, salt, iterations, digest, derived_key).is_ok()
 }
 
 #[op2(fast)]
