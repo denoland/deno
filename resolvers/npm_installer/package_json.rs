@@ -138,8 +138,8 @@ impl NpmInstallDepsProvider {
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
-                // do not resolve to the current package
-                && pkg.pkg_json.path != pkg_json.path
+                        // do not resolve to the current package
+                        && pkg.pkg_json.path != pkg_json.path
               });
 
               if let Some(pkg) = workspace_pkg {
@@ -174,6 +174,19 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
+            PackageJsonDepValue::JsrReq(_) => {
+              pkg_json_dep_errors.push(
+                PackageJsonDepValueParseWithLocationError {
+                  location: pkg_json.specifier(),
+                  alias: alias.clone(),
+                  source: PackageJsonDepValueParseError(Box::new(
+                    deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
+                      scheme: "jsr".to_string(),
+                    },
+                  )),
+                },
+              );
+            }
           }
         }
 
@@ -183,26 +196,24 @@ impl NpmInstallDepsProvider {
       }
     }
 
-    if workspace.has_unstable("npm-patch") {
-      for pkg in workspace.patch_pkg_jsons() {
-        let Some(name) = pkg.name.as_ref() else {
-          continue;
-        };
-        let Some(version) = pkg
-          .version
-          .as_ref()
-          .and_then(|v| Version::parse_from_npm(v).ok())
-        else {
-          continue;
-        };
-        patch_pkgs.push(InstallPatchPkg {
-          nv: PackageNv {
-            name: PackageName::from_str(name),
-            version,
-          },
-          target_dir: pkg.dir_path().to_path_buf(),
-        })
-      }
+    for pkg in workspace.link_pkg_jsons() {
+      let Some(name) = pkg.name.as_ref() else {
+        continue;
+      };
+      let Some(version) = pkg
+        .version
+        .as_ref()
+        .and_then(|v| Version::parse_from_npm(v).ok())
+      else {
+        continue;
+      };
+      patch_pkgs.push(InstallPatchPkg {
+        nv: PackageNv {
+          name: PackageName::from_str(name),
+          version,
+        },
+        target_dir: pkg.dir_path().to_path_buf(),
+      })
     }
 
     remote_pkgs.shrink_to_fit();

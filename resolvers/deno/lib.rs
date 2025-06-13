@@ -23,17 +23,16 @@ pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
-use npm::MissingPackageNodeModulesFolderError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
-use npm::ResolveReqWithSubPathErrorKind;
 use thiserror::Error;
 use url::Url;
 
 use self::npm::NpmResolver;
 use self::npm::NpmResolverSys;
+use self::npm::ResolveNpmReqRefError;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
@@ -41,6 +40,8 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod collections;
+pub mod deno_json;
 pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
@@ -79,12 +80,12 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
   UnsupportedPackageJsonFileSpecifier,
+  #[class(type)]
+  #[error("JSR specifiers are not yet supported in package.json")]
+  UnsupportedPackageJsonJsrReq,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
-  #[class(inherit)]
-  #[error(transparent)]
-  MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
   Node(#[from] NodeResolveError),
@@ -103,6 +104,9 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveNpmReqRef(#[from] ResolveNpmReqRefError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -346,6 +350,9 @@ impl<
                     .into_box(),
                 )
               }
+              PackageJsonDepValue::JsrReq(_) => Err(
+                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(
@@ -455,7 +462,13 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map_err(DenoResolveError::from)
+              .map_err(|err| {
+                DenoResolveErrorKind::ResolveNpmReqRef(ResolveNpmReqRefError {
+                  npm_req_ref: npm_req_ref.clone(),
+                  err: err.into(),
+                })
+                .into_box()
+              })
               .and_then(|url_or_path| {
                 Ok(DenoResolution {
                   url: url_or_path.into_url()?,
@@ -465,7 +478,6 @@ impl<
               });
           }
 
-          // do npm resolution for byonm
           if self.is_byonm {
             return npm_req_resolver
               .resolve_req_reference(
@@ -475,23 +487,15 @@ impl<
                 resolution_kind,
               )
               .map_err(|err| {
-                match err.into_kind() {
-                  ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
-                    err.into()
-                  }
-                }
+                DenoResolveErrorKind::ResolveNpmReqRef(err).into_box()
               })
-              .and_then(|url_or_path| Ok(DenoResolution {
-                url: url_or_path.into_url()?,
-                maybe_diagnostic,
-                found_package_json_dep,
-              }));
+              .and_then(|url_or_path| {
+                Ok(DenoResolution {
+                  url: url_or_path.into_url()?,
+                  maybe_diagnostic,
+                  found_package_json_dep,
+                })
+              });
           }
         }
 
@@ -555,5 +559,29 @@ impl<
         Err(err)
       }
     }
+  }
+
+  #[cfg(feature = "graph")]
+  pub(crate) fn resolve_non_workspace_npm_req_ref_to_file(
+    &self,
+    npm_req_ref: &NpmPackageReqReference,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+    let Some(NodeAndNpmResolvers {
+      npm_req_resolver, ..
+    }) = &self.node_and_npm_resolver
+    else {
+      return Ok(None);
+    };
+    npm_req_resolver
+      .resolve_req_reference(
+        npm_req_ref,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map(Some)
   }
 }

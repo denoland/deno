@@ -37,7 +37,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmResolvers;
@@ -907,19 +907,19 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         npmrc.clone(),
       ));
-      let patch_packages: Arc<WorkspaceNpmPatchPackages> = self
+      let link_packages: Arc<WorkspaceNpmLinkPackages> = self
         .config_data
         .as_ref()
         .filter(|c| c.node_modules_dir.is_some()) // requires a node_modules dir
         .map(|d| {
-          Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          Arc::new(WorkspaceNpmLinkPackages::from_workspace(
             &d.member_dir.workspace,
           ))
         })
         .unwrap_or_default();
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
         self.services.npm_resolution.clone(),
-        patch_packages.clone(),
+        link_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             NpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -944,7 +944,7 @@ impl<'a> ResolverFactory<'a> {
         registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
-        patch_packages.clone(),
+        link_packages.clone(),
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
         Arc::new(NullLifecycleScriptsExecutor),
@@ -961,7 +961,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_node_modules_path.clone(),
         LifecycleScriptsConfig::default(),
         NpmSystemInfo::default(),
-        patch_packages,
+        link_packages,
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
@@ -1112,6 +1112,8 @@ impl<'a> ResolverFactory<'a> {
               )
               .unwrap(),
             ),
+            bundle_mode: false, // will change if we add support for moduleResolution bundler
+            prefer_browser_field: false,
           },
         )))
       })

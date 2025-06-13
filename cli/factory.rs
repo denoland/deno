@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -59,9 +58,11 @@ use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
-use crate::args::deno_json::TsConfigResolver;
+use crate::args::BundleFlags;
+use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -102,7 +103,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
@@ -331,7 +331,6 @@ struct CliFactoryServices {
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   text_only_progress_bar: Deferred<ProgressBar>,
-  tsconfig_resolver: Deferred<Arc<TsConfigResolver>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
 }
@@ -608,16 +607,6 @@ impl CliFactory {
     self.resolver_factory()?.npm_resolver()
   }
 
-  pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
-    Ok(&self.workspace_directory()?.workspace)
-  }
-
-  pub fn workspace_directory(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectory>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory()?)
-  }
-
   fn workspace_factory(&self) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
@@ -779,21 +768,16 @@ impl CliFactory {
     ))
   }
 
-  pub fn npm_req_resolver(&self) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
-    self.resolver_factory()?.npm_req_resolver()
-  }
-
   pub fn pkg_json_resolver(
     &self,
   ) -> Result<&Arc<CliPackageJsonResolver>, AnyError> {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
-  pub fn tsconfig_resolver(&self) -> Result<&Arc<TsConfigResolver>, AnyError> {
-    self.services.tsconfig_resolver.get_or_try_init(|| {
-      let workspace = self.workspace()?;
-      Ok(Arc::new(TsConfigResolver::from_workspace(workspace)))
-    })
+  pub fn tsconfig_resolver(
+    &self,
+  ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
+    Ok(self.workspace_factory()?.tsconfig_resolver()?)
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -1028,7 +1012,6 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
-    let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
       let mode = if self.resolver_factory()?.use_byonm()? {
@@ -1068,7 +1051,6 @@ impl CliFactory {
         self.sys(),
       ),
       npm_registry_permission_checker,
-      npm_req_resolver.clone(),
       cli_npm_resolver.clone(),
       self.parsed_source_cache().clone(),
       self.resolver().await?.clone(),
@@ -1231,6 +1213,15 @@ impl CliFactory {
                 .node_conditions()
                 .iter()
                 .map(|c| Cow::Owned(c.clone()))
+                .chain({
+                  match &self.flags.subcommand {
+                    DenoSubcommand::Bundle(BundleFlags {
+                      platform: BundlePlatform::Browser,
+                      ..
+                    }) => vec![Cow::Borrowed("browser")],
+                    _ => vec![],
+                  }
+                })
                 .collect(),
               import_conditions_override: None,
               require_conditions_override: None,
@@ -1240,6 +1231,17 @@ impl CliFactory {
                 deno_lib::version::DENO_VERSION_INFO.typescript,
               )
               .unwrap(),
+            ),
+            bundle_mode: matches!(
+              self.flags.subcommand,
+              DenoSubcommand::Bundle(_)
+            ),
+            prefer_browser_field: matches!(
+              self.flags.subcommand,
+              DenoSubcommand::Bundle(BundleFlags {
+                platform: BundlePlatform::Browser,
+                ..
+              })
             ),
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),

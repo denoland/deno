@@ -25,15 +25,24 @@
 
 "use strict";
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  ObjectDefineProperty,
+  ObjectEntries,
+  SafeMap,
+  SafeSet,
+} = primordials;
+
 const kRejection = Symbol.for("nodejs.rejection");
+export const kEvents = Symbol("kEvents");
 
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import {
   AbortError,
-  // kEnhanceStackBeforeInspector,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
-  ERR_OUT_OF_RANGE,
   ERR_UNHANDLED_ERROR,
 } from "ext:deno_node/internal/errors.ts";
 
@@ -43,6 +52,7 @@ import {
   validateBoolean,
   validateFunction,
   validateNumber,
+  validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
@@ -739,17 +749,36 @@ EventEmitter.prototype.rawListeners = function rawListeners(type) {
  * Returns the number of listeners listening to event name
  * specified as `type`.
  * @param {string | symbol} type
+ * @param {Function} listener
  * @returns {number}
  */
-const _listenerCount = function listenerCount(type) {
+const _listenerCount = function listenerCount(type, listener) {
   const events = this._events;
 
   if (events !== undefined) {
     const evlistener = events[type];
 
     if (typeof evlistener === "function") {
+      if (listener != null) {
+        return listener === evlistener || listener === evlistener.listener
+          ? 1
+          : 0;
+      }
       return 1;
     } else if (evlistener !== undefined) {
+      if (listener != null) {
+        let matching = 0;
+
+        for (let i = 0, l = evlistener.length; i < l; i++) {
+          if (
+            evlistener[i] === listener || evlistener[i].listener === listener
+          ) {
+            matching++;
+          }
+        }
+
+        return matching;
+      }
       return evlistener.length;
     }
   }
@@ -825,7 +854,9 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    return emitterOrTarget[eventTargetData]?.listeners?.[type] || [];
+    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
+      listener,
+    ) => listener.callback) || [];
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",
@@ -914,13 +945,25 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
   } else if (typeof emitter.addEventListener === "function") {
     // EventTarget does not have `error` event semantics like Node
     // EventEmitters, we do not listen to `error` events here.
-    emitter.addEventListener(name, (arg) => {
-      listener(arg);
-    }, flags);
+    emitter.addEventListener(name, listener, flags);
   } else {
     throw new ERR_INVALID_ARG_TYPE("emitter", "EventEmitter", emitter);
   }
 }
+
+const kEventsGetter = {
+  get() {
+    const data = this[eventTargetData];
+    if (!data) {
+      return new SafeMap();
+    }
+    return new SafeMap(
+      ArrayPrototypeMap(ObjectEntries(data.listeners), (
+        [key, listeners],
+      ) => [key, new SafeSet(listeners)]),
+    );
+  },
+};
 
 /**
  * Returns an `AsyncIterator` that iterates `event` events.
@@ -929,11 +972,20 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
  * @param {{ signal: AbortSignal; }} [options]
  * @returns {AsyncIterator}
  */
-export function on(emitter, event, options) {
+export function on(emitter, event, options = kEmptyObject) {
+  validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
   if (signal?.aborted) {
     throw new AbortError();
+  }
+
+  if (signal) {
+    // Patches [kEvents] field of AbortSignal to simulate Node.js EventTarget
+    // This is necessary to pass `paralle/test-events-on-async-iterator.js` test
+    // TODO(kt3k): This can be removed if events.getEventListeners() is used
+    // instead of `signal[kEvents]` in upstream.
+    ObjectDefineProperty(signal, kEvents, kEventsGetter);
   }
 
   const unconsumedEvents = [];
@@ -979,7 +1031,6 @@ export function on(emitter, event, options) {
           signal,
           "abort",
           abortListener,
-          { once: true },
         );
       }
 
@@ -1003,6 +1054,14 @@ export function on(emitter, event, options) {
       error = err;
       eventTargetAgnosticRemoveListener(emitter, event, eventHandler);
       eventTargetAgnosticRemoveListener(emitter, "error", errorHandler);
+
+      if (signal) {
+        eventTargetAgnosticRemoveListener(
+          signal,
+          "abort",
+          abortListener,
+        );
+      }
     },
 
     [Symbol.asyncIterator]() {

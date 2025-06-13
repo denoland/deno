@@ -408,7 +408,7 @@ impl<
             .map_err(JsErrorBox::from_err)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) =
-              package_json.main(deno_package_json::NodeModuleKind::Cjs)
+              self.node_resolver.legacy_fallback_resolve(&package_json)
             {
               return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
             }
@@ -420,7 +420,7 @@ impl<
           .file_extension_probe(d, referrer_path)
           .map(|p| Some(UrlOrPath::Path(p)));
       } else if let Some(main) =
-        package_json.main(deno_package_json::NodeModuleKind::Cjs)
+        self.node_resolver.legacy_fallback_resolve(&package_json)
       {
         return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
       } else {

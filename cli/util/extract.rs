@@ -48,6 +48,11 @@ enum WrapKind {
   NoWrap,
 }
 
+struct TestOrSnippet {
+  file: File,
+  has_deno_test: bool,
+}
+
 fn extract_inner(
   file: File,
   wrap_kind: WrapKind,
@@ -86,8 +91,13 @@ fn extract_inner(
 
   extracted_files
     .into_iter()
-    .map(|extracted_file| {
-      generate_pseudo_file(extracted_file, &file.specifier, &exports, wrap_kind)
+    .map(|extracted| {
+      let wrap_kind = if extracted.has_deno_test {
+        WrapKind::NoWrap
+      } else {
+        wrap_kind
+      };
+      generate_pseudo_file(extracted.file, &file.specifier, &exports, wrap_kind)
     })
     .collect::<Result<_, _>>()
 }
@@ -96,7 +106,7 @@ fn extract_files_from_fenced_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
   // The pattern matches code blocks as well as anything in HTML comment syntax,
   // but it stores the latter without any capturing groups. This way, a simple
   // check can be done to see if a block is inside a comment (and skip typechecking)
@@ -119,7 +129,7 @@ fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
   source: Arc<str>,
   media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.clone(),
     text: source,
@@ -165,7 +175,9 @@ fn extract_files_from_regex_blocks(
   file_line_index: usize,
   blocks_regex: &Regex,
   lines_regex: &Regex,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
+  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
+
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
@@ -229,12 +241,16 @@ fn extract_files_from_regex_blocks(
         mapped_specifier_for_tsc(&file_specifier, file_media_type)
           .map(|s| ModuleSpecifier::parse(&s).unwrap())
           .unwrap_or(file_specifier);
-
-      Some(File {
+      let has_deno_test = tests_regex.is_match(&file_source);
+      let file = File {
         url: file_specifier,
         mtime: None,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
+      };
+      Some(TestOrSnippet {
+        file,
+        has_deno_test,
       })
     })
     .collect();
@@ -846,7 +862,7 @@ mod tests {
 /**
  * ```ts
  * import { assertEquals } from "@std/assert/equal";
- * 
+ *
  * assertEquals(add(1, 2), 3);
  * ```
  */
@@ -1196,6 +1212,90 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/29629
+      Test {
+        input: Input {
+          source: r#"
+# Title
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+Deno.test("add", () => {
+  assertEquals(1 + 2, 3);
+});
+```
+"#,
+          specifier: "file:///main.md",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+Deno.test("add", ()=>{
+    assertEquals(1 + 2, 3);
+});
+"#,
+          specifier: "file:///main.md$4-11.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * Deno.test("add", () => {
+ *   assertEquals(add(1, 2), 3);
+ * });
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+  "#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { add } from "file:///main.ts";
+Deno.test("add", ()=>{
+    assertEquals(add(1, 2), 3);
+});
+"#,
+          specifier: "file:///main.ts$3-10.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // commented out `Deno.test` should be ignored
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ * // Deno.test("add", () => {});
+ * assertEquals(add(1, 2), 3);
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+  "#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { add } from "file:///main.ts";
+Deno.test("file:///main.ts$3-8.ts", async ()=>{
+    // Deno.test("add", () => {});
+    assertEquals(add(1, 2), 3);
+});
+"#,
+          specifier: "file:///main.ts$3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },

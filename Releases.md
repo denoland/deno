@@ -6,6 +6,103 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.6 / 2025.06.12
+
+- feat(bundle, unstable): bundling backed by esbuild (#29470)
+- feat(ext/fetch): add support for fetch on vsock sockets (#29692)
+- feat(unstable): add --unstable-node-conditions flag for node resolution
+  (#29586)
+- feat(unstable): deploy subcommand (#29407)
+- fix(bundle): don't panic on broken pipe (#29706)
+- fix(bundle): fix handling of multiple entrypoints (#29651)
+- fix(bundle): pass requested module type to load (#29683)
+- fix(bundle): rework how patterns for externals are handled (#29680)
+- fix(compile): skip over read_dir errors when finding node_modules directories
+  (#29672)
+- fix(coverage): `deno test --coverage` fails when importing modules from
+  `data:` urls (#29607)
+- fix(ext/http): handle vsock streams in `extract_network_stream` (#29518)
+- fix(ext/node): Buffer.fill compatibility fixes (#29525)
+- fix(ext/node): Fix missing core_import_map node internal file path for http2
+  (#29644)
+- fix(ext/node): `process.loadEnvFile` returns `undefined` (#29717)
+- fix(ext/node): add back perf_hooks.markResourceTiming (#29562)
+- fix(ext/node): add events `getMaxListeners` (#29636)
+- fix(ext/node): disable `parallel/test-crypto-secure-heap.js` test (#29658)
+- fix(ext/node): enable `Buffer` pool for strings (#29592)
+- fix(ext/node): export StatementSync from `node:sqlite` (#29563)
+- fix(ext/node): fix `Buffer.inspect` compatiblity (#29617)
+- fix(ext/node): fix `EventEmitter.on` (#29682)
+- fix(ext/node): fix addAbortListener (#29634)
+- fix(ext/node): fix buffer.includes edge cases (#29591)
+- fix(ext/node): fix buffer.indexOf for ucs2 encoding (#29593)
+- fix(ext/node): fix events.getEventListeners (#29685)
+- fix(ext/node): fix fs.watchFile trigger (#29659)
+- fix(ext/node): fix inspect of CustomEvent of Node.js (#29668)
+- fix(ext/node): fix prototype of asymmetricKeyDetails of AsymmetricKeyObject
+  (#29576)
+- fix(ext/node): fix validation of input in setMaxListeners (#29630)
+- fix(ext/node): handle -p flag in spawn, fix "from dependency" check in windows
+  (#29611)
+- fix(ext/node): ignore `parallel/test-eventsource-disabled.js` test (#29618)
+- fix(ext/node): improve getaddrinfo compatibility (#29501)
+- fix(ext/node): internal getOpenSSLSecLevel() for tests (#29657)
+- fix(ext/node): make Buffer work with resizable ABs (#29578)
+- fix(ext/node): make DatabaseSync `readOnly` optional (#29564)
+- fix(ext/node): make conditional exports work in `require()` (#29640)
+- fix(ext/node): mark pool `ArrayBuffer` as untransferable (#29612)
+- fix(ext/node): match WebCrypto tag too small error msg with Node (#29654)
+- fix(ext/node): pass node.js specific flags via NODE_OPTIONS env var in spawn
+  (#29600)
+- fix(ext/node): print warnings to stderr (#29527)
+- fix(ext/node): return `undefined` instead of `null` in sqlite (#29567)
+- fix(ext/node): support 2nd arg of `EventEmitter.prototype.listenerCount`
+  (#29664)
+- fix(ext/node): support DEP0005 deprecation warning (#29530)
+- fix(ext/node): update decipherIv error properties (#29652)
+- fix(ext/node): update interaction between event emitters and domains (#29632)
+- fix(ext/node): update message for `MaxListenersExceededWarning` (#29613)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_symlink.ts`
+  (#29547)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/console/constructor.mjs` (#29605)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/fs/streams.mjs`
+  (#29643)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/process/per_thread.mjs` (#29550)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/util/inspect.mjs` (#29691)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/stream_wrap.ts` (#29542)
+- fix(ext/node): validate prime bigint candidate (#29653)
+- fix(ext/node): validate randomUUID() options (#29656)
+- fix(ext/node): various `node:sqlite` fixes (#29404)
+- fix(ext/os): silently ignore invalid utf-8 characters in os vars (#29571)
+- fix(ext/web): fix property configuration of event phase fields (#29635)
+- fix(fmt): allow omission of semicolon in certain cases in css template
+  (#29687)
+- fix(fmt): fix line number in error message when syntax error thrown from
+  external formatter (#29698)
+- fix(install): bust packument cache on version not found when loading extra
+  info from lockfile (#29679)
+- fix(install): clean-up lock poll file for a more deterministic `node_modules`
+  folder output (#29623)
+- fix(lsp): use canonicalized fallback filesystem root (#29566)
+- fix(node/assert): throw on deepStrictEqual({}, Object.create(null)) (#29428)
+- fix(otel): set timestamp on opentelemetry log records (#28625)
+- fix(process,node): roll our own process spawning on windows (#29609)
+- fix(test): handle snippet containing `Deno.test` in doc test (#29631)
+- fix(unstable): continue to deserialize patches field from lockfile (#29714)
+- fix(unstable): rename "patch" property to "links" (#29677)
+- fix(zlib): don't return a smi from crc32 (#29546)
+- fix: remove WorkerGlobalScope from global middleware (#29543)
+- fix: revert back to prefering highest previously resolved version for a req
+  (#29642)
+- fix: support virtio vsock only on systems on which it is available (remainder)
+  (#29709)
+- perf(process): make sure we can take process spawning fast path on unix
+  (#29573)
+
 ### 2.3.5 / 2025.05.30
 
 - fix(ext/node): Buffer write OOB checks (#29524)
