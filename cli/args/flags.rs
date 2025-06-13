@@ -1944,11 +1944,11 @@ fn bundle_subcommand() -> Command {
     "bundle",
     "Output a single JavaScript file with all dependencies.
 
-  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+  deno bundle jsr:@std/http/file-server -o file-server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
-  deno bundle https://deno.land/std/examples/colors.ts
+  deno bundle jsr:@std/http/file-server
 ",
     UnstableArgsConfig::ResolutionOnly,
   )
@@ -4850,6 +4850,7 @@ fn bundle_parse(
   let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  allow_import_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
     output_path: output,
