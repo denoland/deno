@@ -11,16 +11,16 @@ description = "package.json implementation for the Deno CLI"
 sync = []
 
 [dependencies]
-boxed_error = "0.2.3"
-deno_error = { version = "0.6.0", features = ["serde", "serde_json"] }
-deno_path_util = "0.4.0"
-deno_semver = "0.8.0"
-indexmap = { version = "2", features = ["serde"] }
-serde = { version = "1.0.149", features = ["derive"] }
-serde_json = "1.0.85"
-sys_traits = "0.1.0"
-thiserror = "2"
-url = { version = "2.5.1" }
+boxed_error.workspace = true
+deno_error = { workspace = true, features = ["serde", "serde_json"] }
+deno_path_util.workspace = true
+deno_semver.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sys_traits.workspace = true
+thiserror.workspace = true
+url.workspace = true
 
 [dev-dependencies]
-pretty_assertions = "1.4.0"
+pretty_assertions.workspace = true
