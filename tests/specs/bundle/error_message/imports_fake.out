@@ -1,0 +1,4 @@
+[WILDCARD]
+error: Module not found "[WILDCARD]does-not-exist.ts".
+    at file://[WILDCARD]imports-fake.ts:1:22
+error: bundling failed
