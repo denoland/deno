@@ -384,6 +384,7 @@
       "test-console-sync-write-error.js",
       "test-console-table.js",
       "test-console-tty-colors.js",
+      "test-crypto-dh-constructor.js",
       "test-crypto-dh-errors.js",
       "test-crypto-dh-odd-key.js",
       "test-crypto-dh-shared.js",
