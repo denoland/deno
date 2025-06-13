@@ -26,7 +26,6 @@ use regex::Regex;
 use regex::RegexBuilder;
 
 use crate::args::resolve_no_prompt;
-use crate::args::AddFlags;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -344,24 +343,6 @@ async fn install_local(
   }
 }
 
-fn check_if_installs_a_single_package_globally(
-  maybe_add_flags: Option<&AddFlags>,
-) -> Result<(), AnyError> {
-  let Some(add_flags) = maybe_add_flags else {
-    return Ok(());
-  };
-  if add_flags.packages.len() != 1 {
-    return Ok(());
-  }
-  let Ok(url) = Url::parse(&add_flags.packages[0]) else {
-    return Ok(());
-  };
-  if matches!(url.scheme(), "http" | "https") {
-    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
-  }
-  Ok(())
-}
-
 pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
@@ -370,12 +351,7 @@ pub async fn install_command(
     InstallFlags::Global(global_flags) => {
       install_global(flags, global_flags).await
     }
-    InstallFlags::Local(local_flags) => {
-      if let InstallFlagsLocal::Add(add_flags) = &local_flags {
-        check_if_installs_a_single_package_globally(Some(add_flags))?;
-      }
-      install_local(flags, local_flags).await
-    }
+    InstallFlags::Local(local_flags) => install_local(flags, local_flags).await,
   }
 }
 
