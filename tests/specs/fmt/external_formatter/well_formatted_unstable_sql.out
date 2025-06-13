@@ -17,6 +17,10 @@ const EqualDivider = styled.div`
       ? expression1 + expression2 * expression3
       : expression4}px;
   }
+
+  span {
+    ${SOME_STYLE};
+  }
 `;
 
 cssString = css`

@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1192 tests out of 3993 have been ported from Node 23.9.0 (29.85% ported, 70.75% remaining).
+1204 tests out of 3993 have been ported from Node 23.9.0 (30.15% ported, 70.47% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -282,9 +282,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-blocklist-clone.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
-- [parallel/test-buffer-fill.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-fill.js)
-- [parallel/test-buffer-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-inspect.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-prototype-inspect.js)
 - [parallel/test-c-ares.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-c-ares.js)
 - [parallel/test-child-process-advanced-serialization-largebuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-child-process-advanced-serialization-largebuffer.js)
@@ -548,13 +545,10 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)
-- [parallel/test-crypto-randomuuid.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-randomuuid.js)
 - [parallel/test-crypto-rsa-dsa.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-rsa-dsa.js)
-- [parallel/test-crypto-sec-level.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sec-level.js)
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-sign-verify.js)
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-verify-failure.js)
-- [parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js)
 - [parallel/test-crypto-worker-thread.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-worker-thread.js)
 - [parallel/test-crypto.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto.js)
 - [parallel/test-cwd-enoent-preload.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-cwd-enoent-preload.js)
@@ -748,12 +742,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-esm-loader-hooks-inspect-brk.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-esm-loader-hooks-inspect-brk.js)
 - [parallel/test-esm-loader-hooks-inspect-wait.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-esm-loader-hooks-inspect-wait.js)
 - [parallel/test-eval-disallow-code-generation-from-strings.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eval-disallow-code-generation-from-strings.js)
-- [parallel/test-event-target.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-event-target.js)
 - [parallel/test-eventemitter-asyncresource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventemitter-asyncresource.js)
-- [parallel/test-events-customevent.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-customevent.js)
-- [parallel/test-events-getmaxlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-getmaxlisteners.js)
-- [parallel/test-events-listener-count-with-listener.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-listener-count-with-listener.js)
-- [parallel/test-events-static-geteventlisteners.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-events-static-geteventlisteners.js)
 - [parallel/test-eventsource-disabled.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventsource-disabled.js)
 - [parallel/test-eventsource.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventsource.js)
 - [parallel/test-eventtarget-memoryleakwarning.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-eventtarget-memoryleakwarning.js)
