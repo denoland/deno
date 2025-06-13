@@ -4,7 +4,7 @@ Runtime | [WILDLINE]
 
 file:///[WILDLINE]/package-b/mod.bench.ts
 
-benchmark[WILDLINE]
----[WILDLINE]
-addOne[WILDLINE]
+| benchmark[WILDLINE]
+| ---[WILDLINE]
+| addOne[WILDLINE]
 
