@@ -382,14 +382,50 @@ pub fn op_node_verify(
   )
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+enum ErrorCode {
+  ERR_CRYPTO_INVALID_DIGEST,
+}
+
+impl std::fmt::Display for ErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl ErrorCode {
+  pub fn as_str(&self) -> &str {
+    match self {
+      Self::ERR_CRYPTO_INVALID_DIGEST => "ERR_CRYPTO_INVALID_DIGEST",
+    }
+  }
+}
+
+impl From<ErrorCode> for deno_error::PropertyValue {
+  fn from(code: ErrorCode) -> Self {
+    deno_error::PropertyValue::from(code.as_str().to_string())
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Pbkdf2Error {
   #[class(type)]
-  #[error("unsupported digest: {0}")]
+  #[error("Invalid digest: {0}")]
+  #[property("code" = self.code())]
   UnsupportedDigest(String),
   #[class(inherit)]
   #[error(transparent)]
   Join(#[from] tokio::task::JoinError),
+}
+
+impl Pbkdf2Error {
+  fn code(&self) -> ErrorCode {
+    match self {
+      Self::UnsupportedDigest(_) => ErrorCode::ERR_CRYPTO_INVALID_DIGEST,
+      Self::Join(_) => unreachable!(),
+    }
+  }
 }
 
 fn pbkdf2_sync(
@@ -413,8 +449,8 @@ fn pbkdf2_sync(
 
 #[op2]
 pub fn op_node_pbkdf2(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: &[u8],
+  #[anybuffer] salt: &[u8],
   #[smi] iterations: u32,
   #[string] digest: &str,
   #[buffer] derived_key: &mut [u8],
@@ -422,11 +458,27 @@ pub fn op_node_pbkdf2(
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
 }
 
+#[op2(fast)]
+pub fn op_node_pbkdf2_validate(
+  #[string] digest: &str,
+) -> Result<(), Pbkdf2Error> {
+  // Validate the digest algorithm name
+  match_fixed_digest_with_eager_block_buffer!(
+    digest,
+    fn <_D>() {
+      Ok(())
+    },
+    _ => {
+      Err(Pbkdf2Error::UnsupportedDigest(digest.to_string()))
+    }
+  )
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_node_pbkdf2_async(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: JsBuffer,
+  #[anybuffer] salt: JsBuffer,
   #[smi] iterations: u32,
   #[string] digest: String,
   #[number] keylen: usize,
