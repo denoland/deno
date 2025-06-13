@@ -297,7 +297,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.95.6"
+dprint-plugin-typescript = "=0.95.7"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"
@@ -523,6 +523,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-dprint-plugin-typescript = { rev = "81060251e411676d5bbf608890078399d5dcd943", git = "https://github.com/kt3k/dprint-plugin-typescript.git" }
