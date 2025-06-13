@@ -632,15 +632,23 @@ impl<TGraphContainer: ModuleGraphContainer>
         let specifier = if let Ok(reference) =
           NpmPackageReqReference::from_specifier(specifier)
         {
+          let referrer = match maybe_referrer {
+            // if we're here, it means it was importing from a dynamic import
+            // and so there will be a referrer
+            Some(r) => Cow::Borrowed(r),
+            // but the repl may also end up here and it won't have
+            // a referrer so create a referrer for it here
+            None => Cow::Owned(
+              self.resolve_referrer("").map_err(JsErrorBox::from_err)?,
+            ),
+          };
           Cow::Owned(
             self
               .shared
               .resolver
               .resolve_non_workspace_npm_req_ref_to_file(
                 &reference,
-                // if we're here, it means it was importing from a
-                // dynamic import and so there will be a referrer
-                maybe_referrer.unwrap(),
+                &referrer,
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
               )
