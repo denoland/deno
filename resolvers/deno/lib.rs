@@ -41,6 +41,8 @@ use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
 pub mod cjs;
+pub mod collections;
+pub mod deno_json;
 pub mod display;
 pub mod factory;
 #[cfg(feature = "graph")]
@@ -79,6 +81,9 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
   UnsupportedPackageJsonFileSpecifier,
+  #[class(type)]
+  #[error("JSR specifiers are not yet supported in package.json")]
+  UnsupportedPackageJsonJsrReq,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -261,6 +266,14 @@ impl<
       if referrer.scheme() == "file"
         && self.in_npm_pkg_checker.in_npm_package(referrer)
       {
+        log::debug!(
+          "{}: specifier={} referrer={} mode={:?} kind={:?}",
+          deno_terminal::colors::magenta("resolving in npm package"),
+          raw_specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind
+        );
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
           .and_then(|res| {
@@ -338,6 +351,9 @@ impl<
                     .into_box(),
                 )
               }
+              PackageJsonDepValue::JsrReq(_) => Err(
+                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

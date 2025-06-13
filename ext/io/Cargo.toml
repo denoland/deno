@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.116.0"
+version = "0.117.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,3 +37,4 @@ winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingap
 rand.workspace = true
 parking_lot.workspace = true
 windows-sys.workspace = true
+deno_subprocess_windows.workspace = true

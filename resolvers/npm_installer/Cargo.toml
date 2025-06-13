@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_installer"
-version = "0.1.0"
+version = "0.2.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -49,6 +49,8 @@ url.workspace = true
 sys_traits = { workspace = true, features = ["real", "wasm"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
+deno_unsync = { workspace = true, features = ["tokio"] }
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]

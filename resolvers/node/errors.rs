@@ -407,17 +407,14 @@ impl NodeJsErrorCoded for TypesNotFoundError {
 }
 
 #[derive(Debug, Error, JsError)]
-#[error(
-  "[{}] Invalid package config. {}",
-  self.code(),
-  self.0
-)]
-#[property("code" = self.code())]
-pub struct PackageJsonLoadError(
-  #[source]
-  #[from]
-  pub deno_package_json::PackageJsonLoadError,
-);
+pub enum PackageJsonLoadError {
+  #[class(inherit)]
+  #[error("[{}] Invalid package config. {}", self.code(), .0)]
+  PackageJson(#[from] deno_package_json::PackageJsonLoadError),
+  #[class(generic)]
+  #[error("[{}] JSR specifiers are not supported in package.json: {req}", self.code())]
+  JsrReqUnsupported { req: String },
+}
 
 impl NodeJsErrorCoded for PackageJsonLoadError {
   fn code(&self) -> NodeJsErrorCode {

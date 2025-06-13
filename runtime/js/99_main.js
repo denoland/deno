@@ -265,7 +265,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (op_worker_get_type() === "module") {
+  if (op_worker_get_type() !== "classic") {
     throw new TypeError("Cannot import scripts in a module worker");
   }
 
@@ -994,6 +994,7 @@ function bootstrapWorkerRuntime(
   name,
   internalName,
   workerId,
+  workerType,
   maybeWorkerMetadata,
   warmup = false,
 ) {
@@ -1023,6 +1024,9 @@ function bootstrapWorkerRuntime(
     hasBootstrapped = true;
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    if (workerType === "node") {
+      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
@@ -1140,6 +1144,7 @@ removeImportedOps();
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
 bootstrapWorkerRuntime(
+  undefined,
   undefined,
   undefined,
   undefined,

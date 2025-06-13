@@ -15,6 +15,8 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
@@ -38,6 +40,8 @@ use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -1036,13 +1040,13 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 

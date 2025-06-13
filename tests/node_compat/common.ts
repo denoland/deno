@@ -37,7 +37,7 @@ export const ignoreList = Object.entries(config.ignore).reduce(
     paths.forEach((path) => total.push(new RegExp(join(suite, path))));
     return total;
   },
-  [/package\.json/],
+  [],
 );
 
 export function getPathsFromTestSuites(suites: TestSuites): string[] {

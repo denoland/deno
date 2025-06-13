@@ -11,6 +11,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_resolver::deno_json::TsConfigResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
 use sys_traits::FsMetadata;
@@ -20,7 +21,6 @@ use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
-use crate::args::deno_json::TsConfigResolver;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::sys::CliSys;
@@ -37,7 +37,7 @@ pub struct ModuleContentProvider<TSys: FsMetadata + FsRead = CliSys> {
   specifier_unfurler: SpecifierUnfurler<TSys>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   sys: TSys,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
 }
 
 impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
@@ -45,7 +45,7 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     parsed_source_cache: Arc<ParsedSourceCache>,
     specifier_unfurler: SpecifierUnfurler<TSys>,
     sys: TSys,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
   ) -> Self {
     Self {
       specifier_unfurler,
@@ -409,8 +409,10 @@ mod test {
       .unwrap(),
     );
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
-    let tsconfig_resolver =
-      Arc::new(TsConfigResolver::from_workspace(&workspace_dir.workspace));
+    let tsconfig_resolver = Arc::new(TsConfigResolver::from_workspace(
+      &sys,
+      &workspace_dir.workspace,
+    ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,

@@ -223,6 +223,7 @@ enum DotEnvLoadErr {
 }
 
 #[op2(fast)]
+#[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
@@ -504,7 +505,8 @@ deno_core::extension!(deno_node,
     ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync
+    ops::sqlite::StatementSync,
+    ops::crypto::digest::Hasher,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

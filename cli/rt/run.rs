@@ -243,6 +243,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .into(),
         ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -817,8 +823,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
-  let node_code_translator =
-    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+  ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -857,7 +865,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
-          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          is_link: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),

@@ -27,6 +27,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
 
 const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
@@ -34,6 +35,7 @@ const {
   Error,
   ObjectHasOwn,
   PromiseResolve,
+  FunctionPrototypeCall,
   SafeSet,
   Symbol,
   SymbolFor,
@@ -167,7 +169,7 @@ class NodeWorker extends EventEmitter {
         sourceCode: "",
         permissions: null,
         name: this.#name,
-        workerType: "module",
+        workerType: "node",
         closeOnIdle: true,
       },
       serializedWorkerMetadata,
@@ -578,6 +580,22 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port.ref = () => {
     port[refMessagePort](true);
+  };
+  const webPostMessage = port.postMessage;
+  port.postMessage = (message, transferList) => {
+    for (let i = 0; i < transferList?.length; i++) {
+      const item = transferList[i];
+      if (item[untransferableSymbol] === true) {
+        throw new DOMException("Value not transferable", "DataCloneError");
+      }
+    }
+
+    return FunctionPrototypeCall(
+      webPostMessage,
+      port,
+      message,
+      transferList,
+    );
   };
   port.once = (name: string | symbol, listener) => {
     const fn = (event) => {

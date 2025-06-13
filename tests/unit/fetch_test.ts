@@ -2310,3 +2310,21 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientWithVsockProxy() {
+    // Test that creating an HttpClient with vsock proxy succeeds
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "vsock",
+        cid: 2,
+        port: 80,
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
