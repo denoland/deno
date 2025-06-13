@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::fmt;
 
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 use serde_json::Value;
-use std::fmt;
 use url::Url;
 
 #[derive(Debug, Default, Deserialize)]

@@ -1,4 +1,12 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
@@ -20,13 +28,6 @@ use discovery::ConfigFolder;
 use discovery::DenoOrPkgJson;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::io::ErrorKind;
-use std::path::Path;
-use std::path::PathBuf;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
@@ -488,6 +489,7 @@ impl Workspace {
       .filter_map(|f| f.pkg_json.as_ref())
   }
 
+  #[allow(clippy::needless_lifetimes)] // clippy issue
   pub fn jsr_packages<'a>(
     self: &'a WorkspaceRc,
   ) -> impl Iterator<Item = JsrPackageConfig> + 'a {
@@ -2410,6 +2412,7 @@ pub mod test {
   use serde_json::json;
   use sys_traits::impls::InMemorySys;
 
+  use super::*;
   use crate::assert_contains;
   use crate::deno_json::BracePosition;
   use crate::deno_json::BracketPosition;
@@ -2428,8 +2431,6 @@ pub mod test {
   use crate::glob::GlobPattern;
   use crate::glob::PathKind;
   use crate::glob::PathOrPattern;
-
-  use super::*;
 
   pub struct UnreachableSys;
 

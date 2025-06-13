@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
 
 use deno_error::JsError;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use indexmap::IndexMap;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
 use thiserror::Error;
 use url::Url;
 

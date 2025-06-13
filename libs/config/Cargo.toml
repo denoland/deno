@@ -1,3 +1,4 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
 [package]
 name = "deno_config"
 version = "0.57.0"

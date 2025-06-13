@@ -1,4 +1,9 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
@@ -17,10 +22,6 @@ use serde::Serialize;
 use serde::Serializer;
 use serde_json::json;
 use serde_json::Value;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::path::Path;
-use std::path::PathBuf;
 use sys_traits::FsRead;
 use thiserror::Error;
 use ts::parse_compiler_options;
@@ -675,8 +676,10 @@ impl TaskDefinition {
   where
     D: Deserializer<'de>,
   {
-    use serde::de::{MapAccess, Visitor};
     use std::fmt;
+
+    use serde::de::MapAccess;
+    use serde::de::Visitor;
 
     struct TasksVisitor;
 
@@ -2001,9 +2004,10 @@ pub fn get_base_ts_config_for_emit(config_type: TsConfigType) -> TsConfig {
 
 #[cfg(test)]
 mod tests {
+  use std::path::PathBuf;
+
   use deno_path_util::url_to_file_path;
   use pretty_assertions::assert_eq;
-  use std::path::PathBuf;
   use sys_traits::impls::RealSys;
 
   use super::*;

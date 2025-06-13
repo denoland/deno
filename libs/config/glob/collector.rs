@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -12,13 +12,12 @@ use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
+use super::FilePatterns;
 use crate::glob::gitignore::DirGitIgnores;
 use crate::glob::gitignore::GitIgnoreTree;
 use crate::glob::FilePatternsMatch;
 use crate::glob::PathKind;
 use crate::glob::PathOrPattern;
-
-use super::FilePatterns;
 
 #[derive(Debug, Clone)]
 pub struct WalkEntry<'a> {

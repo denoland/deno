@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -20,18 +20,6 @@ use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 use url::Url;
 
-use crate::deno_json::ConfigFile;
-use crate::deno_json::ConfigFileRc;
-use crate::glob::is_glob_pattern;
-use crate::glob::FileCollector;
-use crate::glob::FilePatterns;
-use crate::glob::PathOrPattern;
-use crate::glob::PathOrPatternSet;
-use crate::sync::new_rc;
-use crate::util::is_skippable_io_error;
-use crate::workspace::ConfigReadError;
-use crate::workspace::Workspace;
-
 use super::ResolveWorkspaceLinkError;
 use super::ResolveWorkspaceLinkErrorKind;
 use super::ResolveWorkspaceMemberError;
@@ -43,6 +31,17 @@ use super::WorkspaceDiscoverErrorKind;
 use super::WorkspaceDiscoverOptions;
 use super::WorkspaceDiscoverStart;
 use super::WorkspaceRc;
+use crate::deno_json::ConfigFile;
+use crate::deno_json::ConfigFileRc;
+use crate::glob::is_glob_pattern;
+use crate::glob::FileCollector;
+use crate::glob::FilePatterns;
+use crate::glob::PathOrPattern;
+use crate::glob::PathOrPatternSet;
+use crate::sync::new_rc;
+use crate::util::is_skippable_io_error;
+use crate::workspace::ConfigReadError;
+use crate::workspace::Workspace;
 
 #[derive(Debug)]
 pub enum DenoOrPkgJson {
