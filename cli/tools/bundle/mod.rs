@@ -237,8 +237,8 @@ pub async fn bundle(
   for error in &response.errors {
     log::error!(
       "{}: {}",
-      deno_terminal::colors::red("bundler error"),
-      format_message(error)
+      deno_terminal::colors::red_bold("error"),
+      format_message(error, &init_cwd)
     );
   }
 
@@ -246,7 +246,7 @@ pub async fn bundle(
     log::warn!(
       "{}: {}",
       deno_terminal::colors::yellow("bundler warning"),
-      format_message(warning)
+      format_message(warning, &init_cwd)
     );
   }
 
@@ -297,7 +297,10 @@ var __require = createRequire(import.meta.url);
   )
 }
 
-fn format_message(message: &esbuild_client::protocol::Message) -> String {
+fn format_message(
+  message: &esbuild_client::protocol::Message,
+  current_dir: &Path,
+) -> String {
   format!(
     "{}{}{}",
     message.text,
@@ -309,8 +312,15 @@ fn format_message(message: &esbuild_client::protocol::Message) -> String {
     if let Some(location) = &message.location {
       if !message.text.contains(" at ") {
         format!(
-          "\n  at {} {}:{}",
-          location.file, location.line, location.column
+          "\n  at {}:{}:{}",
+          deno_path_util::resolve_url_or_path(
+            location.file.as_str(),
+            current_dir
+          )
+          .map(|url| deno_terminal::colors::cyan(url.to_string()))
+          .unwrap_or(deno_terminal::colors::cyan(location.file.clone())),
+          deno_terminal::colors::yellow(location.line),
+          deno_terminal::colors::yellow(location.column)
         )
       } else {
         String::new()
@@ -471,10 +481,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         }
         return Ok(Some(esbuild_client::OnLoadResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
-            id: "myerror".into(),
             plugin_name: "deno".into(),
-            notes: Some(vec![]),
-            detail: Some(protocol::AnyValue::U32(0)),
             text: e.to_string(),
             ..Default::default()
           }]),
