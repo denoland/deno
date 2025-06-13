@@ -9,6 +9,7 @@ use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -114,6 +115,26 @@ pub enum ResolveIfForNpmPackageErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
+}
+
+#[derive(Debug, JsError)]
+#[class(inherit)]
+pub struct ResolveNpmReqRefError {
+  pub npm_req_ref: NpmPackageReqReference,
+  #[inherit]
+  pub err: ResolveReqWithSubPathError,
+}
+
+impl std::error::Error for ResolveNpmReqRefError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.err.source()
+  }
+}
+
+impl std::fmt::Display for ResolveNpmReqRefError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.err, f)
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -336,7 +357,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
@@ -347,6 +368,31 @@ impl<
   }
 
   pub fn resolve_req_with_sub_path(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
+    self
+      .resolve_req_with_sub_path_inner(
+        req,
+        sub_path,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map_err(|source| ResolveNpmReqRefError {
+        npm_req_ref: NpmPackageReqReference::new(PackageReqReference {
+          req: req.clone(),
+          sub_path: sub_path.map(|s| s.into()),
+        }),
+        err: source,
+      })
+  }
+
+  fn resolve_req_with_sub_path_inner(
     &self,
     req: &PackageReq,
     sub_path: Option<&str>,

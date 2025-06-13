@@ -70,7 +70,7 @@ deno_native_certs = "0.3.0"
 deno_npm = "=0.35.0"
 deno_package_json = { version = "=0.9.0", default-features = false }
 deno_path_util = "=0.4.0"
-deno_semver = "=0.8.0"
+deno_semver = "=0.8.1"
 deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
