@@ -81,6 +81,9 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
   UnsupportedPackageJsonFileSpecifier,
+  #[class(type)]
+  #[error("JSR specifiers are not yet supported in package.json")]
+  UnsupportedPackageJsonJsrReq,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -348,6 +351,9 @@ impl<
                     .into_box(),
                 )
               }
+              PackageJsonDepValue::JsrReq(_) => Err(
+                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

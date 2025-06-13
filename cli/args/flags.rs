@@ -475,6 +475,13 @@ pub struct BundleFlags {
   pub code_splitting: bool,
   pub one_file: bool,
   pub packages: PackageHandling,
+  pub platform: BundlePlatform,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum BundlePlatform {
+  Browser,
+  Deno,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -1926,6 +1933,13 @@ fn bundle_subcommand() -> Command {
       _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
     }
   }
+  fn platform_parser(s: &str) -> Result<BundlePlatform, clap::Error> {
+    match s {
+      "browser" => Ok(BundlePlatform::Browser),
+      "deno" => Ok(BundlePlatform::Deno),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
   command(
     "bundle",
     "Output a single JavaScript file with all dependencies.
@@ -1974,6 +1988,7 @@ If no output file is given, the output is written to standard output:
       .arg(
         Arg::new("format")
           .long("format")
+          .num_args(1)
           .value_parser(clap::builder::ValueParser::new(format_parser))
           .default_value("esm"),
       )
@@ -1981,6 +1996,7 @@ If no output file is given, the output is written to standard output:
         Arg::new("packages")
           .long("packages")
           .help("How to handle packages. Accepted values are 'bundle' or 'external'")
+          .num_args(1)
           .value_parser(clap::builder::ValueParser::new(packages_parser))
           .default_value("bundle"),
       )
@@ -2006,6 +2022,14 @@ If no output file is given, the output is written to standard output:
           .value_parser(value_parser!(bool))
           .num_args(0..=1)
           .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("platform")
+          .long("platform")
+          .help("Platform to bundle for. Accepted values are 'browser' or 'deno'")
+          .num_args(1)
+          .value_parser(clap::builder::ValueParser::new(platform_parser))
+          .default_value("deno"),
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
@@ -4839,6 +4863,7 @@ fn bundle_parse(
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
     one_file: matches.get_flag("one-file"),
+    platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
   });
   Ok(())
 }

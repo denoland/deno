@@ -190,7 +190,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
-    ) -> Option<StackString> {
+    ) -> Result<Option<StackString>, PackageJsonLoadError> {
       let deps = pkg_json.resolve_local_package_json_deps();
       for (key, value) in
         deps.dependencies.iter().chain(deps.dev_dependencies.iter())
@@ -200,24 +200,29 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
             PackageJsonDepValue::File(_) => {
               // skip
             }
+            PackageJsonDepValue::JsrReq(req) => {
+              return Err(PackageJsonLoadError::JsrReqUnsupported {
+                req: req.to_string(),
+              });
+            }
             PackageJsonDepValue::Req(dep_req) => {
               if dep_req.name == req.name
                 && dep_req.version_req.intersects(&req.version_req)
               {
-                return Some(key.clone());
+                return Ok(Some(key.clone()));
               }
             }
             PackageJsonDepValue::Workspace(_workspace) => {
               if key.as_str() == req.name
                 && req.version_req.tag() == Some("workspace")
               {
-                return Some(key.clone());
+                return Ok(Some(key.clone()));
               }
             }
           }
         }
       }
-      None
+      Ok(None)
     }
 
     // attempt to resolve the npm specifier from the referrer's package.json,
@@ -227,7 +232,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         let package_json_path = dir_path.join("package.json");
         if let Some(pkg_json) = self.load_pkg_json(&package_json_path)? {
           if let Some(alias) =
-            resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+            resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
           {
             return Ok(Some((pkg_json, alias)));
           }
@@ -240,7 +245,8 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       let root_pkg_json_path =
         root_node_modules_dir.parent().unwrap().join("package.json");
       if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)? {
-        if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+        if let Some(alias) =
+          resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
         {
           return Ok(Some((pkg_json, alias)));
         }

@@ -243,8 +243,17 @@ enum ResolvedMethod {
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
   pub conditions: NodeConditionOptions,
+  pub prefer_browser_field: bool,
+  pub bundle_mode: bool,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
+  pub typescript_version: Option<Version>,
+}
+
+#[derive(Debug)]
+struct ResolutionConfig {
+  pub bundle_mode: bool,
+  pub prefer_browser_field: bool,
   pub typescript_version: Option<Version>,
 }
 
@@ -279,7 +288,7 @@ pub struct NodeResolver<
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: NodeResolutionSys<TSys>,
   condition_resolver: ConditionResolver,
-  typescript_version: Option<Version>,
+  resolution_config: ResolutionConfig,
 }
 
 impl<
@@ -310,7 +319,11 @@ impl<
       pkg_json_resolver,
       sys,
       condition_resolver: ConditionResolver::new(options.conditions),
-      typescript_version: options.typescript_version,
+      resolution_config: ResolutionConfig {
+        bundle_mode: options.bundle_mode,
+        prefer_browser_field: options.prefer_browser_field,
+        typescript_version: options.typescript_version,
+      },
     }
   }
 
@@ -1341,7 +1354,7 @@ impl<
     if key == "types" {
       return true;
     }
-    let Some(ts_version) = &self.typescript_version else {
+    let Some(ts_version) = &self.resolution_config.typescript_version else {
       return false;
     };
     let Some(constraint) = key.strip_prefix("types@") else {
@@ -1740,7 +1753,7 @@ impl<
       .types_versions
       .as_ref()
       .and_then(|entries| {
-        let ts_version = self.typescript_version.as_ref()?;
+        let ts_version = self.resolution_config.typescript_version.as_ref()?;
         entries
           .iter()
           .filter_map(|(k, v)| {
@@ -1819,6 +1832,27 @@ impl<
     }
   }
 
+  pub(crate) fn legacy_fallback_resolve<'a>(
+    &self,
+    package_json: &'a PackageJson,
+  ) -> Option<&'a str> {
+    fn filter_empty(value: Option<&str>) -> Option<&str> {
+      value.map(|v| v.trim()).filter(|v| !v.is_empty())
+    }
+    if self.resolution_config.bundle_mode {
+      let maybe_browser = if self.resolution_config.prefer_browser_field {
+        filter_empty(package_json.browser.as_deref())
+      } else {
+        None
+      };
+      maybe_browser
+        .or(filter_empty(package_json.module.as_deref()))
+        .or(filter_empty(package_json.main.as_deref()))
+    } else {
+      filter_empty(package_json.main.as_deref())
+    }
+  }
+
   fn legacy_main_resolve(
     &self,
     package_json: &PackageJson,
@@ -1827,11 +1861,6 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
-    let pkg_json_kind = match resolution_mode {
-      ResolutionMode::Require => deno_package_json::NodeModuleKind::Cjs,
-      ResolutionMode::Import => deno_package_json::NodeModuleKind::Esm,
-    };
-
     let maybe_main = if resolution_kind.is_types() {
       match package_json.types.as_ref() {
         Some(types) => {
@@ -1846,7 +1875,7 @@ impl<
         None => {
           // fallback to checking the main entrypoint for
           // a corresponding declaration file
-          if let Some(main) = package_json.main(pkg_json_kind) {
+          if let Some(main) = self.legacy_fallback_resolve(package_json) {
             let main = package_json.path.parent().unwrap().join(main).clean();
             let decl_path_result = self.path_to_declaration_path(
               LocalPath {
@@ -1866,7 +1895,9 @@ impl<
         }
       }
     } else {
-      package_json.main(pkg_json_kind).map(Cow::Borrowed)
+      self
+        .legacy_fallback_resolve(package_json)
+        .map(Cow::Borrowed)
     };
 
     if let Some(main) = maybe_main.as_deref() {

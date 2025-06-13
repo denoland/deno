@@ -243,6 +243,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .into(),
         ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared

@@ -282,6 +282,13 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
+          PackageJsonDepValue::JsrReq(req) => {
+            // TODO: remove once we support JSR specifiers in package.json
+            log::warn!(
+              "JSR specifiers are not yet supported in package.json: {req}"
+            );
+            None
+          }
           PackageJsonDepValue::Workspace(_) => None,
         })
         .collect()
@@ -381,7 +388,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_) => None,
+                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::JsrReq(_) => None,
                   })
                   .collect()
               })

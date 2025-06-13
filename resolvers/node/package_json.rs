@@ -115,7 +115,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       {
         Ok(None)
       }
-      Err(err) => Err(PackageJsonLoadError(err)),
+      Err(err) => Err(PackageJsonLoadError::PackageJson(err)),
     }
   }
 }
