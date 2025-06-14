@@ -1591,9 +1591,6 @@ declare namespace Deno {
    * console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
    * ```
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function execPath(): string;

@@ -184,18 +184,8 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { read: true } }, function execPath() {
+Deno.test({ permissions: { read: false } }, function execPath() {
   assertNotEquals(Deno.execPath(), "");
-});
-
-Deno.test({ permissions: { read: false } }, function execPathPerm() {
-  assertThrows(
-    () => {
-      Deno.execPath();
-    },
-    Deno.errors.NotCapable,
-    "Requires read access to <exec_path>, run again with the --allow-read flag",
-  );
 });
 
 Deno.test(
