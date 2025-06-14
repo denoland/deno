@@ -44,6 +44,10 @@ pub async fn ensure_esbuild(
   tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
+  if let Ok(esbuild_path) = std::env::var("ESBUILD_PATH") {
+    return Ok(PathBuf::from(esbuild_path));
+  }
+
   let target = esbuild_platform();
   let mut esbuild_path = deno_dir
     .dl_folder_path()
