@@ -254,31 +254,31 @@ pub async fn uninstall(
     }
   }
 
-  let file_path = installation_dir.join(&uninstall_flags.name);
+  for package_name in &uninstall_flags.packages {
+    let file_path = installation_dir.join(package_name);
 
-  let mut removed = remove_file_if_exists(&file_path)?;
+    let mut removed = remove_file_if_exists(&file_path)?;
 
-  if cfg!(windows) {
-    let file_path = file_path.with_extension("cmd");
-    removed |= remove_file_if_exists(&file_path)?;
+    if cfg!(windows) {
+      let file_path = file_path.with_extension("cmd");
+      removed |= remove_file_if_exists(&file_path)?;
+    }
+
+    if !removed {
+      return Err(anyhow!("No installation found for {}", package_name));
+    }
+
+    // There might be some extra files to delete
+    // Note: tsconfig.json is legacy. We renamed it to deno.json.
+    // Remove cleaning it up after January 2024
+    for ext in ["tsconfig.json", "deno.json", "lock.json"] {
+      let file_path = file_path.with_extension(ext);
+      remove_file_if_exists(&file_path)?;
+    }
+
+    log::info!("✅ Successfully uninstalled {}", package_name);
   }
 
-  if !removed {
-    return Err(anyhow!(
-      "No installation found for {}",
-      uninstall_flags.name
-    ));
-  }
-
-  // There might be some extra files to delete
-  // Note: tsconfig.json is legacy. We renamed it to deno.json.
-  // Remove cleaning it up after January 2024
-  for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    let file_path = file_path.with_extension(ext);
-    remove_file_if_exists(&file_path)?;
-  }
-
-  log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
   Ok(())
 }
 
@@ -1606,9 +1606,16 @@ mod tests {
 
     let mut file_path = bin_dir.join("echo_test");
     File::create(&file_path).unwrap();
+
+    let mut second_file_path = bin_dir.join("second_echo_test");
+    File::create(&second_file_path).unwrap();
+
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
       File::create(&file_path).unwrap();
+
+      second_file_path = second_file_path.with_extension("cmd");
+      File::create(&second_file_path).unwrap();
     }
 
     // create extra files
@@ -1626,11 +1633,28 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
+    {
+      let file_path = second_file_path.with_extension("deno.json");
+      File::create(file_path).unwrap();
+    }
+    {
+      // legacy tsconfig.json, make sure it's cleaned up for now
+      let file_path = second_file_path.with_extension("tsconfig.json");
+      File::create(file_path).unwrap();
+    }
+    {
+      let file_path = second_file_path.with_extension("lock.json");
+      File::create(file_path).unwrap();
+    }
+
     uninstall(
       Default::default(),
       UninstallFlags {
         kind: UninstallKind::Global(UninstallFlagsGlobal {
-          name: "echo_test".to_string(),
+          packages: vec![
+            "echo_test".to_string(),
+            "second_echo_test".to_string(),
+          ],
           root: Some(temp_dir.path().to_string()),
         }),
       },
@@ -1643,9 +1667,17 @@ mod tests {
     assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
 
+    assert!(!second_file_path.exists());
+    assert!(!second_file_path.with_extension("tsconfig.json").exists());
+    assert!(!second_file_path.with_extension("deno.json").exists());
+    assert!(!second_file_path.with_extension("lock.json").exists());
+
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
+
+      second_file_path = second_file_path.with_extension("cmd");
+      assert!(!second_file_path.exists());
     }
   }
 
