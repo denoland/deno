@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
@@ -17,6 +18,7 @@ use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::Position;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -525,8 +527,11 @@ impl DenoPluginHandler {
       path,
       &referrer,
       Position::new(0, 0),
-      import_kind_to_resolution_mode(kind),
-      NodeResolutionKind::Execution,
+      ResolveWithGraphOptions {
+        mode: import_kind_to_resolution_mode(kind),
+        kind: NodeResolutionKind::Execution,
+        maintain_npm_specifiers: false,
+      },
     );
 
     log::debug!(
@@ -647,7 +652,9 @@ impl DenoPluginHandler {
         json_module.specifier.clone(),
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => todo!(),
+      deno_graph::Module::Wasm(_) => {
+        bail!("Wasm modules are not implemented in deno bundle.")
+      }
       deno_graph::Module::Npm(module) => {
         let url = self.resolver.resolve_npm_nv_ref(
           &module.nv_reference,

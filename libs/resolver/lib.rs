@@ -3,6 +3,7 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
@@ -23,6 +24,7 @@ pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
@@ -71,6 +73,51 @@ pub struct DenoResolution {
 
 #[derive(Debug, Boxed, JsError)]
 pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
+
+impl DenoResolveError {
+  #[cfg(feature = "graph")]
+  pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
+    use deno_error::JsErrorBox;
+    use deno_graph::source::ResolveError;
+
+    match self.into_kind() {
+      DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
+        match mapped_resolution_error {
+          MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
+          // deno_graph checks specifically for an ImportMapError
+          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+          MappedResolutionError::Workspace(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
+        }
+      }
+      err => ResolveError::Other(JsErrorBox::from_err(err)),
+    }
+  }
+
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      DenoResolveErrorKind::Node(err) => err.maybe_specifier(),
+      DenoResolveErrorKind::PackageSubpathResolve(err) => err.maybe_specifier(),
+      DenoResolveErrorKind::PathToUrl(err) => {
+        Some(Cow::Owned(UrlOrPath::Path(err.0.clone())))
+      }
+      DenoResolveErrorKind::ResolveNpmReqRef(err) => err.err.maybe_specifier(),
+      DenoResolveErrorKind::UnknownBuiltInNodeModule(err) => {
+        err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
+      }
+      DenoResolveErrorKind::MappedResolution(_)
+      | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder(_)
+      | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
+      | DenoResolveErrorKind::InvalidVendorFolderImport
+      | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+      | DenoResolveErrorKind::NodeModulesOutOfDate(_)
+      | DenoResolveErrorKind::PackageJsonDepValueParse(_)
+      | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum DenoResolveErrorKind {
