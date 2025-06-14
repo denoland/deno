@@ -1230,8 +1230,8 @@ const ci = {
         },
       ]),
     },
-    wasm: {
-      name: "build wasm32",
+    libs: {
+      name: "build libs",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1253,6 +1253,16 @@ const ci = {
           name: "Cargo check (deno_npm_installer)",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          ].join("\n"),
         },
       ]),
     },

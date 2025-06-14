@@ -83,6 +83,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
+      #[allow(dead_code)]
       _ => crate::ops::crypto::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
