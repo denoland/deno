@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -279,9 +280,11 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
+    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -473,6 +476,7 @@ pub struct Response {
   pub diagnostics: Diagnostics,
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
+  pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
 }
@@ -603,6 +607,8 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     MediaType::Json => 6,
     MediaType::SourceMap
     | MediaType::Css
+    | MediaType::Html
+    | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
   }
@@ -656,22 +662,28 @@ fn op_load_inner(
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<FastString, LoadError> {
+  ) -> Result<Option<FastString>, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path).map_err(|err| {
-      LoadError::LoadFromNodeModule {
-        path: file_path.display().to_string(),
-        error: err,
+    let code = match std::fs::read_to_string(&file_path) {
+      Ok(code) => code,
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        return Ok(None);
       }
-    })?;
+      Err(err) => {
+        return Err(LoadError::LoadFromNodeModule {
+          path: file_path.display().to_string(),
+          error: err,
+        })
+      }
+    };
     let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
         npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
-    Ok(code.into())
+    Ok(Some(code.into()))
   }
 
   let state = state.borrow_mut::<State>();
@@ -708,7 +720,9 @@ fn op_load_inner(
     let maybe_module = match graph.try_get(specifier) {
       Ok(maybe_module) => maybe_module,
       Err(err) => match err {
-        deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
+        deno_graph::ModuleError::UnsupportedMediaType {
+          media_type, ..
+        } => {
           return Ok(Some(LoadResponse {
             data: FastString::from_static(""),
             version: Some("1".to_string()),
@@ -755,12 +769,12 @@ fn op_load_inner(
               &CliSys::default(),
               &module.specifier,
             );
-            Some(load_from_node_modules(
+            load_from_node_modules(
               &specifier,
               state.maybe_npm.as_ref(),
               &mut media_type,
               &mut is_cjs,
-            )?)
+            )?
           }
         }
       }
@@ -769,12 +783,12 @@ fn op_load_inner(
       .as_ref()
       .filter(|npm| npm.node_resolver.in_npm_package(specifier))
     {
-      Some(load_from_node_modules(
+      load_from_node_modules(
         specifier,
         Some(npm),
         &mut media_type,
         &mut is_cjs,
-      )?)
+      )?
     } else {
       None
     };
@@ -999,11 +1013,11 @@ fn resolve_graph_specifier_types(
     Ok(Some(module)) => Some(module),
     Ok(None) => None,
     Err(err) => match err {
-      deno_graph::ModuleError::UnsupportedMediaType(
+      deno_graph::ModuleError::UnsupportedMediaType {
         specifier,
         media_type,
-        _,
-      ) => {
+        ..
+      } => {
         return Ok(Some((specifier.clone(), *media_type)));
       }
       _ => None,
@@ -1198,8 +1212,10 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
+  pub ambient_modules: Vec<String>,
   pub stats: Stats,
 }
 
@@ -1216,6 +1232,7 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -1376,6 +1393,7 @@ impl deno_core::ExtCodeCache for TscExtCodeCache {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
+#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -1416,17 +1434,13 @@ pub fn exec(
 
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
-  extensions.push(deno_cli_tsc::init_ops_and_esm(
-    request,
-    root_map,
-    remapped_specifiers,
-  ));
+  extensions.push(deno_cli_tsc::init(request, root_map, remapped_specifiers));
   let extension_code_cache = code_cache.map(|cache| {
     Rc::new(TscExtCodeCache::new(cache)) as Rc<dyn deno_core::ExtCodeCache>
   });
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions,
-    create_params: create_isolate_create_params(),
+    create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     extension_code_cache,
     ..Default::default()
@@ -1442,11 +1456,13 @@ pub fn exec(
 
   if let Some(response) = state.maybe_response {
     let diagnostics = response.diagnostics;
+    let ambient_modules = response.ambient_modules;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
     let stats = response.stats;
 
     Ok(Response {
       diagnostics,
+      ambient_modules,
       maybe_tsbuildinfo,
       stats,
     })
@@ -1494,6 +1510,7 @@ mod tests {
         .map(|c| {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
+            mtime: None,
             maybe_headers: None,
             content: c.into(),
           })
@@ -1519,7 +1536,7 @@ mod tests {
     let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier], &loader, Default::default())
+      .build(vec![specifier], Vec::new(), &loader, Default::default())
       .await;
     let state = State::new(
       Arc::new(graph),
@@ -1532,7 +1549,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(None, None);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }
@@ -1551,7 +1568,12 @@ mod tests {
     let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier.clone()], &loader, Default::default())
+      .build(
+        vec![specifier.clone()],
+        Vec::new(),
+        &loader,
+        Default::default(),
+      )
       .await;
     let config = Arc::new(TsConfig::new(json!({
       "allowJs": true,
@@ -1739,7 +1761,8 @@ mod tests {
           "code": 5023
         }
       ],
-      "stats": [["a", 12]]
+      "stats": [["a", 12]],
+      "ambientModules": []
     }))
     .unwrap();
     op_respond_inner(&mut state, args);
@@ -1764,7 +1787,9 @@ mod tests {
           reports_deprecated: None,
           reports_unnecessary: None,
           other: Default::default(),
+          missing_specifier: None,
         }]),
+        ambient_modules: vec![],
         stats: Stats(vec![("a".to_string(), 12)])
       })
     );

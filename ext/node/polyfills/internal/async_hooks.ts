@@ -1,9 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 // deno-lint-ignore camelcase
 import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ERR_ASYNC_CALLBACK } from "ext:deno_node/internal/errors.ts";
@@ -11,6 +8,16 @@ export {
   asyncIdSymbol,
   ownerSymbol,
 } from "ext:deno_node/internal_binding/symbols.ts";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  FunctionPrototypeApply,
+  Symbol,
+} = primordials;
 
 interface ActiveHooks {
   array: AsyncHook[];
@@ -174,7 +181,7 @@ function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
 }
 
 function storeActiveHooks() {
-  active_hooks.tmp_array = active_hooks.array.slice();
+  active_hooks.tmp_array = ArrayPrototypeSlice(active_hooks.array);
   // Don't want to make the assumption that kInit to kDestroy are indexes 0 to
   // 4. So do this the long way.
   active_hooks.tmp_fields = [];
@@ -245,7 +252,7 @@ export function defaultTriggerAsyncIdScope(
   ...args: unknown[]
 ) {
   if (triggerAsyncId === undefined) {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   }
   // CHECK(NumberIsSafeInteger(triggerAsyncId))
   // CHECK(triggerAsyncId > 0)
@@ -253,7 +260,7 @@ export function defaultTriggerAsyncIdScope(
   async_id_fields[kDefaultTriggerAsyncId] = triggerAsyncId;
 
   try {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   } finally {
     async_id_fields[kDefaultTriggerAsyncId] = oldDefaultTriggerAsyncId;
   }
@@ -365,7 +372,7 @@ export class AsyncHook {
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
     // Each hook is only allowed to be added once.
-    if (hooks_array.includes(this)) {
+    if (ArrayPrototypeIncludes(hooks_array, this)) {
       return this;
     }
 
@@ -381,7 +388,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] += +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] +=
       +!!this[promise_resolve_symbol];
-    hooks_array.push(this);
+    ArrayPrototypePush(hooks_array, this);
 
     if (prev_kTotals === 0 && hook_fields[kTotals] > 0) {
       enableHooks();
@@ -397,7 +404,7 @@ export class AsyncHook {
     // deno-lint-ignore camelcase
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
-    const index = hooks_array.indexOf(this);
+    const index = ArrayPrototypeIndexOf(hooks_array, this);
     if (index === -1) {
       return this;
     }
@@ -411,7 +418,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] -= +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] -=
       +!!this[promise_resolve_symbol];
-    hooks_array.splice(index, 1);
+    ArrayPrototypeSplice(hooks_array, index, 1);
 
     if (prev_kTotals > 0 && hook_fields[kTotals] === 0) {
       disableHooks();

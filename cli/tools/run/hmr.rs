@@ -19,14 +19,33 @@ use crate::emit::Emitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 
-fn explain(status: &cdp::Status) -> &'static str {
-  match status {
-    cdp::Status::Ok => "OK",
-    cdp::Status::CompileError => "compile error",
-    cdp::Status::BlockedByActiveGenerator => "blocked by active generator",
-    cdp::Status::BlockedByActiveFunction => "blocked by active function",
+fn explain(response: &cdp::SetScriptSourceResponse) -> String {
+  match response.status {
+    cdp::Status::Ok => "OK".to_string(),
+    cdp::Status::CompileError => {
+      if let Some(details) = &response.exception_details {
+        let (message, description) = details.get_message_and_description();
+        format!(
+          "compile error: {}{}",
+          message,
+          if description == "undefined" {
+            "".to_string()
+          } else {
+            format!(" - {}", description)
+          }
+        )
+      } else {
+        "compile error: No exception details available".to_string()
+      }
+    }
+    cdp::Status::BlockedByActiveGenerator => {
+      "blocked by active generator".to_string()
+    }
+    cdp::Status::BlockedByActiveFunction => {
+      "blocked by active function".to_string()
+    }
     cdp::Status::BlockedByTopLevelEsModuleChange => {
-      "blocked by top-level ES module change"
+      "blocked by top-level ES module change".to_string()
     }
   }
 }
@@ -112,7 +131,7 @@ impl crate::worker::HmrRunner for HmrRunner {
             continue;
           };
 
-          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
+          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().is_some_and(|ext| {
             let ext_str = ext.to_str().unwrap();
             matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
           })).collect();
@@ -154,7 +173,7 @@ impl crate::worker::HmrRunner for HmrRunner {
                 break;
               }
 
-              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(explain(&result.status))));
+              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(&explain(&result))));
               if should_retry(&result.status) && tries <= 2 {
                 tries += 1;
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;

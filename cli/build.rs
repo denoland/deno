@@ -115,9 +115,11 @@ fn compress_decls(out_dir: &Path) {
     "lib.esnext.d.ts",
     "lib.esnext.decorators.d.ts",
     "lib.esnext.disposable.d.ts",
+    "lib.esnext.float16.d.ts",
     "lib.esnext.full.d.ts",
     "lib.esnext.intl.d.ts",
     "lib.esnext.iterator.d.ts",
+    "lib.esnext.promise.d.ts",
     "lib.scripthost.d.ts",
     "lib.webworker.asynciterable.d.ts",
     "lib.webworker.d.ts",
@@ -188,7 +190,7 @@ fn main() {
   let target = env::var("TARGET").unwrap();
   let host = env::var("HOST").unwrap();
   let skip_cross_check =
-    env::var("DENO_SKIP_CROSS_BUILD_CHECK").map_or(false, |v| v == "1");
+    env::var("DENO_SKIP_CROSS_BUILD_CHECK").is_ok_and(|v| v == "1");
   if !skip_cross_check && target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }

@@ -2,6 +2,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::op2;
 use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
@@ -14,7 +15,21 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {}
+impl GarbageCollected for Hasher {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Hasher"
+  }
+}
+
+// Make prototype available for JavaScript
+#[op2]
+impl Hasher {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Hasher {
+    unreachable!()
+  }
+}
 
 impl Hasher {
   pub fn new(
@@ -68,6 +83,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
+      #[allow(dead_code)]
       _ => crate::ops::crypto::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
@@ -200,8 +216,12 @@ impl Hash {
     output_length: Option<usize>,
   ) -> Result<Self, HashError> {
     match algorithm_name {
-      "shake128" => return Ok(Shake128(Default::default(), output_length)),
-      "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "shake128" | "shake-128" => {
+        return Ok(Shake128(Default::default(), output_length))
+      }
+      "shake256" | "shake-256" => {
+        return Ok(Shake256(Default::default(), output_length))
+      }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
         if let Some(length) = output_length {

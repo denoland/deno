@@ -60,7 +60,11 @@ impl Drop for GPUAdapter {
   }
 }
 
-impl GarbageCollected for GPUAdapter {}
+impl GarbageCollected for GPUAdapter {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUAdapter"
+  }
+}
 
 #[op2]
 impl GPUAdapter {
@@ -88,6 +92,7 @@ impl GPUAdapter {
       GPUSupportedFeatures::new(scope, features)
     })
   }
+
   #[getter]
   #[global]
   fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
@@ -95,11 +100,6 @@ impl GPUAdapter {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
     })
-  }
-  #[getter]
-  fn is_fallback_adapter(&self) -> bool {
-    // TODO(lucacasonato): report correctly from wgpu
-    false
   }
 
   #[async_method(fake)]
@@ -248,7 +248,11 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
-impl GarbageCollected for GPUSupportedLimits {}
+impl GarbageCollected for GPUSupportedLimits {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSupportedLimits"
+  }
+}
 
 #[op2]
 impl GPUSupportedLimits {
@@ -405,7 +409,11 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
-impl GarbageCollected for GPUSupportedFeatures {}
+impl GarbageCollected for GPUSupportedFeatures {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSupportedFeatures"
+  }
+}
 
 impl GPUSupportedFeatures {
   pub fn new(
@@ -438,7 +446,11 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
-impl GarbageCollected for GPUAdapterInfo {}
+impl GarbageCollected for GPUAdapterInfo {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUAdapterInfo"
+  }
+}
 
 #[op2]
 impl GPUAdapterInfo {
@@ -474,5 +486,11 @@ impl GPUAdapterInfo {
   #[getter]
   fn subgroup_max_size(&self) -> u32 {
     self.subgroup_max_size
+  }
+
+  #[getter]
+  fn is_fallback_adapter(&self) -> bool {
+    // TODO(lucacasonato): report correctly from wgpu
+    false
   }
 }

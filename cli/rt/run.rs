@@ -15,7 +15,6 @@ use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::FastString;
-use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -60,19 +59,23 @@ use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_resolver::DenoResolveErrorKind;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -153,18 +156,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     raw_specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      if kind != ResolutionKind::MainModule {
-        return Err(
-          JsErrorBox::generic(format!(
-            "Expected to resolve main module, got {:?} instead.",
-            kind
-          ))
-          .into(),
-        );
-      }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
@@ -242,6 +236,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
+        PackageJsonDepValue::File(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+              .into_box(),
+          )
+          .into(),
+        ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -660,6 +667,7 @@ pub async fn run(
     root_path,
     vfs,
   } = data;
+
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -786,7 +794,7 @@ pub async fn run(
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
     node_resolution_sys,
-    node_resolver::ConditionsFromResolutionMode::default(),
+    node_resolver::NodeResolverOptions::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
@@ -807,13 +815,17 @@ pub async fn run(
   }));
   let cjs_esm_code_analyzer =
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
-  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+  let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
     in_npm_pkg_checker,
     node_resolver.clone(),
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
     sys.clone(),
+  ));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
   ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
@@ -841,10 +853,10 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_package_json::PackageJson::load_from_value(path, json);
-        Arc::new(pkg_json)
+          deno_package_json::PackageJson::load_from_value(path, json)?;
+        Ok(Arc::new(pkg_json))
       })
-      .collect();
+      .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
       import_map,
@@ -853,7 +865,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
-          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          is_link: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),
@@ -921,8 +933,14 @@ pub async fn run(
       }
     }
 
-    let desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
+    let desc_parser = Arc::new(RuntimePermissionDescriptorParser::new(
+      sys.clone(),
+      if metadata.unstable_config.subdomain_wildcards {
+        UnstableSubdomainWildcards::Enabled
+      } else {
+        UnstableSubdomainWildcards::Disabled
+      },
+    ));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
@@ -947,11 +965,12 @@ pub async fn run(
     inspect_wait: false,
     strace_ops: None,
     is_inspecting: false,
+    is_standalone: true,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string())
       .or(std::env::args().next()),
     node_debug: std::env::var("NODE_DEBUG").ok(),
     origin_data_folder_path: None,
@@ -962,11 +981,13 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
+    no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     code_cache.map(|c| c.for_deno_core()),
+    Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
     None,
@@ -978,12 +999,21 @@ pub async fn run(
     StorageKeyResolver::empty(),
     sys.clone(),
     lib_main_worker_options,
+    Default::default(),
   );
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  let is_single_threaded = metadata
+    .v8_flags
+    .contains(&String::from("--single-threaded"));
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(None, true);
+  deno_core::JsRuntime::init_platform(v8_platform, true);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

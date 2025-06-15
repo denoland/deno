@@ -9,21 +9,24 @@ use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InitFlags;
-use crate::args::PackagesAllowedScripts;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
 
 pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
-    return init_npm(package, init_flags.package_args).await;
+    return init_npm(package, init_flags.package_args)
+      .boxed_local()
+      .await;
   }
 
   let cwd =
@@ -341,6 +344,8 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     WorkerExecutionMode::Run,
     new_flags.into(),
     None,
+    None,
+    Default::default(),
   )
   .await
 }

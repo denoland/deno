@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
@@ -20,11 +21,11 @@ use super::deps::DepKind;
 use super::deps::DepManager;
 use super::deps::DepManagerArgs;
 use super::deps::PackageLatestVersion;
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -184,15 +185,17 @@ pub async fn outdated(
   let workspace = cli_options.workspace();
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let file_fetcher = CliFileFetcher::new(
-    deps_http_cache.clone(),
+  let file_fetcher = create_cli_file_fetcher(
+    Default::default(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.sys(),
-    Default::default(),
-    None,
-    true,
-    CacheSetting::RespectHeaders,
-    log::Level::Trace,
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
   );
   let file_fetcher = Arc::new(file_fetcher);
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
@@ -213,7 +216,6 @@ pub async fn outdated(
 
   let args = dep_manager_args(
     &factory,
-    cli_options,
     npm_fetch_resolver.clone(),
     jsr_fetch_resolver.clone(),
   )
@@ -410,10 +412,8 @@ async fn update(
     .await?;
 
     let mut updated_to_versions = HashSet::new();
-    let cli_options = factory.cli_options()?;
     let args = dep_manager_args(
       &factory,
-      cli_options,
       deps.npm_fetch_resolver.clone(),
       deps.jsr_fetch_resolver.clone(),
     )
@@ -483,12 +483,9 @@ async fn update(
       };
 
       log::info!(
-        " - {}{} {}{} -> {}{}",
-        format!(
-          "{}{}",
-          colors::gray(package_name[0..4].to_string()),
-          package_name[4..].to_string()
-        ),
+        " - {}{}{} {}{} -> {}{}",
+        colors::gray(package_name[0..4].to_string()),
+        &package_name[4..],
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),
@@ -517,7 +514,6 @@ async fn update(
 
 async fn dep_manager_args(
   factory: &CliFactory,
-  cli_options: &CliOptions,
   npm_fetch_resolver: Arc<NpmFetchResolver>,
   jsr_fetch_resolver: Arc<JsrFetchResolver>,
 ) -> Result<DepManagerArgs, AnyError> {
@@ -526,13 +522,13 @@ async fn dep_manager_args(
     jsr_fetch_resolver,
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
-    npm_installer: factory.npm_installer()?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()
       .await?
       .clone(),
-    lockfile: cli_options.maybe_lockfile().cloned(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
   })
 }
 

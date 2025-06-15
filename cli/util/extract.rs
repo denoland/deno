@@ -6,15 +6,13 @@ use std::sync::Arc;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::collections::AHashSet;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitMut;
+use deno_ast::swc::ecma_visit::VisitWith as _;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::swc::visit::as_folder;
-use deno_ast::swc::visit::FoldWith as _;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitMut;
-use deno_ast::swc::visit::VisitWith as _;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
@@ -48,6 +46,11 @@ pub fn extract_snippet_files(file: File) -> Result<Vec<File>, AnyError> {
 enum WrapKind {
   DenoTest,
   NoWrap,
+}
+
+struct TestOrSnippet {
+  file: File,
+  has_deno_test: bool,
 }
 
 fn extract_inner(
@@ -88,8 +91,13 @@ fn extract_inner(
 
   extracted_files
     .into_iter()
-    .map(|extracted_file| {
-      generate_pseudo_file(extracted_file, &file.specifier, &exports, wrap_kind)
+    .map(|extracted| {
+      let wrap_kind = if extracted.has_deno_test {
+        WrapKind::NoWrap
+      } else {
+        wrap_kind
+      };
+      generate_pseudo_file(extracted.file, &file.specifier, &exports, wrap_kind)
     })
     .collect::<Result<_, _>>()
 }
@@ -98,14 +106,14 @@ fn extract_files_from_fenced_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
   // The pattern matches code blocks as well as anything in HTML comment syntax,
   // but it stores the latter without any capturing groups. This way, a simple
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
     lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
+  let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
   extract_files_from_regex_blocks(
     specifier,
@@ -121,7 +129,7 @@ fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
   source: Arc<str>,
   media_type: MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.clone(),
     text: source,
@@ -132,7 +140,8 @@ fn extract_files_from_source_comments(
   })?;
   let comments = parsed_source.comments().get_vec();
   let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
+  let lines_regex =
+    lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -166,7 +175,9 @@ fn extract_files_from_regex_blocks(
   file_line_index: usize,
   blocks_regex: &Regex,
   lines_regex: &Regex,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestOrSnippet>, AnyError> {
+  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
+
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
@@ -215,7 +226,7 @@ fn extract_files_from_regex_blocks(
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).unwrap();
+        let text = line.get(1).or_else(|| line.get(3)).unwrap();
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
@@ -230,11 +241,16 @@ fn extract_files_from_regex_blocks(
         mapped_specifier_for_tsc(&file_specifier, file_media_type)
           .map(|s| ModuleSpecifier::parse(&s).unwrap())
           .unwrap_or(file_specifier);
-
-      Some(File {
+      let has_deno_test = tests_regex.is_match(&file_source);
+      let file = File {
         url: file_specifier,
+        mtime: None,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
+      };
+      Some(TestOrSnippet {
+        file,
+        has_deno_test,
       })
     })
     .collect();
@@ -251,7 +267,7 @@ struct ExportCollector {
 impl ExportCollector {
   fn to_import_specifiers(
     &self,
-    symbols_to_exclude: &AHashSet<Atom>,
+    symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
   ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
 
@@ -580,7 +596,7 @@ fn generate_pseudo_file(
     parsed
       .program_ref()
       .to_owned()
-      .fold_with(&mut as_folder(Transform {
+      .apply(&mut visit_mut_pass(Transform {
         specifier: &file.specifier,
         base_file_specifier,
         exports_from_base: exports,
@@ -597,6 +613,7 @@ fn generate_pseudo_file(
 
   Ok(File {
     url: file.specifier,
+    mtime: None,
     maybe_headers: None,
     source: source.into_bytes().into(),
   })
@@ -606,11 +623,11 @@ struct Transform<'a> {
   specifier: &'a ModuleSpecifier,
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
-  atoms_to_be_excluded_from_import: AHashSet<Atom>,
+  atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
 }
 
-impl<'a> VisitMut for Transform<'a> {
+impl VisitMut for Transform<'_> {
   fn visit_mut_program(&mut self, node: &mut ast::Program) {
     let new_module_items = match node {
       ast::Program::Module(module) => {
@@ -845,7 +862,7 @@ mod tests {
 /**
  * ```ts
  * import { assertEquals } from "@std/assert/equal";
- * 
+ *
  * assertEquals(add(1, 2), 3);
  * ```
  */
@@ -1198,12 +1215,97 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/29629
+      Test {
+        input: Input {
+          source: r#"
+# Title
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+Deno.test("add", () => {
+  assertEquals(1 + 2, 3);
+});
+```
+"#,
+          specifier: "file:///main.md",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+Deno.test("add", ()=>{
+    assertEquals(1 + 2, 3);
+});
+"#,
+          specifier: "file:///main.md$4-11.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * Deno.test("add", () => {
+ *   assertEquals(add(1, 2), 3);
+ * });
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+  "#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { add } from "file:///main.ts";
+Deno.test("add", ()=>{
+    assertEquals(add(1, 2), 3);
+});
+"#,
+          specifier: "file:///main.ts$3-10.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // commented out `Deno.test` should be ignored
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ * // Deno.test("add", () => {});
+ * assertEquals(add(1, 2), 3);
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+  "#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { add } from "file:///main.ts";
+Deno.test("file:///main.ts$3-8.ts", async ()=>{
+    // Deno.test("add", () => {});
+    assertEquals(add(1, 2), 3);
+});
+"#,
+          specifier: "file:///main.ts$3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
       let file = File {
         url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
+        mtime: None,
         source: test.input.source.as_bytes().into(),
       };
       let got_decoded = extract_doc_tests(file)
@@ -1440,6 +1542,7 @@ add('1', '2');
       let file = File {
         url: ModuleSpecifier::parse(test.input.specifier).unwrap(),
         maybe_headers: None,
+        mtime: None,
         source: test.input.source.as_bytes().into(),
       };
       let got_decoded = extract_snippet_files(file)

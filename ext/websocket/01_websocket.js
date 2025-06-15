@@ -116,6 +116,7 @@ const _binaryType = Symbol("[[binaryType]]");
 const _eventLoop = Symbol("[[eventLoop]]");
 const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
+const _cancelHandle = Symbol("[[cancelHandle]]");
 
 const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
@@ -136,6 +137,7 @@ class WebSocket extends EventTarget {
     this[_idleTimeoutDuration] = 0;
     this[_idleTimeoutTimeout] = undefined;
     this[_sendQueue] = [];
+    this[_cancelHandle] = undefined;
 
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -177,12 +179,6 @@ class WebSocket extends EventTarget {
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
-    op_ws_check_permission_and_cancel_handle(
-      "WebSocket.abort()",
-      this[_url],
-      false,
-    );
-
     if (typeof protocols === "string") {
       protocols = [protocols];
     }
@@ -214,11 +210,20 @@ class WebSocket extends EventTarget {
       );
     }
 
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
+      "WebSocket.abort()",
+      this[_url],
+      true,
+    );
+
+    this[_cancelHandle] = cancelRid;
+
     PromisePrototypeThen(
       op_ws_create(
         "new WebSocket()",
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
+        cancelRid,
       ),
       (create) => {
         this[_rid] = create.rid;
@@ -255,6 +260,12 @@ class WebSocket extends EventTarget {
           { error: err, message: ErrorPrototypeToString(err) },
         );
         this.dispatchEvent(errorEv);
+
+        if (this[_cancelHandle]) {
+          core.tryClose(this[_cancelHandle]);
+
+          this[_cancelHandle] = undefined;
+        }
 
         const closeEv = new CloseEvent("close");
         this.dispatchEvent(closeEv);
@@ -395,6 +406,13 @@ class WebSocket extends EventTarget {
         "The close reason may not be longer than 123 bytes",
         "SyntaxError",
       );
+    }
+
+    if (this[_cancelHandle]) {
+      // Cancel ongoing handshake.
+      core.tryClose(this[_cancelHandle]);
+
+      this[_cancelHandle] = undefined;
     }
 
     if (this[_readyState] === CONNECTING) {

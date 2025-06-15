@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use deno_ast::swc::ast;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;

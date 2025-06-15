@@ -4,10 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   encode,
 } = core;
+const {
+  SymbolSpecies,
+} = primordials;
 import {
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
@@ -26,7 +29,7 @@ import {
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import { Transform } from "ext:deno_node/_stream.mjs";
+import { Transform } from "node:stream";
 import {
   getArrayBufferOrView,
   KeyObject,
@@ -41,6 +44,8 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+
+const FastBuffer = Buffer[SymbolSpecies];
 
 export function isStringOrBuffer(
   val: unknown,
@@ -195,7 +200,7 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    const buf = new Buffer(16);
+    const buf = new FastBuffer(16);
     if (this.#cache.cache.byteLength == 0) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
@@ -355,7 +360,7 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    let buf = new Buffer(16);
+    let buf = new FastBuffer(16);
     op_node_decipheriv_final(
       this.#context,
       this.#autoPadding,
@@ -421,7 +426,7 @@ export class Decipheriv extends Transform implements Cipher {
     if (input === null) {
       output = Buffer.alloc(0);
     } else {
-      output = new Buffer(input.length);
+      output = new FastBuffer(input.length);
       op_node_decipheriv_decrypt(this.#context, input, output);
     }
     return outputEncoding === "buffer"
@@ -438,7 +443,7 @@ export function privateEncrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
 }
 
 export function privateDecrypt(
@@ -449,7 +454,7 @@ export function privateDecrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_decrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
 }
 
 export function publicEncrypt(
@@ -460,7 +465,7 @@ export function publicEncrypt(
   const padding = publicKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_public_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
 }
 
 export function prepareKey(key) {

@@ -7,7 +7,10 @@ const tempDir = Deno.makeTempDirSync();
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
   const db2 = new DatabaseSync(":memory:");
-  db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+  assertEquals(
+    db1.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);"),
+    undefined,
+  );
   db1.exec("INSERT INTO data (key) VALUES (1);");
 
   db2.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -93,12 +96,12 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   session.close();
 
   // Use after close shoud throw.
-  assertThrows(() => session.changeset(), Error, "Session is already closed");
+  assertThrows(() => session.changeset(), Error, "session is not open");
   // Close after close should throw.
-  assertThrows(() => session.close(), Error, "Session is already closed");
+  assertThrows(() => session.close(), Error, "session is not open");
 
   db.close();
-  assertThrows(() => session.close(), Error, "Database is already closed");
+  assertThrows(() => session.close(), Error, "database is not open");
 });
 
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
@@ -153,6 +156,17 @@ Deno.test({
       );
       db.close();
     }
+    {
+      const db = new DatabaseSync(":memory:");
+      assertThrows(
+        () => {
+          db.exec("ATTACH DATABASE 'test.db' AS test");
+        },
+        Error,
+        "too many attached databases - max 0",
+      );
+      db.close();
+    }
   },
 });
 
@@ -202,7 +216,7 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT)`);
   db.exec(
-    `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
+    `INSERT INTO one (variable1, variable2, variable3) VALUES ('test', 1 , 2);`,
   );
 
   const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";
@@ -257,4 +271,78 @@ Deno.test("[node/sqlite] StatementSync for large integers", () => {
   const result = db.prepare("SELECT 2147483648").get();
   assertEquals(result, { "2147483648": 2147483648, __proto__: null });
   db.close();
+});
+
+Deno.test("[node/sqlite] error message", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE foo (a text, b text NOT NULL, c text)");
+
+  assertThrows(
+    () => {
+      db.prepare("INSERT INTO foo(a, b, c) VALUES (NULL, NULL, NULL)")
+        .run();
+    },
+    Error,
+    "NOT NULL constraint failed: foo.b",
+  );
+});
+
+// https://github.com/denoland/deno/issues/28295
+Deno.test("[node/sqlite] StatementSync reset guards don't lock db", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a integer, b text)");
+  db.exec("CREATE TABLE bar(a integer, b text)");
+
+  const stmt = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ");
+
+  assertEquals(stmt.get(), { name: "foo", __proto__: null });
+
+  db.exec("DROP TABLE IF EXISTS foo");
+});
+
+// https://github.com/denoland/deno/issues/28492
+Deno.test("[node/sqlite] StatementSync reset step change metadata", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec(`CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  birthdate TEXT NOT NULL
+) STRICT`);
+
+  const insertPeople = db.prepare(`
+INSERT INTO people
+  (name, birthdate)
+VALUES
+  (:name, :birthdate)
+RETURNING id
+`);
+
+  const id1 = insertPeople.run({ name: "Flash", birthdate: "1956-07-16" });
+  assertEquals(id1, { lastInsertRowid: 1, changes: 1 });
+});
+
+Deno.test("[node/sqlite] StatementSync empty blob", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a BLOB NOT NULL)");
+
+  db.prepare("INSERT into foo (a) values (?)")
+    .all(new Uint8Array([]));
+
+  const result = db.prepare("SELECT * from foo").get();
+  assertEquals(result, { a: new Uint8Array([]), __proto__: null });
+
+  db.close();
+});
+
+Deno.test("[node/sqlite] Database close locks", () => {
+  const db = new DatabaseSync(`${tempDir}/test4.db`);
+  const statement = db.prepare(
+    "CREATE TABLE test (key INTEGER PRIMARY KEY, value TEXT)",
+  );
+  statement.run();
+  db.close();
+  Deno.removeSync(`${tempDir}/test4.db`);
 });

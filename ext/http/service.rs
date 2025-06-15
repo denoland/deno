@@ -9,11 +9,12 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::OnceLock;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -182,16 +183,47 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
+#[allow(clippy::collapsible_if)] // for logic clarity
+fn validate_request(req: &Request) -> bool {
+  if req.uri() == "*" {
+    if req.method() != http::Method::OPTIONS {
+      return false;
+    }
+  } else if req.uri().path().is_empty() {
+    if req.method() != http::Method::CONNECT {
+      return false;
+    }
+  }
+
+  if req.method() == http::Method::CONNECT && req.uri().authority().is_none() {
+    return false;
+  }
+
+  true
+}
+
 pub(crate) async fn handle_request(
   request: Request,
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  legacy_abort: bool,
 ) -> Result<Response, hyper_v014::Error> {
-  let otel_info = if deno_telemetry::OTEL_GLOBALS.get().is_some() {
+  if !validate_request(&request) {
+    let mut response = Response::new(HttpRecordResponse(None));
+    *response.version_mut() = request.version();
+    *response.status_mut() = http::StatusCode::BAD_REQUEST;
+    return Ok(response);
+  }
+
+  let otel_info = if let Some(otel) = deno_telemetry::OTEL_GLOBALS
+    .get()
+    .filter(|o| o.has_metrics())
+  {
     let instant = std::time::Instant::now();
     let size_hint = request.size_hint();
     Some(OtelInfo::new(
+      otel,
       instant,
       size_hint.upper().unwrap_or(size_hint.lower()),
       OtelInfoAttributes {
@@ -219,7 +251,13 @@ pub(crate) async fn handle_request(
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state, otel_info),
+    HttpRecord::new(
+      request,
+      request_info,
+      server_state,
+      otel_info,
+      legacy_abort,
+    ),
     HttpRecord::cancel,
   );
 
@@ -258,7 +296,9 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
+  legacy_abort: bool,
   otel_info: Option<OtelInfo>,
+  client_addr: Option<http::HeaderValue>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -274,14 +314,35 @@ impl Drop for HttpRecord {
   }
 }
 
+fn trust_proxy_headers() -> bool {
+  static TRUST_PROXY_HEADERS: OnceLock<bool> = OnceLock::new();
+
+  static VAR_NAME: &str = "DENO_TRUST_PROXY_HEADERS";
+
+  *TRUST_PROXY_HEADERS.get_or_init(|| {
+    if let Some(v) = std::env::var_os(VAR_NAME) {
+      std::env::remove_var(VAR_NAME);
+      v == "1"
+    } else {
+      false
+    }
+  })
+}
+
 impl HttpRecord {
   fn new(
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
     otel_info: Option<OtelInfo>,
+    legacy_abort: bool,
   ) -> Rc<Self> {
-    let (request_parts, request_body) = request.into_parts();
+    let (mut request_parts, request_body) = request.into_parts();
+    let client_addr = if trust_proxy_headers() {
+      request_parts.headers.remove("x-deno-client-address")
+    } else {
+      None
+    };
     let request_body = Some(request_body.into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record =
@@ -315,8 +376,10 @@ impl HttpRecord {
       closed_channel: None,
       been_dropped: false,
       finished: false,
+      legacy_abort,
       needs_close_after_finish: false,
       otel_info,
+      client_addr,
     });
     record
   }
@@ -432,8 +495,11 @@ impl HttpRecord {
     inner.been_dropped = true;
     // The request body might include actual resources.
     inner.request_body.take();
-    if let Some(closed_channel) = inner.closed_channel.take() {
-      let _ = closed_channel.send(());
+
+    if inner.legacy_abort || !inner.response_body_finished {
+      if let Some(closed_channel) = inner.closed_channel.take() {
+        let _ = closed_channel.send(());
+      }
     }
   }
 
@@ -493,7 +559,7 @@ impl HttpRecord {
   /// Take the response.
   fn into_response(self: Rc<Self>) -> Response {
     let parts = self.self_mut().response_parts.take().unwrap();
-    let body = HttpRecordResponse(ManuallyDrop::new(self));
+    let body = HttpRecordResponse(Some(ManuallyDrop::new(self)));
     Response::from_parts(parts, body)
   }
 
@@ -511,7 +577,7 @@ impl HttpRecord {
   fn response_ready(&self) -> impl Future<Output = ()> + '_ {
     struct HttpRecordReady<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordReady<'a> {
+    impl Future for HttpRecordReady<'_> {
       type Output = ();
 
       fn poll(
@@ -536,7 +602,7 @@ impl HttpRecord {
   pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordFinished<'a> {
+    impl Future for HttpRecordFinished<'_> {
       type Output = bool;
 
       fn poll(
@@ -573,10 +639,16 @@ impl HttpRecord {
       info.handle_duration_and_request_size();
     }
   }
+
+  pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {
+    Ref::map(self.self_ref(), |inner| &inner.client_addr)
+  }
 }
 
+// `None` variant used when no body is present, for example
+// when we want to return a synthetic 400 for invalid requests.
 #[repr(transparent)]
-pub struct HttpRecordResponse(ManuallyDrop<Rc<HttpRecord>>);
+pub struct HttpRecordResponse(Option<ManuallyDrop<Rc<HttpRecord>>>);
 
 impl Body for HttpRecordResponse {
   type Data = BufView;
@@ -587,7 +659,9 @@ impl Body for HttpRecordResponse {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     use crate::response_body::PollFrame;
-    let record = &self.0;
+    let Some(record) = &self.0 else {
+      return Poll::Ready(None);
+    };
 
     let res = loop {
       let mut inner = record.self_mut();
@@ -631,7 +705,7 @@ impl Body for HttpRecordResponse {
     }
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
-      let mut http = self.0 .0.borrow_mut();
+      let mut http = record.0.borrow_mut();
       if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
         if let Some(response_size) = &mut otel_info.response_size {
           *response_size += buf.len() as u64;
@@ -643,7 +717,10 @@ impl Body for HttpRecordResponse {
   }
 
   fn is_end_stream(&self) -> bool {
-    let inner = self.0.self_ref();
+    let Some(record) = &self.0 else {
+      return true;
+    };
+    let inner = record.self_ref();
     matches!(
       inner.response_body,
       ResponseBytesInner::Done | ResponseBytesInner::Empty
@@ -651,16 +728,22 @@ impl Body for HttpRecordResponse {
   }
 
   fn size_hint(&self) -> SizeHint {
+    let Some(record) = &self.0 else {
+      return SizeHint::with_exact(0);
+    };
     // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
     // anyways just in case hyper needs it.
-    self.0.self_ref().response_body.size_hint()
+    record.self_ref().response_body.size_hint()
   }
 }
 
 impl Drop for HttpRecordResponse {
   fn drop(&mut self) {
+    let Some(record) = &mut self.0 else {
+      return;
+    };
     // SAFETY: this ManuallyDrop is not used again.
-    let record = unsafe { ManuallyDrop::take(&mut self.0) };
+    let record = unsafe { ManuallyDrop::take(record) };
     http_trace!(record, "HttpRecordResponse::drop");
     record.finish();
   }
@@ -733,6 +816,7 @@ mod tests {
         request_info.clone(),
         server_state.clone(),
         tx.clone(),
+        true,
       )
     });
 

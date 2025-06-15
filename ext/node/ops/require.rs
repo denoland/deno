@@ -26,7 +26,6 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
-use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -66,25 +65,31 @@ pub enum RequireErrorKind {
   #[error(transparent)]
   Permission(#[inherit] JsErrorBox),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageExportsResolve(
     #[from] node_resolver::errors::PackageExportsResolveError,
   ),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   PackageImportsResolve(
     #[from] node_resolver::errors::PackageImportsResolveError,
   ),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
   #[class(generic)]
+  #[properties(inherit)]
   #[error(transparent)]
   UrlConversion(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
@@ -208,18 +213,8 @@ pub fn op_require_node_module_paths<
     }
   }
 
-  let mut paths = Vec::with_capacity(from.components().count());
-  let mut current_path = from.as_path();
-  let mut maybe_parent = Some(current_path);
-  while let Some(parent) = maybe_parent {
-    if !parent.ends_with("node_modules") {
-      paths.push(parent.join("node_modules").to_string_lossy().into_owned());
-    }
-    current_path = parent;
-    maybe_parent = current_path.parent();
-  }
-
-  Ok(paths)
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  Ok(loader.resolve_require_node_module_paths(&from))
 }
 
 #[op2]
@@ -368,7 +363,13 @@ pub fn op_require_stat<
   #[string] path: String,
 ) -> Result<i32, JsErrorBox> {
   let path = PathBuf::from(path);
-  let path = ensure_read_permission::<P>(state, &path)?;
+  let path = if path.ends_with("node_modules") {
+    // skip stat permission checks for node_modules directories
+    // because they're noisy and it's fine
+    Cow::Owned(path)
+  } else {
+    ensure_read_permission::<P>(state, &path)?
+  };
   let sys = state.borrow::<TSys>();
   if let Ok(metadata) = sys.fs_metadata(&path) {
     if metadata.file_type().is_file() {
@@ -532,7 +533,7 @@ pub fn op_require_try_self<
       exports,
       Some(&referrer),
       ResolutionMode::Require,
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(r)?))
@@ -639,7 +640,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    REQUIRE_CONDITIONS,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))
@@ -718,7 +719,7 @@ pub fn op_require_package_imports_resolve<
       Some(&UrlOrPathRef::from_path(&referrer_path)),
       ResolutionMode::Require,
       Some(&pkg),
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))

@@ -1,30 +1,35 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::Version;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::CreateGraphOptions;
-use crate::npm::installer::PackageCaching;
+use crate::graph_util::BuildGraphRequest;
+use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_installer = factory.npm_installer()?;
-  let cli_options = factory.cli_options()?;
+  let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()
     .await?;
-  if let Some(lockfile) = cli_options.maybe_lockfile() {
+  if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.error_if_changed()?;
   }
   // cache as many entries in the import map as we can
@@ -45,7 +50,7 @@ pub async fn cache_top_level_deps(
       .acquire_update_permit()
       .await;
     let graph = graph_permit.graph_mut();
-    if let Some(lockfile) = cli_options.maybe_lockfile() {
+    if let Some(lockfile) = factory.maybe_lockfile().await? {
       let lockfile = lockfile.lock();
       crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
     }
@@ -54,7 +59,17 @@ pub async fn cache_top_level_deps(
 
     let mut info_futures = FuturesUnordered::new();
 
-    let mut seen_reqs = std::collections::HashSet::new();
+    let mut seen_reqs = HashSet::new();
+
+    let workspace_npm_packages = resolver
+      .package_jsons()
+      .filter_map(|pkg_json| {
+        pkg_json
+          .name
+          .as_deref()
+          .and_then(|name| Some((name, pkg_json.version.as_deref()?)))
+      })
+      .collect::<HashMap<_, _>>();
 
     for entry in import_map.imports().entries().chain(
       import_map
@@ -80,6 +95,24 @@ pub async fn cache_top_level_deps(
               continue;
             }
             let resolved_req = graph.packages.mappings().get(req.req());
+            let resolved_req = resolved_req.and_then(|nv| {
+              // the version might end up being upgraded to a newer version that's already in
+              // the graph (due to a reverted change), in which case our exports could end up
+              // being wrong. to avoid that, see if there's a newer version that matches the version
+              // req.
+              let versions =
+                graph.packages.versions_by_name(&req.req().name)?;
+              let mut best = nv;
+              for version in versions {
+                if version.version > best.version
+                  && req.req().version_req.matches(&version.version)
+                {
+                  best = version;
+                }
+              }
+              Some(best)
+            });
+
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
               let nv = if let Some(req) = resolved_req {
@@ -94,7 +127,27 @@ pub async fn cache_top_level_deps(
             });
           }
         }
-        "npm" => roots.push(specifier.clone()),
+        "npm" => {
+          let Ok(req_ref) =
+            NpmPackageReqReference::from_str(specifier.as_str())
+          else {
+            continue;
+          };
+          let version = workspace_npm_packages.get(&*req_ref.req().name);
+          if let Some(version) = version {
+            let Ok(version) = Version::parse_from_npm(version) else {
+              continue;
+            };
+            let version_req = &req_ref.req().version_req;
+            if version_req.tag().is_none() && version_req.matches(&version) {
+              // if version req matches the workspace package's version, use that
+              // (so it doesn't need to be installed)
+              continue;
+            }
+          }
+
+          roots.push(specifier.clone())
+        }
         _ => {
           if entry.key.ends_with('/') && specifier.as_str().ends_with('/') {
             continue;
@@ -127,12 +180,11 @@ pub async fn cache_top_level_deps(
     graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        CreateGraphOptions {
+        BuildGraphWithNpmOptions {
+          request: BuildGraphRequest::Roots(roots.clone()),
           loader: None,
-          graph_kind: graph.graph_kind(),
           is_dynamic: false,
-          roots: roots.clone(),
-          npm_caching: crate::graph_util::NpmCachingStrategy::Manual,
+          npm_caching: NpmCachingStrategy::Manual,
         },
       )
       .await?;

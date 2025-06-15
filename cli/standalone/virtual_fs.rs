@@ -13,9 +13,9 @@ use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_lib::standalone::virtual_fs::VirtualSymlinkParts;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+use deno_resolver::display::DisplayTreeNode;
 
 use crate::util::display::human_size;
-use crate::util::display::DisplayTreeNode;
 
 pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   if !log::log_enabled!(log::Level::Info) {
@@ -69,7 +69,7 @@ fn vfs_as_display_tree(
     Symlink(&'a VirtualSymlinkParts),
   }
 
-  impl<'a> EntryOutput<'a> {
+  impl EntryOutput<'_> {
     pub fn size(&self) -> Size {
       match self {
         EntryOutput::All(size) => *size,
@@ -85,7 +85,7 @@ fn vfs_as_display_tree(
     }
   }
 
-  impl<'a> EntryOutput<'a> {
+  impl EntryOutput<'_> {
     pub fn as_display_tree(&self, name: String) -> DisplayTreeNode {
       fn format_size(size: Size) -> String {
         if size.unique == size.total {
@@ -136,7 +136,7 @@ fn vfs_as_display_tree(
     output: EntryOutput<'a>,
   }
 
-  impl<'a> DirEntryOutput<'a> {
+  impl DirEntryOutput<'_> {
     /// Collapses leaf nodes so they don't take up so much space when being
     /// displayed.
     ///

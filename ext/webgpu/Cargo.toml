@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.159.0"
+version = "0.174.0"
 authors = ["the Deno authors"]
 edition.workspace = true
 license = "MIT"
@@ -25,7 +25,7 @@ deno_error.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 wgpu-types = { workspace = true, features = ["serde"] }
-raw-window-handle = { workspace = true }
+raw-window-handle.workspace = true
 thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true

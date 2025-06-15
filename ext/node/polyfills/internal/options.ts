@@ -20,14 +20,24 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { getOptions } from "ext:deno_node/internal_binding/node_options.ts";
+import { primordials } from "ext:core/mod.js";
+const {
+  MapPrototypeGet,
+  SafeMap,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+} = primordials;
 
 let optionsMap: Map<string, { value: string }>;
+const dummyOptions = new SafeMap<string, { value: string }>();
 
 function getOptionsFromBinding() {
+  // If Deno.build is not defined, this is in warmup phase.
+  if (!Deno.build) {
+    return dummyOptions;
+  }
+
   if (!optionsMap) {
     ({ options: optionsMap } = getOptions());
   }
@@ -38,11 +48,14 @@ function getOptionsFromBinding() {
 export function getOptionValue(optionName: string) {
   const options = getOptionsFromBinding();
 
-  if (optionName.startsWith("--no-")) {
-    const option = options.get("--" + optionName.slice(5));
+  if (StringPrototypeStartsWith(optionName, "--no-")) {
+    const option = MapPrototypeGet(
+      options,
+      "--" + StringPrototypeSlice(optionName, 5),
+    );
 
     return option && !option.value;
   }
 
-  return options.get(optionName)?.value;
+  return MapPrototypeGet(options, optionName)?.value;
 }
