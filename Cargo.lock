@@ -2262,6 +2262,7 @@ dependencies = [
  "deno_tls",
  "hickory-proto",
  "hickory-resolver",
+ "nix 0.27.1",
  "pin-project",
  "quinn",
  "rustls-tokio-stream",
@@ -10348,3 +10349,7 @@ checksum = "16099418600b4d8f028622f73ff6e3deaabdff330fb9a2a131dea781ee8b0768"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "deno_core"
+version = "0.346.0"

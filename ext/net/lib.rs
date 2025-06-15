@@ -2,6 +2,12 @@
 
 pub mod io;
 pub mod ops;
+#[cfg(unix)]
+#[path = "ops_unix_pipe.rs"]
+mod ops_pipe;
+#[cfg(windows)]
+#[path = "ops_win_pipe.rs"]
+mod ops_pipe;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
@@ -9,6 +15,10 @@ mod quic;
 pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
+#[cfg(unix)]
+mod unix_pipe;
+#[cfg(windows)]
+mod win_pipe;
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -220,8 +230,12 @@ deno_core::extension!(deno_net,
     quic::op_quic_send_stream_set_priority,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
+
+    ops_pipe::op_pipe_listen<P>,
+    ops_pipe::op_pipe_connect<P>,
+    ops_pipe::op_pipe_windows_connect,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
+  esm = [ "01_net.js", "02_tls.js", "04_pipe.ts" ],
   lazy_loaded_esm = [ "03_quic.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
