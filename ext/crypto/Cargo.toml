@@ -34,7 +34,7 @@ p256 = { workspace = true, features = ["ecdh", "ecdsa"] }
 p384 = { workspace = true, features = ["ecdsa"] }
 p521.workspace = true
 rand.workspace = true
-ring = { workspace = true, features = ["std"] }
+ring.workspace = true
 rsa.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
