@@ -44,6 +44,7 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
@@ -223,7 +224,10 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   getAuthTag(): Buffer {
-    return this.#authTag!;
+    if (!this.#authTag) {
+      throw new ERR_CRYPTO_INVALID_STATE("getAuthTag");
+    }
+    return this.#authTag;
   }
 
   setAAD(
