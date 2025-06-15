@@ -728,6 +728,13 @@ function innerInvokeEventListeners(
   for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
+    if (
+      getStopImmediatePropagation(eventImpl) &&
+      !listener.options[kResistStopImmediatePropagation]
+    ) {
+      continue;
+    }
+
     let capture, once, passive;
     if (typeof listener.options === "boolean") {
       capture = listener.options;
@@ -778,10 +785,6 @@ function innerInvokeEventListeners(
     }
 
     setInPassiveListener(eventImpl, false);
-
-    if (getStopImmediatePropagation(eventImpl)) {
-      return found;
-    }
   }
 
   return found;
@@ -862,6 +865,9 @@ function retarget(a, b) {
 // Accessors for non-public data
 
 export const eventTargetData = Symbol();
+export const kResistStopImmediatePropagation = Symbol(
+  "kResistStopImmediatePropagation",
+);
 
 function setEventTargetData(target) {
   target[eventTargetData] = getDefaultTargetData();
@@ -910,6 +916,10 @@ function addEventListenerOptionsConverter(V, prefix) {
     capture: !!V.capture,
     once: !!V.once,
     passive: !!V.passive,
+    // This field exists for simulating Node.js behavior, implemented in https://github.com/nodejs/node/commit/bcd35c334ec75402ee081f1c4da128c339f70c24
+    // Some internal event listeners in Node.js can ignore `e.stopImmediatePropagation()` calls
+    // from the earlier event listeners.
+    [kResistStopImmediatePropagation]: !!V[kResistStopImmediatePropagation],
   };
 
   const signal = V.signal;
