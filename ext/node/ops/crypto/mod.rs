@@ -298,9 +298,27 @@ pub fn op_node_create_decipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
+  #[smi] auth_tag_length: i32,
 ) -> Result<u32, cipher::DecipherContextError> {
-  let context = cipher::DecipherContext::new(algorithm, key, iv)?;
+  let auth_tag_length = if auth_tag_length == -1 {
+    None
+  } else {
+    Some(auth_tag_length as usize)
+  };
+
+  let context =
+    cipher::DecipherContext::new(algorithm, key, iv, auth_tag_length)?;
   Ok(state.resource_table.add(context))
+}
+
+#[op2(fast)]
+pub fn op_node_decipheriv_auth_tag(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[smi] length: u32,
+) -> Result<(), cipher::DecipherContextError> {
+  let context = state.resource_table.get::<cipher::DecipherContext>(rid)?;
+  context.validate_auth_tag(length as usize)
 }
 
 #[op2(fast)]
