@@ -436,22 +436,24 @@ fn format_expressions_in_text<'a>(
     let expr_content = capture.get(1).unwrap().as_str().trim();
 
     if !expr_content.is_empty() {
-      let formatted_expr = if let Ok(Some(formatted)) = dprint_plugin_typescript::format_text(
-        dprint_plugin_typescript::FormatTextOptions {
-          path: &std::path::PathBuf::from("temp.js"),
-          extension: None,
-          text: expr_content.to_string(),
-          config: &typescript_config,
-          external_formatter: None,
-        },
-      ) {
+      let formatted_expr = if let Ok(Some(formatted)) =
+        dprint_plugin_typescript::format_text(
+          dprint_plugin_typescript::FormatTextOptions {
+            path: &std::path::PathBuf::from("temp.js"),
+            extension: None,
+            text: expr_content.to_string(),
+            config: &typescript_config,
+            external_formatter: None,
+          },
+        ) {
         formatted.trim_end_matches(&['\n', '\r', ';']).to_string()
       } else {
         expr_content.to_string()
       };
 
       let placeholder = format!("EXPR_PLACEHOLDER_{}", placeholder_counter);
-      let formatted_expression = format!("{}{}{}", open_delim, formatted_expr, close_delim);
+      let formatted_expression =
+        format!("{}{}{}", open_delim, formatted_expr, close_delim);
 
       expressions.push((placeholder.clone(), formatted_expression));
       result.replace_range(full_match.range(), &placeholder);
@@ -468,25 +470,32 @@ pub fn format_html(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-      // Pre-format expressions in component files before markup parsing
-  let (preprocessed_text, expressions) = if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
-    let (pattern, open, close) = match ext.to_ascii_lowercase().as_str() {
-      "svelte" | "astro" => (r"\{([^{}]+)\}", "{", "}"),
-      "vue" => (r"\{\{([^{}]+)\}\}", "{{", "}}"),
-      _ => ("", "", ""), // No expression formatting for other files
-    };
+  // Pre-format expressions in component files before markup parsing
+  let (preprocessed_text, expressions) =
+    if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+      let (pattern, open, close) = match ext.to_ascii_lowercase().as_str() {
+        "svelte" | "astro" => (r"\{([^{}]+)\}", "{", "}"),
+        "vue" => (r"\{\{([^{}]+)\}\}", "{{", "}}"),
+        _ => ("", "", ""), // No expression formatting for other files
+      };
 
-    if !pattern.is_empty() {
-      match format_expressions_in_text(file_text, pattern, open, close, fmt_options) {
-        Ok((processed, expressions)) => (processed.into_owned(), expressions),
-        Err(_) => (file_text.to_string(), Vec::new()),
+      if !pattern.is_empty() {
+        match format_expressions_in_text(
+          file_text,
+          pattern,
+          open,
+          close,
+          fmt_options,
+        ) {
+          Ok((processed, expressions)) => (processed.into_owned(), expressions),
+          Err(_) => (file_text.to_string(), Vec::new()),
+        }
+      } else {
+        (file_text.to_string(), Vec::new())
       }
     } else {
       (file_text.to_string(), Vec::new())
-    }
-  } else {
-    (file_text.to_string(), Vec::new())
-  };
+    };
 
   let format_result = markup_fmt::format_text(
     &preprocessed_text,
@@ -603,7 +612,7 @@ pub fn format_html(
     }
   });
 
-    let mut formatted_str = format_result?;
+  let mut formatted_str = format_result?;
 
   // Restore formatted expressions
   for (placeholder, expression) in expressions {
