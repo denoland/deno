@@ -585,25 +585,36 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadCodeSourceError {
+#[class(inherit)]
+#[error(transparent)]
+pub struct LoadCodeSourceError(#[from] pub Box<LoadCodeSourceErrorKind>);
+
+impl LoadCodeSourceError {
+  pub fn from_err<E: Into<LoadCodeSourceErrorKind>>(err: E) -> Self {
+    Self(Box::new(err.into()))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadCodeSourceErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(#[from] Box<NpmModuleLoadError>),
+  NpmModuleLoad(#[from] NpmModuleLoadError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
+  LoadPreparedModule(#[from] LoadPreparedModuleError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadUnpreparedModule(#[from] Box<LoadUnpreparedModuleError>),
+  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
   #[class(inherit)]
   #[error(transparent)]
-  Core(#[from] Box<deno_core::error::ModuleLoaderError>),
+  Core(#[from] deno_core::error::ModuleLoaderError),
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
-  NpmReqRef(#[from] Box<ResolveNpmReqRefError>),
+  NpmReqRef(#[from] ResolveNpmReqRefError),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -747,7 +758,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     match self
       .load_prepared_module(specifier)
       .await
-      .map_err(Box::new)?
+      .map_err(LoadCodeSourceError::from_err)?
     {
       Some(code) => Ok(code),
       None => {
@@ -760,7 +771,11 @@ impl<TGraphContainer: ModuleGraphContainer>
             Some(r) => Cow::Borrowed(r),
             // but the repl may also end up here and it won't have
             // a referrer so create a referrer for it here
-            None => Cow::Owned(self.resolve_referrer("").map_err(Box::new)?),
+            None => Cow::Owned(
+              self
+                .resolve_referrer("")
+                .map_err(LoadCodeSourceError::from_err)?,
+            ),
           };
           Cow::Owned(
             self
@@ -772,9 +787,10 @@ impl<TGraphContainer: ModuleGraphContainer>
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
               )
-              .map_err(Box::new)?
+              .map_err(LoadCodeSourceError::from_err)?
               .unwrap()
-              .into_url()?,
+              .into_url()
+              .map_err(LoadCodeSourceError::from_err)?,
           )
         } else {
           Cow::Borrowed(specifier)
@@ -785,15 +801,12 @@ impl<TGraphContainer: ModuleGraphContainer>
             .npm_module_loader
             .load(&specifier, maybe_referrer)
             .await
-            .map_err(|e| Box::new(e).into());
+            .map_err(LoadCodeSourceError::from_err);
         }
-        Err(
-          Box::new(LoadUnpreparedModuleError {
-            specifier: specifier.into_owned(),
-            maybe_referrer: maybe_referrer.cloned(),
-          })
-          .into(),
-        )
+        Err(LoadCodeSourceError::from_err(LoadUnpreparedModuleError {
+          specifier: specifier.into_owned(),
+          maybe_referrer: maybe_referrer.cloned(),
+        }))
       }
     }
   }

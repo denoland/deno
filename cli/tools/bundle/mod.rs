@@ -42,6 +42,7 @@ use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
 use crate::module_loader::EnhancedGraphError;
 use crate::module_loader::LoadCodeSourceError;
+use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::LoadPreparedModuleError;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
@@ -462,27 +463,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
-        match e {
-          BundleLoadError::CliModuleLoader(
-            CliModuleLoaderError::LoadCodeSource(
-              LoadCodeSourceError::LoadPreparedModule(ref e),
-            ),
-          ) => match &**e {
-            LoadPreparedModuleError::Graph(ref graph_error)
-              if matches!(
-                &**graph_error,
-                EnhancedGraphError {
-                  error: ModuleError::UnsupportedMediaType { .. },
-                  ..
-                }
-              ) =>
-            {
-              log::debug!("unsupported media type: {:?}", e);
-              return Ok(None);
-            }
-            _ => {}
-          },
-          _ => {}
+        if e.is_unsupported_media_type() {
+          return Ok(None);
         }
         return Ok(Some(esbuild_client::OnLoadResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
@@ -559,6 +541,28 @@ pub enum BundleLoadError {
   #[class(generic)]
   #[error("Wasm modules are not implemented in deno bundle.")]
   WasmUnsupported,
+}
+
+impl BundleLoadError {
+  pub fn is_unsupported_media_type(&self) -> bool {
+    match self {
+      BundleLoadError::CliModuleLoader(
+        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(ref e)),
+      ) => match &**e {
+        LoadCodeSourceErrorKind::LoadPreparedModule(
+          LoadPreparedModuleError::Graph(ref e),
+        ) => matches!(
+          &**e,
+          EnhancedGraphError {
+            error: ModuleError::UnsupportedMediaType { .. },
+            ..
+          }
+        ),
+        _ => false,
+      },
+      _ => false,
+    }
+  }
 }
 
 impl DenoPluginHandler {
