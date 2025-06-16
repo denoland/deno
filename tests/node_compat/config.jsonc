@@ -390,6 +390,7 @@
       "test-crypto-dh.js",
       "test-crypto-domain.js",
       "test-crypto-from-binary.js",
+      "test-crypto-gcm-explicit-short-tag.js",
       "test-crypto-hash.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
