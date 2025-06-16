@@ -13,6 +13,8 @@ if (!common.hasCrypto)
 const assert = require('assert');
 const crypto = require('crypto');
 
+common.hasOpenSSL3 = true;
+
 const size = common.hasFipsCrypto || common.hasOpenSSL3 ? 1024 : 256;
 const dh1 = crypto.createDiffieHellman(size);
 const p1 = dh1.getPrime('buffer');
