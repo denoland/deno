@@ -35,6 +35,7 @@
     "cli/tools/doc/prism.js",
     "ext/websocket/autobahn/reports",
     "gh-pages",
+    "libs/config/testdata",
     "target",
     "tests/ffi/tests/test.js",
     "tests/node_compat/runner/suite",

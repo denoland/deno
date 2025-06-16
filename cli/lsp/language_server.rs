@@ -2527,7 +2527,6 @@ impl Inner {
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        vec![module.specifier.as_ref().clone()],
         token,
       )
       .await

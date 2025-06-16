@@ -60,7 +60,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -92,7 +91,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -331,7 +329,6 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
-  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -394,7 +391,6 @@ impl CliModuleLoaderFactory {
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
-    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
@@ -421,7 +417,6 @@ impl CliModuleLoaderFactory {
         node_code_translator,
         npm_module_loader,
         npm_registry_permission_checker,
-        npm_req_resolver,
         npm_resolver,
         parsed_source_cache,
         resolver,
@@ -789,47 +784,33 @@ impl<TGraphContainer: ModuleGraphContainer>
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let graph = self.graph_container.graph();
-    let specifier = self
-      .shared
-      .resolver
-      .resolve_with_graph(
-        graph.as_ref(),
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .map_err(|err| match err.into_kind() {
+    let result = self.shared.resolver.resolve_with_graph(
+      graph.as_ref(),
+      raw_specifier,
+      referrer,
+      deno_graph::Position::zeroed(),
+      ResolutionMode::Import,
+      NodeResolutionKind::Execution,
+    );
+    match result {
+      Ok(specifier) => Ok(specifier),
+      Err(err) => match err.into_kind() {
+        ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
+          // this is a npm specifier not in the graph... we've always
+          // returned these as-is, so continue to do that even though it's
+          // questionable and should probably throw
+          Ok(ModuleSpecifier::parse(&err.npm_req_ref.to_string()).unwrap())
+        }
         ResolveWithGraphErrorKind::Resolution(err) => {
           // todo(dsherret): why do we have a newline here? Document it.
-          JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
-        }
-        err => JsErrorBox::from_err(err),
-      })?;
-
-    if self.shared.is_repl {
-      if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
-      {
-        return self
-          .shared
-          .npm_req_resolver
-          .resolve_req_reference(
-            &reference,
-            referrer,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
+          Err(
+            JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
+              .into(),
           )
-          .map_err(|e| JsErrorBox::from_err(e).into())
-          .and_then(|url_or_path| {
-            url_or_path
-              .into_url()
-              .map_err(|e| JsErrorBox::from_err(e).into())
-          });
-      }
+        }
+        err => Err(JsErrorBox::from_err(err).into()),
+      },
     }
-
-    Ok(specifier)
   }
 
   async fn load_prepared_module(
