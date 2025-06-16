@@ -26,6 +26,7 @@ test('zlib should support zero windowBits', (t) => {
   const unzip = zlib.createUnzip({ windowBits: 0 });
   assert.ok(unzip instanceof zlib.Unzip);
 });
+
 test('windowBits should be valid', () => {
   assert.throws(() => zlib.createGzip({ windowBits: 0 }), {
     code: 'ERR_OUT_OF_RANGE',
