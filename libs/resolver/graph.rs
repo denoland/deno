@@ -3,24 +3,25 @@
 use std::borrow::Cow;
 
 use boxed_error::Boxed;
-use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
 use deno_graph::Module;
 use deno_graph::Resolution;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPath;
 use url::Url;
 
 use crate::cjs::CjsTracker;
 use crate::npm;
 use crate::workspace::MappedResolutionDiagnostic;
-use crate::workspace::MappedResolutionError;
 use crate::workspace::ScopedJsxImportSourceConfig;
-use crate::DenoResolveErrorKind;
+use crate::DenoResolveError;
 use crate::DenoResolverSys;
 use crate::RawDenoResolverRc;
 
@@ -36,6 +37,39 @@ pub struct FoundPackageJsonDepFlag(AtomicFlag);
 #[derive(Debug, deno_error::JsError, Boxed)]
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
+impl ResolveWithGraphError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      ResolveWithGraphErrorKind::CouldNotResolve(err) => {
+        err.source.maybe_specifier()
+      }
+      ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
+        err.err.maybe_specifier()
+      }
+      ResolveWithGraphErrorKind::Resolution(err) => match err {
+        deno_graph::ResolutionError::InvalidDowngrade { specifier, .. } => {
+          Some(specifier)
+        }
+        deno_graph::ResolutionError::InvalidJsrHttpsTypesImport {
+          specifier,
+          ..
+        } => Some(specifier),
+        deno_graph::ResolutionError::InvalidLocalImport {
+          specifier, ..
+        } => Some(specifier),
+        deno_graph::ResolutionError::ResolverError { .. }
+        | deno_graph::ResolutionError::InvalidSpecifier { .. } => None,
+      }
+      .map(|s| Cow::Owned(UrlOrPath::Url(s.clone()))),
+      ResolveWithGraphErrorKind::Resolve(err) => err.maybe_specifier(),
+      ResolveWithGraphErrorKind::PathToUrl(err) => {
+        Some(Cow::Owned(UrlOrPath::Path(err.0.clone())))
+      }
+      ResolveWithGraphErrorKind::ResolvePkgFolderFromDenoModule(_) => None,
+    }
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolveWithGraphErrorKind {
   #[error(transparent)]
@@ -48,10 +82,13 @@ pub enum ResolveWithGraphErrorKind {
   ),
   #[error(transparent)]
   #[class(inherit)]
+  ResolveNpmReqRef(#[from] npm::ResolveNpmReqRefError),
+  #[error(transparent)]
+  #[class(inherit)]
   Resolution(#[from] deno_graph::ResolutionError),
   #[error(transparent)]
   #[class(inherit)]
-  Resolve(#[from] ResolveError),
+  Resolve(#[from] DenoResolveError),
   #[error(transparent)]
   #[class(inherit)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
@@ -89,6 +126,16 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
 pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
+
+pub struct ResolveWithGraphOptions {
+  pub mode: node_resolver::ResolutionMode,
+  pub kind: node_resolver::NodeResolutionKind,
+  /// Whether to maintain npm specifiers as-is. It's necessary for the
+  /// deno_core module loader to resolve npm specifiers as-is so that
+  /// the loader can properly dynamic import and install npm packages
+  /// when managed.
+  pub maintain_npm_specifiers: bool,
+}
 
 pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   npm::DenoInNpmPackageChecker,
@@ -189,8 +236,7 @@ impl<
     raw_specifier: &str,
     referrer: &Url,
     referrer_range_start: deno_graph::Position,
-    resolution_mode: node_resolver::ResolutionMode,
-    resolution_kind: node_resolver::NodeResolutionKind,
+    options: ResolveWithGraphOptions,
   ) -> Result<Url, ResolveWithGraphError> {
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
@@ -212,34 +258,23 @@ impl<
         raw_specifier,
         referrer,
         referrer_range_start,
-        resolution_mode,
-        resolution_kind,
+        options.mode,
+        options.kind,
       )?),
     };
 
     let specifier = match graph.get(&specifier) {
       Some(Module::Npm(module)) => {
-        let node_and_npm_resolver =
-          self.resolver.node_and_npm_resolver.as_ref().unwrap();
-        let package_folder = node_and_npm_resolver
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        node_and_npm_resolver
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
+        if options.maintain_npm_specifiers {
+          specifier.into_owned()
+        } else {
+          self.resolve_npm_nv_ref(
+            &module.nv_reference,
             Some(referrer),
-            resolution_mode,
-            resolution_kind,
-          )
-          .map_err(|source| CouldNotResolveError {
-            reference: module.nv_reference.clone(),
-            source,
-          })?
-          .into_url()?
+            options.mode,
+            options.kind,
+          )?
+        }
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
@@ -251,9 +286,77 @@ impl<
           &module.specifier,
         )
       }
-      None => specifier.into_owned(),
+      None => {
+        if options.maintain_npm_specifiers {
+          specifier.into_owned()
+        } else if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          if let Some(url) =
+            self.resolver.resolve_non_workspace_npm_req_ref_to_file(
+              &reference,
+              referrer,
+              options.mode,
+              options.kind,
+            )?
+          {
+            url.into_url()?
+          } else {
+            specifier.into_owned()
+          }
+        } else {
+          specifier.into_owned()
+        }
+      }
     };
     Ok(specifier)
+  }
+
+  pub fn resolve_non_workspace_npm_req_ref_to_file(
+    &self,
+    npm_req_ref: &NpmPackageReqReference,
+    referrer: &Url,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+    self.resolver.resolve_non_workspace_npm_req_ref_to_file(
+      npm_req_ref,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )
+  }
+
+  pub fn resolve_npm_nv_ref(
+    &self,
+    nv_ref: &NpmPackageNvReference,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Result<Url, ResolveWithGraphError> {
+    let node_and_npm_resolver =
+      self.resolver.node_and_npm_resolver.as_ref().unwrap();
+    let package_folder = node_and_npm_resolver
+      .npm_resolver
+      .as_managed()
+      .unwrap() // we won't have an nv ref when not managed
+      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
+    Ok(
+      node_and_npm_resolver
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          &package_folder,
+          nv_ref.sub_path(),
+          maybe_referrer,
+          resolution_mode,
+          resolution_kind,
+        )
+        .map_err(|source| CouldNotResolveError {
+          reference: nv_ref.clone(),
+          source,
+        })?
+        .into_url()?,
+    )
   }
 
   pub fn resolve(
@@ -263,23 +366,13 @@ impl<
     referrer_range_start: deno_graph::Position,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
-  ) -> Result<Url, ResolveError> {
-    let resolution = self
-      .resolver
-      .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-      .map_err(|err| match err.into_kind() {
-        DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
-          match mapped_resolution_error {
-            MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
-            // deno_graph checks specifically for an ImportMapError
-            MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-            MappedResolutionError::Workspace(e) => {
-              ResolveError::Other(JsErrorBox::from_err(e))
-            }
-          }
-        }
-        err => ResolveError::Other(JsErrorBox::from_err(err)),
-      })?;
+  ) -> Result<Url, DenoResolveError> {
+    let resolution = self.resolver.resolve(
+      raw_specifier,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )?;
 
     if resolution.found_package_json_dep {
       // mark that we need to do an "npm install" later
@@ -406,19 +499,22 @@ impl<
     referrer_range: &deno_graph::Range,
     resolution_kind: deno_graph::source::ResolutionKind,
   ) -> Result<Url, ResolveError> {
-    self.resolver.resolve(
-      raw_specifier,
-      &referrer_range.specifier,
-      referrer_range.range.start,
-      referrer_range
-        .resolution_mode
-        .map(node_resolver::ResolutionMode::from_deno_graph)
-        .unwrap_or_else(|| {
-          self
-            .cjs_tracker
-            .get_referrer_kind(&referrer_range.specifier)
-        }),
-      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
-    )
+    self
+      .resolver
+      .resolve(
+        raw_specifier,
+        &referrer_range.specifier,
+        referrer_range.range.start,
+        referrer_range
+          .resolution_mode
+          .map(node_resolver::ResolutionMode::from_deno_graph)
+          .unwrap_or_else(|| {
+            self
+              .cjs_tracker
+              .get_referrer_kind(&referrer_range.specifier)
+          }),
+        node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
+      )
+      .map_err(|err| err.into_deno_graph_error())
   }
 }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
@@ -17,6 +18,7 @@ use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::Position;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -40,8 +42,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
-use crate::node::CliNodeResolver;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
 
@@ -73,8 +73,8 @@ pub async fn bundle(
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
   let root_permissions = factory.root_permissions_container()?;
-  let npm_resolver = factory.npm_resolver().await?.clone();
-  let node_resolver = factory.node_resolver().await?.clone();
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
   let module_loader = factory
     .create_module_loader_factory()
@@ -93,8 +93,6 @@ pub async fn bundle(
       .await?
       .clone(),
     permissions: root_permissions.clone(),
-    npm_resolver: npm_resolver.clone(),
-    node_resolver: node_resolver.clone(),
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -358,8 +356,6 @@ struct DenoPluginHandler {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  npm_resolver: CliNpmResolver,
-  node_resolver: Arc<CliNodeResolver>,
   module_loader: Rc<dyn ModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
 }
@@ -531,8 +527,11 @@ impl DenoPluginHandler {
       path,
       &referrer,
       Position::new(0, 0),
-      import_kind_to_resolution_mode(kind),
-      NodeResolutionKind::Execution,
+      ResolveWithGraphOptions {
+        mode: import_kind_to_resolution_mode(kind),
+        kind: NodeResolutionKind::Execution,
+        maintain_npm_specifiers: false,
+      },
     );
 
     log::debug!(
@@ -653,23 +652,16 @@ impl DenoPluginHandler {
         json_module.specifier.clone(),
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => todo!(),
+      deno_graph::Module::Wasm(_) => {
+        bail!("Wasm modules are not implemented in deno bundle.")
+      }
       deno_graph::Module::Npm(module) => {
-        let package_folder = self
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let path = self
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
-            None,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )?;
-        let url = path.clone().into_url()?;
+        let url = self.resolver.resolve_npm_nv_ref(
+          &module.nv_reference,
+          None,
+          ResolutionMode::Import,
+          NodeResolutionKind::Execution,
+        )?;
         let (media_type, _charset) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
             &url, None,

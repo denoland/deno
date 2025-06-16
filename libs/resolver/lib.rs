@@ -3,6 +3,7 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
@@ -23,17 +24,17 @@ pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
-use npm::MissingPackageNodeModulesFolderError;
+use node_resolver::UrlOrPath;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
-use npm::ResolveReqWithSubPathErrorKind;
 use thiserror::Error;
 use url::Url;
 
 use self::npm::NpmResolver;
 use self::npm::NpmResolverSys;
+use self::npm::ResolveNpmReqRefError;
 use crate::workspace::MappedResolution;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::MappedResolutionError;
@@ -73,6 +74,51 @@ pub struct DenoResolution {
 #[derive(Debug, Boxed, JsError)]
 pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 
+impl DenoResolveError {
+  #[cfg(feature = "graph")]
+  pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
+    use deno_error::JsErrorBox;
+    use deno_graph::source::ResolveError;
+
+    match self.into_kind() {
+      DenoResolveErrorKind::MappedResolution(mapped_resolution_error) => {
+        match mapped_resolution_error {
+          MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
+          // deno_graph checks specifically for an ImportMapError
+          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+          MappedResolutionError::Workspace(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
+        }
+      }
+      err => ResolveError::Other(JsErrorBox::from_err(err)),
+    }
+  }
+
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      DenoResolveErrorKind::Node(err) => err.maybe_specifier(),
+      DenoResolveErrorKind::PackageSubpathResolve(err) => err.maybe_specifier(),
+      DenoResolveErrorKind::PathToUrl(err) => {
+        Some(Cow::Owned(UrlOrPath::Path(err.0.clone())))
+      }
+      DenoResolveErrorKind::ResolveNpmReqRef(err) => err.err.maybe_specifier(),
+      DenoResolveErrorKind::UnknownBuiltInNodeModule(err) => {
+        err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
+      }
+      DenoResolveErrorKind::MappedResolution(_)
+      | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder(_)
+      | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
+      | DenoResolveErrorKind::InvalidVendorFolderImport
+      | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+      | DenoResolveErrorKind::NodeModulesOutOfDate(_)
+      | DenoResolveErrorKind::PackageJsonDepValueParse(_)
+      | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
+    }
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 pub enum DenoResolveErrorKind {
   #[class(type)]
@@ -87,9 +133,6 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
-  #[class(inherit)]
-  #[error(transparent)]
-  MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
   Node(#[from] NodeResolveError),
@@ -108,6 +151,9 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveNpmReqRef(#[from] ResolveNpmReqRefError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -463,7 +509,13 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map_err(DenoResolveError::from)
+              .map_err(|err| {
+                DenoResolveErrorKind::ResolveNpmReqRef(ResolveNpmReqRefError {
+                  npm_req_ref: npm_req_ref.clone(),
+                  err: err.into(),
+                })
+                .into_box()
+              })
               .and_then(|url_or_path| {
                 Ok(DenoResolution {
                   url: url_or_path.into_url()?,
@@ -473,7 +525,6 @@ impl<
               });
           }
 
-          // do npm resolution for byonm
           if self.is_byonm {
             return npm_req_resolver
               .resolve_req_reference(
@@ -483,23 +534,15 @@ impl<
                 resolution_kind,
               )
               .map_err(|err| {
-                match err.into_kind() {
-                  ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(
-                    err,
-                  ) => err.into(),
-                  ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
-                    err.into()
-                  }
-                }
+                DenoResolveErrorKind::ResolveNpmReqRef(err).into_box()
               })
-              .and_then(|url_or_path| Ok(DenoResolution {
-                url: url_or_path.into_url()?,
-                maybe_diagnostic,
-                found_package_json_dep,
-              }));
+              .and_then(|url_or_path| {
+                Ok(DenoResolution {
+                  url: url_or_path.into_url()?,
+                  maybe_diagnostic,
+                  found_package_json_dep,
+                })
+              });
           }
         }
 
@@ -563,5 +606,29 @@ impl<
         Err(err)
       }
     }
+  }
+
+  #[cfg(feature = "graph")]
+  pub(crate) fn resolve_non_workspace_npm_req_ref_to_file(
+    &self,
+    npm_req_ref: &NpmPackageReqReference,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+    let Some(NodeAndNpmResolvers {
+      npm_req_resolver, ..
+    }) = &self.node_and_npm_resolver
+    else {
+      return Ok(None);
+    };
+    npm_req_resolver
+      .resolve_req_reference(
+        npm_req_ref,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map(Some)
   }
 }

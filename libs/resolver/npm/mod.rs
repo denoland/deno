@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -99,6 +101,8 @@ pub struct NodeModulesOutOfDateError {
 #[error("Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", package_json_path.display())]
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
+  // Don't bother displaying this error, so don't name it "source"
+  pub inner: PackageSubpathResolveError,
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -116,8 +120,44 @@ pub enum ResolveIfForNpmPackageErrorKind {
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
+#[derive(Debug, JsError)]
+#[class(inherit)]
+pub struct ResolveNpmReqRefError {
+  pub npm_req_ref: NpmPackageReqReference,
+  #[inherit]
+  pub err: ResolveReqWithSubPathError,
+}
+
+impl std::error::Error for ResolveNpmReqRefError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.err.source()
+  }
+}
+
+impl std::fmt::Display for ResolveNpmReqRefError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.err, f)
+  }
+}
+
 #[derive(Debug, Boxed, JsError)]
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
+
+impl ResolveReqWithSubPathError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
+        err.inner.maybe_specifier()
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(err) => {
+        Some(Cow::Owned(UrlOrPath::Url(err.npm_specifier.clone())))
+      }
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
+        err.maybe_specifier()
+      }
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum ResolveReqWithSubPathErrorKind {
@@ -126,7 +166,9 @@ pub enum ResolveReqWithSubPathErrorKind {
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  ResolvePkgFolderFromDenoReq(
+    #[from] ContextedResolvePkgFolderFromDenoReqError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
@@ -141,6 +183,26 @@ impl ResolveReqWithSubPathErrorKind {
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
     }
+  }
+}
+
+#[derive(Debug, JsError)]
+#[class(inherit)]
+pub struct ContextedResolvePkgFolderFromDenoReqError {
+  pub npm_specifier: Url,
+  #[inherit]
+  pub inner: ResolvePkgFolderFromDenoReqError,
+}
+
+impl std::error::Error for ContextedResolvePkgFolderFromDenoReqError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.inner.source()
+  }
+}
+
+impl std::fmt::Display for ContextedResolvePkgFolderFromDenoReqError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.inner, f)
   }
 }
 
@@ -336,7 +398,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
@@ -353,10 +415,44 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
+    self
+      .resolve_req_with_sub_path_inner(
+        req,
+        sub_path,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map_err(|source| ResolveNpmReqRefError {
+        npm_req_ref: NpmPackageReqReference::new(PackageReqReference {
+          req: req.clone(),
+          sub_path: sub_path.map(|s| s.into()),
+        }),
+        err: source,
+      })
+  }
+
+  fn resolve_req_with_sub_path_inner(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
     let package_folder = self
       .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)
+      .map_err(|inner| ContextedResolvePkgFolderFromDenoReqError {
+        npm_specifier: Url::parse(&format!(
+          "npm:{}{}",
+          req,
+          sub_path.map(|s| format!("/{}", s)).unwrap_or_default(),
+        ))
+        .unwrap(),
+        inner,
+      })?;
     let resolution_result =
       self.node_resolver.resolve_package_subpath_from_deno_module(
         &package_folder,
@@ -407,7 +503,11 @@ impl<
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
             return Err(
-              MissingPackageNodeModulesFolderError { package_json_path }.into(),
+              MissingPackageNodeModulesFolderError {
+                package_json_path,
+                inner: err,
+              }
+              .into(),
             );
           }
         }

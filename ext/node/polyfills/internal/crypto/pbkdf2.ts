@@ -3,7 +3,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_pbkdf2, op_node_pbkdf2_async } from "ext:core/ops";
+import {
+  op_node_pbkdf2,
+  op_node_pbkdf2_async,
+  op_node_pbkdf2_validate,
+} from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
@@ -123,6 +127,7 @@ export function pbkdf2(
   validateFunction(callback, "callback");
 
   digest = digest.toLowerCase() as NormalizedAlgorithms;
+  op_node_pbkdf2_validate(digest);
 
   op_node_pbkdf2_async(
     password,

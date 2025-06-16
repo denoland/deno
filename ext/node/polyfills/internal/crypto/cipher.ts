@@ -18,6 +18,7 @@ import {
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
@@ -40,10 +41,13 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
@@ -223,7 +227,10 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   getAuthTag(): Buffer {
-    return this.#authTag!;
+    if (!this.#authTag) {
+      throw new ERR_CRYPTO_INVALID_STATE("getAuthTag");
+    }
+    return this.#authTag;
   }
 
   setAAD(
@@ -318,6 +325,17 @@ class BlockModeCache {
   }
 }
 
+function getUIntOption(options, key) {
+  let value;
+  if (options && (value = options[key]) != null) {
+    if (value >>> 0 !== value) {
+      throw new ERR_INVALID_ARG_VALUE(`options.${key}`, value);
+    }
+    return value;
+  }
+  return -1;
+}
+
 export class Decipheriv extends Transform implements Cipher {
   /** DecipherContext resource id */
   #context: number;
@@ -337,6 +355,8 @@ export class Decipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -349,7 +369,12 @@ export class Decipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(this.#autoPadding);
-    this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_decipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
@@ -391,6 +416,7 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   setAuthTag(buffer: BinaryLike, _encoding?: string): this {
+    op_node_decipheriv_auth_tag(this.#context, buffer.byteLength);
     this.#authTag = buffer;
     return this;
   }
