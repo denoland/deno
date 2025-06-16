@@ -60,10 +60,10 @@ tempfile.workspace = true
 termcolor.workspace = true
 tokio.workspace = true
 url.workspace = true
-win32job.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+win32job.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "term", "signal"] }

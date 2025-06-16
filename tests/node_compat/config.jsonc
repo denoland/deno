@@ -43,7 +43,6 @@
       "test-console-formatTime.js",
       "test-console-instance.js",
       "test-console-tty-colors.js",
-      "test-crypto-dh.js",
       "test-crypto-hash.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
@@ -69,7 +68,6 @@
       "test-error-aggregateTwoErrors.js",
       "test-error-prepare-stack-trace.js",
       "test-event-emitter-prepend.js",
-      "test-events-once.js",
       "test-fs-access.js",
       "test-fs-append-file.js",
       "test-fs-chmod-mask.js",
@@ -1411,6 +1409,7 @@
     "sequential": [
       "test-buffer-creation-regression.js",
       "test-child-process-exit.js",
+      "test-crypto-timing-safe-equal.js",
       "test-http-server-keep-alive-timeout-slow-server.js",
       "test-net-connect-local-error.js",
       "test-net-response-size.js",

@@ -92,19 +92,6 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     rx
   });
 
-#[allow(clippy::result_large_err)]
-pub fn import_meta_resolve_callback(
-  loader: &dyn ModuleLoader,
-  specifier: String,
-  referrer: String,
-) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
-  loader.resolve(
-    &specifier,
-    &referrer,
-    deno_core::ResolutionKind::DynamicImport,
-  )
-}
-
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
 pub fn validate_import_attributes_callback(
@@ -1123,7 +1110,6 @@ fn common_runtime(
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
     ),
-    import_meta_resolve_callback: Some(Box::new(import_meta_resolve_callback)),
     validate_import_attributes_cb: Some(Box::new(
       validate_import_attributes_callback,
     )),

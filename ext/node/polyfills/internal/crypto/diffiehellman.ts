@@ -42,6 +42,7 @@ import type {
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getArrayBufferOrView,
   getKeyObjectHandle,
   kConsumePrivate,
   kConsumePublic,
@@ -197,11 +198,12 @@ export class DiffieHellmanImpl {
     inputEncoding?: BinaryToTextEncoding,
     outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let buf;
-    if (inputEncoding != undefined && inputEncoding != "buffer") {
-      buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
-    } else {
-      buf = Buffer.from(otherPublicKey.buffer);
+    const buf = getArrayBufferOrView(otherPublicKey, "key", inputEncoding);
+    if (buf.length === 0) {
+      throw new NodeError(
+        "ERR_CRYPTO_INVALID_KEYLEN",
+        "Unspecified validation error",
+      );
     }
 
     const sharedSecret = op_node_dh_compute_secret(

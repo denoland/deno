@@ -1069,6 +1069,9 @@ impl<
                     PackageTargetNotFoundError {
                       pkg_json_path: package_json_path.to_path_buf(),
                       target: export_target.to_string(),
+                      maybe_resolved: err
+                        .maybe_specifier()
+                        .map(|c| c.into_owned()),
                       maybe_referrer: maybe_referrer.map(|r| r.display()),
                       resolution_mode,
                       resolution_kind,
