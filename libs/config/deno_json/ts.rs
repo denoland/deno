@@ -103,7 +103,7 @@ static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
 };
 
 #[derive(Debug, Default, Clone)]
-pub struct ParsedTsConfigOptions {
+pub struct ParsedCompilerOptions {
   pub options: serde_json::Map<String, serde_json::Value>,
   pub maybe_ignored: Option<IgnoredCompilerOptions>,
 }
@@ -111,7 +111,7 @@ pub struct ParsedTsConfigOptions {
 pub fn parse_compiler_options(
   compiler_options: serde_json::Map<String, Value>,
   maybe_specifier: Option<&Url>,
-) -> ParsedTsConfigOptions {
+) -> ParsedCompilerOptions {
   let mut allowed: serde_json::Map<String, Value> =
     serde_json::Map::with_capacity(compiler_options.len());
   let mut ignored: Vec<String> = Vec::new(); // don't pre-allocate because it's rare
@@ -141,7 +141,7 @@ pub fn parse_compiler_options(
     None
   };
 
-  ParsedTsConfigOptions {
+  ParsedCompilerOptions {
     options: allowed,
     maybe_ignored,
   }
@@ -149,21 +149,21 @@ pub fn parse_compiler_options(
 
 /// A structure for managing the configuration of TypeScript
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TsConfig(pub Value);
+pub struct CompilerOptions(pub Value);
 
-impl Default for TsConfig {
+impl Default for CompilerOptions {
   fn default() -> Self {
     Self(serde_json::Value::Object(Default::default()))
   }
 }
 
-impl TsConfig {
-  /// Create a new `TsConfig` with the base being the `value` supplied.
+impl CompilerOptions {
+  /// Create a new `CompilerOptions` with the base being the `value` supplied.
   pub fn new(value: Value) -> Self {
-    TsConfig(value)
+    CompilerOptions(value)
   }
 
-  pub fn merge_mut(&mut self, value: TsConfig) {
+  pub fn merge_mut(&mut self, value: CompilerOptions) {
     json_merge(&mut self.0, value.0);
   }
 
@@ -176,7 +176,7 @@ impl TsConfig {
   }
 }
 
-impl Serialize for TsConfig {
+impl Serialize for CompilerOptions {
   /// Serializes inner hash map which is ordered by the key
   fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
   where

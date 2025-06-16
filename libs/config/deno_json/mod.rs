@@ -34,11 +34,11 @@ use crate::UrlToFilePathError;
 
 mod ts;
 
+pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::IgnoredCompilerOptions;
-pub use ts::ParsedTsConfigOptions;
+pub use ts::ParsedCompilerOptions;
 pub use ts::RawJsxCompilerOptions;
-pub use ts::TsConfig;
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -1223,7 +1223,7 @@ impl ConfigFile {
   /// The result also contains any options that were ignored.
   pub fn to_compiler_options(
     &self,
-  ) -> Result<Option<ParsedTsConfigOptions>, CompilerOptionsParseError> {
+  ) -> Result<Option<ParsedCompilerOptions>, CompilerOptionsParseError> {
     let Some(compiler_options) = self.json.compiler_options.clone() else {
       return Ok(None);
     };
@@ -1921,7 +1921,7 @@ impl Serialize for TsTypeLib {
 
 /// An enum that represents the base tsc configuration to return.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TsConfigType {
+pub enum CompilerOptionsType {
   /// Return a configuration for bundling, using swc to emit the bundle. This is
   /// independent of type checking.
   Bundle,
@@ -1933,16 +1933,18 @@ pub enum TsConfigType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TsConfigWithIgnoredOptions {
-  pub ts_config: TsConfig,
+pub struct CompilerOptionsWithIgnoredOptions {
+  pub compiler_options: CompilerOptions,
   pub ignored_options: Vec<IgnoredCompilerOptions>,
 }
 
-/// For a given configuration type get the starting point TsConfig
-/// used that can then be merged with user specified tsconfigs.
-pub fn get_base_ts_config_for_emit(config_type: TsConfigType) -> TsConfig {
+/// For a given configuration type get the starting point CompilerOptions
+/// used that can then be merged with user specified options.
+pub fn get_base_compiler_options_for_emit(
+  config_type: CompilerOptionsType,
+) -> CompilerOptions {
   match config_type {
-    TsConfigType::Bundle => TsConfig::new(json!({
+    CompilerOptionsType::Bundle => CompilerOptions::new(json!({
       "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
@@ -1957,7 +1959,7 @@ pub fn get_base_ts_config_for_emit(config_type: TsConfigType) -> TsConfig {
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
     })),
-    TsConfigType::Check { lib } => TsConfig::new(json!({
+    CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
       "allowJs": true,
       "allowImportingTsExtensions": true,
       "allowSyntheticDefaultImports": true,
@@ -1983,7 +1985,7 @@ pub fn get_base_ts_config_for_emit(config_type: TsConfigType) -> TsConfig {
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
     })),
-    TsConfigType::Emit => TsConfig::new(json!({
+    CompilerOptionsType::Emit => CompilerOptions::new(json!({
       "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
@@ -2114,7 +2116,7 @@ mod tests {
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file =
       ConfigFile::new(config_text, config_specifier.clone()).unwrap();
-    let ParsedTsConfigOptions {
+    let ParsedCompilerOptions {
       options,
       maybe_ignored,
     } = config_file
