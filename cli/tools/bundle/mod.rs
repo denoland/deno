@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
@@ -463,21 +462,27 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
-        if matches!(
-          e,
+        match e {
           BundleLoadError::CliModuleLoader(
             CliModuleLoaderError::LoadCodeSource(
-              LoadCodeSourceError::LoadPreparedModule(
-                LoadPreparedModuleError::Graph(ref e)
-              )
-            )
-          ) if matches!(&**e, EnhancedGraphError {
-            error: ModuleError::UnsupportedMediaType { .. },
-            ..
-          })
-        ) {
-          log::debug!("unsupported media type: {:?}", e);
-          return Ok(None);
+              LoadCodeSourceError::LoadPreparedModule(ref e),
+            ),
+          ) => match &**e {
+            LoadPreparedModuleError::Graph(ref graph_error)
+              if matches!(
+                &**graph_error,
+                EnhancedGraphError {
+                  error: ModuleError::UnsupportedMediaType { .. },
+                  ..
+                }
+              ) =>
+            {
+              log::debug!("unsupported media type: {:?}", e);
+              return Ok(None);
+            }
+            _ => {}
+          },
+          _ => {}
         }
         return Ok(Some(esbuild_client::OnLoadResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
@@ -551,6 +556,9 @@ pub enum BundleLoadError {
   #[class(inherit)]
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
+  #[class(generic)]
+  #[error("Wasm modules are not implemented in deno bundle.")]
+  WasmUnsupported,
 }
 
 impl DenoPluginHandler {
@@ -712,7 +720,7 @@ impl DenoPluginHandler {
     specifier: &ModuleSpecifier,
   ) -> Result<
     Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>,
-    ResolveWithGraphError,
+    BundleLoadError,
   > {
     let graph = self.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
@@ -728,7 +736,7 @@ impl DenoPluginHandler {
         esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => {
-        bail!("Wasm modules are not implemented in deno bundle.")
+        return Err(BundleLoadError::WasmUnsupported);
       }
       deno_graph::Module::Npm(module) => {
         let url = self.resolver.resolve_npm_nv_ref(

@@ -46,6 +46,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
+use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::loader::StrippingTypesNodeModulesError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
@@ -54,6 +55,7 @@ use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
@@ -583,16 +585,41 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadCodeSourceError {
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmModuleLoad(#[from] Box<NpmModuleLoadError>),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadUnpreparedModule(#[from] Box<LoadUnpreparedModuleError>),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] Box<deno_core::error::ModuleLoaderError>),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmReqRef(#[from] Box<ResolveNpmReqRefError>),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CliModuleLoaderError {
   #[class(inherit)]
   #[error(transparent)]
   LoadCodeSource(#[from] LoadCodeSourceError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadPreparedModule(#[from] LoadPreparedModuleError),
+  LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
   #[class(generic)]
   #[error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.")]
   MissingJsonAttribute,
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] Box<deno_core::error::ModuleLoaderError>),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -652,7 +679,10 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
-    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
+    let code_source = self
+      .load_code_source(specifier, maybe_referrer)
+      .await
+      .map_err(JsErrorBox::from_err)?;
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
       MediaType::Wasm => ModuleType::Wasm,
@@ -713,11 +743,11 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, JsErrorBox> {
+  ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
     match self
       .load_prepared_module(specifier)
       .await
-      .map_err(JsErrorBox::from_err)?
+      .map_err(Box::new)?
     {
       Some(code) => Ok(code),
       None => {
@@ -730,9 +760,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             Some(r) => Cow::Borrowed(r),
             // but the repl may also end up here and it won't have
             // a referrer so create a referrer for it here
-            None => Cow::Owned(
-              self.resolve_referrer("").map_err(JsErrorBox::from_err)?,
-            ),
+            None => Cow::Owned(self.resolve_referrer("").map_err(Box::new)?),
           };
           Cow::Owned(
             self
@@ -744,10 +772,9 @@ impl<TGraphContainer: ModuleGraphContainer>
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?
+              .map_err(Box::new)?
               .unwrap()
-              .into_url()
-              .map_err(JsErrorBox::from_err)?,
+              .into_url()?,
           )
         } else {
           Cow::Borrowed(specifier)
@@ -758,12 +785,15 @@ impl<TGraphContainer: ModuleGraphContainer>
             .npm_module_loader
             .load(&specifier, maybe_referrer)
             .await
-            .map_err(JsErrorBox::from_err);
+            .map_err(|e| Box::new(e).into());
         }
-        Err(JsErrorBox::from_err(LoadUnpreparedModuleError {
-          specifier: specifier.into_owned(),
-          maybe_referrer: maybe_referrer.cloned(),
-        }))
+        Err(
+          Box::new(LoadUnpreparedModuleError {
+            specifier: specifier.into_owned(),
+            maybe_referrer: maybe_referrer.cloned(),
+          })
+          .into(),
+        )
       }
     }
   }
