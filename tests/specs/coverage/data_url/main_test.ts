@@ -1,5 +1,5 @@
 import { foo } from "./main.ts";
 
-Deno.test("test", () => {
-  foo();
+Deno.test("test", async () => {
+  await foo();
 });
