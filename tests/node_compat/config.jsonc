@@ -1412,6 +1412,7 @@
     "sequential": [
       "test-buffer-creation-regression.js",
       "test-child-process-exit.js",
+      "test-crypto-timing-safe-equal.js",
       "test-http-server-keep-alive-timeout-slow-server.js",
       "test-net-connect-local-error.js",
       "test-net-response-size.js",

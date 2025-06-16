@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1207 tests out of 3993 have been ported from Node 23.9.0 (30.23% ported, 70.40% remaining).
+1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2731,7 +2731,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [sequential/test-cpu-prof-kill.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-kill.js)
 - [sequential/test-cpu-prof-name.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-name.js)
 - [sequential/test-cpu-prof-worker-argv.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-worker-argv.js)
-- [sequential/test-crypto-timing-safe-equal.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-crypto-timing-safe-equal.js)
 - [sequential/test-debug-prompt.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debug-prompt.js)
 - [sequential/test-debugger-custom-port.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debugger-custom-port.js)
 - [sequential/test-debugger-debug-brk.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debugger-debug-brk.js)
