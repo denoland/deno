@@ -471,7 +471,7 @@ Deno.test({
         decipher.final();
       },
       RangeError,
-      "Wrong final block length",
+      "wrong final block length",
     );
   },
 });
