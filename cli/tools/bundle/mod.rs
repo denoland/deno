@@ -4,6 +4,7 @@ mod esbuild;
 mod externals;
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -21,6 +22,8 @@ use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use esbuild_client::protocol;
+use esbuild_client::protocol::BuildResponse;
+use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
 use indexmap::IndexMap;
@@ -87,6 +90,7 @@ pub async fn bundle(
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
 
+  let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
     resolver: resolver.clone(),
@@ -102,6 +106,7 @@ pub async fn bundle(
     } else {
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
+    on_end_tx,
   });
   let start = std::time::Instant::now();
 
@@ -153,17 +158,10 @@ pub async fn bundle(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
     plugin_handler.clone(),
+    Default::default(),
   )
   .await
   .unwrap();
-  let client = esbuild.client().clone();
-
-  {
-    tokio::spawn(async move {
-      let res = esbuild.wait_for_exit().await;
-      log::warn!("esbuild exited: {:?}", res);
-    });
-  }
 
   let mut builder = EsbuildFlagsBuilder::default();
   builder
@@ -181,6 +179,9 @@ pub async fn bundle(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
+  if std::env::var("DENO_META").is_ok() {
+    builder.metafile(true);
+  }
   if let Some(sourcemap_type) = bundle_flags.sourcemap {
     builder.sourcemap(match sourcemap_type {
       SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
@@ -202,37 +203,24 @@ pub async fn bundle(
   let flags = builder.build().unwrap();
 
   let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let mut bundler = EsbuildBundler::new(
+    esbuild.client().clone(),
+    plugin_handler.clone(),
+    BundlingMode::OneShot,
+    on_end_rx,
+    init_cwd.clone(),
+    flags,
+    entries,
+  )?;
 
-  let response = client
-    .send_build_request(protocol::BuildRequest {
-      entries,
-      key: 0,
-      flags: flags.to_flags(),
-      write: true,
-      stdin_contents: None.into(),
-      stdin_resolve_dir: None.into(),
-      abs_working_dir: init_cwd.to_string_lossy().to_string(),
-      context: false,
-      mangle_cache: None,
-      node_paths: vec![],
-      plugins: Some(vec![protocol::BuildPlugin {
-        name: "deno".into(),
-        on_start: false,
-        on_end: false,
-        on_resolve: (vec![protocol::OnResolveSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }]),
-        on_load: vec![protocol::OnLoadSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }],
-      }]),
-    })
-    .await
-    .unwrap();
+  {
+    tokio::spawn(async move {
+      let res = esbuild.wait_for_exit().await;
+      log::warn!("esbuild exited: {:?}", res);
+    });
+  }
+
+  let response = bundler.build().await.unwrap();
 
   for error in &response.errors {
     log::error!(
@@ -273,11 +261,116 @@ pub async fn bundle(
     );
   }
 
+  if let Some(metafile) = response.metafile {
+    println!("metafile:\n{}", metafile);
+  }
   if !response.errors.is_empty() {
     deno_core::anyhow::bail!("bundling failed");
   }
 
   Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BundlingMode {
+  OneShot,
+  Watch,
+}
+
+pub struct EsbuildBundler {
+  client: esbuild_client::ProtocolClient,
+  plugin_handler: Arc<DenoPluginHandler>,
+  on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+  mode: BundlingMode,
+  cwd: PathBuf,
+  flags: EsbuildFlags,
+  roots: Vec<(String, String)>,
+}
+
+impl EsbuildBundler {
+  pub fn new(
+    client: esbuild_client::ProtocolClient,
+    plugin_handler: Arc<DenoPluginHandler>,
+    mode: BundlingMode,
+    on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+    cwd: PathBuf,
+    flags: EsbuildFlags,
+    roots: Vec<(String, String)>,
+  ) -> Result<EsbuildBundler, AnyError> {
+    Ok(EsbuildBundler {
+      client,
+      plugin_handler,
+      on_end_rx,
+      mode,
+      cwd,
+      flags,
+      roots,
+    })
+  }
+
+  fn make_build_request(&self) -> protocol::BuildRequest {
+    protocol::BuildRequest {
+      entries: self.roots.clone(),
+      key: 0,
+      flags: self.flags.to_flags(),
+      write: true,
+      stdin_contents: None.into(),
+      stdin_resolve_dir: None.into(),
+      abs_working_dir: self.cwd.to_string_lossy().to_string(),
+      context: matches!(self.mode, BundlingMode::Watch),
+      mangle_cache: None,
+      node_paths: vec![],
+      plugins: Some(vec![protocol::BuildPlugin {
+        name: "deno".into(),
+        on_start: false,
+        on_end: matches!(self.mode, BundlingMode::Watch),
+        on_resolve: (vec![protocol::OnResolveSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }]),
+        on_load: vec![protocol::OnLoadSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }],
+      }]),
+    }
+  }
+
+  async fn build(&self) -> Result<BuildResponse, AnyError> {
+    match self.mode {
+      BundlingMode::OneShot => {
+        let response = self
+          .client
+          .send_build_request(self.make_build_request())
+          .await
+          .unwrap();
+        Ok(response)
+      }
+      BundlingMode::Watch => {
+        let response = self
+          .client
+          .send_build_request(self.make_build_request())
+          .await
+          .unwrap();
+        Ok(response)
+      }
+    }
+  }
+
+  async fn rebuild(&mut self) -> Result<BuildResponse, AnyError> {
+    match self.mode {
+      BundlingMode::OneShot => {
+        panic!("rebuild not supported for one-shot mode")
+      }
+      BundlingMode::Watch => {
+        let _response = self.client.send_rebuild_request(0).await.unwrap();
+        let response = self.on_end_rx.recv().await.unwrap();
+        Ok(response.into())
+      }
+    }
+  }
 }
 
 // TODO(nathanwhit): MASSIVE HACK
@@ -373,13 +466,14 @@ fn requested_type_from_map(
   }
 }
 
-struct DenoPluginHandler {
+pub struct DenoPluginHandler {
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
   module_loader: CliModuleLoader<MainModuleGraphContainer>,
   externals_matcher: Option<ExternalsMatcher>,
+  on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -508,6 +602,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
+    self.on_end_tx.send(_args).await?;
     Ok(None)
   }
 }
