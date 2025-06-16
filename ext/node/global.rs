@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::rc::Rc;
+
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8::MapFnTo;
@@ -11,13 +13,13 @@ use deno_core::v8::MapFnTo;
 // these mapped functions per-thread. We should revisit it in the future and
 // ideally remove altogether.
 thread_local! {
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = setter.map_fn_to();
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = query.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback<'static> = descriptor.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = setter.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = query.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback = descriptor.map_fn_to();
 }
 
 /// Convert an ASCII string to a UTF-16 byte encoding of the string.
@@ -53,7 +55,6 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
 // - global (node only)
-// - performance (both, but different implementation)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
 // - setImmediate (node only)
@@ -63,16 +64,13 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 13] = [
+const MANAGED_GLOBALS: [&[u16]; 10] = [
   &str_to_utf16::<6>("Buffer"),
-  &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
   &str_to_utf16::<6>("global"),
-  &str_to_utf16::<11>("performance"),
   &str_to_utf16::<7>("process"),
-  &str_to_utf16::<4>("self"),
   &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
@@ -105,7 +103,7 @@ enum Mode {
   Node,
 }
 
-struct GlobalsStorage {
+pub struct GlobalsStorage {
   deno_globals: v8::Global<v8::Object>,
   node_globals: v8::Global<v8::Object>,
 }
@@ -224,7 +222,7 @@ pub fn global_object_middleware<'s>(
     deno_globals,
     node_globals,
   };
-  scope.get_current_context().set_slot(storage);
+  scope.get_current_context().set_slot(Rc::new(storage));
 }
 
 fn is_managed_key(
@@ -241,13 +239,7 @@ fn is_managed_key(
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
-  let written = str.write(
-    scope,
-    buf.as_mut_slice(),
-    0,
-    v8::WriteOptions::NO_NULL_TERMINATION,
-  );
-  assert_eq!(written, len);
+  str.write_v2(scope, 0, buf.as_mut_slice(), v8::WriteFlags::empty());
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
@@ -286,7 +278,9 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -319,7 +313,9 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -346,7 +342,9 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -378,7 +376,9 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -407,7 +407,9 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -441,7 +443,9 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -475,7 +479,9 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

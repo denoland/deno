@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -24,6 +24,7 @@ use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
+use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
@@ -31,14 +32,14 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use regex::Regex;
 
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -163,7 +164,8 @@ pub async fn execute_script(
     )
   };
 
-  let npm_installer = factory.npm_installer_if_managed()?;
+  let maybe_lockfile = factory.maybe_lockfile().await?.cloned();
+  let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
@@ -182,6 +184,7 @@ pub async fn execute_script(
     node_resolver: node_resolver.as_ref(),
     env_vars,
     cli_options,
+    maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
   };
 
@@ -220,7 +223,7 @@ pub async fn execute_script(
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   script: &'a str,
-  cwd: &'a Path,
+  cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
@@ -228,11 +231,12 @@ struct RunSingleOptions<'a> {
 
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
-  npm_installer: Option<&'a NpmInstaller>,
+  npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
-  env_vars: HashMap<String, String>,
+  env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
 }
 
@@ -422,12 +426,7 @@ impl<'a> TaskRunner<'a> {
       return Ok(0);
     };
 
-    if let Some(npm_installer) = self.npm_installer {
-      npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      npm_installer.cache_packages(PackageCaching::All).await?;
-    }
+    self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
@@ -444,7 +443,7 @@ impl<'a> TaskRunner<'a> {
       .run_single(RunSingleOptions {
         task_name,
         script: command,
-        cwd: &cwd,
+        cwd,
         custom_commands,
         kill_signal,
         argv,
@@ -461,12 +460,7 @@ impl<'a> TaskRunner<'a> {
     argv: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_installer) = self.npm_installer {
-      npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      npm_installer.cache_packages(PackageCaching::All).await?;
-    }
+    self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
@@ -492,7 +486,7 @@ impl<'a> TaskRunner<'a> {
           .run_single(RunSingleOptions {
             task_name,
             script,
-            cwd: &cwd,
+            cwd: cwd.clone(),
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
@@ -541,6 +535,19 @@ impl<'a> TaskRunner<'a> {
       .await?
       .exit_code,
     )
+  }
+
+  async fn maybe_npm_install(&self) -> Result<(), AnyError> {
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
+      if let Some(lockfile) = &self.maybe_lockfile {
+        lockfile.write_if_changed()?;
+      }
+    }
+    Ok(())
   }
 }
 
@@ -922,12 +929,7 @@ fn match_tasks(
 
   // Match tasks in deno.json
   for name in tasks_config.task_names() {
-    let matches_filter = match &task_name_filter {
-      TaskNameFilter::Exact(n) => *n == name,
-      TaskNameFilter::Regex(re) => re.is_match(name),
-    };
-
-    if matches_filter && !visited.contains(name) {
+    if task_name_filter.matches(name) && !visited.contains(name) {
       matched.insert(name.to_string());
       visit_task_and_dependencies(tasks_config, &mut visited, name);
     }
@@ -950,6 +952,7 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
 
   let mut regex_str = regex::escape(input);
   regex_str = regex_str.replace("\\*", ".*");
+  regex_str = format!("^{}", regex_str);
   let re = Regex::new(&regex_str)?;
   Ok(TaskNameFilter::Regex(re))
 }
@@ -958,6 +961,15 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
 enum TaskNameFilter<'s> {
   Exact(&'s str),
   Regex(regex::Regex),
+}
+
+impl TaskNameFilter<'_> {
+  fn matches(&self, name: &str) -> bool {
+    match self {
+      Self::Exact(n) => *n == name,
+      Self::Regex(re) => re.is_match(name),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -978,5 +990,10 @@ mod tests {
       arg_to_task_name_filter("test*").unwrap(),
       TaskNameFilter::Regex(_)
     ));
+
+    let filter = arg_to_task_name_filter("test:*").unwrap();
+    assert!(filter.matches("test:deno"));
+    assert!(filter.matches("test:dprint"));
+    assert!(!filter.matches("update:latest:deno"));
   }
 }

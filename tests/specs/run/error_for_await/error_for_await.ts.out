@@ -10,3 +10,6 @@ TS1356 [ERROR]:     Did you mean to mark this function as 'async'?
         at [WILDCARD]error_for_await.ts:7:10
 
 error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

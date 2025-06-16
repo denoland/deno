@@ -2,13 +2,14 @@
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_runtime::colors;
+use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use serde::Serialize;
 
-use super::LintError;
 use crate::args::LintReporterKind;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -53,7 +54,19 @@ impl LintReporter for PrettyLintReporter {
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     log::error!("Error linting: {file_path}");
-    log::error!("   {err}");
+    let text =
+      if let Some(CoreError::Js(js_error)) = err.downcast_ref::<CoreError>() {
+        format_js_error(js_error)
+      } else {
+        format!("{err:#}")
+      };
+    for line in text.split('\n') {
+      if line.is_empty() {
+        log::error!("");
+      } else {
+        log::error!("    {}", line);
+      }
+    }
   }
 
   fn close(&mut self, check_count: usize) {
@@ -167,6 +180,12 @@ struct JsonLintDiagnostic {
   pub message: String,
   pub code: String,
   pub hint: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LintError {
+  file_path: String,
+  message: String,
 }
 
 #[derive(Serialize)]

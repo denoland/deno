@@ -250,7 +250,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all run access.");
+      console.expect("Granted all run access.");
       // "read" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests read access to \"FOO\".\r\n",
@@ -262,7 +262,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all read access.");
+      console.expect("Granted all read access.");
       // "write" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests write access to \"FOO\".\r\n",
@@ -274,7 +274,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all write access.");
+      console.expect("Granted all write access.");
       // "net" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests net access to \"foo\".\r\n",
@@ -286,7 +286,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all net access.");
+      console.expect("Granted all net access.");
       // "env" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
@@ -298,7 +298,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all env access.");
+      console.expect("Granted all env access.");
       // "sys" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
@@ -310,7 +310,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all sys access.");
+      console.expect("Granted all sys access.");
       // "ffi" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
@@ -322,12 +322,12 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all ffi access.")
+      console.expect("Granted all ffi access.")
     },
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -343,7 +343,7 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all env access.");
+      console.expect("Granted all env access.");
 
       // "sys" permissions
       console.expect(concat!(
@@ -356,7 +356,7 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all sys access.");
+      console.expect("Granted all sys access.");
 
       let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
       // "read" permissions
@@ -371,7 +371,7 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all read access.");
+      console.expect("Granted all read access.");
     });
 }
 
@@ -427,7 +427,7 @@ fn permissions_cache() {
       ));
       console.human_delay();
       console.write_line_raw("y");
-      console.expect("✅ Granted read access to \"foo\".");
+      console.expect("Granted read access to \"foo\".");
       console.expect("granted");
       console.expect("prompt");
     });
@@ -455,7 +455,7 @@ fn permissions_trace() {
 
       console.human_delay();
       console.write_line_raw("y");
-      console.expect("✅ Granted sys access to \"hostname\".");
+      console.expect("Granted sys access to \"hostname\".");
     });
 }
 
@@ -486,7 +486,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "4",
+  "version": "5",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -505,7 +505,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "4",
+  "version": "5",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -536,7 +536,7 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:@denotest/esm-basic@*": "1.0.0"
   },
@@ -588,7 +588,7 @@ fn lock_deno_json_package_json_deps() {
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
       "npm:@denotest/esm-basic@*": "1.0.0"
@@ -600,7 +600,8 @@ fn lock_deno_json_package_json_deps() {
     },
     "npm": {
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -637,7 +638,7 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
       "npm:@denotest/esm-basic@*": "1.0.0"
@@ -649,7 +650,8 @@ fn lock_deno_json_package_json_deps() {
     },
     "npm": {
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -674,7 +676,7 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "jsr:@denotest/module-graph@1.4": "1.4.0",
     },
@@ -702,7 +704,7 @@ fn lock_deno_json_package_json_deps() {
     .skip_output_check();
 
   lockfile.assert_matches_json(json!({
-    "version": "4"
+    "version": "5"
   }));
 }
 
@@ -760,17 +762,19 @@ fn lock_deno_json_package_json_deps_workspace() {
   );
 
   lockfile.assert_matches_json(json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/cjs-default-export@1": "1.0.0",
       "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
-        "integrity": cjs_default_export_integrity
+        "integrity": cjs_default_export_integrity,
+        "tarball": "http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz"
       },
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -803,17 +807,19 @@ fn lock_deno_json_package_json_deps_workspace() {
     "@denotest/cjs-default-export@1.0.0",
   );
   let expected_lockfile = json!({
-    "version": "4",
+    "version": "5",
     "specifiers": {
       "npm:@denotest/cjs-default-export@1": "1.0.0",
       "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
-        "integrity": cjs_default_export_integrity
+        "integrity": cjs_default_export_integrity,
+        "tarball": "http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz"
       },
       "@denotest/esm-basic@1.0.0": {
-        "integrity": esm_basic_integrity
+        "integrity": esm_basic_integrity,
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
       }
     },
     "workspace": {
@@ -899,12 +905,6 @@ itest!(error_local_static_import_from_remote_js {
   exit_code: 1,
   http_server: true,
   output: "run/error_local_static_import_from_remote.js.out",
-});
-
-itest!(import_meta {
-  args: "run --allow-import --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
-  output: "run/import_meta/main.out",
-  http_server: true,
 });
 
 itest!(no_check_remote {
@@ -1439,6 +1439,19 @@ mod permissions {
   }
 
   #[test]
+  fn net_fetch_localhost_subdomain() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --unstable-subdomain-wildcards --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
   fn net_connect_allow_localhost_ip_4555() {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
@@ -1658,7 +1671,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1695,7 +1708,7 @@ mod permissions {
   }
 }
 
-#[test]
+#[flaky_test::flaky_test]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()
@@ -2762,20 +2775,38 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       // The worker is blocked, so nothing else should get written here
       console.human_delay();
       console.write_line_raw("i");
-      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
+      // We ensure that nothing gets written here between the permission prompt and this text, despite the delay
       let newline = if cfg!(target_os = "linux") {
         "^J"
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
-      console.human_delay();
-      console.write_line_raw("y");
-      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[6A\x1b[0J✅ Granted read access to \""));
+      if cfg!(windows) {
+        // it's too difficult to inspect the raw text on windows because the console
+        // outputs a bunch of control characters, so we instead rely on the last assertion
+        // in this test that checks to ensure we didn't receive any malicious output during
+        // the permission prompts
+        console.expect("Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) >");
+        console.human_delay();
+        console.write_line_raw("y");
+        console.expect("Granted read access to");
+      } else {
+        console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+        console.human_delay();
+        console.write_line_raw("y");
+        // We ensure that nothing gets written here between the permission prompt and this text, despite the delay
+        console.expect_raw_next(format!("y{newline}\x1b[6A\x1b[0J✅ Granted read access to \""));
+      }
 
       // Back to spamming!
       console.expect(malicious_output);
+
+      // Ensure during the permission prompt showing we didn't receive any malicious output
+      let all_text = console.all_output();
+      let start_prompt_index = all_text.find("Allow?").unwrap();
+      let end_prompt_index = all_text.find("Granted read access to").unwrap();
+      let prompt_text = &all_text[start_prompt_index..end_prompt_index];
+      assert!(!prompt_text.contains(malicious_output), "Prompt text: {:?}", prompt_text);
   });
 }
 
@@ -3207,6 +3238,17 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
       3
     );
   }
+}
+
+#[test]
+fn node_process_stdin_pause() {
+  util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run/node_process_stdin_pause.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
 }
 
 #[test]

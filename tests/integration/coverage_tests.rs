@@ -25,6 +25,21 @@ fn final_blankline() {
 }
 
 #[test]
+fn ignore_file_directive() {
+  run_coverage_text("ignore_file_directive", "ts");
+}
+
+#[test]
+fn ignore_next_directive() {
+  run_coverage_text("ignore_next_directive", "ts");
+}
+
+#[test]
+fn ignore_range_directive() {
+  run_coverage_text("ignore_range_directive", "ts");
+}
+
+#[test]
 fn no_snaps() {
   no_snaps_included("no_snaps_included", "ts");
 }
@@ -118,13 +133,14 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
+      "--quiet".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
     .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr().is_empty());
+  assert_eq!(output.stderr(), "");
 
   output.assert_stdout_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
@@ -142,11 +158,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
   );
-
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -196,11 +211,10 @@ fn multifile_coverage() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
   );
-
-  output.assert_exit_code(0);
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
@@ -359,11 +373,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
   );
-
-  output.assert_exit_code(0);
 
   let output = context
     .new_command()
@@ -375,10 +388,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
   );
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -541,8 +554,7 @@ fn test_html_reporter() {
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
-  assert_contains!(bar_ts_html, "<a name='L1'></a>");
-  assert_contains!(bar_ts_html, "<a href='#L1'>1</a>");
+  assert_contains!(bar_ts_html, "<a href='#L1' id='L1'>1</a>");
 
   let baz_index_html = tempdir
     .join("html")
@@ -649,7 +661,7 @@ fn test_collect_summary_with_no_matches() {
   let temp_dir: &TempDir = context.temp_dir();
   let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
 
-  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  let empty_test_dir: PathRef = temp_dir.path().join("empty_dir");
   empty_test_dir.create_dir_all();
 
   let output: util::TestCommandOutput = context

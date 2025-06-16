@@ -11,7 +11,10 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
 use std::future;
+use std::future::Future;
+use std::net::IpAddr;
 use std::path::Path;
+#[cfg(not(windows))]
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -24,7 +27,6 @@ use bytes::Bytes;
 pub use data_url;
 use data_url::DataUrl;
 use deno_core::futures::stream::Peekable;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -47,9 +49,13 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_path_util::url_from_file_path;
+use deno_fs::open_options_with_access_check;
+use deno_fs::CheckedPath;
+pub use deno_fs::FsError;
+use deno_fs::OpenOptions;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -227,6 +233,20 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
+  #[class("NotCapable")]
+  #[error("requires {0} access")]
+  NotCapable(&'static str),
+}
+
+impl From<deno_fs::FsError> for FetchError {
+  fn from(value: deno_fs::FsError) -> Self {
+    match value {
+      deno_fs::FsError::Io(_)
+      | deno_fs::FsError::FileBusy
+      | deno_fs::FsError::NotSupported => FetchError::NetworkError,
+      deno_fs::FsError::NotCapable(err) => FetchError::NotCapable(err),
+    }
+  }
 }
 
 pub type CancelableResponseFuture =
@@ -260,9 +280,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
-}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -307,6 +324,7 @@ pub fn create_client_from_options(
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: options.client_builder_hook,
     },
   )
@@ -390,9 +408,22 @@ pub trait FetchPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
-    p: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
+  fn check_write<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+    api_name: &str,
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
+  fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -408,13 +439,86 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read<'a>(
     &mut self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_path(
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    if self.allows_all() {
+      return Ok(deno_fs::CheckedPath::Unresolved(path));
+    }
+
+    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
+
+    let path = deno_permissions::PermissionsContainer::check_read_path(
       self,
-      path,
+      normalized_path,
       Some(api_name),
+    )
+    .map_err(|_| FsError::NotCapable("read"))?;
+
+    let path = if needs_canonicalize {
+      let path = get_path.resolved(&path)?;
+
+      Cow::Owned(path)
+    } else {
+      path
+    };
+    self
+      .check_special_file(&path, api_name)
+      .map_err(FsError::NotCapable)?;
+
+    if needs_canonicalize {
+      Ok(CheckedPath::Resolved(path))
+    } else {
+      Ok(CheckedPath::Unresolved(path))
+    }
+  }
+
+  fn check_write<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+    api_name: &str,
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    if self.allows_all() {
+      return Ok(deno_fs::CheckedPath::Unresolved(path));
+    }
+
+    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
+    let path = deno_permissions::PermissionsContainer::check_write_path(
+      self,
+      normalized_path,
+      api_name,
+    )
+    .map_err(|_| FsError::NotCapable("write"))?;
+
+    let path = if needs_canonicalize {
+      let path = get_path.resolved(&path)?;
+
+      Cow::Owned(path)
+    } else {
+      path
+    };
+    self
+      .check_special_file(&path, api_name)
+      .map_err(FsError::NotCapable)?;
+
+    if needs_canonicalize {
+      Ok(CheckedPath::Resolved(path))
+    } else {
+      Ok(CheckedPath::Unresolved(path))
+    }
+  }
+
+  #[inline(always)]
+  fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_vsock(
+      self, cid, port, api_name,
     )
   }
 }
@@ -422,6 +526,8 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
 #[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::large_enum_variant)]
+#[allow(clippy::result_large_err)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
   #[serde] method: ByteString,
@@ -449,18 +555,9 @@ where
   let scheme = url.scheme();
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
-      let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
-      let permissions = state.borrow_mut::<FP>();
-      let path = permissions.check_read(&path, "fetch()")?;
-      let url = match path {
-        Cow::Owned(path) => url_from_file_path(&path)?,
-        Cow::Borrowed(_) => url,
-      };
-
       if method != Method::GET {
         return Err(FetchError::FsNotGet(method));
       }
-
       let Options {
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
@@ -788,12 +885,12 @@ impl Resource for FetchResponseResource {
 
         match std::mem::take(&mut *reader) {
           FetchResponseReader::Start(resp) => {
-            let stream: BytesStream =
-              Box::pin(resp.into_body().into_data_stream().map(|r| {
-                r.map_err(|err| {
-                  std::io::Error::new(std::io::ErrorKind::Other, err)
-                })
-              }));
+            let stream: BytesStream = Box::pin(
+              resp
+                .into_body()
+                .into_data_stream()
+                .map(|r| r.map_err(std::io::Error::other)),
+            );
             *reader = FetchResponseReader::BodyReader(stream.peekable());
           }
           FetchResponseReader::BodyReader(_) => unreachable!(),
@@ -864,22 +961,43 @@ pub struct CreateHttpClientArgs {
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
-  #[serde(default)]
-  use_hickory_resolver: bool,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
   http2: bool,
   #[serde(default)]
   allow_host: bool,
+  local_address: Option<String>,
 }
 
 fn default_true() -> bool {
   true
 }
 
+fn sync_permission_check<'a, P: FetchPermissions + 'static>(
+  permissions: &'a mut P,
+  api_name: &'static str,
+) -> impl deno_fs::AccessCheckFn + 'a {
+  move |path, _options, _resolve| {
+    let read_path = permissions.check_read(path.clone(), api_name, _resolve)?;
+    let write_path = permissions.check_write(path, api_name, _resolve)?;
+    match (&read_path, &write_path) {
+      (CheckedPath::Resolved(a), CheckedPath::Resolved(b))
+      | (CheckedPath::Unresolved(a), CheckedPath::Resolved(b))
+      | (CheckedPath::Resolved(a), CheckedPath::Unresolved(b))
+      | (CheckedPath::Unresolved(a), CheckedPath::Unresolved(b))
+        if a == b =>
+      {
+        Ok(write_path)
+      }
+      _ => Err(FsError::NotCapable("write")),
+    }
+  }
+}
+
 #[op2(stack_trace)]
 #[smi]
+#[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
@@ -888,10 +1006,37 @@ pub fn op_fetch_custom_client<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(proxy) = args.proxy.clone() {
+  if let Some(proxy) = &args.proxy {
     let permissions = state.borrow_mut::<FP>();
-    let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+    match proxy {
+      Proxy::Http { url, .. } => {
+        let url = Url::parse(url)?;
+        permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+      }
+      Proxy::Unix { path } => {
+        let path = Path::new(path);
+        let mut access_check = sync_permission_check::<PermissionsContainer>(
+          state.borrow_mut(),
+          "Deno.createHttpClient()",
+        );
+        let (resolved_path, _) = open_options_with_access_check(
+          OpenOptions {
+            read: true,
+            write: true,
+            ..Default::default()
+          },
+          path,
+          Some(&mut access_check),
+        )?;
+        if path != resolved_path {
+          return Err(FetchError::NotCapable("write"));
+        }
+      }
+      Proxy::Vsock { cid, port } => {
+        let permissions = state.borrow_mut::<FP>();
+        permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
+      }
+    }
   }
 
   let options = state.borrow::<Options>();
@@ -909,11 +1054,7 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: if args.use_hickory_resolver {
-        dns::Resolver::hickory().map_err(FetchError::Dns)?
-      } else {
-        dns::Resolver::default()
-      },
+      dns_resolver: dns::Resolver::default(),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -931,6 +1072,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
     },
   )?;
@@ -953,6 +1095,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
@@ -969,6 +1112,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      local_address: None,
       client_builder_hook: None,
     }
   }
@@ -981,6 +1125,8 @@ pub enum HttpClientCreateError {
   Tls(deno_tls::TlsError),
   #[error("Illegal characters in User-Agent: received {0}")]
   InvalidUserAgent(String),
+  #[error("Invalid address: {0}")]
+  InvalidAddress(String),
   #[error("invalid proxy url")]
   InvalidProxyUrl,
   #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
@@ -988,6 +1134,10 @@ pub enum HttpClientCreateError {
   #[class(inherit)]
   #[error(transparent)]
   RootCertStore(JsErrorBox),
+  #[error("Unix proxy is not supported on Windows")]
+  UnixProxyNotSupportedOnWindows,
+  #[error("Vsock proxy is not supported on this platform")]
+  VsockProxyNotSupported,
 }
 
 /// Create new instance of async Client. This client supports
@@ -1022,6 +1172,12 @@ pub fn create_http_client(
   let mut http_connector =
     HttpConnector::new_with_resolver(options.dns_resolver.clone());
   http_connector.enforce_http(false);
+  if let Some(local_address) = options.local_address {
+    let local_addr = local_address
+      .parse::<IpAddr>()
+      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
+    http_connector.set_local_address(Some(local_addr));
+  }
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1037,11 +1193,35 @@ pub fn create_http_client(
 
   let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
-    let mut intercept = proxy::Intercept::all(&proxy.url)
-      .ok_or_else(|| HttpClientCreateError::InvalidProxyUrl)?;
-    if let Some(basic_auth) = &proxy.basic_auth {
-      intercept.set_auth(&basic_auth.username, &basic_auth.password);
-    }
+    let intercept = match proxy {
+      Proxy::Http { url, basic_auth } => {
+        let target = proxy::Target::parse(&url)
+          .ok_or_else(|| HttpClientCreateError::InvalidProxyUrl)?;
+        let mut intercept = proxy::Intercept::all(target);
+        if let Some(basic_auth) = &basic_auth {
+          intercept.set_auth(&basic_auth.username, &basic_auth.password);
+        }
+        intercept
+      }
+      #[cfg(not(windows))]
+      Proxy::Unix { path } => {
+        let target = proxy::Target::new_unix(PathBuf::from(path));
+        proxy::Intercept::all(target)
+      }
+      #[cfg(windows)]
+      Proxy::Unix { .. } => {
+        return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
+      }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxy::Vsock { cid, port } => {
+        let target = proxy::Target::new_vsock(cid, port);
+        proxy::Intercept::all(target)
+      }
+      #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+      Proxy::Vsock { .. } => {
+        return Err(HttpClientCreateError::VsockProxyNotSupported);
+      }
+    };
     proxies.prepend(intercept);
   }
   let proxies = Arc::new(proxies);

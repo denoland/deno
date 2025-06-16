@@ -46,6 +46,7 @@ export const UNZIP = 7;
 import {
   op_zlib_close,
   op_zlib_close_if_pending,
+  op_zlib_err_msg,
   op_zlib_init,
   op_zlib_new,
   op_zlib_reset,
@@ -57,6 +58,7 @@ const writeResult = new Uint32Array(2);
 
 class Zlib {
   #handle;
+  #dictionary;
 
   constructor(mode) {
     this.#handle = op_zlib_new(mode);
@@ -104,7 +106,11 @@ class Zlib {
         // normal statuses, not fatal
         break;
       case Z_NEED_DICT:
-        this.#error("Bad dictionary", err);
+        if (this.#dictionary && this.#dictionary.length > 0) {
+          this.#error("Bad dictionary", err);
+        } else {
+          this.#error("Missing dictionary", err);
+        }
         return false;
       default:
         // something else.
@@ -160,6 +166,8 @@ class Zlib {
       dictionary ?? new Uint8Array(0),
     );
 
+    this.#dictionary = dictionary;
+
     if (err != Z_OK) {
       this.#error("Failed to initialize zlib", err);
     }
@@ -177,6 +185,7 @@ class Zlib {
   }
 
   #error(message, err) {
+    message = op_zlib_err_msg(this.#handle) ?? message;
     this.onerror(message, err);
     op_zlib_close_if_pending(this.#handle);
   }

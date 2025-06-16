@@ -65,7 +65,10 @@ pub fn assert_wildcard_match_with_logger(
   expected: &str,
   logger: &mut dyn Write,
 ) {
-  if !expected.contains("[WILD") && !expected.contains("[UNORDERED_START]") {
+  if !expected.contains("[WILD")
+    && !expected.contains("[UNORDERED_START]")
+    && !expected.contains("[#")
+  {
     pretty_assertions::assert_eq!(actual, expected);
   } else {
     match crate::wildcard_match_detailed(expected, actual) {

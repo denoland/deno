@@ -32,14 +32,11 @@ fn setup() -> Vec<Extension> {
   );
 
   vec![
-    deno_webidl::deno_webidl::init_ops_and_esm(),
-    deno_url::deno_url::init_ops_and_esm(),
-    deno_console::deno_console::init_ops_and_esm(),
-    deno_web::deno_web::init_ops_and_esm::<Permissions>(
-      Default::default(),
-      None,
-    ),
-    bench_setup::init_ops_and_esm(),
+    deno_webidl::deno_webidl::init(),
+    deno_url::deno_url::init(),
+    deno_console::deno_console::init(),
+    deno_web::deno_web::init::<Permissions>(Default::default(), None),
+    bench_setup::init(),
   ]
 }
 

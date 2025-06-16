@@ -3,8 +3,10 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   constants,
@@ -76,7 +78,7 @@ Deno.test("brotli compression", {
 
   await Promise.all([
     promise.promise,
-    new Promise((r) => stream.on("close", r)),
+    new Promise<void>((r) => stream.on("close", r)),
   ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
@@ -131,7 +133,9 @@ Deno.test(
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -162,7 +166,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
@@ -236,4 +242,36 @@ Deno.test("crc32()", () => {
   assertEquals(crc32("hello world"), 222957957);
   // @ts-expect-error: passing an object
   assertThrows(() => crc32({}), TypeError);
+});
+
+Deno.test("crc32 doesn't overflow", () => {
+  let checksum = 0;
+  checksum = crc32(Buffer.from("H4sIAAAAAAAACg==", "base64"), checksum);
+  checksum = crc32("aaa", checksum);
+  assertEquals(checksum, 1466848669);
+});
+
+Deno.test("BrotliCompress", async () => {
+  const deffered = Promise.withResolvers<void>();
+  // @ts-ignore: BrotliCompress is not typed
+  const brotliCompress = new BrotliCompress();
+  // @ts-ignore: BrotliDecompress is not typed
+  const brotliDecompress = new BrotliDecompress();
+
+  brotliCompress.pipe(brotliDecompress);
+
+  let data = "";
+  brotliDecompress.on("data", (v: Buffer) => {
+    data += v.toString();
+  });
+
+  brotliDecompress.on("end", () => {
+    deffered.resolve();
+  });
+
+  brotliCompress.write("hello");
+  brotliCompress.end();
+
+  await deffered.promise;
+  assertEquals(data, "hello");
 });

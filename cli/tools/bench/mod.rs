@@ -20,6 +20,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
@@ -38,6 +39,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -189,8 +191,9 @@ async fn bench_specifier_inner(
       WorkerExecutionMode::Bench,
       specifier.clone(),
       permissions_container,
-      vec![ops::bench::deno_bench::init_ops(sender.clone())],
+      vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
+      None,
     )
     .await?;
 
@@ -456,13 +459,19 @@ pub async fn run_benchmarks(
     .flatten()
     .collect::<Vec<_>>();
 
-  if specifiers.is_empty() {
+  if !workspace_bench_options.permit_no_files && specifiers.is_empty() {
     return Err(anyhow!("No bench modules found"));
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;
   main_graph_container
-    .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+    .check_specifiers(
+      &specifiers,
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
+    )
     .await?;
 
   if workspace_bench_options.no_run {
@@ -560,7 +569,7 @@ pub async fn run_benchmarks_with_watch(
           .create_graph(
             graph_kind,
             collected_bench_modules.clone(),
-            crate::graph_util::NpmCachingStrategy::Eager,
+            NpmCachingStrategy::Eager,
           )
           .await?;
         module_graph_creator.graph_valid(&graph)?;
@@ -595,7 +604,13 @@ pub async fn run_benchmarks_with_watch(
         factory
           .main_module_graph_container()
           .await?
-          .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+          .check_specifiers(
+            &specifiers,
+            CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              allow_unknown_media_types: false,
+            },
+          )
           .await?;
 
         if workspace_bench_options.no_run {

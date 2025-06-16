@@ -230,6 +230,10 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyType, "rsa");
   assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+  assertEquals(
+    Object.getPrototypeOf(key.asymmetricKeyDetails),
+    Object.prototype,
+  );
 });
 
 Deno.test("createPrivateKey dh", function () {
@@ -754,4 +758,17 @@ Deno.test("X509Certificate checkHost", function () {
   const cert = new X509Certificate(der);
   assertEquals(cert.checkHost("www.google.com"), undefined);
   assertEquals(cert.checkHost("agent1"), "agent1");
+});
+
+// https://github.com/denoland/deno/issues/27972
+Deno.test("curve25519 generate valid private jwk", function () {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
+    publicKeyEncoding: { format: "jwk" },
+    privateKeyEncoding: { format: "jwk" },
+  });
+
+  // @ts-ignore @types/node broken
+  assert(!publicKey.d);
+  // @ts-ignore @types/node broken
+  assert(privateKey.d);
 });

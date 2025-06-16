@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle --outdir=out src/foo/main.ts src/bar/main.ts",
+      "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+    },
+    {
+      "args": "run -A out/foo/main.js",
+      "output": "hello from foo\n"
+    },
+    {
+      "args": "run -A out/bar/main.js",
+      "output": "hello from bar\n"
+    }
+  ]
+}

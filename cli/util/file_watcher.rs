@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -11,7 +12,6 @@ use std::time::Duration;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
@@ -281,8 +281,8 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-///    changes. For example, in the case where we would like to bundle, then `operation` would
-///    have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
   mut flags: Arc<Flags>,
   print_config: PrintConfig,

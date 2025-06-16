@@ -111,12 +111,11 @@ impl Reference {
   fn set_weak(&mut self) {
     let reference = self as *mut Reference;
     if let ReferenceState::Strong(g) = &self.state {
-      let cb = Box::new(move |_: &mut v8::Isolate| {
-        Reference::weak_callback(reference)
-      });
+      let cb = Box::new(move || Reference::weak_callback(reference));
       let isolate = unsafe { (*self.env).isolate() };
-      self.state =
-        ReferenceState::Weak(v8::Weak::with_finalizer(isolate, g, cb));
+      self.state = ReferenceState::Weak(v8::Weak::with_guaranteed_finalizer(
+        isolate, g, cb,
+      ));
     }
   }
 
@@ -2073,6 +2072,7 @@ fn napi_get_value_bool(
   return napi_clear_last_error(env_ptr);
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
@@ -2121,6 +2121,7 @@ fn napi_get_value_string_latin1(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
@@ -2170,6 +2171,7 @@ fn napi_get_value_string_utf8(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,

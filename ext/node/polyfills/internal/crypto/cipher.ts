@@ -4,10 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   encode,
 } = core;
+const {
+  SymbolSpecies,
+} = primordials;
 import {
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
@@ -15,6 +18,7 @@ import {
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
@@ -26,7 +30,7 @@ import {
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import { Transform } from "ext:deno_node/_stream.mjs";
+import { Transform } from "node:stream";
 import {
   getArrayBufferOrView,
   KeyObject,
@@ -37,10 +41,15 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+
+const FastBuffer = Buffer[SymbolSpecies];
 
 export function isStringOrBuffer(
   val: unknown,
@@ -195,7 +204,7 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    const buf = new Buffer(16);
+    const buf = new FastBuffer(16);
     if (this.#cache.cache.byteLength == 0) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
@@ -218,7 +227,10 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   getAuthTag(): Buffer {
-    return this.#authTag!;
+    if (!this.#authTag) {
+      throw new ERR_CRYPTO_INVALID_STATE("getAuthTag");
+    }
+    return this.#authTag;
   }
 
   setAAD(
@@ -313,6 +325,17 @@ class BlockModeCache {
   }
 }
 
+function getUIntOption(options, key) {
+  let value;
+  if (options && (value = options[key]) != null) {
+    if (value >>> 0 !== value) {
+      throw new ERR_INVALID_ARG_VALUE(`options.${key}`, value);
+    }
+    return value;
+  }
+  return -1;
+}
+
 export class Decipheriv extends Transform implements Cipher {
   /** DecipherContext resource id */
   #context: number;
@@ -332,6 +355,8 @@ export class Decipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -344,7 +369,12 @@ export class Decipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(this.#autoPadding);
-    this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_decipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
@@ -355,7 +385,7 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    let buf = new Buffer(16);
+    let buf = new FastBuffer(16);
     op_node_decipheriv_final(
       this.#context,
       this.#autoPadding,
@@ -386,6 +416,7 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   setAuthTag(buffer: BinaryLike, _encoding?: string): this {
+    op_node_decipheriv_auth_tag(this.#context, buffer.byteLength);
     this.#authTag = buffer;
     return this;
   }
@@ -421,7 +452,7 @@ export class Decipheriv extends Transform implements Cipher {
     if (input === null) {
       output = Buffer.alloc(0);
     } else {
-      output = new Buffer(input.length);
+      output = new FastBuffer(input.length);
       op_node_decipheriv_decrypt(this.#context, input, output);
     }
     return outputEncoding === "buffer"
@@ -438,7 +469,7 @@ export function privateEncrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
 }
 
 export function privateDecrypt(
@@ -449,7 +480,7 @@ export function privateDecrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_private_decrypt(data, buffer, padding);
+  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
 }
 
 export function publicEncrypt(
@@ -460,7 +491,7 @@ export function publicEncrypt(
   const padding = publicKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return op_node_public_encrypt(data, buffer, padding);
+  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
 }
 
 export function prepareKey(key) {

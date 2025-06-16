@@ -12,7 +12,7 @@
     "exitCode": 1
   }, {
     "args": "run --check not_exists.ts",
-    "output": "not_exists.out",
+    "output": "not_exists_run.out",
     "exitCode": 1
   }, {
     "args": "check exists_and_try_uses.ts",

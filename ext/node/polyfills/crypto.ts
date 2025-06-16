@@ -91,6 +91,10 @@ import {
   publicDecrypt,
   publicEncrypt,
 } from "ext:deno_node/internal/crypto/cipher.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import type {
   Cipher,
   CipherCCM,
@@ -160,6 +164,11 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
+import {
+  normalizeEncoding,
+} from "ext:deno_node/internal/normalize_encoding.mjs";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
 const subtle = webcrypto.subtle;
@@ -174,6 +183,30 @@ function hash(
   data: BinaryLike,
   outputEncoding: BinaryToTextEncoding = "hex",
 ) {
+  validateString(algorithm, "algorithm");
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE("input", [
+      "Buffer",
+      "TypedArray",
+      "DataView",
+      "string",
+    ], data);
+  }
+  let normalized = outputEncoding;
+  // Fast case: if it's 'hex', we don't need to validate it further.
+  if (outputEncoding !== "hex") {
+    validateString(outputEncoding, "outputEncoding");
+    normalized = normalizeEncoding(outputEncoding);
+    // If the encoding is invalid, normalizeEncoding() returns undefined.
+    if (normalized === undefined) {
+      // normalizeEncoding() doesn't handle 'buffer'.
+      if (outputEncoding.toLowerCase() === "buffer") {
+        normalized = "buffer";
+      } else {
+        throw new ERR_INVALID_ARG_VALUE("outputEncoding", outputEncoding);
+      }
+    }
+  }
   const hash = createHash(algorithm);
   hash.update(data);
   return hash.digest(outputEncoding);

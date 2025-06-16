@@ -234,7 +234,7 @@ declare namespace Deno {
      * @category Errors */
     export class AlreadyExists extends Error {}
     /**
-     * Raised when an operation to returns data that is invalid for the
+     * Raised when an operation returns data that is invalid for the
      * operation being performed.
      *
      * @category Errors */
@@ -248,7 +248,7 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system reports an `EINTR` error. In
      * many cases, this underlying IO error will be handled internally within
-     * Deno, or result in an @{link BadResource} error instead.
+     * Deno, or result in an {@link BadResource} error instead.
      *
      * @category Errors */
     export class Interrupted extends Error {}
@@ -1242,6 +1242,17 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
+    /** Number of iterations to perform.
+     * @remarks When the benchmark is very fast, this will only be used as a
+     * suggestion in order to get a more accurate measurement.
+     */
+    n?: number;
+    /** Number of warmups to do before running the benchmark.
+     * @remarks A warmup will always be performed even if this is `0` in order to
+     * determine the speed of the benchmark in order to improve the measurement. When
+     * the benchmark is very fast, this will be used as a suggestion.
+     */
+    warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
@@ -1499,7 +1510,7 @@ declare namespace Deno {
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs undefined
      * ```
      *
      * Requires `allow-env` permission.
@@ -1786,7 +1797,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly readable: ReadableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
      * file. This makes it easy to interoperate with other web streams based
      * APIs.
@@ -1801,7 +1812,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
      *
      * Resolves to the number of bytes written.
@@ -2110,8 +2121,7 @@ declare namespace Deno {
      * @category File System
      */
     utimeSync(atime: number | Date, mtime: number | Date): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Checks if the file resource is a TTY (terminal).
      *
      * ```ts
@@ -2121,8 +2131,7 @@ declare namespace Deno {
      * ```
      */
     isTerminal(): boolean;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input
@@ -2268,7 +2277,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A readable stream interface to `stdin`. */
-    readonly readable: ReadableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
@@ -2346,7 +2355,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stdout`. */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /**
      * Checks if `stdout` is a TTY (terminal).
      *
@@ -2410,7 +2419,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stderr`. */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /**
      * Checks if `stderr` is a TTY (terminal).
      *
@@ -2905,7 +2914,7 @@ declare namespace Deno {
 
   /** Reads and resolves to the entire contents of a file as an array of bytes.
    * `TextDecoder` can be used to transform the bytes to string if required.
-   * Reading a directory returns an empty data array.
+   * Rejects with an error when reading a directory.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2921,11 +2930,11 @@ declare namespace Deno {
   export function readFile(
     path: string | URL,
     options?: ReadFileOptions,
-  ): Promise<Uint8Array>;
+  ): Promise<Uint8Array<ArrayBuffer>>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
-   * required. Reading a directory returns an empty data array.
+   * required. Throws an error when reading a directory.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2938,7 +2947,7 @@ declare namespace Deno {
    * @tags allow-read
    * @category File System
    */
-  export function readFileSync(path: string | URL): Uint8Array;
+  export function readFileSync(path: string | URL): Uint8Array<ArrayBuffer>;
 
   /** Provides information about a file and is returned by
    * {@linkcode Deno.stat}, {@linkcode Deno.lstat}, {@linkcode Deno.statSync},
@@ -3433,24 +3442,6 @@ declare namespace Deno {
    */
   export function truncateSync(name: string, len?: number): void;
 
-  /** @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
   /**
    * Additional information for FsEvent objects with the "other" kind.
    *
@@ -3731,9 +3722,9 @@ declare namespace Deno {
    * @category Subprocess
    */
   export class ChildProcess implements AsyncDisposable {
-    get stdin(): WritableStream<Uint8Array>;
-    get stdout(): ReadableStream<Uint8Array>;
-    get stderr(): ReadableStream<Uint8Array>;
+    get stdin(): WritableStream<Uint8Array<ArrayBufferLike>>;
+    get stdout(): ReadableStream<Uint8Array<ArrayBuffer>>;
+    get stderr(): ReadableStream<Uint8Array<ArrayBuffer>>;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<CommandStatus>;
@@ -3845,9 +3836,9 @@ declare namespace Deno {
    */
   export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
-    readonly stdout: Uint8Array;
+    readonly stdout: Uint8Array<ArrayBuffer>;
     /** The buffered output from the child process' `stderr`. */
-    readonly stderr: Uint8Array;
+    readonly stderr: Uint8Array<ArrayBuffer>;
   }
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
@@ -4358,6 +4349,7 @@ declare namespace Deno {
       | "aix"
       | "solaris"
       | "illumos";
+    standalone: boolean;
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
@@ -5150,6 +5142,25 @@ declare namespace Deno {
   }
 
   /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a VSOCK socket.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeVsockOptions extends ServeOptions<Deno.VsockAddr> {
+    /** The transport to use. */
+    transport?: "vsock";
+
+    /** The context identifier to use. */
+    cid: number;
+
+    /** The port to use. */
+    port: number;
+  }
+
+  /**
    * @category HTTP Server
    */
   export interface ServeInit<Addr extends Deno.Addr = Deno.Addr> {
@@ -5252,6 +5263,60 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
+   *
+   * ```ts
+   * Deno.serve(
+   *   { cid: -1, port: 3000 },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve(
+   *    { signal: ac.signal, cid: -1, port: 3000 },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message `Listening on cid:port`.
+   * If you want to change this behavior, you can specify a custom `onListen`
+   * callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ cid, port }) {
+   *     console.log(`Server started at ${cid}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   cid: -1,
+   *   port: 3000,
+   * }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeVsockOptions,
+    handler: ServeHandler<Deno.VsockAddr>,
+  ): HttpServer<Deno.VsockAddr>;
+  /** Serves HTTP requests with the given option bag and handler.
+   *
    * You can specify an object with a port and hostname option, which is the
    * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *
@@ -5337,6 +5402,37 @@ declare namespace Deno {
   export function serve(
     options: ServeUnixOptions & ServeInit<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
+  /** Serves HTTP requests with the given option bag.
+   *
+   * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * You can specify an object with the cid and port options for the VSOCK interface.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve({
+   *   cid: -1,
+   *   port: 3000,
+   *   handler: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal,
+   *   onListen({ cid, port }) {
+   *     console.log(`Server started at ${cid}:${port}`);
+   *   },
+   * });
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeVsockOptions & ServeInit<Deno.VsockAddr>,
+  ): HttpServer<Deno.VsockAddr>;
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -5429,7 +5525,7 @@ declare namespace Deno {
   /**
    * @category FFI
    */
-  export const brand: unique symbol;
+  const brand: unique symbol;
 
   /**
    * @category FFI
@@ -5557,7 +5653,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type FromNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? Uint8Array
+    NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5582,7 +5678,7 @@ declare namespace Deno {
    */
   export type FromNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? Uint8Array
+  > = T extends NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -6071,7 +6167,7 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
-    /** A HTTP proxy to use for new connections. */
+    /** An alternative transport (a proxy) to use for new connections. */
     proxy?: Proxy;
     /** Sets the maximum number of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
@@ -6094,20 +6190,51 @@ declare namespace Deno {
      * @default {false}
      */
     allowHost?: boolean;
+    /** Sets the local address where the socket will connect from. */
+    localAddress?: string;
   }
 
   /**
-   * The definition of a proxy when specifying
+   * The definition for alternative transports (or proxies) in
    * {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * Supported proxies:
+   *  - HTTP/HTTPS proxy: this uses the HTTP CONNECT method to tunnel HTTP
+   *    requests through a different server.
+   *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
+   *    through a different server.
+   *  - Unix domain socket: this sends all requests to a local Unix domain
+   *    socket rather than a TCP socket. *Not supported on Windows.*
+   *  - Vsock socket: this sends all requests to a local vsock socket.
+   *    *Only supported on Linux and macOS.*
    *
    * @category Fetch
    */
-  export interface Proxy {
-    /** The string URL of the proxy server to use. */
+  export type Proxy = {
+    transport?: "http" | "https" | "socks5";
+    /**
+     * The string URL of the proxy server to use.
+     *
+     * For `http` and `https` transports, the URL must start with `http://` or
+     * `https://` respectively, or be a plain hostname.
+     *
+     * For `socks` transport, the URL must start with `socks5://` or
+     * `socks5h://`.
+     */
     url: string;
     /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
-  }
+  } | {
+    transport: "unix";
+    /** The path to the unix domain socket to use. */
+    path: string;
+  } | {
+    transport: "vsock";
+    /** The CID (Context Identifier) of the vsock to connect to. */
+    cid: number;
+    /** The port of the vsock to connect to. */
+    port: number;
+  };
 
   /**
    * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}

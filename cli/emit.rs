@@ -21,9 +21,9 @@ use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::TranspileAndEmitOptions;
 
-use crate::args::deno_json::TranspileAndEmitOptions;
-use crate::args::deno_json::TsConfigResolver;
+use crate::args::CliTsConfigResolver;
 use crate::cache::EmitCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
@@ -33,7 +33,7 @@ pub struct Emitter {
   cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl Emitter {
@@ -41,7 +41,7 @@ impl Emitter {
     cjs_tracker: Arc<CliCjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       cjs_tracker,
@@ -153,6 +153,7 @@ impl Emitter {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn emit_parsed_source_sync(
     &self,
     specifier: &ModuleSpecifier,
@@ -280,7 +281,9 @@ impl Emitter {
       | MediaType::Json
       | MediaType::Wasm
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         // clear this specifier from the parsed source cache as it's now out of date
         self.parsed_source_cache.free(specifier);
@@ -332,7 +335,7 @@ pub enum EmitParsedSourceHelperError {
 /// Helper to share code between async and sync emit_parsed_source methods.
 struct EmitParsedSourceHelper<'a>(&'a Emitter);
 
-impl<'a> EmitParsedSourceHelper<'a> {
+impl EmitParsedSourceHelper<'_> {
   pub fn pre_emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,
@@ -354,6 +357,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn transpile(
     parsed_source_cache: &ParsedSourceCache,
     specifier: &ModuleSpecifier,

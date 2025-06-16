@@ -18,6 +18,7 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -26,14 +27,14 @@ use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
-use serde::Serialize;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -55,6 +56,7 @@ use crate::util::sync::AtomicFlag;
 
 mod ast_buffer;
 mod linter;
+mod plugins;
 mod reporters;
 mod rules;
 
@@ -62,6 +64,8 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
+pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginLogger;
 pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
@@ -143,15 +147,15 @@ async fn lint_with_watch_inner(
     let files = std::mem::take(&mut paths_with_options.paths);
     paths_with_options.paths = if let Some(paths) = &changed_paths {
       // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
-      files
-        .iter()
-        .any(|path| {
-          canonicalize_path(path)
-            .map(|p| paths.contains(&p))
-            .unwrap_or(false)
-        })
-        .then_some(files)
-        .unwrap_or_else(|| [].to_vec())
+      if files.iter().any(|path| {
+        canonicalize_path(path)
+          .map(|p| paths.contains(&p))
+          .unwrap_or(false)
+      }) {
+        files
+      } else {
+        [].to_vec()
+      }
     } else {
       files
     };
@@ -228,7 +232,7 @@ fn resolve_paths_with_options_batches(
       });
     }
   }
-  if paths_with_options_batches.is_empty() {
+  if paths_with_options_batches.is_empty() && !lint_flags.permit_no_files {
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
@@ -241,7 +245,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
@@ -254,7 +258,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
@@ -282,25 +286,65 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
-    let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
+    let exclude = lint_options.rules.exclude.clone();
+
+    let plugin_specifiers = lint_options.plugins.clone();
+    let lint_rules = self.lint_rule_provider.resolve_lint_rules(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    )?;
-    let maybe_incremental_cache =
-      lint_rules.incremental_cache_state().map(|state| {
-        Arc::new(IncrementalCache::new(
-          self.caches.lint_incremental_cache_db(),
-          CacheDBHash::from_hashable(&state),
-          &paths,
-        ))
-      });
+    );
+
+    let mut maybe_incremental_cache = None;
+
+    // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
+    // https://github.com/denoland/deno/issues/28025
+    if lint_rules.supports_incremental_cache() && plugin_specifiers.is_empty() {
+      let mut hasher = FastInsecureHasher::new_deno_versioned();
+      hasher.write_hashable(lint_rules.incremental_cache_state());
+      if !plugin_specifiers.is_empty() {
+        hasher.write_hashable(&plugin_specifiers);
+      }
+      let state_hash = hasher.finish();
+
+      maybe_incremental_cache = Some(Arc::new(IncrementalCache::new(
+        self.caches.lint_incremental_cache_db(),
+        CacheDBHash::new(state_hash),
+        &paths,
+      )));
+    }
+
+    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stderr)]
+    fn logger_printer(msg: &str, is_err: bool) {
+      if is_err {
+        eprint!("{}", msg);
+      } else {
+        print!("{}", msg);
+      }
+    }
+
+    let mut plugin_runner = None;
+    if !plugin_specifiers.is_empty() {
+      let logger = plugins::PluginLogger::new(logger_printer);
+      let runner = plugins::create_runner_and_load_plugins(
+        plugin_specifiers,
+        logger,
+        exclude,
+      )
+      .await?;
+      plugin_runner = Some(Arc::new(runner));
+    } else if lint_rules.rules.is_empty() {
+      bail!("No rules have been configured")
+    }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
-      deno_lint_config: self
-        .tsconfig_resolver
-        .deno_lint_config(member_dir.dir_url())?,
+      deno_lint_config: resolve_lint_config(
+        &self.tsconfig_resolver,
+        member_dir.dir_url(),
+      )?,
+      maybe_plugin_runner: plugin_runner,
     }));
 
     let has_error = self.has_error.clone();
@@ -460,7 +504,7 @@ fn collect_lint_files(
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let rule_provider = LintRuleProvider::new(None, None);
+  let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
   let configured_rules = rule_provider.resolve_lint_rules(
     LintRulesConfig {
@@ -533,7 +577,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  tsconfig_resolver: &TsConfigResolver,
+  tsconfig_resolver: &CliTsConfigResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(
@@ -542,8 +586,8 @@ fn lint_stdin(
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
   let deno_lint_config =
-    tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
-  let lint_options = LintOptions::resolve(lint_config, &lint_flags);
+    resolve_lint_config(tsconfig_resolver, start_dir.dir_url())?;
+  let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
     start_dir.maybe_deno_json().map(|c| c.as_ref()),
@@ -561,11 +605,10 @@ fn lint_stdin(
     fix: false,
     configured_rules,
     deno_lint_config,
+    maybe_plugin_runner: None,
   });
 
-  let r = linter
-    .lint_file(&file_path, deno_ast::strip_bom(source_code), None)
-    .map_err(AnyError::from);
+  let r = linter.lint_file(&file_path, deno_ast::strip_bom(source_code), None);
 
   let success =
     handle_lint_result(&file_path.to_string_lossy(), r, reporter_lock.clone());
@@ -610,31 +653,52 @@ fn handle_lint_result(
   }
 }
 
-#[derive(Serialize)]
-struct LintError {
-  file_path: String,
-  message: String,
+fn resolve_lint_config(
+  tsconfig_resolver: &CliTsConfigResolver,
+  specifier: &ModuleSpecifier,
+) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  let transpile_options = &tsconfig_resolver
+    .transpile_and_emit_options(specifier)?
+    .transpile;
+  Ok(deno_lint::linter::LintConfig {
+    default_jsx_factory: (!transpile_options.jsx_automatic)
+      .then(|| transpile_options.jsx_factory.clone()),
+    default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
+      .then(|| transpile_options.jsx_fragment_factory.clone()),
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
+  use serde::Serialize;
   use test_util as util;
 
   use super::*;
+
+  #[derive(Serialize, Deserialize)]
+  struct RulesPattern {
+    r#type: String,
+    pattern: String,
+  }
+
+  #[derive(Serialize, Deserialize)]
+  struct RulesEnum {
+    r#enum: Vec<String>,
+  }
 
   #[derive(Serialize, Deserialize)]
   struct RulesSchema {
     #[serde(rename = "$schema")]
     schema: String,
 
-    #[serde(rename = "enum")]
-    rules: Vec<String>,
+    #[serde(rename = "oneOf")]
+    one_of: (RulesPattern, RulesEnum),
   }
 
   fn get_all_rules() -> Vec<String> {
-    let rule_provider = LintRuleProvider::new(None, None);
+    let rule_provider = LintRuleProvider::new(None);
     let configured_rules =
       rule_provider.resolve_lint_rules(Default::default(), None);
     let mut all_rules = configured_rules
@@ -661,25 +725,25 @@ mod tests {
 
     const UPDATE_ENV_VAR_NAME: &str = "UPDATE_EXPECTED";
 
+    let rules_list = schema.one_of.1.r#enum;
+
     if std::env::var(UPDATE_ENV_VAR_NAME).ok().is_none() {
       assert_eq!(
-        schema.rules, all_rules,
+        rules_list, all_rules,
         "Lint rules schema file not up to date. Run again with {}=1 to update the expected output",
         UPDATE_ENV_VAR_NAME
       );
       return;
     }
 
+    let new_schema = RulesSchema {
+      schema: schema.schema,
+      one_of: (schema.one_of.0, RulesEnum { r#enum: all_rules }),
+    };
+
     std::fs::write(
       &rules_schema_path,
-      format!(
-        "{}\n",
-        serde_json::to_string_pretty(&RulesSchema {
-          schema: schema.schema,
-          rules: all_rules,
-        })
-        .unwrap(),
-      ),
+      format!("{}\n", serde_json::to_string_pretty(&new_schema).unwrap(),),
     )
     .unwrap();
   }

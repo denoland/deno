@@ -14,29 +14,32 @@ use std::string::ToString;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
-use deno_core::parking_lot::Mutex;
-use deno_core::serde::de;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
-use deno_core::serde::Serialize;
-use deno_core::serde_json;
-use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use serde::de;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use url::Url;
 
 pub mod prompter;
+pub mod which;
 use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
+pub use prompter::DeniedPrompter;
+pub use prompter::GetFormattedStackFn;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
+
+use self::which::WhichSys;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionDeniedError {
@@ -410,6 +413,8 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
 
   pub fn is_allow_all(&self) -> bool {
     self.granted_global
+      && !self.flag_denied_global
+      && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
   }
@@ -813,10 +818,21 @@ impl QueryDescriptor for WriteQueryDescriptor {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
 
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub enum SubdomainWildcards {
+  Enabled,
+  #[default]
+  Disabled,
+}
+
+pub type UnstableSubdomainWildcards = SubdomainWildcards;
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
   Fqdn(FQDN),
+  FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
+  Vsock(u32),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -837,7 +853,19 @@ pub enum HostParseError {
 }
 
 impl Host {
-  fn parse(s: &str) -> Result<Self, HostParseError> {
+  fn parse_for_query(s: &str) -> Result<Self, HostParseError> {
+    Self::parse_inner(s, SubdomainWildcards::Disabled)
+  }
+
+  #[cfg(test)]
+  fn parse_for_list(s: &str) -> Result<Self, HostParseError> {
+    Self::parse_inner(s, SubdomainWildcards::Enabled)
+  }
+
+  fn parse_inner(
+    s: &str,
+    subdomain_wildcards: SubdomainWildcards,
+  ) -> Result<Self, HostParseError> {
     if s.starts_with('[') && s.ends_with(']') {
       let ip = s[1..s.len() - 1]
         .parse::<Ipv6Addr>()
@@ -859,9 +887,17 @@ impl Host {
       } else {
         Cow::Owned(s.to_ascii_lowercase())
       };
+      let mut host_or_suffix = lower.as_ref();
+      let mut has_subdomain_wildcard = false;
+      if matches!(subdomain_wildcards, SubdomainWildcards::Enabled) {
+        if let Some(suffix) = lower.strip_prefix("*.") {
+          host_or_suffix = suffix;
+          has_subdomain_wildcard = true;
+        }
+      }
       let fqdn = {
         use std::str::FromStr;
-        FQDN::from_str(&lower).map_err(|e| HostParseError::Fqdn {
+        FQDN::from_str(host_or_suffix).map_err(|e| HostParseError::Fqdn {
           error: e,
           host: s.to_string(),
         })?
@@ -869,19 +905,23 @@ impl Host {
       if fqdn.is_root() {
         return Err(HostParseError::InvalidEmptyHost(s.to_string()));
       }
-      Ok(Host::Fqdn(fqdn))
+      if has_subdomain_wildcard {
+        Ok(Host::FqdnWithSubdomainWildcard(fqdn))
+      } else {
+        Ok(Host::Fqdn(fqdn))
+      }
     }
   }
 
   #[cfg(test)]
   #[track_caller]
   fn must_parse(s: &str) -> Self {
-    Self::parse(s).unwrap()
+    Self::parse_for_list(s).unwrap()
   }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct NetDescriptor(pub Host, pub Option<u16>);
+pub struct NetDescriptor(pub Host, pub Option<u32>);
 
 impl QueryDescriptor for NetDescriptor {
   type AllowDesc = NetDescriptor;
@@ -917,11 +957,26 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
-    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+    if other.1.is_some() && self.1 != other.1 {
+      return false;
+    }
+    match (&other.0, &self.0) {
+      (Host::Fqdn(a), Host::Fqdn(b)) => a == b,
+      (Host::FqdnWithSubdomainWildcard(a), Host::Fqdn(b)) => {
+        b.is_subdomain_of(a)
+      }
+      (
+        Host::FqdnWithSubdomainWildcard(a),
+        Host::FqdnWithSubdomainWildcard(b),
+      ) => a == b,
+      (Host::Ip(a), Host::Ip(b)) => a == b,
+      (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      _ => false,
+    }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+    self.matches_allow(other)
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
@@ -953,6 +1008,8 @@ pub enum NetDescriptorParseError {
   Ipv6MissingSquareBrackets(String),
   #[error("{0}")]
   Host(#[from] HostParseError),
+  #[error("invalid vsock: '{0}'")]
+  InvalidVsock(String),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -966,7 +1023,41 @@ pub enum NetDescriptorFromUrlParseError {
 }
 
 impl NetDescriptor {
-  pub fn parse(hostname: &str) -> Result<Self, NetDescriptorParseError> {
+  pub fn parse_for_query(
+    hostname: &str,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Self::parse_inner(hostname, SubdomainWildcards::Disabled)
+  }
+
+  pub fn parse_for_list(
+    hostname: &str,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Self::parse_inner(hostname, unstable_subdomain_wildcards)
+  }
+
+  fn parse_inner(
+    hostname: &str,
+    subdomain_wildcards: SubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
+    #[cfg(unix)]
+    if let Some(vsock) = hostname.strip_prefix("vsock:") {
+      let mut split = vsock.split(':');
+      let Some(cid) = split.next().and_then(|c| {
+        if c == "-1" {
+          Some(u32::MAX)
+        } else {
+          c.parse().ok()
+        }
+      }) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      let Some(port) = split.next().and_then(|p| p.parse().ok()) else {
+        return Err(NetDescriptorParseError::InvalidVsock(hostname.into()));
+      };
+      return Ok(NetDescriptor(Host::Vsock(cid), Some(port)));
+    }
+
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
       return Err(NetDescriptorParseError::Url(hostname.to_string()));
     }
@@ -995,7 +1086,10 @@ impl NetDescriptor {
             hostname.to_string(),
           ));
         };
-        return Ok(NetDescriptor(Host::Ip(IpAddr::V6(ip)), port));
+        return Ok(NetDescriptor(
+          Host::Ip(IpAddr::V6(ip)),
+          port.map(Into::into),
+        ));
       } else {
         return Err(NetDescriptorParseError::InvalidHost(hostname.to_string()));
       }
@@ -1009,7 +1103,7 @@ impl NetDescriptor {
       Some((host, port)) => (host, port),
       None => (hostname, ""),
     };
-    let host = Host::parse(host)?;
+    let host = Host::parse_inner(host, subdomain_wildcards)?;
 
     let port = if port.is_empty() {
       None
@@ -1032,16 +1126,23 @@ impl NetDescriptor {
       Some(port)
     };
 
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
     let host = url.host_str().ok_or_else(|| {
       NetDescriptorFromUrlParseError::MissingHost(url.clone())
     })?;
-    let host = Host::parse(host)?;
+    let host = Host::parse_for_query(host)?;
     let port = url.port_or_known_default();
-    Ok(NetDescriptor(host, port))
+    Ok(NetDescriptor(host, port.map(Into::into)))
+  }
+
+  pub fn from_vsock(
+    cid: u32,
+    port: u32,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Ok(NetDescriptor(Host::Vsock(cid), Some(port)))
   }
 }
 
@@ -1049,8 +1150,10 @@ impl fmt::Display for NetDescriptor {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.0 {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
+      Host::FqdnWithSubdomainWildcard(fqdn) => write!(f, "*.{fqdn}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
+      Host::Vsock(cid) => write!(f, "vsock:{cid}"),
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -1117,8 +1220,14 @@ impl QueryDescriptor for ImportDescriptor {
 }
 
 impl ImportDescriptor {
-  pub fn parse(specifier: &str) -> Result<Self, NetDescriptorParseError> {
-    Ok(ImportDescriptor(NetDescriptor::parse(specifier)?))
+  pub fn parse_for_list(
+    specifier: &str,
+    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
+  ) -> Result<Self, NetDescriptorParseError> {
+    Ok(ImportDescriptor(NetDescriptor::parse_for_list(
+      specifier,
+      unstable_subdomain_wildcards,
+    )?))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -1340,14 +1449,16 @@ pub enum PathResolveError {
 impl RunQueryDescriptor {
   pub fn parse(
     requested: &str,
+    sys: &impl which::WhichSys,
   ) -> Result<RunQueryDescriptor, PathResolveError> {
     if is_path(requested) {
       let path = PathBuf::from(requested);
       let resolved = if path.is_absolute() {
         normalize_path(path)
       } else {
-        let cwd =
-          std::env::current_dir().map_err(PathResolveError::CwdResolve)?;
+        let cwd = sys
+          .env_current_dir()
+          .map_err(PathResolveError::CwdResolve)?;
         normalize_path(cwd.join(path))
       };
       Ok(RunQueryDescriptor::Path {
@@ -1355,7 +1466,11 @@ impl RunQueryDescriptor {
         resolved,
       })
     } else {
-      match which::which(requested) {
+      let cwd = sys
+        .env_current_dir()
+        .map_err(PathResolveError::CwdResolve)?;
+      match which::which_in(sys.clone(), requested, sys.env_var_os("PATH"), cwd)
+      {
         Ok(resolved) => Ok(RunQueryDescriptor::Path {
           requested: requested.to_string(),
           resolved,
@@ -1509,13 +1624,19 @@ impl AllowRunDescriptor {
   pub fn parse(
     text: &str,
     cwd: &Path,
+    sys: &impl WhichSys,
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
     let is_path = is_path(text);
     // todo(dsherret): canonicalize in #25458
     let path = if is_path {
       resolve_from_known_cwd(Path::new(text), cwd)
     } else {
-      match which::which_in(text, std::env::var_os("PATH"), cwd) {
+      match which::which_in(
+        sys.clone(),
+        text,
+        sys.env_var_os("PATH"),
+        cwd.to_path_buf(),
+      ) {
         Ok(path) => path,
         Err(err) => match err {
           which::Error::CannotGetCurrentDirAndPathListEmpty => {
@@ -1912,7 +2033,7 @@ impl UnaryPermission<EnvQueryDescriptor> {
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(None, false, None)
+    self.check_desc(None, true, None)
   }
 }
 
@@ -2353,6 +2474,9 @@ pub enum PermissionCheckError {
   #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
+  #[class("NotCapable")]
+  #[error("Permission denied {0}")]
+  NotCapable(&'static str),
 }
 
 /// Wrapper struct for `Permissions` that can be shared across threads.
@@ -2500,7 +2624,7 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     kind: CheckSpecifierKind,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
@@ -2575,13 +2699,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_read_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -2589,6 +2713,7 @@ impl PermissionsContainer {
       }
       .into_read();
       inner.check(&desc, api_name)?;
+
       Ok(Cow::Owned(desc.0.resolved))
     }
   }
@@ -2597,7 +2722,7 @@ impl PermissionsContainer {
   /// by replacing it with the given `display`.
   #[inline(always)]
   pub fn check_read_blind(
-    &mut self,
+    &self,
     path: &Path,
     display: &str,
     api_name: &str,
@@ -2662,13 +2787,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_write_path<'a>(
     &self,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      Ok(Cow::Borrowed(path))
+      Ok(path)
     } else {
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
@@ -2714,7 +2839,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_write_partial(
-    &mut self,
+    &self,
     path: &str,
     api_name: &str,
   ) -> Result<PathBuf, PermissionCheckError> {
@@ -2731,7 +2856,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_run(
-    &mut self,
+    &self,
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -2767,25 +2892,25 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
+  pub fn check_env(&self, var: &str) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check(var, None)?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_env_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_sys_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_sys_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().sys.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_ffi_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_ffi_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().ffi.check_all()?;
     Ok(())
   }
@@ -2794,7 +2919,7 @@ impl PermissionsContainer {
   /// permissions are enabled!
   #[inline(always)]
   pub fn check_was_allow_all_flag_passed(
-    &mut self,
+    &self,
   ) -> Result<(), PermissionCheckError> {
     self.inner.lock().all.check()?;
     Ok(())
@@ -2803,7 +2928,7 @@ impl PermissionsContainer {
   /// Checks special file access, returning the failed permission type if
   /// not successful.
   pub fn check_special_file(
-    &mut self,
+    &self,
     path: &Path,
     _api_name: &str,
   ) -> Result<(), &'static str> {
@@ -2928,9 +3053,25 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
-    let hostname = Host::parse(host.0.as_ref())?;
-    let descriptor = NetDescriptor(hostname, host.1);
+    let hostname = Host::parse_for_query(host.0.as_ref())?;
+    let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
     inner.check(&descriptor, Some(api_name))?;
+    Ok(())
+  }
+
+  #[inline(always)]
+  pub fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if inner.net.is_allow_all() {
+      return Ok(());
+    }
+    let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+    inner.net.check(&desc, Some(api_name))?;
     Ok(())
   }
 
@@ -3044,7 +3185,7 @@ impl PermissionsContainer {
       permission.query(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3174,7 +3315,7 @@ impl PermissionsContainer {
       self.inner.lock().net.revoke(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3284,7 +3425,7 @@ impl PermissionsContainer {
       self.inner.lock().net.request(
         match host {
           None => None,
-          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+          Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
       ),
@@ -3344,6 +3485,10 @@ impl PermissionsContainer {
       ),
     )
   }
+
+  pub fn allows_all(&self) -> bool {
+    matches!(self.inner.lock().all.state, PermissionState::Granted)
+  }
 }
 
 const fn unit_permission_from_flag_bools(
@@ -3384,7 +3529,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
     D: Deserializer<'de>,
   {
     struct ChildUnitPermissionArgVisitor;
-    impl<'de> de::Visitor<'de> for ChildUnitPermissionArgVisitor {
+    impl de::Visitor<'_> for ChildUnitPermissionArgVisitor {
       type Value = ChildUnitPermissionArg;
 
       fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -3694,6 +3839,11 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
     path: &str,
   ) -> Result<PathQueryDescriptor, PathResolveError>;
 
+  fn parse_net_query(
+    &self,
+    text: &str,
+  ) -> Result<NetDescriptor, NetDescriptorParseError>;
+
   fn parse_run_query(
     &self,
     requested: &str,
@@ -3714,9 +3864,9 @@ pub fn is_standalone() -> bool {
 mod tests {
   use std::net::Ipv4Addr;
 
-  use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
+  use serde_json::json;
 
   use super::*;
 
@@ -3757,14 +3907,17 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse(text)
+      NetDescriptor::parse_for_list(text, UnstableSubdomainWildcards::Enabled)
     }
 
     fn parse_import_descriptor(
       &self,
       text: &str,
     ) -> Result<ImportDescriptor, NetDescriptorParseError> {
-      ImportDescriptor::parse(text)
+      ImportDescriptor::parse_for_list(
+        text,
+        UnstableSubdomainWildcards::Enabled,
+      )
     }
 
     fn parse_env_descriptor(
@@ -3818,11 +3971,19 @@ mod tests {
       })
     }
 
+    fn parse_net_query(
+      &self,
+      text: &str,
+    ) -> Result<NetDescriptor, NetDescriptorParseError> {
+      NetDescriptor::parse_for_query(text)
+    }
+
     fn parse_run_query(
       &self,
       requested: &str,
     ) -> Result<RunQueryDescriptor, RunDescriptorParseError> {
-      RunQueryDescriptor::parse(requested).map_err(Into::into)
+      RunQueryDescriptor::parse(requested, &sys_traits::impls::RealSys)
+        .map_err(Into::into)
     }
   }
 
@@ -3887,7 +4048,8 @@ mod tests {
           "172.16.0.2:8000",
           "www.github.com:443",
           "80.example.com:80",
-          "443.example.com:443"
+          "443.example.com:443",
+          "*.discord.gg"
         ]),
         ..Default::default()
       },
@@ -3915,13 +4077,15 @@ mod tests {
       ("443.example.com", 444, false),
       ("80.example.com", 81, false),
       ("80.example.com", 80, true),
+      ("discord.gg", 0, true),
+      ("foo.discord.gg", 0, true),
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
     ];
 
     for (host, port, is_ok) in domain_tests {
-      let host = Host::parse(host).unwrap();
+      let host = Host::parse_for_query(host).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert_eq!(
         is_ok,
@@ -3967,7 +4131,7 @@ mod tests {
     ];
 
     for (host_str, port) in domain_tests {
-      let host = Host::parse(host_str).unwrap();
+      let host = Host::parse_for_query(host_str).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert!(
         perms.net.check(&descriptor, None).is_ok(),
@@ -4012,7 +4176,7 @@ mod tests {
     ];
 
     for (host_str, port) in domain_tests {
-      let host = Host::parse(host_str).unwrap();
+      let host = Host::parse_for_query(host_str).unwrap();
       let descriptor = NetDescriptor(host, Some(port));
       assert!(
         perms.net.check(&descriptor, None).is_err(),
@@ -4108,22 +4272,22 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        Url::parse("http://localhost:4545/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
       (
-        ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
+        Url::parse("http://deno.land/x/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ),
       (
-        ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        Url::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ),
@@ -4131,33 +4295,33 @@ mod tests {
 
     if cfg!(target_os = "windows") {
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(),
+        Url::parse("file:///C:/a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        Url::parse("file:///C:/b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));
     } else {
       fixtures.push((
-        ModuleSpecifier::parse("file:///a/mod.ts").unwrap(),
+        Url::parse("file:///a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Static,
         true,
       ));
       fixtures.push((
-        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        Url::parse("file:///b/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         false,
       ));
@@ -4789,6 +4953,30 @@ mod tests {
   }
 
   #[test]
+  fn test_check_allow_global_deny_global() {
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        deny_write: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.read.check_all(None).is_err());
+    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    assert!(perms.read.check(&read_query, None).is_err());
+
+    assert!(perms.write.check_all(None).is_err());
+    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
+    assert!(perms.write.check(&write_query, None).is_err());
+  }
+
+  #[test]
   fn test_net_fully_qualified_domain_name() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
@@ -4960,7 +5148,7 @@ mod tests {
       &parser,
       &PermissionsOptions {
         allow_env: Some(vec![]),
-        allow_net: Some(svec!["foo", "bar"]),
+        allow_net: Some(svec!["*.foo", "bar"]),
         ..Default::default()
       },
     )
@@ -4981,7 +5169,11 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([NetDescriptor::parse("foo").unwrap()])),
+          Some(HashSet::from([NetDescriptor::parse_for_list(
+            "foo",
+            UnstableSubdomainWildcards::Enabled
+          )
+          .unwrap()])),
           None,
           false
         ),
@@ -5077,9 +5269,57 @@ mod tests {
   }
 
   #[test]
-  fn test_host_parse() {
+  fn test_host_parse_for_query() {
     let hosts = &[
       ("deno.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      ("DENO.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (
+        "1.1.1.1",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "::1",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))),
+      ),
+      (
+        "[::1]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))),
+      ),
+      ("[::1", None),
+      ("::1]", None),
+      ("deno. land", None),
+      ("1. 1.1.1", None),
+      ("1.1.1.1.", None),
+      ("1::1.", None),
+      ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (".deno.land", None),
+      ("*.deno.land", None),
+      (
+        "::ffff:1.1.1.1",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
+        )))),
+      ),
+    ];
+
+    for (host_str, expected) in hosts {
+      assert_eq!(
+        Host::parse_for_query(host_str).ok(),
+        *expected,
+        "{host_str}"
+      );
+    }
+  }
+
+  #[test]
+  fn test_host_parse_for_list() {
+    let hosts = &[
+      ("deno.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      (
+        "*.deno.land",
+        Some(Host::FqdnWithSubdomainWildcard(fqdn!("deno.land"))),
+      ),
       ("DENO.land", Some(Host::Fqdn(fqdn!("deno.land")))),
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (
@@ -5111,12 +5351,12 @@ mod tests {
     ];
 
     for (host_str, expected) in hosts {
-      assert_eq!(Host::parse(host_str).ok(), *expected, "{host_str}");
+      assert_eq!(Host::parse_for_list(host_str).ok(), *expected, "{host_str}");
     }
   }
 
   #[test]
-  fn test_net_descriptor_parse() {
+  fn test_net_descriptor_parse_for_query() {
     let cases = &[
       (
         "deno.land",
@@ -5129,6 +5369,84 @@ mod tests {
       (
         "deno.land:8000",
         Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), Some(8000))),
+      ),
+      ("*.deno.land", None),
+      ("deno.land:", None),
+      ("deno.land:a", None),
+      ("deno. land:a", None),
+      ("deno.land.: a", None),
+      (
+        "1.1.1.1",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
+          None,
+        )),
+      ),
+      ("1.1.1.1.", None),
+      ("1.1.1.1..", None),
+      (
+        "1.1.1.1:8000",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
+          Some(8000),
+        )),
+      ),
+      ("::", None),
+      (":::80", None),
+      ("::80", None),
+      (
+        "[::]",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0))),
+          None,
+        )),
+      ),
+      ("[::1", None),
+      ("::1]", None),
+      ("::1]", None),
+      ("[::1]:", None),
+      ("[::1]:a", None),
+      (
+        "[::1]:443",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+          Some(443),
+        )),
+      ),
+      ("", None),
+      ("deno.land..", None),
+    ];
+
+    for (input, expected) in cases {
+      assert_eq!(
+        NetDescriptor::parse_for_query(input).ok(),
+        *expected,
+        "'{input}'"
+      );
+    }
+  }
+
+  #[test]
+  fn test_net_descriptor_parse_for_list() {
+    let cases = &[
+      (
+        "deno.land",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
+      ),
+      (
+        "DENO.land",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
+      ),
+      (
+        "deno.land:8000",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), Some(8000))),
+      ),
+      (
+        "*.deno.land",
+        Some(NetDescriptor(
+          Host::FqdnWithSubdomainWildcard(fqdn!("deno.land")),
+          None,
+        )),
       ),
       ("deno.land:", None),
       ("deno.land:a", None),
@@ -5177,7 +5495,15 @@ mod tests {
     ];
 
     for (input, expected) in cases {
-      assert_eq!(NetDescriptor::parse(input).ok(), *expected, "'{input}'");
+      assert_eq!(
+        NetDescriptor::parse_for_list(
+          input,
+          UnstableSubdomainWildcards::Enabled
+        )
+        .ok(),
+        *expected,
+        "'{input}'"
+      );
     }
   }
 
@@ -5210,5 +5536,22 @@ mod tests {
         cmd_path
       );
     }
+  }
+
+  #[test]
+  fn test_env_check_all() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_env: Some(vec![]),
+        deny_env: Some(svec!["FOO"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert!(perms.env.check_all().is_err());
   }
 }

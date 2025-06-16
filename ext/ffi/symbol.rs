@@ -49,7 +49,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
         libffi::middle::Type::pointer()
       }
       NativeType::Struct(fields) => {
-        libffi::middle::Type::structure(match fields.len() > 0 {
+        libffi::middle::Type::structure(match !fields.is_empty() {
           true => fields
             .iter()
             .map(|field| field.clone().try_into())
@@ -67,6 +67,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
 
 #[derive(Clone)]
 pub struct Symbol {
+  pub name: String,
   pub cif: libffi::middle::Cif,
   pub ptr: libffi::middle::CodePtr,
   pub parameter_types: Vec<NativeType>,

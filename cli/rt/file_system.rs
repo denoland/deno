@@ -8,6 +8,8 @@ use std::io::SeekFrom;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,7 +24,6 @@ use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsEntryRef;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualFile;
-use deno_lib::sys::DenoLibSys;
 use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -34,7 +35,10 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
-use deno_runtime::deno_node::ExtNodeSys;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
+use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
@@ -48,6 +52,10 @@ pub struct DenoRtSys(Arc<FileBackedVfs>);
 impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
     Self(vfs)
+  }
+
+  pub fn as_deno_rt_native_addon_loader(&self) -> DenoRtNativeAddonLoaderRc {
+    self.0.clone()
   }
 
   pub fn is_specifier_in_vfs(&self, specifier: &Url) -> bool {
@@ -443,9 +451,6 @@ impl FileSystem for DenoRtSys {
   }
 }
 
-impl ExtNodeSys for DenoRtSys {}
-impl DenoLibSys for DenoRtSys {}
-
 impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -581,7 +586,7 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
     &self,
     path: &Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     if self.0.is_path_within(path) {
       let entries = self.0.read_dir_with_metadata(path)?;
@@ -707,6 +712,21 @@ impl sys_traits::FsFileAsRaw for FsFileAdapter {
     match self {
       Self::Real(file) => file.fs_file_as_raw_fd(),
       Self::Vfs(_) => None,
+    }
+  }
+}
+
+impl sys_traits::FsFileMetadata for FsFileAdapter {
+  #[inline]
+  fn fs_file_metadata(&self) -> std::io::Result<BoxedFsMetadataValue> {
+    match self {
+      Self::Real(file) => file.fs_file_metadata(),
+      Self::Vfs(file) => Ok(BoxedFsMetadataValue::new(FileBackedVfsMetadata {
+        file_type: sys_traits::FileType::File,
+        name: file.file.name.clone(),
+        len: file.file.offset.len,
+        mtime: file.file.mtime,
+      })),
     }
   }
 }
@@ -889,9 +909,18 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 }
 
 impl sys_traits::EnvCurrentDir for DenoRtSys {
+  #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
     sys_traits::impls::RealSys.env_current_dir()
+  }
+}
+
+impl sys_traits::EnvHomeDir for DenoRtSys {
+  #[inline]
+  fn env_home_dir(&self) -> Option<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_home_dir()
   }
 }
 
@@ -934,10 +963,7 @@ impl VfsRoot {
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
-            return Err(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              "circular symlinks",
-            ));
+            return Err(std::io::Error::other("circular symlinks"));
           }
           path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
         }
@@ -1145,6 +1171,22 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
+  fn chown_sync(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
   fn seek_sync(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
     self.seek(pos).map_err(|err| err.into())
   }
@@ -1214,7 +1256,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
@@ -1236,6 +1278,7 @@ pub struct FileBackedVfsMetadata {
   pub name: String,
   pub file_type: sys_traits::FileType,
   pub len: u64,
+  pub mtime: Option<u128>,
 }
 
 impl FileBackedVfsMetadata {
@@ -1252,17 +1295,24 @@ impl FileBackedVfsMetadata {
         VfsEntryRef::File(file) => file.offset.len,
         VfsEntryRef::Symlink(_) => 0,
       },
+      mtime: match vfs_entry {
+        VfsEntryRef::Dir(_) => None,
+        VfsEntryRef::File(file) => file.mtime,
+        VfsEntryRef::Symlink(_) => None,
+      },
     }
   }
+
   pub fn as_fs_stat(&self) -> FsStat {
+    // to use lower overhead, use mtime instead of all time params
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
       is_symlink: self.file_type == sys_traits::FileType::Symlink,
-      atime: None,
-      birthtime: None,
-      mtime: None,
-      ctime: None,
+      atime: Some(self.get_mtime()),
+      birthtime: Some(self.get_mtime()),
+      mtime: Some(self.get_mtime()),
+      ctime: Some(self.get_mtime()),
       blksize: 0,
       size: self.len,
       dev: 0,
@@ -1278,6 +1328,13 @@ impl FileBackedVfsMetadata {
       is_fifo: false,
       is_socket: false,
     }
+  }
+
+  /// if `mtime` is `None`, return `0`.
+  ///
+  /// if `mtime` is greater than `u64::MAX`, return `u64::MAX`.
+  fn get_mtime(&self) -> u64 {
+    self.mtime.unwrap_or(0).try_into().unwrap_or(u64::MAX)
   }
 }
 
@@ -1337,16 +1394,23 @@ impl FileBackedVfs {
     )
   }
 
-  pub fn read_dir_with_metadata<'a>(
-    &'a self,
+  pub fn read_dir_with_metadata(
+    &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
-    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
-      parent_path: path.to_path_buf(),
-      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
-    }))
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(move |entry| FileBackedVfsDirEntry {
+          parent_path: path.to_path_buf(),
+          metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
+        })
+        .collect::<Vec<_>>()
+        .into_iter(),
+    )
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
@@ -1357,10 +1421,9 @@ impl FileBackedVfs {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
       }
-      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "not a symlink",
-      )),
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => {
+        Err(std::io::Error::other("not a symlink"))
+      }
     }
   }
 
@@ -1436,23 +1499,27 @@ impl FileBackedVfs {
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a file",
-      )),
+      VfsEntryRef::File(_) => Err(std::io::Error::other("path is a file")),
     }
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
-      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a directory",
-      )),
+      VfsEntryRef::Dir(_) => Err(std::io::Error::other("path is a directory")),
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => Ok(file),
     }
+  }
+}
+
+impl DenoRtNativeAddonLoader for FileBackedVfs {
+  fn load_if_in_vfs(&self, path: &Path) -> Option<Cow<'static, [u8]>> {
+    if !self.is_path_within(path) {
+      return None;
+    }
+    let file = self.file_entry(path).ok()?;
+    self.read_file_offset_with_len(file.offset).ok()
   }
 }
 
@@ -1485,19 +1552,28 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into(), None)
       .unwrap();
     builder
-      .add_file_with_data_raw(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data_raw(
+        &src_path.join("b.txt"),
+        "data".into(),
+        Some(
+          SystemTime::UNIX_EPOCH
+            .checked_add(Duration::from_secs(2))
+            .unwrap(),
+        ),
+      )
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into(), None)
       .unwrap();
     builder
       .add_file_with_data_raw(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
+        None,
       )
       .unwrap();
     builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
@@ -1532,6 +1608,10 @@ mod test {
         .unwrap()
         .file_type,
       sys_traits::FileType::Symlink,
+    );
+    assert_eq!(
+      virtual_fs.lstat(&dest_path.join("b.txt")).unwrap().mtime,
+      Some(2_000),
     );
     assert_eq!(
       virtual_fs
@@ -1658,6 +1738,7 @@ mod test {
       .add_file_with_data_raw(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
+        None,
       )
       .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);

@@ -1,10 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod deno_json;
 mod flags;
 mod flags_net;
-mod lockfile;
-mod package_json;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -22,7 +19,6 @@ pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::LintConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
@@ -31,22 +27,24 @@ pub use deno_config::deno_json::TsConfig;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
+use deno_lib::args::npm_process_state;
 use deno_lib::args::CaData;
-use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::LifecycleScriptsConfig;
+use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -55,45 +53,17 @@ use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
-pub use lockfile::AtomicWriteFileWithRetriesError;
-pub use lockfile::CliLockfile;
-pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
-pub use package_json::NpmInstallDepsProvider;
-pub use package_json::PackageJsonDepValueParseWithLocationError;
-use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::sys::CliSys;
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
+pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
+pub type CliTsConfigResolver =
+  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
-  static JSR_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "JSR_URL";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
-      // ensure there is a trailing slash for the directory
-      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-      match Url::parse(&registry_url) {
-        Ok(url) => {
-          return url;
-        }
-        Err(err) => {
-          log::debug!(
-            "Invalid {} environment variable: {:#}",
-            env_var_name,
-            err,
-          );
-        }
-      }
-    }
-
-    Url::parse("https://jsr.io/").unwrap()
-  });
+  static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
 
   &JSR_URL
 }
@@ -108,57 +78,11 @@ pub fn jsr_api_url() -> &'static Url {
   &JSR_API_URL
 }
 
-#[derive(Debug, Clone)]
-pub struct ExternalImportMap {
-  pub path: PathBuf,
-  pub value: serde_json::Value,
-}
-
-#[derive(Debug)]
-pub struct WorkspaceExternalImportMapLoader {
-  sys: CliSys,
-  workspace: Arc<Workspace>,
-  maybe_external_import_map:
-    once_cell::sync::OnceCell<Option<ExternalImportMap>>,
-}
-
-impl WorkspaceExternalImportMapLoader {
-  pub fn new(sys: CliSys, workspace: Arc<Workspace>) -> Self {
-    Self {
-      sys,
-      workspace,
-      maybe_external_import_map: Default::default(),
-    }
-  }
-
-  pub fn get_or_load(&self) -> Result<Option<&ExternalImportMap>, AnyError> {
-    self
-      .maybe_external_import_map
-      .get_or_try_init(|| {
-        let Some(deno_json) = self.workspace.root_deno_json() else {
-          return Ok(None);
-        };
-        if deno_json.is_an_import_map() {
-          return Ok(None);
-        }
-        let Some(path) = deno_json.to_import_map_path()? else {
-          return Ok(None);
-        };
-        let contents =
-          self.sys.fs_read_to_string(&path).with_context(|| {
-            format!("Unable to read import map at '{}'", path.display())
-          })?;
-        let value = serde_json::from_str(&contents)?;
-        Ok(Some(ExternalImportMap { path, value }))
-      })
-      .map(|v| v.as_ref())
-  }
-}
-
 pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
+  pub permit_no_files: bool,
 }
 
 impl WorkspaceBenchOptions {
@@ -167,6 +91,7 @@ impl WorkspaceBenchOptions {
       filter: bench_flags.filter.clone(),
       json: bench_flags.json,
       no_run: bench_flags.no_run,
+      permit_no_files: bench_flags.permit_no_files,
     }
   }
 }
@@ -285,9 +210,7 @@ impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
       permit_no_files: test_flags.permit_no_files,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      concurrent_jobs: parallelism_count(test_flags.parallel),
       doc: test_flags.doc,
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter.clone(),
@@ -364,6 +287,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub fix: bool,
+  pub plugins: Vec<Url>,
 }
 
 impl Default for LintOptions {
@@ -378,20 +302,30 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       fix: false,
+      plugins: vec![],
     }
   }
 
-  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
-    Self {
+  pub fn resolve(
+    lint_config: WorkspaceDirLintConfig,
+    lint_flags: &LintFlags,
+  ) -> Result<Self, AnyError> {
+    let rules = resolve_lint_rules_options(
+      lint_config.rules,
+      lint_flags.maybe_rules_tags.clone(),
+      lint_flags.maybe_rules_include.clone(),
+      lint_flags.maybe_rules_exclude.clone(),
+    );
+
+    let mut plugins = lint_config.plugins;
+    plugins.sort_unstable();
+
+    Ok(Self {
       files: lint_config.files,
-      rules: resolve_lint_rules_options(
-        lint_config.options.rules,
-        lint_flags.maybe_rules_tags.clone(),
-        lint_flags.maybe_rules_include.clone(),
-        lint_flags.maybe_rules_exclude.clone(),
-      ),
+      rules,
       fix: lint_flags.fix,
-    }
+      plugins,
+    })
   }
 }
 
@@ -430,7 +364,6 @@ pub struct CliOptions {
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
-  maybe_lockfile: Option<Arc<CliLockfile>>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
 
@@ -439,7 +372,6 @@ impl CliOptions {
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_lockfile: Option<Arc<CliLockfile>>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -457,38 +389,26 @@ impl CliOptions {
       }
     }
 
-    load_env_variables_from_env_file(flags.env_file.as_ref());
-
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
       start_dir,
     })
   }
 
   pub fn from_flags(
-    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let maybe_lock_file = CliLockfile::discover(
-      sys,
-      &flags,
-      &start_dir.workspace,
-      maybe_external_import_map.as_ref().map(|v| &v.value),
-    )?;
-
     log::debug!("Finished config loading.");
 
-    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+    Self::new(flags, initial_cwd, start_dir)
   }
 
   #[inline(always)]
@@ -575,8 +495,20 @@ impl CliOptions {
     }
   }
 
+  pub fn eszip(&self) -> bool {
+    self.flags.eszip
+  }
+
+  pub fn node_conditions(&self) -> &[String] {
+    self.flags.node_conditions.as_ref()
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
+  }
+
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
   }
 
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
@@ -670,10 +602,13 @@ impl CliOptions {
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_node_main(&self) -> bool {
-    NPM_PROCESS_STATE.is_some()
+    npm_process_state(&CliSys::default()).is_some()
   }
 
-  pub fn node_modules_dir(
+  /// Gets the explicitly specified NodeModulesDir setting.
+  ///
+  /// Use `WorkspaceFactory.node_modules_dir_mode()` to get the resolved value.
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<
     Option<NodeModulesDirMode>,
@@ -706,10 +641,6 @@ impl CliOptions {
       host,
       DENO_VERSION_INFO.user_agent,
     )?))
-  }
-
-  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
-    self.maybe_lockfile.as_ref()
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -757,7 +688,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(config, lint_flags);
+      let options = LintOptions::resolve(config, lint_flags)?;
       result.push((ctx, options));
     }
     Ok(result)
@@ -830,7 +761,7 @@ impl CliOptions {
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -903,10 +834,6 @@ impl CliOptions {
 
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
-  }
-
-  pub fn no_npm(&self) -> bool {
-    self.flags.no_npm
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
@@ -1054,9 +981,9 @@ impl CliOptions {
             std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
             Some(var)
           }
-          Err(_) => NpmPackageReqReference::from_str(&flags.script)
-            .ok()
-            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+          Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
+            |req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string(),
+          ),
         }
       }
       _ => None,
@@ -1069,6 +996,11 @@ impl CliOptions {
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
+  }
+
+  pub fn unstable_subdomain_wildcards(&self) -> bool {
+    self.flags.unstable_config.subdomain_wildcards
+      || self.workspace().has_unstable("subdomain-wildcards")
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
@@ -1088,43 +1020,41 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_lazy_dynamic_imports(&self) -> bool {
+    self.flags.unstable_config.lazy_dynamic_imports
+      || self.workspace().has_unstable("lazy-dynamic-imports")
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace().unstable_features().to_vec();
-
-    self
-      .flags
-      .unstable_config
-      .features
+    let from_config_file = self.workspace().unstable_features();
+    let unstable_features = from_config_file
       .iter()
-      .for_each(|feature| {
-        if !from_config_file.contains(feature) {
-          from_config_file.push(feature.to_string());
-        }
-      });
+      .chain(
+        self
+          .flags
+          .unstable_config
+          .features
+          .iter()
+          .filter(|f| !from_config_file.contains(f)),
+      )
+      .map(|f| f.to_owned())
+      .collect::<Vec<_>>();
 
-    if !from_config_file.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+    if !unstable_features.is_empty() {
+      let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
-        .map(|granular_flag| granular_flag.name)
-        .chain([
-          "sloppy-imports",
-          "byonm",
-          "bare-node-builtins",
-          "detect-cjs",
-          "fmt-component",
-          "fmt-sql",
-          "lazy-npm-caching",
-        ])
+        .map(|feature| feature.name)
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
-      for unstable_value_from_config_file in &from_config_file {
+      for unstable_value_from_config_file in &unstable_features {
         if !all_valid_unstable_flags
           .contains(&unstable_value_from_config_file.as_str())
         {
@@ -1137,7 +1067,7 @@ impl CliOptions {
       }
     }
 
-    from_config_file
+    unstable_features
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {
@@ -1204,7 +1134,15 @@ impl CliOptions {
   }
 
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
-    if self.flags.unstable_config.npm_lazy_caching {
+    if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+      )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      NpmCachingStrategy::Manual
+    } else if self.flags.unstable_config.npm_lazy_caching {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager
@@ -1297,7 +1235,10 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+pub fn load_env_variables_from_env_file(
+  filename: Option<&Vec<String>>,
+  flags_log_level: Option<log::Level>,
+) {
   let Some(env_file_names) = filename else {
     return;
   };
@@ -1306,15 +1247,46 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
     match from_filename(env_file_name) {
       Ok(_) => (),
       Err(error) => {
-        match error {
-          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
-          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        #[allow(clippy::print_stderr)]
+        if flags_log_level
+          .map(|l| l >= log::Level::Info)
+          .unwrap_or(true)
+        {
+          match error {
+            dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
+            dotenvy::Error::Io(_)=> eprintln!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
+            dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+            _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+          }
         }
       }
     }
   }
+}
+
+pub fn get_default_v8_flags() -> Vec<String> {
+  vec![
+    "--stack-size=1024".to_string(),
+    "--js-explicit-resource-management".to_string(),
+    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+    // and its settings.
+    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+    "--no-harmony-import-assertions".to_string(),
+  ]
+}
+
+pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
+  parallel
+    .then(|| {
+      if let Ok(value) = env::var("DENO_JOBS") {
+        value.parse::<NonZeroUsize>().ok()
+      } else {
+        std::thread::available_parallelism().ok()
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
 }
 
 /// Gets the --allow-import host from the provided url
@@ -1329,13 +1301,6 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
       _ => None,
     }
   }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum NpmCachingStrategy {
-  Eager,
-  Lazy,
-  Manual,
 }
 
 #[cfg(test)]

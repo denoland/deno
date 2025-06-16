@@ -15,10 +15,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 use std::time::Duration;
 
 use deno_core::error::ResourceError;
-use deno_core::futures::task::noop_waker_ref;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -213,7 +213,11 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {}
+impl GarbageCollected for EndpointResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"EndpointResource"
+  }
+}
 
 #[op2]
 #[cppgc]
@@ -294,7 +298,11 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {}
+impl GarbageCollected for ListenerResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ListenerResource"
+  }
+}
 
 #[op2]
 #[cppgc]
@@ -345,14 +353,22 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {}
+impl GarbageCollected for ConnectionResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ConnectionResource"
+  }
+}
 
 struct IncomingResource(
   RefCell<Option<quinn::Incoming>>,
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {}
+impl GarbageCollected for IncomingResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"IncomingResource"
+  }
+}
 
 #[op2(async)]
 #[cppgc]
@@ -481,7 +497,11 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {}
+impl GarbageCollected for ConnectingResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ConnectingResource"
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -820,7 +840,7 @@ pub(crate) async fn op_quic_connection_open_bi(
   let (tx, rx) = if wait_for_available {
     connection.0.open_bi().await?
   } else {
-    let waker = noop_waker_ref();
+    let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     match pin!(connection.0.open_bi()).poll(&mut cx) {
       Poll::Ready(r) => r?,
@@ -869,7 +889,7 @@ pub(crate) async fn op_quic_connection_open_uni(
   let tx = if wait_for_available {
     connection.0.open_uni().await?
   } else {
-    let waker = noop_waker_ref();
+    let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     match pin!(connection.0.open_uni()).poll(&mut cx) {
       Poll::Ready(r) => r?,

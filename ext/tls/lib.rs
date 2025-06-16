@@ -158,12 +158,21 @@ impl ServerCertVerifier for NoCertificateVerification {
   }
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct Proxy {
-  pub url: String,
-  pub basic_auth: Option<BasicAuth>,
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase", tag = "transport")]
+pub enum Proxy {
+  #[serde(rename_all = "camelCase")]
+  Http {
+    url: String,
+    basic_auth: Option<BasicAuth>,
+  },
+  Unix {
+    path: String,
+  },
+  Vsock {
+    cid: u32,
+    port: u32,
+  },
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

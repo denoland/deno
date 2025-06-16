@@ -21,8 +21,7 @@ pub fn op_v8_get_heap_statistics(
   scope: &mut v8::HandleScope,
   #[buffer] buffer: &mut [f64],
 ) {
-  let mut stats = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut stats);
+  let stats = scope.get_heap_statistics();
 
   buffer[0] = stats.total_heap_size() as f64;
   buffer[1] = stats.total_heap_size_executable() as f64;
@@ -32,7 +31,7 @@ pub fn op_v8_get_heap_statistics(
   buffer[5] = stats.heap_size_limit() as f64;
   buffer[6] = stats.malloced_memory() as f64;
   buffer[7] = stats.peak_malloced_memory() as f64;
-  buffer[8] = stats.does_zap_garbage() as f64;
+  buffer[8] = if stats.does_zap_garbage() { 1.0 } else { 0.0 };
   buffer[9] = stats.number_of_native_contexts() as f64;
   buffer[10] = stats.number_of_detached_contexts() as f64;
   buffer[11] = stats.total_global_handles_size() as f64;
@@ -48,8 +47,10 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
-impl<'a> v8::cppgc::GarbageCollected for Serializer<'a> {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+impl v8::cppgc::GarbageCollected for Serializer<'_> {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Serializer"
+  }
 }
 
 impl SerializerDelegate {
@@ -226,14 +227,24 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl<'a> deno_core::GarbageCollected for Deserializer<'a> {}
+impl deno_core::GarbageCollected for Deserializer<'_> {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Deserializer"
+  }
+}
 
 pub struct DeserializerDelegate {
-  obj: v8::Global<v8::Object>,
+  obj: v8::TracedReference<v8::Object>,
 }
 
 impl GarbageCollected for DeserializerDelegate {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+    visitor.trace(&self.obj);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DeserializerDelegate"
+  }
 }
 
 impl v8::ValueDeserializerImpl for DeserializerDelegate {
@@ -242,7 +253,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     scope: &mut v8::HandleScope<'s>,
     _value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
-    let obj = v8::Local::new(scope, &self.obj);
+    let obj = self.obj.get(scope).unwrap();
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
       .unwrap()
@@ -292,7 +303,7 @@ pub fn op_v8_new_deserializer(
   } else {
     (&[] as &[u8], None::<NonNull<u8>>)
   };
-  let obj = v8::Global::new(scope, obj);
+  let obj = v8::TracedReference::new(scope, obj);
   let inner = v8::ValueDeserializer::new(
     scope,
     Box::new(DeserializerDelegate { obj }),

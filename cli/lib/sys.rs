@@ -12,6 +12,7 @@ use sys_traits::FsRename;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 
+#[sys_traits::auto_impl]
 pub trait DenoLibSys:
   FsCanonicalize
   + FsCreateDirAll
@@ -31,7 +32,3 @@ pub trait DenoLibSys:
   + 'static
 {
 }
-
-// ok, implementation
-#[allow(clippy::disallowed_types)]
-impl DenoLibSys for sys_traits::impls::RealSys {}
