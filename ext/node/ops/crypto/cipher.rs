@@ -11,6 +11,7 @@ use aes::cipher::KeyIvInit;
 use aes::cipher::KeySizeUser;
 use aes::cipher::StreamCipher;
 use deno_core::Resource;
+use deno_error::JsErrorClass;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
 
@@ -38,8 +39,8 @@ enum Decipher {
   Aes128Ecb(Box<ecb::Decryptor<aes::Aes128>>),
   Aes192Ecb(Box<ecb::Decryptor<aes::Aes192>>),
   Aes256Ecb(Box<ecb::Decryptor<aes::Aes256>>),
-  Aes128Gcm(Box<Aes128Gcm>),
-  Aes256Gcm(Box<Aes256Gcm>),
+  Aes128Gcm(Box<Aes128Gcm>, Option<usize>),
+  Aes256Gcm(Box<Aes256Gcm>, Option<usize>),
   Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
@@ -123,10 +124,25 @@ impl DecipherContext {
     algorithm: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, DecipherContextError> {
     Ok(Self {
-      decipher: Rc::new(RefCell::new(Decipher::new(algorithm, key, iv)?)),
+      decipher: Rc::new(RefCell::new(Decipher::new(
+        algorithm,
+        key,
+        iv,
+        auth_tag_length,
+      )?)),
     })
+  }
+
+  pub fn validate_auth_tag(
+    &self,
+    length: usize,
+  ) -> Result<(), DecipherContextError> {
+    self.decipher.borrow().validate_auth_tag(length)?;
+
+    Ok(())
   }
 
   pub fn set_aad(&self, aad: &[u8]) {
@@ -176,7 +192,7 @@ pub enum CipherError {
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot pad the input data")]
+  #[error("bad decrypt")]
   CannotPadInputData,
   #[class(type)]
   #[error("Unknown cipher {0}")]
@@ -417,6 +433,9 @@ impl Cipher {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("library" = "Provider routines")]
+#[property("reason" = self.reason())]
+#[property("code" = self.code())]
 pub enum DecipherError {
   #[class(type)]
   #[error("IV length must be 12 bytes")]
@@ -424,14 +443,17 @@ pub enum DecipherError {
   #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
+  #[error("Invalid authentication tag length: {0}")]
+  InvalidAuthTag(usize),
   #[class(range)]
-  #[error("Wrong final block length")]
+  #[error("error:1C80006B:Provider routines::wrong final block length")]
   InvalidFinalBlockLength,
   #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot unpad the input data")]
+  #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
   #[error("Failed to authenticate data")]
@@ -447,6 +469,35 @@ pub enum DecipherError {
   UnknownCipher(String),
 }
 
+impl DecipherError {
+  fn code(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidIvLength => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_IV_LENGTH".into())
+      }
+      Self::InvalidKeyLength => deno_error::PropertyValue::String(
+        "ERR_CRYPTO_INVALID_KEY_LENGTH".into(),
+      ),
+      Self::InvalidAuthTag(_) => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_AUTH_TAG".into())
+      }
+      Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
+        "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
+      ),
+      _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
+    }
+  }
+
+  fn reason(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidFinalBlockLength => {
+        deno_error::PropertyValue::String("wrong final block length".into())
+      }
+      _ => deno_error::PropertyValue::String(self.get_message()),
+    }
+  }
+}
+
 macro_rules! assert_block_len {
   ($input:expr, $len:expr) => {
     if $input != $len {
@@ -455,11 +506,16 @@ macro_rules! assert_block_len {
   };
 }
 
+fn is_valid_gcm_tag_length(tag_len: usize) -> bool {
+  tag_len == 4 || tag_len == 8 || (12..=16).contains(&tag_len)
+}
+
 impl Decipher {
   fn new(
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, DecipherError> {
     use Decipher::*;
     Ok(match algorithm_name {
@@ -474,20 +530,32 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length {
+          if !is_valid_gcm_tag_length(tag_len) {
+            return Err(DecipherError::InvalidAuthTag(tag_len));
+          }
+        }
+
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
-        Aes128Gcm(Box::new(decipher))
+        Aes128Gcm(Box::new(decipher), auth_tag_length)
       }
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(DecipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length {
+          if !is_valid_gcm_tag_length(tag_len) {
+            return Err(DecipherError::InvalidAuthTag(tag_len));
+          }
+        }
+
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
-        Aes256Gcm(Box::new(decipher))
+        Aes256Gcm(Box::new(decipher), auth_tag_length)
       }
       "aes256" | "aes-256-cbc" => {
         if key.len() != 32 {
@@ -532,13 +600,26 @@ impl Decipher {
     })
   }
 
+  fn validate_auth_tag(&self, length: usize) -> Result<(), DecipherError> {
+    match self {
+      Decipher::Aes128Gcm(_, Some(tag_len))
+      | Decipher::Aes256Gcm(_, Some(tag_len)) => {
+        if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      _ => {}
+    }
+    Ok(())
+  }
+
   fn set_aad(&mut self, aad: &[u8]) {
     use Decipher::*;
     match self {
-      Aes128Gcm(decipher) => {
+      Aes128Gcm(decipher, _) => {
         decipher.set_aad(aad);
       }
-      Aes256Gcm(decipher) => {
+      Aes256Gcm(decipher, _) => {
         decipher.set_aad(aad);
       }
       _ => {}
@@ -573,11 +654,11 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
-      Aes128Gcm(decipher) => {
+      Aes128Gcm(decipher, _) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
       }
-      Aes256Gcm(decipher) => {
+      Aes256Gcm(decipher, _) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
       }
@@ -609,7 +690,16 @@ impl Decipher {
   ) -> Result<(), DecipherError> {
     use Decipher::*;
 
-    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+    if input.is_empty()
+      && !matches!(
+        self,
+        Aes128Ecb(..)
+          | Aes192Ecb(..)
+          | Aes256Ecb(..)
+          | Aes128Gcm(..)
+          | Aes256Gcm(..)
+      )
+    {
       return Ok(());
     }
 
@@ -670,7 +760,7 @@ impl Decipher {
         );
         Ok(())
       }
-      (Aes128Gcm(decipher), true) => {
+      (Aes128Gcm(decipher, _), true) => {
         let tag = decipher.finish();
         if tag.as_slice() == auth_tag {
           Ok(())
@@ -678,10 +768,10 @@ impl Decipher {
           Err(DecipherError::DataAuthenticationFailed)
         }
       }
-      (Aes128Gcm(_), false) => {
+      (Aes128Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes128GcmUnsupported)
       }
-      (Aes256Gcm(decipher), true) => {
+      (Aes256Gcm(decipher, _), true) => {
         let tag = decipher.finish();
         if tag.as_slice() == auth_tag {
           Ok(())
@@ -689,7 +779,7 @@ impl Decipher {
           Err(DecipherError::DataAuthenticationFailed)
         }
       }
-      (Aes256Gcm(_), false) => {
+      (Aes256Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes256GcmUnsupported)
       }
       (Aes256Cbc(decryptor), true) => {

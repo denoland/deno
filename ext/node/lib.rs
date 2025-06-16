@@ -223,6 +223,7 @@ enum DotEnvLoadErr {
 }
 
 #[op2(fast)]
+#[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
@@ -280,6 +281,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_auth_tag,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -300,6 +302,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_hkdf,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_pbkdf2_validate,
     ops::crypto::op_node_private_decrypt,
     ops::crypto::op_node_private_encrypt,
     ops::crypto::op_node_public_encrypt,
@@ -504,7 +507,8 @@ deno_core::extension!(deno_node,
     ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync
+    ops::sqlite::StatementSync,
+    ops::crypto::digest::Hasher,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

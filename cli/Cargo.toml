@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.5"
+version = "2.3.6"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -86,7 +86,7 @@ deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["graph", "sync"] }
+deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_snapshots.workspace = true
@@ -120,7 +120,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_client = { version = "0.1.1" }
+esbuild_client = { version = "0.2.0" }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -189,6 +189,7 @@ zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

@@ -47,13 +47,13 @@ use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::loader::StrippingTypesNodeModulesError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
+use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -92,7 +92,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -331,7 +330,6 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
-  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -394,7 +392,6 @@ impl CliModuleLoaderFactory {
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
-    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
@@ -421,7 +418,6 @@ impl CliModuleLoaderFactory {
         node_code_translator,
         npm_module_loader,
         npm_registry_permission_checker,
-        npm_req_resolver,
         npm_resolver,
         parsed_source_cache,
         resolver,
@@ -509,19 +505,11 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadCodeSourceError {
-  #[class(inherit)]
-  #[error(transparent)]
-  NpmModuleLoad(NpmModuleLoadError),
-  #[class(inherit)]
-  #[error(transparent)]
-  LoadPreparedModule(#[from] LoadPreparedModuleError),
-  #[class(generic)]
-  #[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
-  LoadUnpreparedModule {
-    specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-  },
+#[class(generic)]
+#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
+pub struct LoadUnpreparedModuleError {
+  specifier: ModuleSpecifier,
+  maybe_referrer: Option<ModuleSpecifier>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -572,10 +560,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
-    let code_source = self
-      .load_code_source(specifier, maybe_referrer)
-      .await
-      .map_err(JsErrorBox::from_err)?;
+    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
     let code = if self.shared.is_inspecting
       || code_source.media_type == MediaType::Wasm
     {
@@ -636,22 +621,57 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
-    match self.load_prepared_module(specifier).await? {
+  ) -> Result<ModuleCodeStringSource, JsErrorBox> {
+    match self
+      .load_prepared_module(specifier)
+      .await
+      .map_err(JsErrorBox::from_err)?
+    {
       Some(code) => Ok(code),
       None => {
-        if self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+        let specifier = if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(specifier)
+        {
+          let referrer = match maybe_referrer {
+            // if we're here, it means it was importing from a dynamic import
+            // and so there will be a referrer
+            Some(r) => Cow::Borrowed(r),
+            // but the repl may also end up here and it won't have
+            // a referrer so create a referrer for it here
+            None => Cow::Owned(
+              self.resolve_referrer("").map_err(JsErrorBox::from_err)?,
+            ),
+          };
+          Cow::Owned(
+            self
+              .shared
+              .resolver
+              .resolve_non_workspace_npm_req_ref_to_file(
+                &reference,
+                &referrer,
+                ResolutionMode::Import,
+                NodeResolutionKind::Execution,
+              )
+              .map_err(JsErrorBox::from_err)?
+              .unwrap()
+              .into_url()
+              .map_err(JsErrorBox::from_err)?,
+          )
+        } else {
+          Cow::Borrowed(specifier)
+        };
+        if self.shared.in_npm_pkg_checker.in_npm_package(&specifier) {
           return self
             .shared
             .npm_module_loader
-            .load(specifier, maybe_referrer)
+            .load(&specifier, maybe_referrer)
             .await
-            .map_err(LoadCodeSourceError::NpmModuleLoad);
+            .map_err(JsErrorBox::from_err);
         }
-        Err(LoadCodeSourceError::LoadUnpreparedModule {
-          specifier: specifier.clone(),
+        Err(JsErrorBox::from_err(LoadUnpreparedModuleError {
+          specifier: specifier.into_owned(),
           maybe_referrer: maybe_referrer.cloned(),
-        })
+        }))
       }
     }
   }
@@ -786,49 +806,69 @@ impl<TGraphContainer: ModuleGraphContainer>
   fn inner_resolve(
     &self,
     raw_specifier: &str,
-    referrer: &ModuleSpecifier,
+    raw_referrer: &str,
+    kind: deno_core::ResolutionKind,
+    is_import_meta: bool,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    let graph = self.graph_container.graph();
-    let specifier = self
-      .shared
-      .resolver
-      .resolve_with_graph(
-        graph.as_ref(),
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .map_err(|err| match err.into_kind() {
-        ResolveWithGraphErrorKind::Resolution(err) => {
-          // todo(dsherret): why do we have a newline here? Document it.
-          JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
-        }
-        err => JsErrorBox::from_err(err),
-      })?;
-
-    if self.shared.is_repl {
-      if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
+    fn ensure_not_jsr_non_jsr_remote_import(
+      specifier: &ModuleSpecifier,
+      referrer: &ModuleSpecifier,
+    ) -> Result<(), JsErrorBox> {
+      if referrer.as_str().starts_with(jsr_url().as_str())
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+        && matches!(specifier.scheme(), "http" | "https")
       {
-        return self
-          .shared
-          .npm_req_resolver
-          .resolve_req_reference(
-            &reference,
-            referrer,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(|e| JsErrorBox::from_err(e).into())
-          .and_then(|url_or_path| {
-            url_or_path
-              .into_url()
-              .map_err(|e| JsErrorBox::from_err(e).into())
-          });
+        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
       }
+      Ok(())
     }
 
+    let referrer = self.resolve_referrer(raw_referrer)?;
+    let graph = self.graph_container.graph();
+    let result = self.shared.resolver.resolve_with_graph(
+      graph.as_ref(),
+      raw_specifier,
+      &referrer,
+      deno_graph::Position::zeroed(),
+      ResolveWithGraphOptions {
+        mode: ResolutionMode::Import,
+        kind: NodeResolutionKind::Execution,
+        // leave npm specifiers as-is for dynamic imports so that
+        // the loader can properly install them if necessary
+        maintain_npm_specifiers: matches!(
+          kind,
+          deno_core::ResolutionKind::DynamicImport
+        ) && !is_import_meta,
+      },
+    );
+    let specifier = match result {
+      Ok(specifier) => specifier,
+      Err(err) => {
+        if let Some(specifier) = err
+          .maybe_specifier()
+          .filter(|_| is_import_meta)
+          .and_then(|s| s.into_owned().into_url().ok())
+        {
+          specifier
+        } else {
+          match err.into_kind() {
+            ResolveWithGraphErrorKind::Resolution(err) => {
+              // todo(dsherret): why do we have a newline here? Document it.
+              return Err(
+                JsErrorBox::type_error(format!(
+                  "{}\n",
+                  err.to_string_with_range()
+                ))
+                .into(),
+              );
+            }
+            err => return Err(JsErrorBox::from_err(err).into()),
+          }
+        }
+      }
+    };
+
+    ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
     Ok(specifier)
   }
 
@@ -1094,25 +1134,22 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: deno_core::ResolutionKind,
+    kind: deno_core::ResolutionKind,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    fn ensure_not_jsr_non_jsr_remote_import(
-      specifier: &ModuleSpecifier,
-      referrer: &ModuleSpecifier,
-    ) -> Result<(), JsErrorBox> {
-      if referrer.as_str().starts_with(jsr_url().as_str())
-        && !specifier.as_str().starts_with(jsr_url().as_str())
-        && matches!(specifier.scheme(), "http" | "https")
-      {
-        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
-      }
-      Ok(())
-    }
+    self.0.inner_resolve(specifier, referrer, kind, false)
+  }
 
-    let referrer = self.0.resolve_referrer(referrer)?;
-    let specifier = self.0.inner_resolve(specifier, &referrer)?;
-    ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
-    Ok(specifier)
+  fn import_meta_resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    self.0.inner_resolve(
+      specifier,
+      referrer,
+      deno_core::ResolutionKind::DynamicImport,
+      true,
+    )
   }
 
   fn get_host_defined_options<'s>(

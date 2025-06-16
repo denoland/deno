@@ -1,0 +1,18 @@
+other remote [WILDCARD]other.ts false undefined undefined
+other [WILDCARD]other.ts false [WILDCARD]other.ts [WILDCARD]
+main [WILDCARD]main.ts true [WILDCARD]main.ts [WILDCARD]
+Resolving ./foo.js file:///[WILDCARD]/foo.js
+Resolving bare from import map https://example.com/
+Resolving https://example.com/rewrite from import map https://example.com/rewritten
+Resolving without a value from import map https://example.com/PASS-undefined
+Resolving 1 from import map https://example.com/PASS-1
+Resolving null from import map https://example.com/PASS-null
+Resolving object from import map https://example.com/PASS-object
+Resolving npm:cowsay npm:cowsay
+Resolving npm:cowsay@1 npm:cowsay@1
+Resolving npm:preact from import map https://example.com/preact
+Resolving existing npm:@denotest/add@1.0 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving compatible npm:@denotest/add@1 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving compatible npm:@denotest/add@1.0.0 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving non-existent export npm:@denotest/add@1.0.0/non-existent.js file:///[WILDLINE]/@denotest/add/1.0.0/non-existent.js
+Resolving node:non-existent node:non-existent
