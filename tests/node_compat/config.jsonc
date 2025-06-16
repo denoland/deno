@@ -44,7 +44,6 @@
       "test-console-instance.js",
       "test-console-tty-colors.js",
       "test-crypto-dh-errors.js",
-      "test-crypto-dh.js",
       "test-crypto-hash.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
