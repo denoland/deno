@@ -15,7 +15,6 @@ import {
 import { assert, assertEquals } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
-import console from "node:console";
 
 Deno.test("[node/module _preloadModules] has internal require hook", () => {
   // Check if it's there
