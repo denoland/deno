@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1204 tests out of 3993 have been ported from Node 23.9.0 (30.15% ported, 70.47% remaining).
+1207 tests out of 3993 have been ported from Node 23.9.0 (30.23% ported, 70.40% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -494,7 +494,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-cipheriv-decipheriv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-cipheriv-decipheriv.js)
 - [parallel/test-crypto-classes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-classes.js)
 - [parallel/test-crypto-des3-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-des3-wrap.js)
-- [parallel/test-crypto-dh-constructor.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-constructor.js)
 - [parallel/test-crypto-dh-curves.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-curves.js)
 - [parallel/test-crypto-dh-generate-keys.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-generate-keys.js)
 - [parallel/test-crypto-dh-group-setters.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-group-setters.js)
@@ -508,7 +507,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-ecdh-convert-key.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-ecdh-convert-key.js)
 - [parallel/test-crypto-encoding-validation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-encoding-validation-error.js)
 - [parallel/test-crypto-fips.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-fips.js)
-- [parallel/test-crypto-gcm-explicit-short-tag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-gcm-explicit-short-tag.js)
 - [parallel/test-crypto-gcm-implicit-short-tag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-gcm-implicit-short-tag.js)
 - [parallel/test-crypto-getcipherinfo.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-getcipherinfo.js)
 - [parallel/test-crypto-hash-stream-pipe.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-hash-stream-pipe.js)
@@ -541,7 +539,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-keygen-rsa-pss.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-rsa-pss.js)
 - [parallel/test-crypto-keygen-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-sync.js)
 - [parallel/test-crypto-keygen.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen.js)
-- [parallel/test-crypto-oneshot-hash.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-oneshot-hash.js)
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)

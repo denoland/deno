@@ -43,6 +43,7 @@ export async function checkCopyright() {
     ":!:tests/testdata/**",
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
+    ":!:libs/config/testdata/**",
 
     // rust
     "*.rs",

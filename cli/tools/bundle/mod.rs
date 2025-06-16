@@ -33,21 +33,24 @@ use crate::args::BundleFlags;
 use crate::args::BundleFormat;
 use crate::args::Flags;
 use crate::args::PackageHandling;
+use crate::args::SourceMapType;
 use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
-use crate::node::CliNodeResolver;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
 
 pub async fn bundle(
-  flags: Arc<Flags>,
+  mut flags: Arc<Flags>,
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.unstable_config.sloppy_imports = true;
+  }
   let factory = CliFactory::from_flags(flags);
 
   let installer_factory = factory.npm_installer_factory()?;
@@ -68,8 +71,8 @@ pub async fn bundle(
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
   let root_permissions = factory.root_permissions_container()?;
-  let npm_resolver = factory.npm_resolver().await?.clone();
-  let node_resolver = factory.node_resolver().await?.clone();
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
   let module_loader = factory
     .create_module_loader_factory()
@@ -88,8 +91,6 @@ pub async fn bundle(
       .await?
       .clone(),
     permissions: root_permissions.clone(),
-    npm_resolver: npm_resolver.clone(),
-    node_resolver: node_resolver.clone(),
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -175,10 +176,23 @@ pub async fn bundle(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
+  if let Some(sourcemap_type) = bundle_flags.sourcemap {
+    builder.sourcemap(match sourcemap_type {
+      SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
+      SourceMapType::Inline => esbuild_client::Sourcemap::Inline,
+      SourceMapType::External => esbuild_client::Sourcemap::External,
+    });
+  }
   if let Some(outdir) = bundle_flags.output_dir.clone() {
     builder.outdir(outdir);
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
+  }
+  match bundle_flags.platform {
+    crate::args::BundlePlatform::Browser => {
+      builder.platform(esbuild_client::Platform::Browser);
+    }
+    crate::args::BundlePlatform::Deno => {}
   }
   let flags = builder.build().unwrap();
 
@@ -340,8 +354,6 @@ struct DenoPluginHandler {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  npm_resolver: CliNpmResolver,
-  node_resolver: Arc<CliNodeResolver>,
   module_loader: Rc<dyn ModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
 }
@@ -433,6 +445,13 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnStartArgs,
   ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
+    Ok(None)
+  }
+
+  async fn on_end(
+    &self,
+    _args: esbuild_client::OnEndArgs,
+  ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
     Ok(None)
   }
 }
@@ -630,21 +649,12 @@ impl DenoPluginHandler {
       ),
       deno_graph::Module::Wasm(_) => todo!(),
       deno_graph::Module::Npm(module) => {
-        let package_folder = self
-          .npm_resolver
-          .as_managed()
-          .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let path = self
-          .node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            module.nv_reference.sub_path(),
-            None,
-            ResolutionMode::Import,
-            NodeResolutionKind::Execution,
-          )?;
-        let url = path.clone().into_url()?;
+        let url = self.resolver.resolve_npm_nv_ref(
+          &module.nv_reference,
+          None,
+          ResolutionMode::Import,
+          NodeResolutionKind::Execution,
+        )?;
         let (media_type, _charset) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
             &url, None,

@@ -24,8 +24,8 @@ false
 false
 self 1 true
 self 2 true
-false
-false
+true
+true
 bar
 bar
 true
