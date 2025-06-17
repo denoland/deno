@@ -2,7 +2,7 @@
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, thiserror::Error)]
-#[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+#[error("Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), and ctrl-close (SIGUP), but got {0}")]
 pub struct InvalidSignalStrError(pub String);
 
 #[cfg(any(
@@ -20,7 +20,7 @@ pub struct InvalidSignalStrError(pub String);
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, thiserror::Error)]
-#[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+#[error("Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), and ctrl-close (SIGUP), but got {0}")]
 pub struct InvalidSignalIntError(pub libc::c_int);
 
 #[cfg(any(
