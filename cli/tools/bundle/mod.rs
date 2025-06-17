@@ -8,6 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
@@ -59,6 +60,9 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+
+static DISABLE_HACK: LazyLock<bool> =
+  LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
 pub async fn bundle(
   mut flags: Arc<Flags>,
@@ -151,27 +155,18 @@ pub async fn bundle(
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
-  if let Some(stdout) = response.write_to_stdout {
-    let stdout = replace_require_shim(&String::from_utf8_lossy(&stdout));
-    crate::display::write_to_stdout_ignore_sigpipe(stdout.as_bytes())?;
-  } else if response.errors.is_empty() {
-    if bundle_flags.output_dir.is_none()
-      && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
-      && bundle_flags.output_path.is_some()
-    {
-      let out = bundle_flags.output_path.as_ref().unwrap();
-      let contents = std::fs::read_to_string(out).unwrap();
-      let contents = replace_require_shim(&contents);
-      std::fs::write(out, contents).unwrap();
-    }
+  if response.errors.is_empty() {
+    process_result(&response, *DISABLE_HACK)?;
 
-    log::info!(
-      "{}",
-      deno_terminal::colors::green(format!(
-        "bundled in {}",
-        crate::display::human_elapsed(start.elapsed().as_millis()),
-      ))
-    );
+    if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
+      log::info!(
+        "{}",
+        deno_terminal::colors::green(format!(
+          "bundled in {}",
+          crate::display::human_elapsed(start.elapsed().as_millis()),
+        ))
+      );
+    }
   }
 
   if !response.errors.is_empty() {
@@ -220,6 +215,7 @@ async fn bundle_watch(
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
+          process_result(&response, *DISABLE_HACK)?;
           log::info!(
             "{}",
             deno_terminal::colors::green(format!(
@@ -310,7 +306,7 @@ impl EsbuildBundler {
       entries: self.roots.clone(),
       key: 0,
       flags: self.flags.to_flags(),
-      write: true,
+      write: false,
       stdin_contents: None.into(),
       stdin_resolve_dir: None.into(),
       abs_working_dir: self.cwd.to_string_lossy().to_string(),
@@ -1046,4 +1042,40 @@ fn handle_esbuild_errors_and_warnings(
       format_message(warning, init_cwd)
     );
   }
+}
+
+fn process_result(
+  response: &BuildResponse,
+  // init_cwd: &Path,
+  should_replace_require_shim: bool,
+) -> Result<(), AnyError> {
+  if let Some(output_files) = response.output_files.as_ref() {
+    let mut exists_cache = std::collections::HashSet::new();
+    for file in output_files.iter() {
+      let string = String::from_utf8(file.contents.clone())?;
+      let string = if should_replace_require_shim {
+        replace_require_shim(&string)
+      } else {
+        string
+      };
+
+      if file.path == "<stdout>" {
+        crate::display::write_to_stdout_ignore_sigpipe(string.as_bytes())?;
+        continue;
+      }
+      let path = PathBuf::from(&file.path);
+
+      if let Some(parent) = path.parent() {
+        if !exists_cache.contains(parent) {
+          if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+          }
+          exists_cache.insert(parent.to_path_buf());
+        }
+      }
+
+      std::fs::write(&file.path, string)?;
+    }
+  }
+  Ok(())
 }

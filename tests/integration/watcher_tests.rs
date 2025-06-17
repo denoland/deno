@@ -2008,3 +2008,49 @@ setInterval(() => {
   wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
   check_alive_then_kill(child);
 }
+
+#[flaky_test(tokio)]
+async fn bundle_watch() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+    console.log("hello");
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("-o=output.js")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("bundled in", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("hello", &mut stdout_lines).await;
+
+  // Misspelled `function` on purpose
+  file_to_watch.write(
+    r#"
+function foo() {
+  fnction bar();
+}
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+
+  wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
