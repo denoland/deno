@@ -35,10 +35,13 @@ use thiserror::Error;
 use url::Url;
 
 use crate::deno_json;
-use crate::deno_json::get_base_ts_config_for_emit;
+use crate::deno_json::get_base_compiler_options_for_emit;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompilerOptionTypesDeserializeError;
+use crate::deno_json::CompilerOptions;
 use crate::deno_json::CompilerOptionsParseError;
+use crate::deno_json::CompilerOptionsType;
+use crate::deno_json::CompilerOptionsWithIgnoredOptions;
 use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
 use crate::deno_json::ConfigFileRc;
@@ -49,15 +52,12 @@ use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
-use crate::deno_json::ParsedTsConfigOptions;
+use crate::deno_json::ParsedCompilerOptions;
 use crate::deno_json::PublishConfig;
 pub use crate::deno_json::TaskDefinition;
 use crate::deno_json::TestConfig;
 use crate::deno_json::ToInvalidConfigError;
 use crate::deno_json::ToLockConfigError;
-use crate::deno_json::TsConfig;
-use crate::deno_json::TsConfigType;
-use crate::deno_json::TsConfigWithIgnoredOptions;
 use crate::deno_json::WorkspaceConfigParseError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPattern;
@@ -1417,20 +1417,21 @@ impl WorkspaceDirectory {
       .unwrap_or(false)
   }
 
-  pub fn to_resolved_ts_config<TSys: FsRead>(
+  pub fn to_resolved_compiler_options<TSys: FsRead>(
     &self,
     sys: &TSys,
-    config_type: TsConfigType,
-  ) -> Result<TsConfigWithIgnoredOptions, CompilerOptionsParseError> {
-    let mut base_ts_config = get_base_ts_config_for_emit(config_type);
-    let TsConfigWithIgnoredOptions {
-      ts_config,
+    config_type: CompilerOptionsType,
+  ) -> Result<CompilerOptionsWithIgnoredOptions, CompilerOptionsParseError> {
+    let mut base_compiler_options =
+      get_base_compiler_options_for_emit(config_type);
+    let CompilerOptionsWithIgnoredOptions {
+      compiler_options,
       ignored_options,
-    } = self.to_raw_user_provided_tsconfig(sys)?;
+    } = self.to_raw_user_provided_compiler_options(sys)?;
     // overwrite the base values with the user specified ones
-    base_ts_config.merge_mut(ts_config);
-    Ok(TsConfigWithIgnoredOptions {
-      ts_config: base_ts_config,
+    base_compiler_options.merge_mut(compiler_options);
+    Ok(CompilerOptionsWithIgnoredOptions {
+      compiler_options: base_compiler_options,
       ignored_options,
     })
   }
@@ -1448,26 +1449,27 @@ impl WorkspaceDirectory {
         .unwrap_or(true)
   }
 
-  /// Gets the combined tsconfig that the user provided, without any of
-  /// Deno's defaults. Use `to_resolved_ts_config()` to get the resolved
+  /// Gets the combined compiler options that the user provided, without any of
+  /// Deno's defaults. Use `to_resolved_compiler_options()` to get the resolved
   /// config instead.
-  pub fn to_raw_user_provided_tsconfig<TSys: FsRead>(
+  pub fn to_raw_user_provided_compiler_options<TSys: FsRead>(
     &self,
     sys: &TSys,
-  ) -> Result<TsConfigWithIgnoredOptions, CompilerOptionsParseError> {
-    let mut result = TsConfigWithIgnoredOptions {
-      ts_config: TsConfig::default(),
+  ) -> Result<CompilerOptionsWithIgnoredOptions, CompilerOptionsParseError> {
+    let mut result = CompilerOptionsWithIgnoredOptions {
+      compiler_options: CompilerOptions::default(),
       ignored_options: Vec::new(),
     };
-    let merge = |config: ParsedTsConfigOptions,
-                 result: &mut TsConfigWithIgnoredOptions| {
-      if let Some(options) = config.maybe_ignored {
-        result.ignored_options.push(options);
-      }
-      result.ts_config.merge_object_mut(config.options);
-    };
+    let merge =
+      |config: ParsedCompilerOptions,
+       result: &mut CompilerOptionsWithIgnoredOptions| {
+        if let Some(options) = config.maybe_ignored {
+          result.ignored_options.push(options);
+        }
+        result.compiler_options.merge_object_mut(config.options);
+      };
     let try_merge_from_ts_config =
-      |dir_path: &Path, result: &mut TsConfigWithIgnoredOptions| {
+      |dir_path: &Path, result: &mut CompilerOptionsWithIgnoredOptions| {
         if let Some(options) =
           compiler_options_from_ts_config_next_to_pkg_json(sys, dir_path)
         {
@@ -2055,7 +2057,7 @@ impl WorkspaceDirectory {
 fn compiler_options_from_ts_config_next_to_pkg_json<TSys: FsRead>(
   sys: &TSys,
   dir_path: &Path,
-) -> Option<ParsedTsConfigOptions> {
+) -> Option<ParsedCompilerOptions> {
   let path = dir_path.join("tsconfig.json");
   let warn = |err: &dyn std::fmt::Display| {
     let path = path.display();
@@ -2796,10 +2798,10 @@ pub mod test {
     assert_eq!(workspace_dir.check_js(), true);
     assert_eq!(
       workspace_dir
-        .to_resolved_ts_config(&sys, TsConfigType::Emit)
+        .to_resolved_compiler_options(&sys, CompilerOptionsType::Emit)
         .unwrap(),
-      TsConfigWithIgnoredOptions {
-        ts_config: TsConfig(json!({
+      CompilerOptionsWithIgnoredOptions {
+        compiler_options: CompilerOptions(json!({
           "allowImportingTsExtensions": true,
           "checkJs": true,
           "emitDecoratorMetadata": false,
@@ -2835,9 +2837,11 @@ pub mod test {
       }),
     );
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
-    let raw = workspace_dir.to_raw_user_provided_tsconfig(&sys).unwrap();
+    let raw = workspace_dir
+      .to_raw_user_provided_compiler_options(&sys)
+      .unwrap();
     assert_eq!(
-      raw.ts_config.0.get("lib").unwrap().clone(),
+      raw.compiler_options.0.get("lib").unwrap().clone(),
       json!(["dom", "esnext"])
     );
   }
@@ -2863,8 +2867,10 @@ pub mod test {
       }),
     );
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
-    let raw = workspace_dir.to_raw_user_provided_tsconfig(&sys).unwrap();
-    assert_eq!(raw.ts_config.0, json!({ "lib": ["dom"] }));
+    let raw = workspace_dir
+      .to_raw_user_provided_compiler_options(&sys)
+      .unwrap();
+    assert_eq!(raw.compiler_options.0, json!({ "lib": ["dom"] }));
   }
 
   #[test]
@@ -2896,13 +2902,15 @@ pub mod test {
     );
     let workspace_dir =
       workspace_at_start_dir(&sys, &root_dir().join("member"));
-    let raw = workspace_dir.to_raw_user_provided_tsconfig(&sys).unwrap();
+    let raw = workspace_dir
+      .to_raw_user_provided_compiler_options(&sys)
+      .unwrap();
     // we currently don't discover tsconfigs in member folders because we
     // need to decide how this is going to work. For example, what happens
     // if the root folder has a tsconfig.json, but also compilerOptions so it
     // no longer loads the compilerOptions and then the member just has a
     // tsconfig.json? Should it load the tsconfig in the member directory?
-    assert_eq!(raw.ts_config.0, json!({ "strict": false }));
+    assert_eq!(raw.compiler_options.0, json!({ "strict": false }));
   }
 
   #[test]
@@ -2940,8 +2948,10 @@ pub mod test {
     );
     let workspace_dir =
       workspace_at_start_dir(&sys, &root_dir().join("member"));
-    let raw = workspace_dir.to_raw_user_provided_tsconfig(&sys).unwrap();
-    assert_eq!(raw.ts_config.0, json!({ "strict": false }));
+    let raw = workspace_dir
+      .to_raw_user_provided_compiler_options(&sys)
+      .unwrap();
+    assert_eq!(raw.compiler_options.0, json!({ "strict": false }));
   }
 
   #[test]
@@ -2976,9 +2986,11 @@ pub mod test {
     );
     let workspace_dir =
       workspace_at_start_dir(&sys, &root_dir().join("member"));
-    let raw = workspace_dir.to_raw_user_provided_tsconfig(&sys).unwrap();
+    let raw = workspace_dir
+      .to_raw_user_provided_compiler_options(&sys)
+      .unwrap();
     assert_eq!(
-      raw.ts_config.0,
+      raw.compiler_options.0,
       json!({
       "lib": ["dom", "esnext"] })
     );
@@ -3004,15 +3016,15 @@ pub mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     assert_eq!(
       workspace_dir
-        .to_resolved_ts_config(
+        .to_resolved_compiler_options(
           &sys,
-          TsConfigType::Check {
+          CompilerOptionsType::Check {
             lib: deno_json::TsTypeLib::DenoWindow
           }
         )
         .unwrap(),
-      TsConfigWithIgnoredOptions {
-        ts_config: TsConfig(json!({
+      CompilerOptionsWithIgnoredOptions {
+        compiler_options: CompilerOptions(json!({
           "allowJs": true,
           "allowImportingTsExtensions": true,
           "allowSyntheticDefaultImports": true,

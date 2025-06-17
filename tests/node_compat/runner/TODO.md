@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
+1207 tests out of 3993 have been ported from Node 23.9.0 (30.23% ported, 70.40% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -1626,6 +1626,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-connect-reset.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-connect-reset.js)
 - [parallel/test-net-deprecated-setsimultaneousaccepts.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-deprecated-setsimultaneousaccepts.js)
 - [parallel/test-net-end-destroyed.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-end-destroyed.js)
+- [parallel/test-net-error-twice.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-error-twice.js)
 - [parallel/test-net-large-string.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-large-string.js)
 - [parallel/test-net-listen-exclusive-random-ports.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-listen-exclusive-random-ports.js)
 - [parallel/test-net-listen-fd0.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-listen-fd0.js)
