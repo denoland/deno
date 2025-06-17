@@ -1112,6 +1112,8 @@ impl<'a> ResolverFactory<'a> {
               )
               .unwrap(),
             ),
+            bundle_mode: false, // will change if we add support for moduleResolution bundler
+            prefer_browser_field: false,
           },
         )))
       })
@@ -1203,16 +1205,19 @@ impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
     // this resolver assumes it will only be used with a single referrer
     // with the provided referrer kind
     debug_assert_eq!(referrer_range.specifier, *self.valid_referrer);
-    self.cli_resolver.resolve(
-      specifier_text,
-      &referrer_range.specifier,
-      referrer_range.range.start,
-      referrer_range
-        .resolution_mode
-        .map(node_resolver::ResolutionMode::from_deno_graph)
-        .unwrap_or(self.module_resolution_mode),
-      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
-    )
+    self
+      .cli_resolver
+      .resolve(
+        specifier_text,
+        &referrer_range.specifier,
+        referrer_range.range.start,
+        referrer_range
+          .resolution_mode
+          .map(node_resolver::ResolutionMode::from_deno_graph)
+          .unwrap_or(self.module_resolution_mode),
+        node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
+      )
+      .map_err(|err| err.into_deno_graph_error())
   }
 }
 

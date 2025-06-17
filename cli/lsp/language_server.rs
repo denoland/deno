@@ -2527,7 +2527,6 @@ impl Inner {
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        vec![module.specifier.as_ref().clone()],
         token,
       )
       .await
@@ -3765,7 +3764,7 @@ impl Inner {
           .tree
           .data_by_scope()
           .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
           .collect()
       }),
       matches!(

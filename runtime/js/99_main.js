@@ -94,6 +94,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -730,7 +731,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -1025,6 +1026,7 @@ function bootstrapWorkerRuntime(
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     if (workerType === "node") {
       delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+      delete workerRuntimeGlobalProperties["self"];
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
@@ -1046,8 +1048,8 @@ function bootstrapWorkerRuntime(
 
     core.wrapConsole(globalThis.console, core.v8Console);
 
-    event.defineEventHandler(self, "message");
-    event.defineEventHandler(self, "error", undefined, true);
+    event.defineEventHandler(globalThis, "message");
+    event.defineEventHandler(globalThis, "error", undefined, true);
 
     // `Deno.exit()` is an alias to `self.close()`. Setting and exit
     // code using an op in worker context is a no-op.

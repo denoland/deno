@@ -1,12 +1,13 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 [package]
 name = "deno_subprocess_windows"
-version = "0.1.0"
+version = "0.2.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
+description = "Subprocess API implementation for Windows"
 
 [dependencies]
 fastrand = "2.3.0"
