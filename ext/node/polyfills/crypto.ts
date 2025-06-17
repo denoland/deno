@@ -175,8 +175,16 @@ import { deprecate } from "node:util";
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
 
-const Hash = deprecate(Hash_, 'crypto.Hash constructor is deprecated.', "DEP0179");
-const Hmac = deprecate(Hmac_, 'crypto.Hmac constructor is deprecated.', "DEP0181");
+const Hash = deprecate(
+  Hash_,
+  "crypto.Hash constructor is deprecated.",
+  "DEP0179",
+);
+const Hmac = deprecate(
+  Hmac_,
+  "crypto.Hmac constructor is deprecated.",
+  "DEP0181",
+);
 
 function getRandomValues(typedArray) {
   return webcrypto.getRandomValues(typedArray);
