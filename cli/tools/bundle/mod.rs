@@ -4,6 +4,7 @@ mod esbuild;
 mod externals;
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -21,8 +22,11 @@ use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use esbuild_client::protocol;
+use esbuild_client::protocol::BuildResponse;
+use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
+use esbuild_client::ProtocolClient;
 use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
@@ -46,7 +50,10 @@ use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::LoadPreparedModuleError;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
+use crate::node::CliNodeResolver;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
+use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 
 pub async fn bundle(
@@ -59,21 +66,8 @@ pub async fn bundle(
   }
   let factory = CliFactory::from_flags(flags);
 
-  let installer_factory = factory.npm_installer_factory()?;
-  let npmrc = factory.npmrc()?;
-  let deno_dir = factory.deno_dir()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let esbuild_path = esbuild::ensure_esbuild(
-    deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
-  )
-  .await?;
+  let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
+
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
   let root_permissions = factory.root_permissions_container()?;
@@ -86,15 +80,14 @@ pub async fn bundle(
     .create_cli_module_loader(root_permissions.clone());
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
+  let module_graph_container =
+    factory.main_module_graph_container().await?.clone();
 
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
     resolver: resolver.clone(),
     module_load_preparer,
-    module_graph_container: factory
-      .main_module_graph_container()
-      .await?
-      .clone(),
+    module_graph_container,
     permissions: root_permissions.clone(),
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
@@ -105,50 +98,16 @@ pub async fn bundle(
   });
   let start = std::time::Instant::now();
 
-  let entrypoint = bundle_flags
-    .entrypoints
-    .iter()
-    .map(|e| resolve_url_or_path(e, &init_cwd).unwrap())
-    .collect::<Vec<_>>();
-  let resolved = {
-    let mut resolved = vec![];
-    let init_cwd_url = Url::from_directory_path(&init_cwd).unwrap();
-    for e in &entrypoint {
-      let r = resolver
-        .resolve(
-          e.as_str(),
-          &init_cwd_url,
-          Position::new(0, 0),
-          ResolutionMode::Import,
-          NodeResolutionKind::Execution,
-        )
-        .unwrap();
-      resolved.push(r);
-    }
-    resolved
-  };
-  let _ = plugin_handler.prepare_module_load(&resolved).await;
+  let resolved_entrypoints =
+    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints);
+  let _ = plugin_handler
+    .prepare_module_load(&resolved_entrypoints)
+    .await;
 
-  let roots = resolved
-    .into_iter()
-    .map(|url| {
-      if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
-        let referrer =
-          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
-            .unwrap();
-        let package_folder = npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
-          .unwrap();
-        let main_module = node_resolver
-          .resolve_binary_export(&package_folder, v.sub_path())
-          .unwrap();
-        Url::from_file_path(&main_module).unwrap()
-      } else {
-        url
-      }
-    })
-    .collect::<Vec<_>>();
+  let roots =
+    resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
   let _ = plugin_handler.prepare_module_load(&roots).await;
+
   let esbuild = EsbuildService::new(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
@@ -158,97 +117,14 @@ pub async fn bundle(
   .unwrap();
   let client = esbuild.client().clone();
 
-  {
-    tokio::spawn(async move {
-      let res = esbuild.wait_for_exit().await;
-      log::warn!("esbuild exited: {:?}", res);
-    });
-  }
+  tokio::spawn(async move {
+    let res = esbuild.wait_for_exit().await;
+    log::warn!("esbuild exited: {:?}", res);
+  });
 
-  let mut builder = EsbuildFlagsBuilder::default();
-  builder
-    .bundle(bundle_flags.one_file)
-    .minify(bundle_flags.minify)
-    .splitting(bundle_flags.code_splitting)
-    .external(bundle_flags.external.clone())
-    .tree_shaking(true)
-    .format(match bundle_flags.format {
-      BundleFormat::Esm => esbuild_client::Format::Esm,
-      BundleFormat::Cjs => esbuild_client::Format::Cjs,
-      BundleFormat::Iife => esbuild_client::Format::Iife,
-    })
-    .packages(match bundle_flags.packages {
-      PackageHandling::External => esbuild_client::PackagesHandling::External,
-      PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
-    });
-  if let Some(sourcemap_type) = bundle_flags.sourcemap {
-    builder.sourcemap(match sourcemap_type {
-      SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
-      SourceMapType::Inline => esbuild_client::Sourcemap::Inline,
-      SourceMapType::External => esbuild_client::Sourcemap::External,
-    });
-  }
-  if let Some(outdir) = bundle_flags.output_dir.clone() {
-    builder.outdir(outdir);
-  } else if let Some(output_path) = bundle_flags.output_path.clone() {
-    builder.outfile(output_path);
-  }
-  match bundle_flags.platform {
-    crate::args::BundlePlatform::Browser => {
-      builder.platform(esbuild_client::Platform::Browser);
-    }
-    crate::args::BundlePlatform::Deno => {}
-  }
-  let flags = builder.build().unwrap();
-
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
-
-  let response = client
-    .send_build_request(protocol::BuildRequest {
-      entries,
-      key: 0,
-      flags: flags.to_flags(),
-      write: true,
-      stdin_contents: None.into(),
-      stdin_resolve_dir: None.into(),
-      abs_working_dir: init_cwd.to_string_lossy().to_string(),
-      context: false,
-      mangle_cache: None,
-      node_paths: vec![],
-      plugins: Some(vec![protocol::BuildPlugin {
-        name: "deno".into(),
-        on_start: false,
-        on_end: false,
-        on_resolve: (vec![protocol::OnResolveSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }]),
-        on_load: vec![protocol::OnLoadSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }],
-      }]),
-    })
-    .await
-    .unwrap();
-
-  for error in &response.errors {
-    log::error!(
-      "{}: {}",
-      deno_terminal::colors::red_bold("error"),
-      format_message(error, &init_cwd)
-    );
-  }
-
-  for warning in &response.warnings {
-    log::warn!(
-      "{}: {}",
-      deno_terminal::colors::yellow("bundler warning"),
-      format_message(warning, &init_cwd)
-    );
-  }
+  let response =
+    execute_esbuild_req(client, &bundle_flags, &init_cwd, roots).await;
+  handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if let Some(stdout) = response.write_to_stdout {
     let stdout = replace_require_shim(&String::from_utf8_lossy(&stdout));
@@ -779,6 +655,7 @@ fn file_path_or_url(
     Ok(url.to_string())
   }
 }
+
 fn media_type_to_loader(
   media_type: deno_media_type::MediaType,
 ) -> esbuild_client::BuiltinLoader {
@@ -795,5 +672,191 @@ fn media_type_to_loader(
     Wasm => esbuild_client::BuiltinLoader::Binary,
     Unknown => esbuild_client::BuiltinLoader::Binary,
     // _ => esbuild_client::BuiltinLoader::External,
+  }
+}
+
+fn resolve_entrypoints(
+  resolver: &CliResolver,
+  init_cwd: &Path,
+  entrypoints: &[String],
+) -> Vec<Url> {
+  let entrypoints = entrypoints
+    .iter()
+    .map(|e| resolve_url_or_path(e, init_cwd).unwrap())
+    .collect::<Vec<_>>();
+
+  let init_cwd_url = Url::from_directory_path(init_cwd).unwrap();
+
+  let mut resolved = Vec::with_capacity(entrypoints.len());
+
+  for e in &entrypoints {
+    let r = resolver
+      .resolve(
+        e.as_str(),
+        &init_cwd_url,
+        Position::new(0, 0),
+        ResolutionMode::Import,
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+    resolved.push(r);
+  }
+  resolved
+}
+
+fn resolve_roots(
+  entrypoints: Vec<Url>,
+  sys: CliSys,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
+) -> Vec<Url> {
+  let mut roots = Vec::with_capacity(entrypoints.len());
+
+  for url in entrypoints {
+    let root = if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
+      let referrer =
+        ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+          .unwrap();
+      let package_folder = npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
+        .unwrap();
+      let main_module = node_resolver
+        .resolve_binary_export(&package_folder, v.sub_path())
+        .unwrap();
+      Url::from_file_path(&main_module).unwrap()
+    } else {
+      url
+    };
+    roots.push(root)
+  }
+
+  roots
+}
+
+/// Ensure that an Esbuild binary for the current os/arch is downloaded
+/// and ready to use and then return path to it.
+async fn ensure_esbuild_downloaded(
+  factory: &CliFactory,
+) -> Result<PathBuf, AnyError> {
+  let installer_factory = factory.npm_installer_factory()?;
+  let deno_dir = factory.deno_dir()?;
+  let npmrc = factory.npmrc()?;
+  let npm_registry_info = installer_factory.registry_info_provider()?;
+  let resolver_factory = factory.resolver_factory()?;
+  let workspace_factory = resolver_factory.workspace_factory();
+
+  let esbuild_path = esbuild::ensure_esbuild(
+    deno_dir,
+    npmrc,
+    npm_registry_info,
+    workspace_factory.workspace_npm_link_packages()?,
+    installer_factory.tarball_cache()?,
+    factory.npm_cache()?,
+  )
+  .await?;
+  Ok(esbuild_path)
+}
+
+fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
+  let mut builder = EsbuildFlagsBuilder::default();
+
+  builder
+    .bundle(bundle_flags.one_file)
+    .minify(bundle_flags.minify)
+    .splitting(bundle_flags.code_splitting)
+    .external(bundle_flags.external.clone())
+    .tree_shaking(true)
+    .format(match bundle_flags.format {
+      BundleFormat::Esm => esbuild_client::Format::Esm,
+      BundleFormat::Cjs => esbuild_client::Format::Cjs,
+      BundleFormat::Iife => esbuild_client::Format::Iife,
+    })
+    .packages(match bundle_flags.packages {
+      PackageHandling::External => esbuild_client::PackagesHandling::External,
+      PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
+    });
+
+  if let Some(sourcemap_type) = bundle_flags.sourcemap {
+    builder.sourcemap(match sourcemap_type {
+      SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
+      SourceMapType::Inline => esbuild_client::Sourcemap::Inline,
+      SourceMapType::External => esbuild_client::Sourcemap::External,
+    });
+  }
+
+  if let Some(outdir) = bundle_flags.output_dir.clone() {
+    builder.outdir(outdir);
+  } else if let Some(output_path) = bundle_flags.output_path.clone() {
+    builder.outfile(output_path);
+  }
+
+  match bundle_flags.platform {
+    crate::args::BundlePlatform::Browser => {
+      builder.platform(esbuild_client::Platform::Browser);
+    }
+    crate::args::BundlePlatform::Deno => {}
+  }
+
+  builder.build().unwrap()
+}
+
+async fn execute_esbuild_req(
+  client: ProtocolClient,
+  bundle_flags: &BundleFlags,
+  init_cwd: &Path,
+  roots: Vec<Url>,
+) -> BuildResponse {
+  let flags = configure_esbuild_flags(bundle_flags);
+  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+
+  let msg = protocol::BuildRequest {
+    entries,
+    key: 0,
+    flags: flags.to_flags(),
+    write: true,
+    stdin_contents: None.into(),
+    stdin_resolve_dir: None.into(),
+    abs_working_dir: init_cwd.to_string_lossy().to_string(),
+    context: false,
+    mangle_cache: None,
+    node_paths: vec![],
+    plugins: Some(vec![protocol::BuildPlugin {
+      name: "deno".into(),
+      on_start: false,
+      on_end: false,
+      on_resolve: (vec![protocol::OnResolveSetupOptions {
+        id: 0,
+        filter: ".*".into(),
+        namespace: "".into(),
+      }]),
+      on_load: vec![protocol::OnLoadSetupOptions {
+        id: 0,
+        filter: ".*".into(),
+        namespace: "".into(),
+      }],
+    }]),
+  };
+
+  client.send_build_request(msg).await.unwrap()
+}
+
+fn handle_esbuild_errors_and_warnings(
+  response: &BuildResponse,
+  init_cwd: &Path,
+) {
+  for error in &response.errors {
+    log::error!(
+      "{}: {}",
+      deno_terminal::colors::red_bold("error"),
+      format_message(error, init_cwd)
+    );
+  }
+
+  for warning in &response.warnings {
+    log::warn!(
+      "{}: {}",
+      deno_terminal::colors::yellow("bundler warning"),
+      format_message(warning, init_cwd)
+    );
   }
 }
