@@ -404,6 +404,10 @@ fn format_yaml(
   })
 }
 
+/// Return type for expression formatting that includes processed text and expression mappings
+type ExpressionFormatResult<'a> =
+  Result<(Cow<'a, str>, Vec<(String, String)>), AnyError>;
+
 /// Formats text that may contain JS expressions (e.g., `{a + b}`)
 /// which are temporarily replaced with placeholders,
 /// the text is formatted, then the expressions are restored.
@@ -414,7 +418,7 @@ fn format_expressions_in_text<'a>(
   open_delim: &str,
   close_delim: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Result<(Cow<'a, str>, Vec<(String, String)>), AnyError> {
+) -> ExpressionFormatResult<'a> {
   use regex::Regex;
 
   let expr_regex = Regex::new(expr_pattern).unwrap();
@@ -446,7 +450,7 @@ fn format_expressions_in_text<'a>(
             external_formatter: None,
           },
         ) {
-        formatted.trim_end_matches(&['\n', '\r', ';']).to_string()
+        formatted.trim_end_matches(['\n', '\r', ';']).to_string()
       } else {
         expr_content.to_string()
       };
