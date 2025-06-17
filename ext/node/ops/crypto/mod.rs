@@ -639,7 +639,7 @@ fn scrypt(
     parallelization,
     keylen as usize,
   )
-  .map_err(|_| JsErrorBox::generic("scrypt params construction failed"))?;
+  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
 
   // Call into scrypt
   let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
