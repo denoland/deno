@@ -29,7 +29,6 @@ use esbuild_client::protocol::BuildResponse;
 use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
-use esbuild_client::ProtocolClient;
 use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
@@ -129,8 +128,26 @@ pub async fn bundle(
     log::warn!("esbuild exited: {:?}", res);
   });
 
-  let response =
-    execute_esbuild_req(client, &bundle_flags, &init_cwd, roots).await;
+  let esbuild_flags = configure_esbuild_flags(&bundle_flags);
+  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let bundler = EsbuildBundler::new(
+    client,
+    plugin_handler.clone(),
+    match bundle_flags.watch {
+      true => BundlingMode::Watch,
+      false => BundlingMode::OneShot,
+    },
+    on_end_rx,
+    init_cwd.clone(),
+    esbuild_flags,
+    entries,
+  );
+  let response = bundler.build().await?;
+
+  if bundle_flags.watch {
+    return watch(flags, bundler).await;
+  }
+
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if let Some(stdout) = response.write_to_stdout {
@@ -182,6 +199,7 @@ async fn watch(
       let bundler = Arc::clone(&bundler);
       Ok(async move {
         let mut bundler = bundler.lock();
+        let start = std::time::Instant::now();
         if let Some(changed_paths) = changed_paths {
           bundler
             .plugin_handler
@@ -189,6 +207,16 @@ async fn watch(
             .await?;
         }
         let response = bundler.rebuild().await?;
+        handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
+        if response.errors.is_empty() {
+          log::info!(
+            "{}",
+            deno_terminal::colors::green(format!(
+              "bundled in {}",
+              crate::display::human_elapsed(start.elapsed().as_millis()),
+            ))
+          );
+        }
         let metafile = serde_json::from_str::<esbuild_client::Metafile>(
           &response.metafile.unwrap(),
         )
@@ -236,8 +264,8 @@ impl EsbuildBundler {
     cwd: PathBuf,
     flags: EsbuildFlags,
     roots: Vec<(String, String)>,
-  ) -> Result<EsbuildBundler, AnyError> {
-    Ok(EsbuildBundler {
+  ) -> EsbuildBundler {
+    EsbuildBundler {
       client,
       plugin_handler,
       on_end_rx,
@@ -245,7 +273,7 @@ impl EsbuildBundler {
       cwd,
       flags,
       roots,
-    })
+    }
   }
 
   fn make_build_request(&self) -> protocol::BuildRequest {
@@ -967,6 +995,9 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
   }
+  if bundle_flags.watch {
+    builder.metafile(true);
+  }
 
   match bundle_flags.platform {
     crate::args::BundlePlatform::Browser => {
@@ -976,46 +1007,6 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   }
 
   builder.build().unwrap()
-}
-
-async fn execute_esbuild_req(
-  client: ProtocolClient,
-  bundle_flags: &BundleFlags,
-  init_cwd: &Path,
-  roots: Vec<Url>,
-) -> BuildResponse {
-  let flags = configure_esbuild_flags(bundle_flags);
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
-
-  let msg = protocol::BuildRequest {
-    entries,
-    key: 0,
-    flags: flags.to_flags(),
-    write: true,
-    stdin_contents: None.into(),
-    stdin_resolve_dir: None.into(),
-    abs_working_dir: init_cwd.to_string_lossy().to_string(),
-    context: false,
-    mangle_cache: None,
-    node_paths: vec![],
-    plugins: Some(vec![protocol::BuildPlugin {
-      name: "deno".into(),
-      on_start: false,
-      on_end: false,
-      on_resolve: (vec![protocol::OnResolveSetupOptions {
-        id: 0,
-        filter: ".*".into(),
-        namespace: "".into(),
-      }]),
-      on_load: vec![protocol::OnLoadSetupOptions {
-        id: 0,
-        filter: ".*".into(),
-        namespace: "".into(),
-      }],
-    }]),
-  };
-
-  client.send_build_request(msg).await.unwrap()
 }
 
 fn handle_esbuild_errors_and_warnings(
