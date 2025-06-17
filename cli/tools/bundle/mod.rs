@@ -109,7 +109,7 @@ pub async fn bundle(
   let start = std::time::Instant::now();
 
   let resolved_entrypoints =
-    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints);
+    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
     .await;
@@ -895,33 +895,45 @@ fn media_type_to_loader(
   }
 }
 
+fn resolve_url_or_path_absolute(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<Url, AnyError> {
+  if deno_path_util::specifier_has_uri_scheme(specifier) {
+    Ok(Url::parse(specifier)?)
+  } else {
+    let path = current_dir.join(specifier);
+    let path = deno_path_util::normalize_path(&path);
+    let path = path.canonicalize()?;
+    Ok(deno_path_util::url_from_file_path(&path)?)
+  }
+}
+
 fn resolve_entrypoints(
   resolver: &CliResolver,
   init_cwd: &Path,
   entrypoints: &[String],
-) -> Vec<Url> {
+) -> Result<Vec<Url>, AnyError> {
   let entrypoints = entrypoints
     .iter()
-    .map(|e| resolve_url_or_path(e, init_cwd).unwrap())
-    .collect::<Vec<_>>();
+    .map(|e| resolve_url_or_path_absolute(e, init_cwd))
+    .collect::<Result<Vec<_>, _>>()?;
 
   let init_cwd_url = Url::from_directory_path(init_cwd).unwrap();
 
   let mut resolved = Vec::with_capacity(entrypoints.len());
 
   for e in &entrypoints {
-    let r = resolver
-      .resolve(
-        e.as_str(),
-        &init_cwd_url,
-        Position::new(0, 0),
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .unwrap();
+    let r = resolver.resolve(
+      e.as_str(),
+      &init_cwd_url,
+      Position::new(0, 0),
+      ResolutionMode::Import,
+      NodeResolutionKind::Execution,
+    )?;
     resolved.push(r);
   }
-  resolved
+  Ok(resolved)
 }
 
 fn resolve_roots(
