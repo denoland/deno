@@ -3,15 +3,16 @@
 mod esbuild;
 mod externals;
 
+use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -173,9 +174,6 @@ pub async fn bundle(
     );
   }
 
-  if let Some(metafile) = response.metafile {
-    println!("metafile:\n{}", metafile);
-  }
   if !response.errors.is_empty() {
     deno_core::anyhow::bail!("bundling failed");
   }
@@ -187,7 +185,16 @@ async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
 ) -> Result<(), AnyError> {
-  let bundler = Arc::new(Mutex::new(bundler));
+  let initial_roots = bundler
+    .roots
+    .iter()
+    .filter_map(|(_, root)| {
+      let url = Url::parse(root).ok()?;
+      deno_path_util::url_to_file_path(&url).ok()
+    })
+    .collect::<Vec<_>>();
+  let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
       "Watcher", "Bundle", true,
@@ -199,9 +206,10 @@ async fn bundle_watch(
     WatcherRestartMode::Automatic,
     move |_flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
-      let bundler = Arc::clone(&bundler);
+      let bundler = Rc::clone(&bundler);
+      let current_roots = current_roots.clone();
       Ok(async move {
-        let mut bundler = bundler.lock();
+        let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
         if let Some(changed_paths) = changed_paths {
           bundler
@@ -219,16 +227,13 @@ async fn bundle_watch(
               crate::display::human_elapsed(start.elapsed().as_millis()),
             ))
           );
-          let metafile = serde_json::from_str::<esbuild_client::Metafile>(
-            &response.metafile.unwrap(),
-          )
-          .unwrap();
-          let inputs = metafile.inputs.keys().cloned().collect::<Vec<_>>();
-          let new_watched = inputs
-            .into_iter()
-            .map(|input| PathBuf::from(input))
-            .collect::<Vec<_>>();
+
+          let new_watched = get_input_paths_for_watch(&response);
+          *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
+        } else {
+          let _ =
+            watcher_communicator.watch_paths(current_roots.borrow().clone());
         }
 
         Ok(())
@@ -239,6 +244,23 @@ async fn bundle_watch(
   .await?;
 
   Ok(())
+}
+
+fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
+  let metafile = serde_json::from_str::<esbuild_client::Metafile>(
+    response
+      .metafile
+      .as_deref()
+      .expect("metafile is required for watch mode"),
+  )
+  .unwrap();
+  let inputs = metafile
+    .inputs
+    .keys()
+    .cloned()
+    .map(PathBuf::from)
+    .collect::<Vec<_>>();
+  inputs
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -278,6 +300,11 @@ impl EsbuildBundler {
     }
   }
 
+  // When doing a watch build, we're actually enabling the
+  // "context" mode of esbuild. That leaves esbuild running and
+  // waits for a rebuild to be triggered. The initial build request
+  // doesn't actually do anything, it's just registering the args/flags
+  // we're going to use for all of the rebuilds.
   fn make_build_request(&self) -> protocol::BuildRequest {
     protocol::BuildRequest {
       entries: self.roots.clone(),
@@ -309,24 +336,12 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
-    match self.mode {
-      BundlingMode::OneShot => {
-        let response = self
-          .client
-          .send_build_request(self.make_build_request())
-          .await
-          .unwrap();
-        Ok(response)
-      }
-      BundlingMode::Watch => {
-        let response = self
-          .client
-          .send_build_request(self.make_build_request())
-          .await
-          .unwrap();
-        Ok(response)
-      }
-    }
+    let response = self
+      .client
+      .send_build_request(self.make_build_request())
+      .await
+      .unwrap();
+    Ok(response)
   }
 
   async fn rebuild(&mut self) -> Result<BuildResponse, AnyError> {
@@ -336,19 +351,8 @@ impl EsbuildBundler {
       }
       BundlingMode::Watch => {
         let _response = self.client.send_rebuild_request(0).await.unwrap();
-        if _response.errors.is_empty() {
-          let response = self.on_end_rx.recv().await.unwrap();
-          Ok(response.into())
-        } else {
-          Ok(BuildResponse {
-            errors: _response.errors,
-            warnings: _response.warnings,
-            output_files: None,
-            metafile: None,
-            mangle_cache: None,
-            write_to_stdout: None,
-          })
-        }
+        let response = self.on_end_rx.recv().await.unwrap();
+        Ok(response.into())
       }
     }
   }
@@ -583,6 +587,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
+    log::debug!("{}: {_args:?}", deno_terminal::colors::magenta("on_end"));
     self.on_end_tx.send(_args).await?;
     Ok(None)
   }
