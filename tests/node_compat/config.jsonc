@@ -44,7 +44,6 @@
       "test-console-instance.js",
       "test-console-tty-colors.js",
       "test-crypto-hash.js",
-      "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
       "test-crypto-keygen-missing-oid.js",
       "test-crypto-no-algorithm.js",
