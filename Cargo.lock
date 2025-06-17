@@ -3636,6 +3636,7 @@ dependencies = [
  "log",
  "parking_lot",
  "paste",
+ "serde",
  "tokio",
 ]
 

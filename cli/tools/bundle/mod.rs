@@ -10,7 +10,10 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt as _;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
@@ -51,6 +54,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
+use crate::util::file_watcher::WatcherRestartMode;
 
 pub async fn bundle(
   mut flags: Arc<Flags>,
@@ -60,7 +64,7 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
 
   let installer_factory = factory.npm_installer_factory()?;
   let npmrc = factory.npmrc()?;
@@ -179,7 +183,7 @@ pub async fn bundle(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
-  if std::env::var("DENO_META").is_ok() {
+  if bundle_flags.watch {
     builder.metafile(true);
   }
   if let Some(sourcemap_type) = bundle_flags.sourcemap {
@@ -200,16 +204,19 @@ pub async fn bundle(
     }
     crate::args::BundlePlatform::Deno => {}
   }
-  let flags = builder.build().unwrap();
+  let esbuild_flags = builder.build().unwrap();
 
   let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
-  let mut bundler = EsbuildBundler::new(
+  let bundler = EsbuildBundler::new(
     esbuild.client().clone(),
     plugin_handler.clone(),
-    BundlingMode::OneShot,
+    match bundle_flags.watch {
+      true => BundlingMode::Watch,
+      false => BundlingMode::OneShot,
+    },
     on_end_rx,
     init_cwd.clone(),
-    flags,
+    esbuild_flags,
     entries,
   )?;
 
@@ -221,6 +228,10 @@ pub async fn bundle(
   }
 
   let response = bundler.build().await.unwrap();
+
+  if bundle_flags.watch {
+    watch(flags, bundler).await?;
+  }
 
   for error in &response.errors {
     log::error!(
@@ -267,6 +278,51 @@ pub async fn bundle(
   if !response.errors.is_empty() {
     deno_core::anyhow::bail!("bundling failed");
   }
+
+  Ok(())
+}
+
+async fn watch(
+  flags: Arc<Flags>,
+  bundler: EsbuildBundler,
+) -> Result<(), AnyError> {
+  let bundler = Arc::new(Mutex::new(bundler));
+  crate::util::file_watcher::watch_recv(
+    flags,
+    crate::util::file_watcher::PrintConfig::new_with_banner(
+      "Watcher", "Process", true,
+    ),
+    WatcherRestartMode::Automatic,
+    move |_flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
+      let bundler = Arc::clone(&bundler);
+      Ok(async move {
+        let mut bundler = bundler.lock();
+        if let Some(changed_paths) = changed_paths {
+          bundler
+            .plugin_handler
+            .reload_specifiers(&changed_paths)
+            .await?;
+        }
+        let response = bundler.rebuild().await?;
+        let metafile = serde_json::from_str::<esbuild_client::Metafile>(
+          &response.metafile.unwrap(),
+        )
+        .unwrap();
+        let inputs = metafile.inputs.keys().cloned().collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(
+          inputs
+            .into_iter()
+            .map(|input| PathBuf::from(input))
+            .collect::<Vec<_>>(),
+        );
+
+        Ok(())
+      })
+    },
+  )
+  .boxed_local()
+  .await?;
 
   Ok(())
 }
@@ -661,6 +717,25 @@ impl BundleLoadError {
 }
 
 impl DenoPluginHandler {
+  async fn reload_specifiers(
+    &self,
+    specifiers: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
+    for specifier in specifiers {
+      let specifier = deno_path_util::url_from_file_path(specifier)?;
+      specifiers_vec.push(specifier);
+    }
+    self
+      .module_load_preparer
+      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
+      .await?;
+    graph_permit.commit();
+    Ok(())
+  }
   fn bundle_resolve(
     &self,
     path: &str,
