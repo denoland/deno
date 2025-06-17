@@ -386,6 +386,7 @@ Deno.test("[node/fs] fchmod works", {
       fail(error);
     })
     .finally(() => {
+      closeSync(fd);
       Deno.removeSync(tempFile);
     });
 });
