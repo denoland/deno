@@ -4707,7 +4707,12 @@ fn add_parse(
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
-  config_args_parse(flags, matches);
+  // Manually parse --config and -c, but do not handle --no-config here.
+  if let Some(config) = matches.remove_one::<String>("config") {
+    flags.config_flag = ConfigFlag::Path(config);
+  } else {
+    flags.config_flag = ConfigFlag::Discover;
+  }
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
