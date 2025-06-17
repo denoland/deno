@@ -145,7 +145,7 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return watch(flags, bundler).await;
+    return bundle_watch(flags, bundler).await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
@@ -183,16 +183,19 @@ pub async fn bundle(
   Ok(())
 }
 
-async fn watch(
+async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
 ) -> Result<(), AnyError> {
   let bundler = Arc::new(Mutex::new(bundler));
+  let mut print_config =
+    crate::util::file_watcher::PrintConfig::new_with_banner(
+      "Watcher", "Bundle", true,
+    );
+  print_config.print_finished = false;
   crate::util::file_watcher::watch_recv(
     flags,
-    crate::util::file_watcher::PrintConfig::new_with_banner(
-      "Watcher", "Process", true,
-    ),
+    print_config,
     WatcherRestartMode::Automatic,
     move |_flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
@@ -216,18 +219,17 @@ async fn watch(
               crate::display::human_elapsed(start.elapsed().as_millis()),
             ))
           );
-        }
-        let metafile = serde_json::from_str::<esbuild_client::Metafile>(
-          &response.metafile.unwrap(),
-        )
-        .unwrap();
-        let inputs = metafile.inputs.keys().cloned().collect::<Vec<_>>();
-        let _ = watcher_communicator.watch_paths(
-          inputs
+          let metafile = serde_json::from_str::<esbuild_client::Metafile>(
+            &response.metafile.unwrap(),
+          )
+          .unwrap();
+          let inputs = metafile.inputs.keys().cloned().collect::<Vec<_>>();
+          let new_watched = inputs
             .into_iter()
             .map(|input| PathBuf::from(input))
-            .collect::<Vec<_>>(),
-        );
+            .collect::<Vec<_>>();
+          let _ = watcher_communicator.watch_paths(new_watched);
+        }
 
         Ok(())
       })
@@ -334,8 +336,19 @@ impl EsbuildBundler {
       }
       BundlingMode::Watch => {
         let _response = self.client.send_rebuild_request(0).await.unwrap();
-        let response = self.on_end_rx.recv().await.unwrap();
-        Ok(response.into())
+        if _response.errors.is_empty() {
+          let response = self.on_end_rx.recv().await.unwrap();
+          Ok(response.into())
+        } else {
+          Ok(BuildResponse {
+            errors: _response.errors,
+            warnings: _response.warnings,
+            output_files: None,
+            metafile: None,
+            mangle_cache: None,
+            write_to_stdout: None,
+          })
+        }
       }
     }
   }
