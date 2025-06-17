@@ -736,6 +736,7 @@ fn wait_for_start(
   })
 }
 
+#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   host: String,
   maybe_ca_stores: &Option<Vec<String>>,
@@ -763,12 +764,17 @@ async fn initialize_tunnel(
     maybe_ca_data.to_owned(),
   )?;
 
-  let tunnel = deno_runtime::deno_net::tunnel::TunnelListener::connect(
-    addr,
-    hostname,
-    Some(root_cert_store),
-  )
-  .await?;
+  let (tunnel, metadata) =
+    deno_runtime::deno_net::tunnel::TunnelListener::connect(
+      addr,
+      hostname,
+      Some(root_cert_store),
+    )
+    .await?;
+
+  for (k, v) in metadata.env {
+    std::env::set_var(k, v);
+  }
 
   let addr = tunnel.local_addr()?;
 

@@ -530,7 +530,7 @@ mod tunnel_client {
       &self,
       request: Request<Vec<u8>>,
     ) -> Result<Response<Bytes>, HttpError> {
-      let stream = self.listener.open_telemetry().await?;
+      let stream = self.listener.create_stream().await?;
       let io = TokioIo::new(stream);
       let (mut send_request, c) =
         hyper::client::conn::http1::handshake(io).await?;

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -93,6 +94,12 @@ impl TunnelAddr {
   }
 }
 
+#[derive(Debug)]
+pub struct Metadata {
+  pub hostnames: Vec<String>,
+  pub env: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TunnelListener {
   endpoint: quinn::Endpoint,
@@ -105,7 +112,7 @@ impl TunnelListener {
     addr: std::net::SocketAddr,
     hostname: &str,
     root_cert_store: Option<RootCertStore>,
-  ) -> Result<Self, Error> {
+  ) -> Result<(Self, Metadata), Error> {
     let config = quinn::EndpointConfig::default();
     let socket = std::net::UdpSocket::bind(("::", 0))?;
     let endpoint = quinn::Endpoint::new(
@@ -140,7 +147,7 @@ impl TunnelListener {
 
     let connection = connecting.await?;
 
-    let local_addr = {
+    let (local_addr, metadata) = {
       let mut control = connection.open_bi().await?;
       control.0.write_u32_le(VERSION).await?;
       if control.1.read_u32_le().await? != VERSION {
@@ -161,21 +168,33 @@ impl TunnelListener {
       .await?;
 
       let header = read_stream_header(&mut control.1).await?;
-      let StreamHeader::ControlResponse { addr, hostname } = header else {
+      let StreamHeader::ControlResponse {
+        addr,
+        hostnames,
+        env,
+      } = header
+      else {
         return Err(Error::UnexpectedHeader);
       };
 
-      TunnelAddr {
+      let local_addr = TunnelAddr {
         socket: addr,
-        hostname: Some(hostname),
-      }
+        hostname: hostnames.first().cloned(),
+      };
+
+      let metadata = Metadata { hostnames, env };
+
+      (local_addr, metadata)
     };
 
-    Ok(Self {
-      endpoint,
-      connection,
-      local_addr,
-    })
+    Ok((
+      Self {
+        endpoint,
+        connection,
+        local_addr,
+      },
+      metadata,
+    ))
   }
 }
 
@@ -215,9 +234,9 @@ impl TunnelListener {
     ))
   }
 
-  pub async fn open_telemetry(&self) -> Result<TunnelStream, Error> {
+  pub async fn create_stream(&self) -> Result<TunnelStream, Error> {
     let (mut tx, rx) = self.connection.open_bi().await?;
-    write_stream_header(&mut tx, StreamHeader::Telemetry {}).await?;
+    write_stream_header(&mut tx, StreamHeader::Agent {}).await?;
     Ok(TunnelStream {
       tx,
       rx,
@@ -402,13 +421,14 @@ enum StreamHeader {
   },
   ControlResponse {
     addr: SocketAddr,
-    hostname: String,
+    hostnames: Vec<String>,
+    env: HashMap<String, String>,
   },
   Stream {
     local_addr: SocketAddr,
     remote_addr: SocketAddr,
   },
-  Telemetry {},
+  Agent {},
 }
 
 async fn write_stream_header(
