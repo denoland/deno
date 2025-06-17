@@ -1,0 +1,88 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "array span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "arr.string",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "stringValue": "foo"
+                },
+                {
+                  "stringValue": "bar"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "arr.number",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "doubleValue": 1
+                },
+                {
+                  "doubleValue": 2
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "arr.bigint",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "intValue": "3"
+                },
+                {
+                  "intValue": "4"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "arr.bool",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "boolValue": true
+                },
+                {
+                  "boolValue": false
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

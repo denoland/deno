@@ -61,6 +61,14 @@
       "args": "run -A main.ts events.ts",
       "output": "events.out"
     },
+    "arrays": {
+      "args": "run -A main.ts arrays.ts",
+      "output": "arrays.out"
+    },
+    "arrays_mixed": {
+      "args": "run -A main.ts arrays_mixed.ts",
+      "output": "arrays_mixed.out"
+    },
     "metric_temporality_delta": {
       "envs": {
         "OTEL_METRIC_EXPORT_INTERVAL": "1000",
