@@ -10,7 +10,10 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt as _;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
@@ -55,6 +58,7 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
+use crate::util::file_watcher::WatcherRestartMode;
 
 pub async fn bundle(
   mut flags: Arc<Flags>,
@@ -64,7 +68,7 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
 
   let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
 
@@ -83,6 +87,7 @@ pub async fn bundle(
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
 
+  let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
     resolver: resolver.clone(),
@@ -95,6 +100,7 @@ pub async fn bundle(
     } else {
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
+    on_end_tx,
   });
   let start = std::time::Instant::now();
 
@@ -112,6 +118,7 @@ pub async fn bundle(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
     plugin_handler.clone(),
+    Default::default(),
   )
   .await
   .unwrap();
@@ -149,11 +156,161 @@ pub async fn bundle(
     );
   }
 
+  if let Some(metafile) = response.metafile {
+    println!("metafile:\n{}", metafile);
+  }
   if !response.errors.is_empty() {
     deno_core::anyhow::bail!("bundling failed");
   }
 
   Ok(())
+}
+
+async fn watch(
+  flags: Arc<Flags>,
+  bundler: EsbuildBundler,
+) -> Result<(), AnyError> {
+  let bundler = Arc::new(Mutex::new(bundler));
+  crate::util::file_watcher::watch_recv(
+    flags,
+    crate::util::file_watcher::PrintConfig::new_with_banner(
+      "Watcher", "Process", true,
+    ),
+    WatcherRestartMode::Automatic,
+    move |_flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
+      let bundler = Arc::clone(&bundler);
+      Ok(async move {
+        let mut bundler = bundler.lock();
+        if let Some(changed_paths) = changed_paths {
+          bundler
+            .plugin_handler
+            .reload_specifiers(&changed_paths)
+            .await?;
+        }
+        let response = bundler.rebuild().await?;
+        let metafile = serde_json::from_str::<esbuild_client::Metafile>(
+          &response.metafile.unwrap(),
+        )
+        .unwrap();
+        let inputs = metafile.inputs.keys().cloned().collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(
+          inputs
+            .into_iter()
+            .map(|input| PathBuf::from(input))
+            .collect::<Vec<_>>(),
+        );
+
+        Ok(())
+      })
+    },
+  )
+  .boxed_local()
+  .await?;
+
+  Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BundlingMode {
+  OneShot,
+  Watch,
+}
+
+pub struct EsbuildBundler {
+  client: esbuild_client::ProtocolClient,
+  plugin_handler: Arc<DenoPluginHandler>,
+  on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+  mode: BundlingMode,
+  cwd: PathBuf,
+  flags: EsbuildFlags,
+  roots: Vec<(String, String)>,
+}
+
+impl EsbuildBundler {
+  pub fn new(
+    client: esbuild_client::ProtocolClient,
+    plugin_handler: Arc<DenoPluginHandler>,
+    mode: BundlingMode,
+    on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+    cwd: PathBuf,
+    flags: EsbuildFlags,
+    roots: Vec<(String, String)>,
+  ) -> Result<EsbuildBundler, AnyError> {
+    Ok(EsbuildBundler {
+      client,
+      plugin_handler,
+      on_end_rx,
+      mode,
+      cwd,
+      flags,
+      roots,
+    })
+  }
+
+  fn make_build_request(&self) -> protocol::BuildRequest {
+    protocol::BuildRequest {
+      entries: self.roots.clone(),
+      key: 0,
+      flags: self.flags.to_flags(),
+      write: true,
+      stdin_contents: None.into(),
+      stdin_resolve_dir: None.into(),
+      abs_working_dir: self.cwd.to_string_lossy().to_string(),
+      context: matches!(self.mode, BundlingMode::Watch),
+      mangle_cache: None,
+      node_paths: vec![],
+      plugins: Some(vec![protocol::BuildPlugin {
+        name: "deno".into(),
+        on_start: false,
+        on_end: matches!(self.mode, BundlingMode::Watch),
+        on_resolve: (vec![protocol::OnResolveSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }]),
+        on_load: vec![protocol::OnLoadSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }],
+      }]),
+    }
+  }
+
+  async fn build(&self) -> Result<BuildResponse, AnyError> {
+    match self.mode {
+      BundlingMode::OneShot => {
+        let response = self
+          .client
+          .send_build_request(self.make_build_request())
+          .await
+          .unwrap();
+        Ok(response)
+      }
+      BundlingMode::Watch => {
+        let response = self
+          .client
+          .send_build_request(self.make_build_request())
+          .await
+          .unwrap();
+        Ok(response)
+      }
+    }
+  }
+
+  async fn rebuild(&mut self) -> Result<BuildResponse, AnyError> {
+    match self.mode {
+      BundlingMode::OneShot => {
+        panic!("rebuild not supported for one-shot mode")
+      }
+      BundlingMode::Watch => {
+        let _response = self.client.send_rebuild_request(0).await.unwrap();
+        let response = self.on_end_rx.recv().await.unwrap();
+        Ok(response.into())
+      }
+    }
+  }
 }
 
 // TODO(nathanwhit): MASSIVE HACK
@@ -249,13 +406,14 @@ fn requested_type_from_map(
   }
 }
 
-struct DenoPluginHandler {
+pub struct DenoPluginHandler {
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
   module_loader: CliModuleLoader<MainModuleGraphContainer>,
   externals_matcher: Option<ExternalsMatcher>,
+  on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -384,6 +542,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
+    self.on_end_tx.send(_args).await?;
     Ok(None)
   }
 }
@@ -442,6 +601,25 @@ impl BundleLoadError {
 }
 
 impl DenoPluginHandler {
+  async fn reload_specifiers(
+    &self,
+    specifiers: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
+    for specifier in specifiers {
+      let specifier = deno_path_util::url_from_file_path(specifier)?;
+      specifiers_vec.push(specifier);
+    }
+    self
+      .module_load_preparer
+      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
+      .await?;
+    graph_permit.commit();
+    Ok(())
+  }
   fn bundle_resolve(
     &self,
     path: &str,

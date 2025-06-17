@@ -477,6 +477,7 @@ pub struct BundleFlags {
   pub packages: PackageHandling,
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
+  pub watch: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -2058,6 +2059,12 @@ If no output file is given, the output is written to standard output:
           .value_parser(clap::builder::ValueParser::new(sourcemap_parser))
           .num_args(0..=1)
           .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("watch")
+          .long("watch")
+          .help("Watch and rebuild on changes")
+          .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("platform")
@@ -4889,6 +4896,7 @@ fn bundle_parse(
   allow_import_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
+    watch: matches.get_flag("watch"),
     output_path: output,
     output_dir: outdir,
     external: matches
