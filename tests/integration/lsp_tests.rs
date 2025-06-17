@@ -15901,7 +15901,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_deno_json_scopes_ts_config() {
+fn lsp_deno_json_scopes_compiler_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
