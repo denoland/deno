@@ -129,33 +129,33 @@ function check(password, salt, keylen, options) {
 
   let { N, r, p, maxmem } = defaults;
   if (options && options !== defaults) {
-    const has_N = options.N !== undefined;
-    if (has_N) {
+    const hasN = options.N !== undefined;
+    if (hasN) {
       N = options.N;
       validateUint32(N, "N");
     }
     if (options.cost !== undefined) {
-      if (has_N) throw new ERR_INCOMPATIBLE_OPTION_PAIR("N", "cost");
+      if (hasN) throw new ERR_INCOMPATIBLE_OPTION_PAIR("N", "cost");
       N = options.cost;
       validateUint32(N, "cost");
     }
-    const has_r = options.r !== undefined;
-    if (has_r) {
+    const hasR = options.r !== undefined;
+    if (hasR) {
       r = options.r;
       validateUint32(r, "r");
     }
     if (options.blockSize !== undefined) {
-      if (has_r) throw new ERR_INCOMPATIBLE_OPTION_PAIR("r", "blockSize");
+      if (hasR) throw new ERR_INCOMPATIBLE_OPTION_PAIR("r", "blockSize");
       r = options.blockSize;
       validateUint32(r, "blockSize");
     }
-    const has_p = options.p !== undefined;
-    if (has_p) {
+    const hasP = options.p !== undefined;
+    if (hasP) {
       p = options.p;
       validateUint32(p, "p");
     }
     if (options.parallelization !== undefined) {
-      if (has_p) throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      if (hasP) throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
       p = options.parallelization;
       validateUint32(p, "parallelization");
     }
