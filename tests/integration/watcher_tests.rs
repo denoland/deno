@@ -2029,7 +2029,7 @@ async fn bundle_watch() {
     .arg("-L")
     .arg("debug")
     .arg("-o")
-    .arg(&t.path().join("output.js").to_string())
+    .arg(t.path().join("output.js"))
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
