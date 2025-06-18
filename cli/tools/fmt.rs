@@ -908,7 +908,7 @@ impl Formatter for CheckFormatter {
       let checked_files_count = self.checked_files_count.clone();
       move |file_path| {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
-        let file_text = read_file_contents(&file_path)?.text;
+        let file_text = read_file_contents(&file_path)?;
 
         // skip checking the file if we know it's formatted
         if incremental_cache.is_file_same(&file_path, &file_text) {
@@ -1013,13 +1013,13 @@ impl Formatter for RealFormatter {
         let file_contents = read_file_contents(&file_path)?;
 
         // skip formatting the file if we know it's formatted
-        if incremental_cache.is_file_same(&file_path, &file_contents.text) {
+        if incremental_cache.is_file_same(&file_path, &file_contents) {
           return Ok(());
         }
 
         match format_ensure_stable(
           &file_path,
-          &file_contents.text,
+          &file_contents,
           |file_path, file_text| {
             format_file(
               file_path,
@@ -1032,19 +1032,13 @@ impl Formatter for RealFormatter {
         ) {
           Ok(Some(formatted_text)) => {
             incremental_cache.update_file(&file_path, &formatted_text);
-            write_file_contents(
-              &file_path,
-              FileContents {
-                had_bom: file_contents.had_bom,
-                text: formatted_text,
-              },
-            )?;
+            write_file_contents(&file_path, formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
             info!("{}", file_path.to_string_lossy());
           }
           Ok(None) => {
-            incremental_cache.update_file(&file_path, &file_contents.text);
+            incremental_cache.update_file(&file_path, &file_contents);
           }
           Err(e) => {
             failed_files_count.fetch_add(1, Ordering::Relaxed);
@@ -1584,40 +1578,36 @@ fn get_resolved_yaml_config(
   }
 }
 
-struct FileContents {
-  text: String,
-  had_bom: bool,
-}
-
-fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
+fn read_file_contents(file_path: &Path) -> Result<String, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
-  // will have the BOM stripped
+  let bom = &[0xEF, 0xBB, 0xBF];
+
+  // BOM stripped
+  let file_bytes = if file_bytes.starts_with(bom) {
+    file_bytes[bom.len()..].to_vec()
+  } else {
+    file_bytes
+  };
+
   let charset =
     deno_media_type::encoding::detect_charset_local_file(&file_bytes);
-  let text =
-    deno_media_type::encoding::decode_owned_source(charset, file_bytes)
-      .with_context(|| {
-        anyhow!("{} is not a valid UTF-8 file", file_path.display())
-      })?;
+  let text = deno_media_type::encoding::decode_owned_source(
+    charset,
+    file_bytes.to_vec(),
+  )
+  .with_context(|| {
+    anyhow!("{} is not a valid UTF-8 file", file_path.display())
+  })?;
 
-  Ok(FileContents { text, had_bom })
+  Ok(text)
 }
 
 fn write_file_contents(
   file_path: &Path,
-  mut file_contents: FileContents,
+  file_contents: String,
 ) -> Result<(), AnyError> {
-  let file_text = if file_contents.had_bom {
-    // add back the BOM
-    file_contents.text.insert(0, '\u{FEFF}');
-    file_contents.text
-  } else {
-    file_contents.text
-  };
-
-  Ok(fs::write(file_path, file_text)?)
+  Ok(fs::write(file_path, file_contents)?)
 }
 
 pub async fn run_parallelized<F>(
@@ -1842,5 +1832,24 @@ mod test {
       // should use double quotes for the string with a single quote
       "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
     );
+  }
+
+  #[test]
+  fn test_formated_removes_utf8_bom() {
+    let bytes = b"\xEF\xBB\xBFlet a = 1;";
+    let s_ref = std::str::from_utf8(bytes).unwrap();
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      s_ref,
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(file_text, "let a = 1;\n",);
   }
 }
