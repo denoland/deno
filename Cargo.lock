@@ -1988,6 +1988,7 @@ dependencies = [
  "hyper-util",
  "ipnet",
  "percent-encoding",
+ "rustls",
  "rustls-webpki",
  "serde",
  "serde_json",
