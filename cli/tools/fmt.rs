@@ -908,7 +908,7 @@ impl Formatter for CheckFormatter {
       let checked_files_count = self.checked_files_count.clone();
       move |file_path| {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
-        let file_text = read_file_contents(&file_path)?;
+        let file_text = read_file_contents(&file_path)?.text;
 
         // skip checking the file if we know it's formatted
         if incremental_cache.is_file_same(&file_path, &file_text) {
@@ -1013,13 +1013,13 @@ impl Formatter for RealFormatter {
         let file_contents = read_file_contents(&file_path)?;
 
         // skip formatting the file if we know it's formatted
-        if incremental_cache.is_file_same(&file_path, &file_contents) {
+        if incremental_cache.is_file_same(&file_path, &file_contents.text) {
           return Ok(());
         }
 
         match format_ensure_stable(
           &file_path,
-          &file_contents,
+          &file_contents.text,
           |file_path, file_text| {
             format_file(
               file_path,
@@ -1032,13 +1032,19 @@ impl Formatter for RealFormatter {
         ) {
           Ok(Some(formatted_text)) => {
             incremental_cache.update_file(&file_path, &formatted_text);
-            write_file_contents(&file_path, formatted_text)?;
+            write_file_contents(
+              &file_path,
+              FileContents {
+                had_bom: file_contents.had_bom,
+                text: formatted_text,
+              },
+            )?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
             info!("{}", file_path.to_string_lossy());
           }
           Ok(None) => {
-            incremental_cache.update_file(&file_path, &file_contents);
+            incremental_cache.update_file(&file_path, &file_contents.text);
           }
           Err(e) => {
             failed_files_count.fetch_add(1, Ordering::Relaxed);
@@ -1578,17 +1584,15 @@ fn get_resolved_yaml_config(
   }
 }
 
-fn read_file_contents(file_path: &Path) -> Result<String, AnyError> {
+struct FileContents {
+  text: String,
+  had_bom: bool,
+}
+
+fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let bom = &[0xEF, 0xBB, 0xBF];
-
-  // BOM stripped
-  let file_bytes = if file_bytes.starts_with(bom) {
-    file_bytes[bom.len()..].to_vec()
-  } else {
-    file_bytes
-  };
+  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
 
   let charset =
     deno_media_type::encoding::detect_charset_local_file(&file_bytes);
@@ -1600,14 +1604,14 @@ fn read_file_contents(file_path: &Path) -> Result<String, AnyError> {
     anyhow!("{} is not a valid UTF-8 file", file_path.display())
   })?;
 
-  Ok(text)
+  Ok(FileContents { text, had_bom })
 }
 
 fn write_file_contents(
   file_path: &Path,
-  file_contents: String,
+  file_contents: FileContents,
 ) -> Result<(), AnyError> {
-  Ok(fs::write(file_path, file_contents)?)
+  Ok(fs::write(file_path, file_contents.text)?)
 }
 
 pub async fn run_parallelized<F>(
