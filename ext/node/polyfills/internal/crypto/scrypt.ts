@@ -29,6 +29,14 @@ SOFTWARE.
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
+import {
+  validateFunction,
+  validateInt32,
+  validateInteger,
+  validateUint32,
+} from "ext:deno_node/internal/validators.mjs";
+import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
+import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
 
 type Opts = Partial<{
   N: number;
@@ -40,32 +48,14 @@ type Opts = Partial<{
   maxmem: number;
 }>;
 
-const fixOpts = (opts?: Opts) => {
-  const out = { N: 16384, p: 1, r: 8, maxmem: 32 << 20 };
-  if (!opts) return out;
-
-  if (opts.N) out.N = opts.N;
-  else if (opts.cost) out.N = opts.cost;
-
-  if (opts.p) out.p = opts.p;
-  else if (opts.parallelization) out.p = opts.parallelization;
-
-  if (opts.r) out.r = opts.r;
-  else if (opts.blockSize) out.r = opts.blockSize;
-
-  if (opts.maxmem) out.maxmem = opts.maxmem;
-
-  return out;
-};
-
 export function scryptSync(
   password: HASH_DATA,
   salt: HASH_DATA,
   keylen: number,
   _opts?: Opts,
 ): Buffer {
-  const { N, r, p, maxmem } = fixOpts(_opts);
-
+  const options = check(password, salt, keylen, _opts);
+  const { N, r, p, maxmem } = options;
   const blen = p * 128 * r;
 
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
@@ -100,7 +90,10 @@ export function scrypt(
     cb = _opts as Callback;
     _opts = null;
   }
-  const { N, r, p, maxmem } = fixOpts(_opts as Opts);
+  const options = check(password, salt, keylen, _opts);
+  const { N, r, p, maxmem } = options;
+
+  validateFunction(cb, "callback");
 
   const blen = p * 128 * r;
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
@@ -120,6 +113,69 @@ export function scrypt(
       cb(null, Buffer.from(buf.buffer));
     },
   ).catch((err: unknown) => cb(err));
+}
+
+const defaults = {
+  N: 16384,
+  r: 8,
+  p: 1,
+  maxmem: 32 << 20, // 32 MiB, matches SCRYPT_MAX_MEM.
+};
+
+function check(password, salt, keylen, options) {
+  password = getArrayBufferOrView(password, "password");
+  salt = getArrayBufferOrView(salt, "salt");
+  validateInt32(keylen, "keylen", 0);
+
+  let { N, r, p, maxmem } = defaults;
+  if (options && options !== defaults) {
+    const hasN = options.N !== undefined;
+    if (hasN) {
+      N = options.N;
+      validateUint32(N, "N");
+    }
+    if (options.cost !== undefined) {
+      if (hasN) throw new ERR_INCOMPATIBLE_OPTION_PAIR("N", "cost");
+      N = options.cost;
+      validateUint32(N, "cost");
+    }
+    const hasR = options.r !== undefined;
+    if (hasR) {
+      r = options.r;
+      validateUint32(r, "r");
+    }
+    if (options.blockSize !== undefined) {
+      if (hasR) throw new ERR_INCOMPATIBLE_OPTION_PAIR("r", "blockSize");
+      r = options.blockSize;
+      validateUint32(r, "blockSize");
+    }
+    const hasP = options.p !== undefined;
+    if (hasP) {
+      p = options.p;
+      validateUint32(p, "p");
+    }
+    if (options.parallelization !== undefined) {
+      if (hasP) throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      p = options.parallelization;
+      validateUint32(p, "parallelization");
+    }
+    if (options.maxmem !== undefined) {
+      maxmem = options.maxmem;
+      validateInteger(maxmem, "maxmem", 0);
+    }
+    if (N === 0) N = defaults.N;
+    if (r === 0) r = defaults.r;
+    if (p === 0) p = defaults.p;
+    if (maxmem === 0) maxmem = defaults.maxmem;
+  }
+
+  if (N < 2 || (N & (N - 1)) !== 0) {
+    throw new Error(
+      "Invalid scrypt param: N must be a power of 2 and greater than 0",
+    );
+  }
+
+  return { password, salt, keylen, N, r, p, maxmem };
 }
 
 export default {

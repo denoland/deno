@@ -892,6 +892,7 @@ dependencies = [
  "chrono",
  "deno_bench_util",
  "deno_cache_dir",
+ "deno_core",
  "deno_lockfile 0.30.1",
  "deno_semver",
  "deno_terminal 0.2.2",
@@ -5459,9 +5460,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.19.1"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff37c5cadfdf4d91c0f140d516755c055a184a4e37757ff4a071272635b9f546"
+checksum = "e59dd52b196245d3575b2af66ef15b0e20362de18b453dfbf264c258e8eefbf5"
 dependencies = [
  "aho-corasick",
  "css_dataset",
