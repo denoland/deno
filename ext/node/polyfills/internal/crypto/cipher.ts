@@ -35,6 +35,7 @@ import {
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
+import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
@@ -496,10 +497,15 @@ export function publicEncrypt(
 
 export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
-  // - node KeyObject
   // - web CryptoKey
   if (isStringOrBuffer(key)) {
     return { data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key) && key.type === "public") {
+    const data = key.export({ type: "spki", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
+  } else if (isKeyObject(key) && key.type === "private") {
+    const data = key.export({ type: "pkcs8", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {
