@@ -133,6 +133,7 @@ async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
+aws-lc-rs = { version = "1.0.0" }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
@@ -177,7 +178,7 @@ http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "1.6.0", features = ["full"] }
-hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
+hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
@@ -221,10 +222,8 @@ rand = "=0.8.5"
 rayon = "1.8.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
-# ring = "^0.17.14"
-ring = { version = "1.0.0", package = "aws-lc-rs" }
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
-rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.5.0"
 rustls-webpki = "0.102"
@@ -253,7 +252,7 @@ thiserror = "2.0.12"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-eld = "0.2"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
-tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
+tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }

@@ -1218,7 +1218,7 @@ pub(crate) mod webtransport {
     pub(crate) fn new(fingerprints: Vec<Vec<u8>>) -> ServerFingerprints {
       Self {
         fingerprints,
-        provider: rustls::crypto::ring::default_provider(),
+        provider: rustls::crypto::aws_lc_rs::default_provider(),
       }
     }
   }
