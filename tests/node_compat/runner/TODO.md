@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1207 tests out of 3993 have been ported from Node 23.9.0 (30.23% ported, 70.40% remaining).
+1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -220,7 +220,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-aborted-util.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-aborted-util.js)
 - [parallel/test-abortsignal-cloneable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-abortsignal-cloneable.js)
 - [parallel/test-accessor-properties.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-accessor-properties.js)
-- [parallel/test-assert-builtins-not-read-from-filesystem.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-builtins-not-read-from-filesystem.js)
 - [parallel/test-assert-calltracker-calls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-calls.js)
 - [parallel/test-assert-calltracker-getCalls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-getCalls.js)
 - [parallel/test-assert-calltracker-report.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-report.js)

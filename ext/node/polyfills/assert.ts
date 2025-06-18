@@ -100,10 +100,7 @@ function assert(actual: unknown, message?: string | Error): asserts actual {
       message: "No value argument passed to `assert.ok()`",
     });
   }
-  toNode(
-    () => asserts.assert(actual),
-    { message, actual, expected: true },
-  );
+  equal(actual, true, message);
 }
 const ok = assert;
 
