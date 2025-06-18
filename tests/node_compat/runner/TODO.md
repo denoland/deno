@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1207 tests out of 3993 have been ported from Node 23.9.0 (30.23% ported, 70.40% remaining).
+1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -505,7 +505,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-domains.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-domains.js)
 - [parallel/test-crypto-ecb.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-ecb.js)
 - [parallel/test-crypto-ecdh-convert-key.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-ecdh-convert-key.js)
-- [parallel/test-crypto-encoding-validation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-encoding-validation-error.js)
 - [parallel/test-crypto-fips.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-fips.js)
 - [parallel/test-crypto-gcm-implicit-short-tag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-gcm-implicit-short-tag.js)
 - [parallel/test-crypto-getcipherinfo.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-getcipherinfo.js)
