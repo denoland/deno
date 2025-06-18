@@ -892,6 +892,7 @@ dependencies = [
  "chrono",
  "deno_bench_util",
  "deno_cache_dir",
+ "deno_core",
  "deno_lockfile 0.30.1",
  "deno_semver",
  "deno_terminal 0.2.2",
@@ -1755,9 +1756,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.350.0"
+version = "0.351.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e273b731fce500130790e777cb2631dc451db412975304d23816c1e444a10c5b"
+checksum = "4301eb6d378f3ae81fbac4cde14c3f467379efd7d46043268d76905effe3611d"
 dependencies = [
  "anyhow",
  "az",
@@ -2477,9 +2478,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.226.0"
+version = "0.227.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c28b12489187c71fa123731cc783d48beb17ae5df04da991909cc2ae5a3d0ef9"
+checksum = "1bab1eaf578a8cc0ae6fb933e91dc3388b41df22e5974d5891c17ba66b3a0bbb"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -3368,9 +3369,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.6"
+version = "0.95.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52be8b73afa35c3e8910131f2ab4c8de5179506868c217b6322ce5b1ef4078ad"
+checksum = "6761cbedde994ff3be4a5f7ad4ca822f10edf2c978725177f529789cb249c3c4"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -3626,9 +3627,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "esbuild_client"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c22607cae83b2429fc3fac40717bd3baa72b74e70a5e97c6b157ca3a73761e1"
+checksum = "ae80742f94e7a902164f07f0f798ab8cbb86a0254a555785546f75797bcb8a4c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5459,9 +5460,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.19.1"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff37c5cadfdf4d91c0f140d516755c055a184a4e37757ff4a071272635b9f546"
+checksum = "e59dd52b196245d3575b2af66ef15b0e20362de18b453dfbf264c258e8eefbf5"
 dependencies = [
  "aho-corasick",
  "css_dataset",
@@ -7548,9 +7549,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.259.0"
+version = "0.260.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7e4c5f439cffc03021c8bfd380cd1ef6acb4788a72b7e54bf4a83c73f91f8a0"
+checksum = "d4f284b4d521591b17ddee01aff830dd005a04476f7862aca9298c038d00fb7e"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -8782,21 +8783,20 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.36.0"
+version = "1.45.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61285f6515fa018fb2d1e46eb21223fff441ee8db5d0f1435e8ab4f5cdb80931"
+checksum = "75ef51a33ef1da925cea3e4eb122833cb377c61439ca401b770f54902b806779"
 dependencies = [
  "backtrace",
  "bytes",
  "libc",
- "mio 0.8.11",
- "num_cpus",
+ "mio 1.0.3",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8811,9 +8811,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "2.2.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
+checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
 dependencies = [
  "proc-macro2",
  "quote",

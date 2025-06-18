@@ -3764,7 +3764,7 @@ impl Inner {
           .tree
           .data_by_scope()
           .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
           .collect()
       }),
       matches!(

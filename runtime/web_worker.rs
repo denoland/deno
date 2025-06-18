@@ -62,7 +62,6 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::create_op_metrics;
-use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 #[cfg(target_os = "linux")]
@@ -646,9 +645,6 @@ impl WebWorker {
       extension_transpiler: None,
       inspector: true,
       op_metrics_factory_fn,
-      import_meta_resolve_callback: Some(Box::new(
-        import_meta_resolve_callback,
-      )),
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),

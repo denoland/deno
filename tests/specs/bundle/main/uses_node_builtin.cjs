@@ -1,4 +1,4 @@
-const { inspect } = require("util");
+const { inspect } = require("node:util");
 
 console.log(inspect({
   a: 1,
