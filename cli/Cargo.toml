@@ -158,6 +158,7 @@ quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 rustc-hash.workspace = true
+rustls.workspace = true
 rustyline.workspace = true
 rustyline-derive.workspace = true
 serde.workspace = true
