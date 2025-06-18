@@ -65,8 +65,6 @@ const {
   TypeError,
 } = primordials;
 
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
-
 import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
 import _httpOutgoing from "node:_http_outgoing";
@@ -120,6 +118,7 @@ import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
+import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -166,7 +165,7 @@ import zlib from "node:zlib";
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
-// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfill.rs`
+// NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,
@@ -223,6 +222,7 @@ function setupBuiltinModules() {
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
+    "internal/http2/util": internalHttp2Util,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -946,8 +946,8 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout) { (function (exports, require, module, __filename, __dirname) {",
-  "\n}).call(this, exports, require, module, __filename, __dirname); })",
+  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
+  "\n})(); })",
 ];
 Module.wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
@@ -1025,15 +1025,6 @@ Module.prototype._compile = function (content, filename, format) {
     op_require_break_on_next_statement();
   }
 
-  const {
-    clearImmediate,
-    clearInterval,
-    clearTimeout,
-    setImmediate,
-    setInterval,
-    setTimeout,
-  } = nodeGlobals;
-
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -1041,15 +1032,6 @@ Module.prototype._compile = function (content, filename, format) {
     this,
     filename,
     dirname,
-    buffer.Buffer,
-    clearImmediate,
-    clearInterval,
-    clearTimeout,
-    globalThis,
-    process,
-    setImmediate,
-    setInterval,
-    setTimeout,
   );
   if (requireDepth === 0) {
     statCache = null;

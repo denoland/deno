@@ -99,7 +99,8 @@ use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -330,7 +331,8 @@ impl LanguageServer {
         .collect::<HashMap<_, _>>();
       let module_graph_builder = factory.module_graph_builder().await?;
       let module_graph_creator = factory.module_graph_creator().await?;
-      let mut inner_loader = module_graph_builder.create_graph_loader();
+      let mut inner_loader =
+        module_graph_builder.create_graph_loader_with_root_permissions();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_modules: &open_modules,
@@ -657,13 +659,7 @@ impl Inner {
       .get_or_try_init(|| async {
         self
           .ts_server
-          .get_navigation_tree(
-            self.snapshot(),
-            &module.specifier,
-            module.scope.as_ref(),
-            module.notebook_uri.as_ref(),
-            token,
-          )
+          .get_navigation_tree(self.snapshot(), module, token)
           .await
           .map(Arc::new)
           .map_err(|err| {
@@ -914,7 +910,7 @@ impl Inner {
           let mut root_url = uri_to_url(&root_uri);
           let name = root_url
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|mut s| s.next_back())
             .unwrap_or_default()
             .to_string();
           if !root_url.path().ends_with('/') {
@@ -1123,15 +1119,17 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_config_tree(&mut self) {
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::RespectHeaders,
-      super::logging::lsp_log_level(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::RespectHeaders,
+        download_log_level: super::logging::lsp_log_level(),
+        progress_bar: None,
+      },
     );
     let file_fetcher = Arc::new(file_fetcher);
     self
@@ -1214,7 +1212,7 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed([], ProjectScopesChange::Config);
+    self.project_changed(vec![], ProjectScopesChange::Config);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1256,14 +1254,11 @@ impl Inner {
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
+      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.project_changed(
-        self
-          .document_modules
-          .primary_specifier(&Document::Open(document.clone()))
-          .map(|s| (s, ChangeKind::Opened)),
+        vec![(Document::Open(document), ChangeKind::Opened)],
         ProjectScopesChange::None,
       );
-      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1306,18 +1301,15 @@ impl Inner {
       {
         config_changed = true;
       }
+      self.diagnostics_server.invalidate(&[&document.uri]);
       self.project_changed(
-        self
-          .document_modules
-          .primary_specifier(&Document::Open(document.clone()))
-          .map(|s| (s, ChangeKind::Modified)),
+        vec![(Document::Open(document), ChangeKind::Modified)],
         if config_changed {
           ProjectScopesChange::Config
         } else {
           ProjectScopesChange::None
         },
       );
-      self.diagnostics_server.invalidate(&[&document.uri]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1412,14 +1404,10 @@ impl Inner {
     if document.is_diagnosable() {
       self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[&document.uri]);
-      let changed_specifier = self
-        .document_modules
-        .primary_specifier(&Document::Open(document.clone()))
-        .map(|s| (s, ChangeKind::Closed));
-      // Invalidate the weak references of `document` before calling
-      // `self.project_changed()` so its module entries will be dropped.
-      drop(document);
-      self.project_changed(changed_specifier, ProjectScopesChange::None);
+      self.project_changed(
+        vec![(Document::Open(document), ChangeKind::Closed)],
+        ProjectScopesChange::None,
+      );
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1433,29 +1421,24 @@ impl Inner {
       params.cell_text_documents,
     );
     let diagnosable_documents = documents
-      .iter()
+      .into_iter()
       .filter(|d| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
-      self.project_changed(
-        diagnosable_documents
-          .iter()
-          .flat_map(|d| {
-            let specifier = self
-              .document_modules
-              .primary_specifier(&Document::Open((*d).clone()))?;
-            Some((specifier, ChangeKind::Opened))
-          })
-          .collect::<Vec<_>>(),
-        ProjectScopesChange::OpenNotebooks,
-      );
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
           .map(|d| d.uri.as_ref())
           .collect::<Vec<_>>(),
+      );
+      self.project_changed(
+        diagnosable_documents
+          .into_iter()
+          .map(|d| (Document::Open(d), ChangeKind::Opened))
+          .collect(),
+        ProjectScopesChange::OpenNotebooks,
       );
       self.send_diagnostics_update();
     }
@@ -1475,7 +1458,7 @@ impl Inner {
       cells.text_content,
     );
     let diagnosable_documents = documents
-      .iter()
+      .into_iter()
       .filter(|(d, _)| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
@@ -1490,27 +1473,22 @@ impl Inner {
       {
         config_changed = true;
       }
-      self.project_changed(
-        diagnosable_documents
-          .iter()
-          .flat_map(|(d, k)| {
-            let specifier = self
-              .document_modules
-              .primary_specifier(&Document::Open(d.clone()))?;
-            Some((specifier, *k))
-          })
-          .collect::<Vec<_>>(),
-        if config_changed {
-          ProjectScopesChange::Config
-        } else {
-          ProjectScopesChange::None
-        },
-      );
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
           .map(|(d, _)| d.uri.as_ref())
           .collect::<Vec<_>>(),
+      );
+      self.project_changed(
+        diagnosable_documents
+          .into_iter()
+          .map(|(d, k)| (Document::Open(d), k))
+          .collect(),
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
       );
       self.send_diagnostics_update();
     }
@@ -1550,7 +1528,7 @@ impl Inner {
       .document_modules
       .close_notebook_document(&params.notebook_document.uri);
     let diagnosable_documents = documents
-      .iter()
+      .into_iter()
       .filter(|d| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
@@ -1561,20 +1539,11 @@ impl Inner {
           .map(|d| d.uri.as_ref())
           .collect::<Vec<_>>(),
       );
-      let changed_specifiers = diagnosable_documents
-        .iter()
-        .flat_map(|d| {
-          let specifier = self
-            .document_modules
-            .primary_specifier(&Document::Open((*d).clone()))?;
-          Some((specifier, ChangeKind::Closed))
-        })
-        .collect::<Vec<_>>();
-      // Invalidate the weak references of `documents` before calling
-      // `self.project_changed()` so their module entries will be dropped.
-      drop(documents);
       self.project_changed(
-        changed_specifiers,
+        diagnosable_documents
+          .into_iter()
+          .map(|d| (Document::Open(d), ChangeKind::Closed))
+          .collect(),
         ProjectScopesChange::OpenNotebooks,
       );
       self.send_diagnostics_update();
@@ -1669,23 +1638,18 @@ impl Inner {
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
+      self.diagnostics_server.invalidate_all();
       self.project_changed(
         changes
           .iter()
           .filter_map(|(_, e)| {
             let document = self.document_modules.documents.inspect(&e.uri)?;
-            if !document.is_diagnosable() {
-              return None;
-            }
-            let specifier =
-              self.document_modules.primary_specifier(&document)?;
-            Some((specifier, ChangeKind::Modified))
+            Some((document, ChangeKind::Modified))
           })
           .collect::<Vec<_>>(),
         ProjectScopesChange::None,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
-      self.diagnostics_server.invalidate_all();
       self.send_diagnostics_update();
       self.send_testing_update();
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
@@ -1952,14 +1916,7 @@ impl Inner {
         .offset_tsc(params.text_document_position_params.position)?;
       let maybe_quick_info = self
         .ts_server
-        .get_quick_info(
-          self.snapshot(),
-          &module.specifier,
-          position,
-          module.scope.as_ref(),
-          module.notebook_uri.as_ref(),
-          token,
-        )
+        .get_quick_info(self.snapshot(), &module, position, token)
         .await
         .map_err(|err| {
           if token.is_cancelled() {
@@ -1976,7 +1933,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -2089,22 +2045,10 @@ impl Inner {
               .ts_server
               .get_code_fixes(
                 self.snapshot(),
-                &module.specifier,
+                &module,
                 module.line_index.offset_tsc(diagnostic.range.start)?
                   ..module.line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
-                (&self
-                  .config
-                  .tree
-                  .fmt_config_for_specifier(&module.specifier)
-                  .options)
-                  .into(),
-                tsc::UserPreferences::from_config_for_specifier(
-                  &self.config,
-                  &module.specifier,
-                ),
-                module.scope.as_ref(),
-                module.notebook_uri.as_ref(),
                 token,
               )
               .await
@@ -2207,17 +2151,11 @@ impl Inner {
       .ts_server
       .get_applicable_refactors(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
-        Some(tsc::UserPreferences::from_config_for_specifier(
-          &self.config,
-          &module.specifier,
-        )),
         params.context.trigger_kind,
         only,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2305,20 +2243,8 @@ impl Inner {
         .ts_server
         .get_combined_code_fix(
           self.snapshot(),
-          &module.specifier,
+          &module,
           &code_action_data.fix_id,
-          (&self
-            .config
-            .tree
-            .fmt_config_for_specifier(&module.specifier)
-            .options)
-            .into(),
-          tsc::UserPreferences::from_config_for_specifier(
-            &self.config,
-            &module.specifier,
-          ),
-          module.scope.as_ref(),
-          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2386,23 +2312,11 @@ impl Inner {
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
-          &module.specifier,
-          (&self
-            .config
-            .tree
-            .fmt_config_for_specifier(&module.specifier)
-            .options)
-            .into(),
+          &module,
           module.line_index.offset_tsc(action_data.range.start)?
             ..module.line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name.clone(),
           action_data.action_name.clone(),
-          Some(tsc::UserPreferences::from_config_for_specifier(
-            &self.config,
-            &module.specifier,
-          )),
-          module.scope.as_ref(),
-          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2609,13 +2523,10 @@ impl Inner {
       .ts_server
       .get_document_highlights(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        vec![module.specifier.as_ref().clone()],
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2671,9 +2582,10 @@ impl Inner {
       return Ok(None);
     };
     let mut locations = IndexSet::new();
-    for (scope, module) in self
+    for module in self
       .document_modules
       .inspect_or_temp_modules_by_scope(&document)
+      .into_values()
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -2682,13 +2594,10 @@ impl Inner {
         .ts_server
         .find_references(
           self.snapshot(),
-          &module.specifier,
+          &module,
           module
             .line_index
             .offset_tsc(params.text_document_position.position)?,
-          scope.as_ref(),
-          // TODO(nayeemrmn): Support notebook scopes here.
-          None,
           token,
         )
         .await
@@ -2750,12 +2659,10 @@ impl Inner {
       .ts_server
       .get_definition(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2813,12 +2720,10 @@ impl Inner {
       .ts_server
       .get_type_definition(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2909,15 +2814,6 @@ impl Inner {
       .await;
     }
     if response.is_none() {
-      let (trigger_character, trigger_kind) =
-        if let Some(context) = &params.context {
-          (
-            context.trigger_character.clone(),
-            Some(context.trigger_kind.into()),
-          )
-        } else {
-          (None, None)
-        };
       let position = module
         .line_index
         .offset_tsc(params.text_document_position.position)?;
@@ -2925,24 +2821,13 @@ impl Inner {
         .ts_server
         .get_completions(
           self.snapshot(),
-          &module.specifier,
+          &module,
           position,
-          tsc::GetCompletionsAtPositionOptions {
-            user_preferences: tsc::UserPreferences::from_config_for_specifier(
-              &self.config,
-              &module.specifier,
-            ),
-            trigger_character,
-            trigger_kind,
-          },
-          (&self
-            .config
-            .tree
-            .fmt_config_for_specifier(&module.specifier)
-            .options)
-            .into(),
-          module.scope.as_ref(),
-          module.notebook_uri.as_ref(),
+          params
+            .context
+            .as_ref()
+            .and_then(|c| c.trigger_character.clone()),
+          params.context.as_ref().map(|c| c.trigger_kind.into()),
           token,
         )
         .await
@@ -3018,25 +2903,11 @@ impl Inner {
           .ts_server
           .get_completion_details(
             self.snapshot(),
-            &module.specifier,
+            &module,
             data.position,
             data.name.clone(),
-            Some(
-              (&self
-                .config
-                .tree
-                .fmt_config_for_specifier(&module.specifier)
-                .options)
-                .into(),
-            ),
             data.source.clone(),
-            Some(tsc::UserPreferences::from_config_for_specifier(
-              &self.config,
-              &module.specifier,
-            )),
             data.data.clone(),
-            module.scope.as_ref(),
-            module.notebook_uri.as_ref(),
             token,
           )
           .await;
@@ -3104,9 +2975,10 @@ impl Inner {
       return Ok(None);
     };
     let mut implementations_with_modules = IndexMap::new();
-    for (scope, module) in self
+    for module in self
       .document_modules
       .inspect_or_temp_modules_by_scope(&document)
+      .into_values()
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3115,12 +2987,10 @@ impl Inner {
         .ts_server
         .get_implementations(
           self.snapshot(),
-          &module.specifier,
+          &module,
           module
             .line_index
             .offset_tsc(params.text_document_position_params.position)?,
-          scope.as_ref(),
-          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3183,13 +3053,7 @@ impl Inner {
     };
     let outlining_spans = self
       .ts_server
-      .get_outlining_spans(
-        self.snapshot(),
-        &module.specifier,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
-        token,
-      )
+      .get_outlining_spans(self.snapshot(), &module, token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
@@ -3241,9 +3105,10 @@ impl Inner {
       return Ok(None);
     };
     let mut incoming_calls_with_modules = IndexMap::new();
-    for (scope, module) in self
+    for module in self
       .document_modules
       .inspect_or_temp_modules_by_scope(&document)
+      .into_values()
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3252,12 +3117,10 @@ impl Inner {
         .ts_server
         .provide_call_hierarchy_incoming_calls(
           self.snapshot(),
-          &module.specifier,
+          &module,
           module
             .line_index
             .offset_tsc(params.item.selection_range.start)?,
-          scope.as_ref(),
-          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3320,12 +3183,10 @@ impl Inner {
       .ts_server
       .provide_call_hierarchy_outgoing_calls(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.item.selection_range.start)?,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3383,12 +3244,10 @@ impl Inner {
       .ts_server
       .prepare_call_hierarchy(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3468,17 +3327,10 @@ impl Inner {
         .ts_server
         .find_rename_locations(
           self.snapshot(),
-          &module.specifier,
+          &module,
           module
             .line_index
             .offset_tsc(params.text_document_position.position)?,
-          tsc::UserPreferences::from_config_for_specifier(
-            &self.config,
-            &module.specifier,
-          ),
-          scope.as_ref(),
-          // TODO(nayeemrmn): Support notebook scopes here.
-          None,
           token,
         )
         .await
@@ -3552,10 +3404,8 @@ impl Inner {
         .ts_server
         .get_smart_selection_range(
           self.snapshot(),
-          &module.specifier,
+          &module,
           module.line_index.offset_tsc(position)?,
-          module.scope.as_ref(),
-          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3606,10 +3456,8 @@ impl Inner {
           .ts_server
           .get_encoded_semantic_classifications(
             self.snapshot(),
-            &module.specifier,
+            &module,
             0..module.line_index.text_content_length_utf16().into(),
-            module.scope.as_ref(),
-            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -3674,11 +3522,9 @@ impl Inner {
       .ts_server
       .get_encoded_semantic_classifications(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3741,13 +3587,11 @@ impl Inner {
       .ts_server
       .get_signature_help_items(
         self.snapshot(),
-        &module.specifier,
+        &module,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         options,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3819,26 +3663,12 @@ impl Inner {
         if options.enabled == UpdateImportsOnFileMoveEnabled::Never {
           continue;
         }
-        let format_code_settings = (&self
-          .config
-          .tree
-          .fmt_config_for_specifier(&module.specifier)
-          .options)
-          .into();
         let changes = self
         .ts_server
         .get_edits_for_file_rename(
           self.snapshot(),
-          &module.specifier,
+          &module,
           &uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
-          format_code_settings,
-          tsc::UserPreferences {
-            allow_text_changes_in_new_files: Some(true),
-            ..Default::default()
-          },
-          scope.as_ref(),
-          // TODO(nayeemrmn): Support notebook scopes here.
-          None,
           token,
         )
         .await
@@ -3884,7 +3714,6 @@ impl Inner {
           params.query.clone(),
           // this matches vscode's hard coded result count
           Some(256),
-          None,
           scope.as_ref(),
           // TODO(nayeemrmn): Support notebook scopes here.
           None,
@@ -3922,21 +3751,20 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn project_changed(
     &mut self,
-    changed_specifiers: impl IntoIterator<Item = (Arc<Url>, ChangeKind)>,
+    documents: Vec<(Document, ChangeKind)>,
     scopes_change: ProjectScopesChange,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    let changed_specifiers = changed_specifiers.into_iter().collect::<Vec<_>>();
     self.ts_server.project_changed(
       self.snapshot(),
-      changed_specifiers.iter().map(|(u, k)| (u.as_ref(), *k)),
+      &documents,
       matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .config
           .tree
           .data_by_scope()
           .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
           .collect()
       }),
       matches!(
@@ -3958,6 +3786,9 @@ impl Inner {
           .collect()
       }),
     );
+    // Invalidate the weak references of `documents` before removing expired
+    // entries.
+    drop(documents);
     self.document_modules.remove_expired_modules();
   }
 
@@ -4566,7 +4397,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -4658,14 +4488,13 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed([], ProjectScopesChange::Config);
+    self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
   fn pre_did_change_workspace_folders(
     &mut self,
     params: DidChangeWorkspaceFoldersParams,
@@ -4811,18 +4640,7 @@ impl Inner {
         })?;
     let maybe_inlay_hints = self
       .ts_server
-      .provide_inlay_hints(
-        self.snapshot(),
-        &module.specifier,
-        text_span,
-        tsc::UserPreferences::from_config_for_specifier(
-          &self.config,
-          &module.specifier,
-        ),
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
-        token,
-      )
+      .provide_inlay_hints(self.snapshot(), &module, text_span, token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {

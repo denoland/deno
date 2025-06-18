@@ -85,6 +85,7 @@ macro_rules! network_stream {
   ( $([$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
+    #[allow(clippy::large_enum_variant)]
     pub enum NetworkStream {
       $( $i (#[pin] $stream), )*
     }

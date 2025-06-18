@@ -53,9 +53,8 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
-import {
-  ChannelWrapQuery,
-  getaddrinfo,
+import cares, {
+  type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
@@ -132,7 +131,13 @@ function createLookupPromise(
     req.resolve = resolve;
     req.reject = reject;
 
-    const err = getaddrinfo(req, toASCII(hostname), family, hints, verbatim);
+    const err = cares.getaddrinfo(
+      req,
+      toASCII(hostname),
+      family,
+      hints,
+      verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+    );
 
     if (err) {
       reject(dnsException(err, "getaddrinfo", hostname));

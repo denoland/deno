@@ -101,6 +101,13 @@ pub async fn info(
                 .into(),
             );
           }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            );
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
@@ -137,7 +144,8 @@ pub async fn info(
       None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
     };
 
-    let mut loader = module_graph_builder.create_graph_loader();
+    let mut loader =
+      module_graph_builder.create_graph_loader_with_root_permissions();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
       .create_graph_with_loader(
@@ -542,7 +550,7 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleError::Missing(_, _) = *err {
+        if let ModuleError::Missing { .. } = *err {
           bail!("module could not be found");
         } else {
           bail!("{:#}", err);
@@ -696,7 +704,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import attribute)")
       }
-      ModuleError::LoadingErr(_, _, err) => {
+      ModuleError::Load { err, .. } => {
         use deno_graph::ModuleLoadError::*;
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
@@ -714,7 +722,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
+      ModuleError::Parse { .. } | ModuleError::WasmParse { .. } => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {
@@ -723,7 +731,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+      ModuleError::Missing { .. } | ModuleError::MissingDynamic { .. } => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

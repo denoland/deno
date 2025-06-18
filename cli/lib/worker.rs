@@ -557,6 +557,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -573,6 +574,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -598,14 +600,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
+    let origin_storage_dir: Option<PathBuf> =
+      maybe_storage_key.as_ref().map(|key| {
+        shared
+          .options
+          .origin_data_folder_path
+          .as_ref()
+          .unwrap() // must be set if storage key resolver returns a value
+          .join(checksum::gen(&[key.as_bytes()]))
+      });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
       get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
@@ -694,6 +697,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -797,26 +801,31 @@ impl LibMainWorker {
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_process_exit_event()
   }

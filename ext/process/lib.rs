@@ -9,11 +9,13 @@ use std::io::Write;
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::process::Command;
 use std::process::ExitStatus;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 
 use deno_core::op2;
@@ -35,9 +37,16 @@ use deno_io::IntoRawIoHandle;
 use deno_os::SignalError;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
+#[cfg(windows)]
+use deno_subprocess_windows::Child as AsyncChild;
+#[cfg(windows)]
+use deno_subprocess_windows::Command;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::process::Command;
+#[cfg(unix)]
+use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
 use ipc::IpcJsonStreamResource;
@@ -55,11 +64,11 @@ pub enum Stdio {
 }
 
 impl Stdio {
-  pub fn as_stdio(&self) -> std::process::Stdio {
+  pub fn as_stdio(&self) -> StdStdio {
     match &self {
-      Stdio::Inherit => std::process::Stdio::inherit(),
-      Stdio::Piped => std::process::Stdio::piped(),
-      Stdio::Null => std::process::Stdio::null(),
+      Stdio::Inherit => StdStdio::inherit(),
+      Stdio::Piped => StdStdio::piped(),
+      Stdio::Null => StdStdio::null(),
       _ => unreachable!(),
     }
   }
@@ -108,7 +117,7 @@ impl StdioOrRid {
   pub fn as_stdio(
     &self,
     state: &mut OpState,
-  ) -> Result<std::process::Stdio, ProcessError> {
+  ) -> Result<StdStdio, ProcessError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
@@ -167,7 +176,7 @@ deno_core::extension!(
 
 /// Second member stores the pid separately from the RefCell. It's needed for
 /// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
-struct ChildResource(RefCell<tokio::process::Child>, u32);
+struct ChildResource(RefCell<AsyncChild>, u32);
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
@@ -254,7 +263,7 @@ pub enum ProcessError {
   BorrowMut(std::cell::BorrowMutError),
   #[class(generic)]
   #[error(transparent)]
-  Which(which::Error),
+  Which(deno_permissions::which::Error),
   #[class(type)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
@@ -330,7 +339,7 @@ pub struct SpawnOutput {
 }
 
 type CreateCommand = (
-  std::process::Command,
+  Command,
   Option<ResourceId>,
   Vec<Option<ResourceId>>,
   Vec<deno_io::RawBiPipeHandle>,
@@ -402,24 +411,18 @@ fn create_command(
     state,
     api_name,
   )?;
-  let mut command = std::process::Command::new(cmd);
+  let mut command = Command::new(cmd);
 
   #[cfg(windows)]
   {
     if args.detached {
-      // TODO(nathanwhit): Currently this causes the process to hang
-      // until the detached process exits (so never). It repros with just the
-      // rust std library, so it's either a bug or requires more control than we have.
-      // To be resolved at the same time as additional stdio support.
-      log::warn!("detached processes are not currently supported on Windows");
+      command.detached();
     }
+
     if args.windows_raw_arguments {
-      for arg in args.args.iter() {
-        command.raw_arg(arg);
-      }
-    } else {
-      command.args(args.args);
+      command.verbatim_arguments(true);
     }
+    command.args(args.args);
   }
 
   #[cfg(not(windows))]
@@ -441,7 +444,7 @@ fn create_command(
   if args.stdio.stdin.is_ipc() {
     args.ipc = Some(0);
   } else if args.input.is_some() {
-    command.stdin(std::process::Stdio::piped());
+    command.stdin(StdStdio::piped());
   } else {
     command.stdin(args.stdio.stdin.as_stdio(state)?);
   }
@@ -510,25 +513,29 @@ fn create_command(
     }
 
     let detached = args.detached;
-    command.pre_exec(move || {
-      if detached {
-        libc::setsid();
-      }
-      for &(src, dst) in &fds_to_dup {
-        if src >= 0 && dst >= 0 {
-          let _fd = libc::dup2(src, dst);
-          libc::close(src);
+    if detached || !fds_to_dup.is_empty() || args.gid.is_some() {
+      command.pre_exec(move || {
+        if detached {
+          libc::setsid();
         }
-      }
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
+        for &(src, dst) in &fds_to_dup {
+          if src >= 0 && dst >= 0 {
+            let _fd = libc::dup2(src, dst);
+            libc::close(src);
+          }
+        }
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      });
+    }
 
     Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
   }
 
   #[cfg(windows)]
   {
+    let mut extra_pipe_rids = Vec::with_capacity(args.extra_stdio.len());
+
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
     if let Some(handle) = maybe_npm_process_state {
@@ -554,13 +561,36 @@ fn create_command(
       }
     }
 
-    if args.extra_stdio.iter().any(|s| matches!(s, Stdio::Piped)) {
-      log::warn!(
-        "Additional stdio pipes beyond stdin/stdout/stderr are not currently supported on windows"
-      );
+    for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
+      // index 0 in `extra_stdio` actually refers to fd 3
+      // because we handle stdin,stdout,stderr specially
+      let fd = (i + 3) as i32;
+      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
+      // fds open already. since we don't generally support dealing with raw fds,
+      // we can't properly support this
+      if matches!(stdio, Stdio::Piped) {
+        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+        handles_to_close.push(fd2);
+        let rid = state.resource_table.add(
+          match deno_io::BiPipeResource::from_raw_handle(fd1) {
+            Ok(v) => v,
+            Err(e) => {
+              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
+              extra_pipe_rids.push(None);
+              continue;
+            }
+          },
+        );
+        command.extra_handle(Some(fd2));
+        extra_pipe_rids.push(Some(rid));
+      } else {
+        // no handle, push an empty handle so we need get the right fds for following handles
+        command.extra_handle(None);
+        extra_pipe_rids.push(None);
+      }
     }
 
-    Ok((command, ipc_rid, vec![], handles_to_close))
+    Ok((command, ipc_rid, extra_pipe_rids, handles_to_close))
   }
 }
 
@@ -578,11 +608,14 @@ struct Child {
 
 fn spawn_child(
   state: &mut OpState,
-  command: std::process::Command,
+  command: Command,
   ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
   detached: bool,
 ) -> Result<Child, ProcessError> {
+  #[cfg(windows)]
+  let mut command = command;
+  #[cfg(not(windows))]
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
@@ -594,6 +627,7 @@ fn spawn_child(
   let mut child = match command.spawn() {
     Ok(child) => child,
     Err(err) => {
+      #[cfg(not(windows))]
       let command = command.as_std();
       let command_name = command.get_program().to_string_lossy();
 
@@ -640,19 +674,46 @@ fn spawn_child(
 
   let pid = child.id().expect("Process ID should be set.");
 
+  #[cfg(not(windows))]
   let stdin_rid = child
     .stdin
     .take()
     .map(|stdin| state.resource_table.add(ChildStdinResource::from(stdin)));
 
+  #[cfg(windows)]
+  let stdin_rid = child
+    .stdin
+    .take()
+    .map(tokio::process::ChildStdin::from_std)
+    .transpose()?
+    .map(|stdin| state.resource_table.add(ChildStdinResource::from(stdin)));
+
+  #[cfg(not(windows))]
   let stdout_rid = child
     .stdout
     .take()
     .map(|stdout| state.resource_table.add(ChildStdoutResource::from(stdout)));
 
+  #[cfg(windows)]
+  let stdout_rid = child
+    .stdout
+    .take()
+    .map(tokio::process::ChildStdout::from_std)
+    .transpose()?
+    .map(|stdout| state.resource_table.add(ChildStdoutResource::from(stdout)));
+
+  #[cfg(not(windows))]
   let stderr_rid = child
     .stderr
     .take()
+    .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
+
+  #[cfg(windows)]
+  let stderr_rid = child
+    .stderr
+    .take()
+    .map(tokio::process::ChildStderr::from_std)
+    .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
   let child_rid = state
@@ -800,9 +861,14 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
-    match which::which_in(cmd, path, &env.cwd) {
+    match deno_permissions::which::which_in(
+      sys_traits::impls::RealSys,
+      cmd,
+      path.cloned(),
+      env.cwd.clone(),
+    ) {
       Ok(cmd) => Ok(cmd),
-      Err(which::Error::CannotFindBinaryPath) => {
+      Err(deno_permissions::which::Error::CannotFindBinaryPath) => {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
       }
       Err(err) => Err(ProcessError::Which(err)),
@@ -951,10 +1017,7 @@ fn op_spawn_sync(
   })?;
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
-      ProcessError::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "stdin is not available",
-      ))
+      ProcessError::Io(std::io::Error::other("stdin is not available"))
     })?;
     stdin.write_all(&input)?;
     stdin.flush()?;
@@ -995,6 +1058,11 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  #[cfg(windows)]
+  use deno_subprocess_windows::Child;
+  #[cfg(not(windows))]
+  use tokio::process::Child;
+
   use super::*;
 
   #[derive(Deserialize)]
@@ -1009,7 +1077,7 @@ mod deprecated {
   }
 
   struct ChildResource {
-    child: AsyncRefCell<tokio::process::Child>,
+    child: AsyncRefCell<Child>,
   }
 
   impl Resource for ChildResource {
@@ -1019,7 +1087,7 @@ mod deprecated {
   }
 
   impl ChildResource {
-    fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<tokio::process::Child> {
+    fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<Child> {
       RcRef::map(self, |r| &r.child).borrow_mut()
     }
   }
@@ -1052,7 +1120,10 @@ mod deprecated {
       "Deno.run()",
     )?;
 
+    #[cfg(windows)]
     let mut c = Command::new(cmd);
+    #[cfg(not(windows))]
+    let mut c = tokio::process::Command::new(cmd);
     for arg in args.iter().skip(1) {
       c.arg(arg);
     }
@@ -1099,6 +1170,8 @@ mod deprecated {
 
     let stdin_rid = match child.stdin.take() {
       Some(child_stdin) => {
+        #[cfg(windows)]
+        let child_stdin = tokio::process::ChildStdin::from_std(child_stdin)?;
         let rid = state
           .resource_table
           .add(ChildStdinResource::from(child_stdin));
@@ -1109,6 +1182,8 @@ mod deprecated {
 
     let stdout_rid = match child.stdout.take() {
       Some(child_stdout) => {
+        #[cfg(windows)]
+        let child_stdout = tokio::process::ChildStdout::from_std(child_stdout)?;
         let rid = state
           .resource_table
           .add(ChildStdoutResource::from(child_stdout));
@@ -1119,6 +1194,8 @@ mod deprecated {
 
     let stderr_rid = match child.stderr.take() {
       Some(child_stderr) => {
+        #[cfg(windows)]
+        let child_stderr = tokio::process::ChildStderr::from_std(child_stderr)?;
         let rid = state
           .resource_table
           .add(ChildStderrResource::from(child_stderr));

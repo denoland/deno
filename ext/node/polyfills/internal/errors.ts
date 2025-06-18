@@ -681,7 +681,7 @@ export class ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH extends NodeRangeError {
   constructor() {
     super(
       "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH",
-      "Input buffers must have the same length",
+      "Input buffers must have the same byte length",
     );
   }
 }
@@ -735,7 +735,7 @@ function invalidArgTypeHelper(input: any) {
   if (input == null) {
     return ` Received ${input}`;
   }
-  if (typeof input === "function" && input.name) {
+  if (typeof input === "function") {
     return ` Received function ${input.name}`;
   }
   if (typeof input === "object") {
