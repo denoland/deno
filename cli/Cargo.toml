@@ -133,7 +133,7 @@ http-body-util.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
+jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true

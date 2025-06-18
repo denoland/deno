@@ -975,7 +975,7 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
- "zeromq",
+ "zeromq 0.4.1",
 ]
 
 [[package]]
@@ -5202,15 +5202,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "jupyter-serde"
-version = "0.4.0"
+name = "jupyter-protocol"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd71aa17c4fa65e6d7536ab2728881a41f8feb2ee5841c2240516c3c3d65d8b3"
+checksum = "815c1eb9089b035c7c89932beaba6f4daabc8efa198960492636c7eb45d0ebde"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "futures",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
  "uuid",
 ]
 
@@ -7198,11 +7201,12 @@ dependencies = [
 
 [[package]]
 name = "runtimelib"
-version = "0.19.0"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe23ba9967355bbb1be2fb9a8e51bd239ffdf9c791fad5a9b765122ee2bde2e4"
+checksum = "e2953bbfe9f3537c04b68885fb304f3afe2c42d6e378d7810aa0604bd2c453d5"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -7210,15 +7214,13 @@ dependencies = [
  "dirs",
  "futures",
  "glob",
- "jupyter-serde",
- "rand",
- "ring",
+ "jupyter-protocol",
  "serde",
  "serde_json",
  "shellexpand",
  "tokio",
  "uuid",
- "zeromq",
+ "zeromq 0.5.0-pre",
 ]
 
 [[package]]
@@ -10351,6 +10353,30 @@ dependencies = [
  "futures-io",
  "futures-task",
  "futures-util",
+ "log",
+ "num-traits",
+ "once_cell",
+ "parking_lot",
+ "rand",
+ "regex",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "zeromq"
+version = "0.5.0-pre"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1fe92954d37e77bed5e2775cb0fed7dba5f6bc4be6f7f76172a4eb371dc6a9b"
+dependencies = [
+ "async-trait",
+ "asynchronous-codec",
+ "bytes",
+ "crossbeam-queue",
+ "dashmap",
+ "futures",
  "log",
  "num-traits",
  "once_cell",
