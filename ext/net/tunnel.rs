@@ -8,10 +8,12 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_error::JsErrorBox;
@@ -340,6 +342,10 @@ impl TunnelStreamResource {
   fn wr_borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<quinn::SendStream> {
     RcRef::map(self, |r| &r.tx).borrow_mut()
   }
+
+  pub fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
+    RcRef::map(self, |r| &r.cancel_handle)
+  }
 }
 
 impl Resource for TunnelStreamResource {
@@ -350,8 +356,9 @@ impl Resource for TunnelStreamResource {
         .rd_borrow_mut()
         .await
         .read(&mut vec)
-        .await
-        .map_err(|e| JsErrorBox::generic(format!("{e}")))?
+        .map_err(|e| JsErrorBox::generic(format!("{e}")))
+        .try_or_cancel(self.cancel_handle())
+        .await?
         .unwrap_or(0);
       if nread != vec.len() {
         vec.truncate(nread);
@@ -369,8 +376,9 @@ impl Resource for TunnelStreamResource {
         .rd_borrow_mut()
         .await
         .read(&mut buf)
-        .await
-        .map_err(|e| JsErrorBox::generic(format!("{e}")))?
+        .map_err(|e| JsErrorBox::generic(format!("{e}")))
+        .try_or_cancel(self.cancel_handle())
+        .await?
         .unwrap_or(0);
       Ok((nread, buf))
     })
