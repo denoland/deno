@@ -98,6 +98,11 @@ pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
 
+#[op2]
+pub fn op_node_get_hash_size(#[string] algorithm: &str) -> Option<u8> {
+  digest::Hash::get_size(algorithm)
+}
+
 #[op2(fast)]
 pub fn op_node_hash_update(
   #[cppgc] hasher: &digest::Hasher,

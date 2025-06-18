@@ -989,6 +989,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
   }
 }
 
+export class ERR_CRYPTO_INVALID_KEYLEN extends NodeRangeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_KEYLEN", "Invalid key length");
+  }
+}
+
 export class ERR_CRYPTO_INVALID_JWK extends NodeError {
   constructor() {
     super("ERR_CRYPTO_INVALID_JWK", "Invalid JWK");
