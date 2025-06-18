@@ -4483,6 +4483,32 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * Indicates whether `deno serve` is being run. This is useful for control flow
+   * within scripts that may also be run using `deno run`, typically with
+   * {@linkcode Deno.serve}.
+   *
+   * @example
+   * ```ts
+   * // This script can be run with `deno serve` or `deno run`.
+   * function handler() {
+   *   return new Response("Hello, world!");
+   * }
+   *
+   * if (import.meta.main && !Deno.isServe) {
+   *   Deno.serve(handler)
+   * }
+   *
+   * export default {
+   *   fetch: handler,
+   * } satisfies Deno.ServeDefaultExport;
+   * ```
+   *
+   * @category Runtime
+   * @experimental
+   */
+  export const isServe: boolean;
+
   export {}; // only export exports
 }
 

@@ -6,6 +6,7 @@ use deno_terminal::colors::ColorLevel;
 use serde::Serialize;
 
 use crate::BootstrapOptions;
+use crate::WorkerExecutionMode;
 
 deno_core::extension!(
   deno_bootstrap,
@@ -18,6 +19,7 @@ deno_core::extension!(
     op_bootstrap_log_level,
     op_bootstrap_color_depth,
     op_bootstrap_no_color,
+    op_bootstrap_is_serve,
     op_bootstrap_stdout_no_color,
     op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
@@ -167,4 +169,13 @@ pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
 #[op2(fast)]
 pub fn op_bootstrap_is_from_unconfigured_runtime(state: &mut OpState) -> bool {
   state.borrow::<IsFromUnconfiguredRuntime>().0
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_serve(state: &mut OpState) -> bool {
+  matches!(
+    state.borrow::<BootstrapOptions>().mode,
+    WorkerExecutionMode::ServeMain { .. }
+      | WorkerExecutionMode::ServeWorker { .. }
+  )
 }
