@@ -3111,6 +3111,7 @@ dependencies = [
  "log",
  "memmap2",
  "node_resolver",
+ "rustls",
  "serde",
  "serde_json",
  "sys_traits",
