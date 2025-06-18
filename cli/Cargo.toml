@@ -199,6 +199,9 @@ tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+# unsafe_use_unprotected_platform is a workaround for a segfault that may occur
+# when running multiple v8 tests on different threads
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
