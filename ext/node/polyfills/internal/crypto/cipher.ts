@@ -209,13 +209,7 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    if (!Buffer.isEncoding(encoding)) {
-      throw new ERR_UNKNOWN_ENCODING(encoding);
-    }
-
-    if (encoding !== "buffer") {
-      this.#setOutputEncoding(encoding);
-    }
+    this.#validateOutputEncoding(encoding);
 
     const buf = new FastBuffer(16);
     if (this.#cache.cache.byteLength == 0) {
@@ -272,13 +266,7 @@ export class Cipheriv extends Transform implements Cipher {
       buf = Buffer.from(data, inputEncoding);
     }
 
-    if (!Buffer.isEncoding(outputEncoding)) {
-      throw new ERR_UNKNOWN_ENCODING(outputEncoding);
-    }
-
-    if (outputEncoding !== "buffer") {
-      this.#setOutputEncoding(outputEncoding);
-    }
+    this.#validateOutputEncoding(outputEncoding);
 
     let output;
     if (!this.#needsBlockCache) {
@@ -304,7 +292,15 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   // This is only for validation of encoding change during the update.
-  #setOutputEncoding(encoding: string) {
+  #validateOutputEncoding(encoding: string) {
+    if (encoding === "buffer") {
+      return;
+    }
+
+    if (!Buffer.isEncoding(encoding)) {
+      throw new ERR_UNKNOWN_ENCODING(encoding);
+    }
+
     if (this.#encoding && this.#encoding !== encoding) {
       throw new Error("Cannot change encoding");
     }
