@@ -998,6 +998,8 @@ pub async fn run(
     root_cert_store_provider,
     StorageKeyResolver::empty(),
     sys.clone(),
+    todo!(),
+    todo!(),
     lib_main_worker_options,
     Default::default(),
   );
