@@ -527,10 +527,7 @@ export class AssertionError extends Error {
     }
 
     // @ts-ignore this function is not available in lib.dom.d.ts
-    Error.captureStackTrace(
-      this,
-      stackStartFn || stackStartFunction || AssertionError,
-    );
+    Error.captureStackTrace(this, stackStartFn || stackStartFunction);
     // Create error message including the error code in the name.
     this.stack;
     // Reset the name.

@@ -65,9 +65,11 @@ function toNode(
     expected: unknown;
     message?: string | Error;
     operator?: string;
+    // deno-lint-ignore ban-types
+    stackStartFn?: Function;
   },
 ) {
-  const { operator, message, actual, expected } = opts || {};
+  const { operator, message, actual, expected, stackStartFn } = opts || {};
   try {
     fn();
   } catch (e) {
@@ -78,6 +80,7 @@ function toNode(
           message,
           actual,
           expected,
+          stackStartFn,
         });
       } else if (message instanceof Error) {
         throw message;
@@ -87,6 +90,7 @@ function toNode(
           message: e.message,
           actual,
           expected,
+          stackStartFn,
         });
       }
     }
@@ -273,6 +277,7 @@ function equal(
       operator: "==",
       actual,
       expected,
+      stackStartFn: equal,
     },
   );
 }
