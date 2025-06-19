@@ -1,0 +1,40 @@
+{
+  "envs": {
+    "JSR_URL": "https://jsr.io/"
+  },
+  "tempDir": true,
+  "tests": {
+    "jsr": {
+      "steps": [
+        {
+          "args": "add https://deno.land/std@1.1.0/path/mod.ts",
+          "exitCode": 0,
+          "output": "jsr_add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "jsr_package.json.out"
+        }
+      ]
+    },
+    "npm": {
+      "steps": [
+        {
+          "args": "add https://esm.sh/chalk@5.4.1",
+          "exitCode": 0,
+          "output": "npm_add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "npm_package.json.out"
+        }
+      ]
+    }
+  }
+}

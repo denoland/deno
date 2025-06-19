@@ -1,2 +1,5 @@
-error: Failed to install "http" specifier. If you are trying to install http://example.com/ globally, run again with `-g` flag:
-  deno install -g http://example.com/
+error: Failed to parse package: http://example.com
+
+Caused by:
+    0: Invalid package requirement 'http://example.com'
+    1: Packages in the format <scope>/<name> must start with an '@' symbol
