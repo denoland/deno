@@ -65,7 +65,6 @@ function toNode(
     expected: unknown;
     message?: string | Error;
     operator?: string;
-    // deno-lint-ignore ban-types
     stackStartFn?: Function;
   },
 ) {
