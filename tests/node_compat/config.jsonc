@@ -385,6 +385,7 @@
       "test-crypto-dh-shared.js",
       "test-crypto-dh.js",
       "test-crypto-domain.js",
+      "test-crypto-encoding-validation-error.js",
       "test-crypto-from-binary.js",
       "test-crypto-gcm-explicit-short-tag.js",
       "test-crypto-hash.js",
