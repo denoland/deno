@@ -317,10 +317,7 @@ unsafe fn handle_file_type_flags(handle: HANDLE) -> Result<u8, std::io::Error> {
     FILE_TYPE_UNKNOWN => {
       if unsafe { GetLastError() } != 0 {
         unsafe { CloseHandle(handle) };
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Unknown file type",
-        ));
+        return Err(std::io::Error::other("Unknown file type"));
       }
       FOPEN | FDEV
     }
