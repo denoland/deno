@@ -100,6 +100,10 @@ function assert(actual: unknown, message?: string | Error): asserts actual {
       message: "No value argument passed to `assert.ok()`",
     });
   }
+  if (actual) {
+    return;
+  }
+
   equal(actual, true, message);
 }
 const ok = assert;
