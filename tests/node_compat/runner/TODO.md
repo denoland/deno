@@ -220,7 +220,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-aborted-util.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-aborted-util.js)
 - [parallel/test-abortsignal-cloneable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-abortsignal-cloneable.js)
 - [parallel/test-accessor-properties.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-accessor-properties.js)
-- [parallel/test-assert-builtins-not-read-from-filesystem.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-builtins-not-read-from-filesystem.js)
 - [parallel/test-assert-calltracker-calls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-calls.js)
 - [parallel/test-assert-calltracker-getCalls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-getCalls.js)
 - [parallel/test-assert-calltracker-report.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-report.js)
