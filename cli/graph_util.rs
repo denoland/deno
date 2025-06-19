@@ -18,7 +18,6 @@ use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
-use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolveError;
 use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
@@ -40,22 +39,21 @@ use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
 use crate::args::DenoSubcommand;
 use crate::cache;
-use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
+use crate::file_fetcher::CliDenoGraphLoader;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
@@ -79,6 +77,7 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub ignore_graph_errors: bool,
+  pub allow_unknown_jsr_exports: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -107,6 +106,7 @@ pub fn graph_valid(
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
       ignore_graph_errors: options.ignore_graph_errors,
+      allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
   if let Some(error) = errors.next() {
@@ -148,6 +148,7 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub kind: GraphKind,
   pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
+  pub allow_unknown_jsr_exports: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -198,7 +199,7 @@ pub fn graph_walk_errors<'a>(
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
       && matches!(
         error,
-        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType { .. })
       )
     {
       return true;
@@ -244,6 +245,18 @@ pub fn graph_walk_errors<'a>(
           roots.contains(error.specifier())
         }
       };
+      if is_root
+        && options.allow_unknown_jsr_exports
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::Load {
+            err: ModuleLoadError::Jsr(JsrLoadError::UnknownExport { .. }),
+            ..
+          })
+        )
+      {
+        return None;
+      }
       let message = enhance_graph_error(
         sys,
         &error,
@@ -285,22 +298,23 @@ pub fn module_error_for_tsc_diagnostic<'a>(
   error: &'a ModuleError,
 ) -> Option<ModuleNotFoundGraphErrorRef<'a>> {
   match error {
-    ModuleError::Missing(specifier, maybe_range) => {
-      Some(ModuleNotFoundGraphErrorRef {
-        specifier,
-        maybe_range: maybe_range.as_ref(),
-      })
-    }
-    ModuleError::LoadingErr(
+    ModuleError::Missing {
       specifier,
-      maybe_range,
-      ModuleLoadError::Loader(_),
-    ) => {
+      maybe_referrer,
+    } => Some(ModuleNotFoundGraphErrorRef {
+      specifier,
+      maybe_range: maybe_referrer.as_ref(),
+    }),
+    ModuleError::Load {
+      specifier,
+      maybe_referrer,
+      err: ModuleLoadError::Loader(_),
+    } => {
       if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
         if sys.fs_is_dir_no_err(path) {
           return Some(ModuleNotFoundGraphErrorRef {
             specifier,
-            maybe_range: maybe_range.as_ref(),
+            maybe_range: maybe_referrer.as_ref(),
           });
         }
       }
@@ -428,7 +442,9 @@ impl ModuleGraphCreator {
     roots: Vec<ModuleSpecifier>,
     npm_caching: NpmCachingStrategy,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.module_graph_builder.create_graph_loader();
+    let mut cache = self
+      .module_graph_builder
+      .create_graph_loader_with_root_permissions();
     self
       .create_graph_with_loader(graph_kind, roots, &mut cache, npm_caching)
       .await
@@ -457,7 +473,8 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
-    struct PublishLoader(FetchCacher);
+    struct PublishLoader(CliDenoGraphLoader);
+
     impl Loader for PublishLoader {
       fn load(
         &self,
@@ -465,15 +482,27 @@ impl ModuleGraphCreator {
         options: deno_graph::source::LoadOptions,
       ) -> deno_graph::source::LoadFuture {
         if matches!(specifier.scheme(), "bun" | "virtual" | "cloudflare") {
-          return Box::pin(std::future::ready(Ok(Some(
+          Box::pin(std::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
             },
-          ))));
+          ))))
+        } else if matches!(specifier.scheme(), "http" | "https")
+          && !specifier.as_str().starts_with(jsr_url().as_str())
+        {
+          // mark non-JSR remote modules as external so we don't need --allow-import
+          // permissions as these will error out later when publishing
+          Box::pin(std::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))))
+        } else {
+          self.0.load(specifier, options)
         }
-        self.0.load(specifier, options)
       }
     }
+
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // Earlier on, we marked external non-JSR modules as external.
       // If the graph contains any of those, it would cause type checking
@@ -492,7 +521,9 @@ impl ModuleGraphCreator {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
 
-    let loader = self.module_graph_builder.create_graph_loader();
+    let loader = self
+      .module_graph_builder
+      .create_graph_loader_with_root_permissions();
     let mut publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
@@ -536,7 +567,15 @@ impl ModuleGraphCreator {
 
     self
       .module_graph_builder
-      .build_graph_with_npm_resolution(&mut graph, options)
+      .build_graph_with_npm_resolution(
+        &mut graph,
+        BuildGraphWithNpmOptions {
+          request: BuildGraphRequest::Roots(options.roots),
+          is_dynamic: options.is_dynamic,
+          loader: options.loader,
+          npm_caching: options.npm_caching,
+        },
+      )
       .await?;
 
     Ok(graph)
@@ -618,6 +657,19 @@ pub enum BuildGraphWithNpmResolutionError {
   UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 
+pub enum BuildGraphRequest {
+  Roots(Vec<ModuleSpecifier>),
+  Reload(Vec<ModuleSpecifier>),
+}
+
+pub struct BuildGraphWithNpmOptions<'a> {
+  pub request: BuildGraphRequest,
+  pub is_dynamic: bool,
+  /// Specify `None` to use the default CLI loader.
+  pub loader: Option<&'a mut dyn Loader>,
+  pub npm_caching: NpmCachingStrategy,
+}
+
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   cjs_tracker: Arc<CliCjsTracker>,
@@ -635,7 +687,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -657,7 +709,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -683,11 +735,11 @@ impl ModuleGraphBuilder {
   pub async fn build_graph_with_npm_resolution(
     &self,
     graph: &mut ModuleGraph,
-    options: CreateGraphOptions<'_>,
+    options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
-      Owned(cache::FetchCacher),
+      Owned(CliDenoGraphLoader),
     }
 
     impl MutLoaderRef<'_> {
@@ -699,85 +751,12 @@ impl ModuleGraphBuilder {
       }
     }
 
-    struct LockfileLocker<'a>(&'a CliLockfile);
-
-    impl deno_graph::source::Locker for LockfileLocker<'_> {
-      fn get_remote_checksum(
-        &self,
-        specifier: &deno_ast::ModuleSpecifier,
-      ) -> Option<LoaderChecksum> {
-        self
-          .0
-          .lock()
-          .remote()
-          .get(specifier.as_str())
-          .map(|s| LoaderChecksum::new(s.clone()))
-      }
-
-      fn has_remote_checksum(
-        &self,
-        specifier: &deno_ast::ModuleSpecifier,
-      ) -> bool {
-        self.0.lock().remote().contains_key(specifier.as_str())
-      }
-
-      fn set_remote_checksum(
-        &mut self,
-        specifier: &deno_ast::ModuleSpecifier,
-        checksum: LoaderChecksum,
-      ) {
-        self
-          .0
-          .lock()
-          .insert_remote(specifier.to_string(), checksum.into_string())
-      }
-
-      fn get_pkg_manifest_checksum(
-        &self,
-        package_nv: &PackageNv,
-      ) -> Option<LoaderChecksum> {
-        self
-          .0
-          .lock()
-          .content
-          .packages
-          .jsr
-          .get(package_nv)
-          .map(|s| LoaderChecksum::new(s.integrity.clone()))
-      }
-
-      fn set_pkg_manifest_checksum(
-        &mut self,
-        package_nv: &PackageNv,
-        checksum: LoaderChecksum,
-      ) {
-        // a value would only exist in here if two workers raced
-        // to insert the same package manifest checksum
-        self
-          .0
-          .lock()
-          .insert_package(package_nv.clone(), checksum.into_string());
-      }
-    }
-
-    let maybe_imports = if options.graph_kind.include_types() {
-      // Resolve all the imports from every deno.json. We'll separate
-      // them later based on the folder we're type checking.
-      let mut imports = Vec::new();
-      for deno_json in self.cli_options.workspace().deno_jsons() {
-        let maybe_imports = deno_json.to_compiler_option_types()?;
-        imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
-          deno_graph::ReferrerImports { referrer, imports }
-        }));
-      }
-      imports
-    } else {
-      Vec::new()
-    };
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
-      None => MutLoaderRef::Owned(self.create_graph_loader()),
+      None => {
+        MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
+      }
     };
     let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
       &self.cli_options.start_dir,
@@ -789,17 +768,13 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let mut locker = self
-      .lockfile
-      .as_ref()
-      .map(|lockfile| LockfileLocker(lockfile));
+    let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
-        options.roots,
+        options.request,
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
-          imports: maybe_imports,
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
           is_dynamic: options.is_dynamic,
@@ -809,6 +784,7 @@ impl ModuleGraphBuilder {
           jsr_url_provider: &CliJsrUrlProvider,
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
+          module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
@@ -818,7 +794,7 @@ impl ModuleGraphBuilder {
       .await?;
 
     if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier && options.graph_kind.include_types() {
+      if graph.has_node_specifier && graph.graph_kind().include_types() {
         npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
@@ -829,7 +805,7 @@ impl ModuleGraphBuilder {
   async fn build_graph_with_npm_resolution_and_build_options<'a>(
     &self,
     graph: &mut ModuleGraph,
-    roots: Vec<ModuleSpecifier>,
+    request: BuildGraphRequest,
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
@@ -866,12 +842,36 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
-    if roots.iter().any(|r| r.scheme() == "npm") && self.npm_resolver.is_byonm()
-    {
-      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
+    match request {
+      BuildGraphRequest::Roots(roots) => {
+        if roots.iter().any(|r| r.scheme() == "npm")
+          && self.npm_resolver.is_byonm()
+        {
+          return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
+        }
+        let imports = if graph.graph_kind().include_types() {
+          // Resolve all the imports from every deno.json. We'll separate
+          // them later based on the folder we're type checking.
+          let mut imports = Vec::new();
+          for deno_json in self.cli_options.workspace().deno_jsons() {
+            let maybe_imports = deno_json.to_compiler_option_types()?;
+            imports.extend(maybe_imports.into_iter().map(
+              |(referrer, imports)| deno_graph::ReferrerImports {
+                referrer,
+                imports,
+              },
+            ));
+          }
+          imports
+        } else {
+          Vec::new()
+        };
+        graph.build(roots, imports, loader, options).await;
+      }
+      BuildGraphRequest::Reload(urls) => {
+        graph.reload(urls, loader, options).await
+      }
     }
-
-    graph.build(roots, loader, options).await;
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
@@ -955,27 +955,26 @@ impl ModuleGraphBuilder {
   }
 
   /// Creates the default loader used for creating a graph.
-  pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(self.root_permissions_container.clone())
+  pub fn create_graph_loader_with_root_permissions(
+    &self,
+  ) -> CliDenoGraphLoader {
+    self.create_graph_loader_with_permissions(
+      self.root_permissions_container.clone(),
+    )
   }
 
-  pub fn create_fetch_cacher(
+  pub fn create_graph_loader_with_permissions(
     &self,
     permissions: PermissionsContainer,
-  ) -> cache::FetchCacher {
-    cache::FetchCacher::new(
+  ) -> CliDenoGraphLoader {
+    CliDenoGraphLoader::new(
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
       self.in_npm_pkg_checker.clone(),
-      self.module_info_cache.clone(),
       self.sys.clone(),
-      cache::FetchCacherOptions {
+      deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
-        permissions,
-        is_deno_publish: matches!(
-          self.cli_options.sub_command(),
-          crate::args::DenoSubcommand::Publish { .. }
-        ),
+        permissions: Some(permissions),
       },
     )
   }
@@ -988,6 +987,7 @@ impl ModuleGraphBuilder {
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
       false,
+      false,
     )
   }
 
@@ -996,6 +996,7 @@ impl ModuleGraphBuilder {
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
+    allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
@@ -1014,6 +1015,7 @@ impl ModuleGraphBuilder {
           self.cli_options.sub_command(),
           DenoSubcommand::Check { .. }
         ),
+        allow_unknown_jsr_exports,
       },
     )
   }
@@ -1051,8 +1053,8 @@ fn enhanced_sloppy_imports_error_message(
   error: &ModuleError,
 ) -> Option<String> {
   match error {
-    ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
-    | ModuleError::Missing(specifier, _) => {
+    ModuleError::Load { specifier, err: ModuleLoadError::Loader(_), .. } // ex. "Is a directory" error
+    | ModuleError::Missing { specifier, .. } => {
       let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
         "{} {}",
@@ -1082,13 +1084,13 @@ pub fn maybe_additional_sloppy_imports_message(
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
   match err {
-    ModuleError::LoadingErr(
+    ModuleError::Load {
       specifier,
-      _,
-      ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
+      err: ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
         checksum_err,
       )),
-    ) => {
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed in package. The package may have been tampered with.\n\n",
@@ -1105,16 +1107,15 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::LoadingErr(
-      _specifier,
-      _,
-      ModuleLoadError::Jsr(
+    ModuleError::Load {
+      err: ModuleLoadError::Jsr(
         JsrLoadError::PackageVersionManifestChecksumIntegrity(
           package_nv,
           checksum_err,
         ),
       ),
-    ) => {
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
@@ -1131,11 +1132,11 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::LoadingErr(
+    ModuleError::Load {
       specifier,
-      _,
-      ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
-    ) => {
+      err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
+      ..
+    } => {
       Some(format!(
         concat!(
           "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",

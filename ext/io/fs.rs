@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -14,6 +16,8 @@ use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use tokio::task::JoinError;
 
 #[derive(Debug, deno_error::JsError)]
@@ -275,7 +279,7 @@ pub trait File {
   ) -> FsResult<()>;
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }

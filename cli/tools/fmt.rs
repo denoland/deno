@@ -619,11 +619,14 @@ fn format_embedded_css(
       ignore_file_comment_directive: "malva-ignore-file".into(),
     },
   };
-  // Wraps the text in a css block of `a { ... }`
-  // to make it valid css (scss)
+  // Wraps the text in a css block of `a { ... ;}`
+  // to make it valid css
+  // Note: We choose LESS for the syntax because it allows us to use
+  // @variable for both property values and mixins, which is convenient
+  // for handling placeholders used as both properties and mixins.
   let text = malva::format_text(
-    &format!("a{{\n{}\n}}", text),
-    malva::Syntax::Scss,
+    &format!("a{{\n{}\n;}}", text),
+    malva::Syntax::Less,
     &options,
   )?;
   let mut buf = vec![];
@@ -696,6 +699,7 @@ fn format_embedded_html(
         config::ClosingTagLineBreakForEmpty::Fit,
       max_attrs_per_line: None,
       prefer_attrs_single_line: false,
+      single_attr_same_line: false,
       html_normal_self_closing: None,
       html_void_self_closing: None,
       component_self_closing: None,
@@ -1512,6 +1516,7 @@ fn get_resolved_markup_fmt_config(
     closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
+    single_attr_same_line: false,
     html_normal_self_closing: None,
     html_void_self_closing: None,
     component_self_closing: None,

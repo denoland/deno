@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 58;
+const cacheVersion = 61;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -445,6 +445,7 @@ const ci = {
             job: "test",
             profile: "release",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
@@ -947,6 +948,7 @@ const ci = {
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "rm canary-latest.txt gha-creds-*.json",
           ].join("\n"),
         },
         {
@@ -997,6 +999,20 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
           run: "cargo test --release --locked --features=panic-trace",
+        },
+        {
+          name: "Ensure no git changes",
+          if: "matrix.job == 'test' && github.event_name == 'pull_request'",
+          run: [
+            'if [[ -n "$(git status --porcelain)" ]]; then',
+            'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+            'echo ""',
+            'echo "📋 Status:"',
+            "git status",
+            'echo ""',
+            "exit 1",
+            "fi",
+          ].join("\n"),
         },
         {
           name: "Configure hosts file for WPT",
@@ -1214,8 +1230,8 @@ const ci = {
         },
       ]),
     },
-    wasm: {
-      name: "build wasm32",
+    libs: {
+      name: "build libs",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1231,11 +1247,22 @@ const ci = {
         {
           name: "Cargo check (deno_resolver)",
           run:
-            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph",
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
         },
         {
-          name: "Cargo check (deno_npm_cache)",
-          run: "cargo check --target wasm32-unknown-unknown -p deno_npm_cache",
+          name: "Cargo check (deno_npm_installer)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          ].join("\n"),
         },
       ]),
     },

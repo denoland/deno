@@ -42,6 +42,7 @@ import type {
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getArrayBufferOrView,
   getKeyObjectHandle,
   kConsumePrivate,
   kConsumePublic,
@@ -51,7 +52,21 @@ import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
 
-export class DiffieHellman {
+export function DiffieHellman(
+  sizeOrKey: number | string | ArrayBufferView,
+  keyEncoding?: unknown,
+  generator?: unknown,
+  genEncoding?: unknown,
+) {
+  return new DiffieHellmanImpl(
+    sizeOrKey,
+    keyEncoding,
+    generator,
+    genEncoding,
+  );
+}
+
+export class DiffieHellmanImpl {
   verifyError!: number;
   #prime: Buffer;
   #primeLength: number;
@@ -102,7 +117,10 @@ export class DiffieHellman {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
       if (this.#primeLength < 2) {
-        throw new NodeError("ERR_OSSL_BN_BITS_TOO_SMALL", "bits too small");
+        throw new NodeError(
+          "ERR_OSSL_DH_MODULUS_TOO_SMALL",
+          "modulus too small",
+        );
       }
 
       this.#prime = Buffer.from(
@@ -180,11 +198,12 @@ export class DiffieHellman {
     inputEncoding?: BinaryToTextEncoding,
     outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let buf;
-    if (inputEncoding != undefined && inputEncoding != "buffer") {
-      buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
-    } else {
-      buf = Buffer.from(otherPublicKey.buffer);
+    const buf = getArrayBufferOrView(otherPublicKey, "key", inputEncoding);
+    if (buf.length === 0) {
+      throw new NodeError(
+        "ERR_CRYPTO_INVALID_KEYLEN",
+        "Unspecified validation error",
+      );
     }
 
     const sharedSecret = op_node_dh_compute_secret(
@@ -1108,15 +1127,21 @@ const DH_GROUPS = {
   },
 };
 
-export class DiffieHellmanGroup {
+DiffieHellman.prototype = DiffieHellmanImpl.prototype;
+
+export function DiffieHellmanGroup(name: string) {
+  return new DiffieHellmanGroupImpl(name);
+}
+
+export class DiffieHellmanGroupImpl {
   verifyError!: number;
-  #diffiehellman: DiffieHellman;
+  #diffiehellman: DiffieHellmanImpl;
 
   constructor(name: string) {
     if (!DH_GROUP_NAMES.includes(name)) {
       throw new ERR_CRYPTO_UNKNOWN_DH_GROUP();
     }
-    this.#diffiehellman = new DiffieHellman(
+    this.#diffiehellman = new DiffieHellmanImpl(
       Buffer.from(DH_GROUPS[name].prime),
       DH_GROUPS[name].generator,
     );
@@ -1180,7 +1205,13 @@ export class DiffieHellmanGroup {
   }
 }
 
-export class ECDH {
+DiffieHellmanGroup.prototype = DiffieHellmanGroupImpl.prototype;
+
+export function ECDH(curve: string) {
+  return new ECDHImpl(curve);
+}
+
+export class ECDHImpl {
   #curve: EllipticCurve; // the selected curve
   #privbuf: Buffer; // the private key
   #pubbuf: Buffer; // the public key
@@ -1310,6 +1341,8 @@ export class ECDH {
     return this.#pubbuf;
   }
 }
+
+ECDH.prototype = ECDHImpl.prototype;
 
 export function diffieHellman(options: {
   privateKey: KeyObject;

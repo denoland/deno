@@ -8,15 +8,22 @@ margin: 0.5rem;
 
 	&:not(:first-child) {
 			${(props) => props.vertical ? "margin-top" : "margin-left"}: 1rem;
+        ${OTHER_STYLES};
 		}
 	}
+
+  div { padding: ${condition ? expression1 + expression2 * expression3 : expression4}px; }
+
+  span {
+    ${SOME_STYLE}
+  }
 `;
 
 cssString = css`
         border: 1px red solid;
               background-color: red;
 border-radius: 4px;
-`
+        ${OTHER_STYLES}`
 
 nestedCssString = tw`
   animate-pulse

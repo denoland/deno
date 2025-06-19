@@ -2,6 +2,7 @@
 use std::future::Future;
 use std::rc::Rc;
 
+use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -24,7 +25,6 @@ use p384::NistP384;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::Rng;
-use ring::signature::Ed25519KeyPair;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::Oaep;
@@ -96,6 +96,11 @@ pub fn op_node_create_hash(
 #[serde]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
+}
+
+#[op2]
+pub fn op_node_get_hash_size(#[string] algorithm: &str) -> Option<u8> {
+  digest::Hash::get_size(algorithm)
 }
 
 #[op2(fast)]
@@ -298,9 +303,27 @@ pub fn op_node_create_decipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
+  #[smi] auth_tag_length: i32,
 ) -> Result<u32, cipher::DecipherContextError> {
-  let context = cipher::DecipherContext::new(algorithm, key, iv)?;
+  let auth_tag_length = if auth_tag_length == -1 {
+    None
+  } else {
+    Some(auth_tag_length as usize)
+  };
+
+  let context =
+    cipher::DecipherContext::new(algorithm, key, iv, auth_tag_length)?;
   Ok(state.resource_table.add(context))
+}
+
+#[op2(fast)]
+pub fn op_node_decipheriv_auth_tag(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[smi] length: u32,
+) -> Result<(), cipher::DecipherContextError> {
+  let context = state.resource_table.get::<cipher::DecipherContext>(rid)?;
+  context.validate_auth_tag(length as usize)
 }
 
 #[op2(fast)]
@@ -382,14 +405,50 @@ pub fn op_node_verify(
   )
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+enum ErrorCode {
+  ERR_CRYPTO_INVALID_DIGEST,
+}
+
+impl std::fmt::Display for ErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl ErrorCode {
+  pub fn as_str(&self) -> &str {
+    match self {
+      Self::ERR_CRYPTO_INVALID_DIGEST => "ERR_CRYPTO_INVALID_DIGEST",
+    }
+  }
+}
+
+impl From<ErrorCode> for deno_error::PropertyValue {
+  fn from(code: ErrorCode) -> Self {
+    deno_error::PropertyValue::from(code.as_str().to_string())
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Pbkdf2Error {
   #[class(type)]
-  #[error("unsupported digest: {0}")]
+  #[error("Invalid digest: {0}")]
+  #[property("code" = self.code())]
   UnsupportedDigest(String),
   #[class(inherit)]
   #[error(transparent)]
   Join(#[from] tokio::task::JoinError),
+}
+
+impl Pbkdf2Error {
+  fn code(&self) -> ErrorCode {
+    match self {
+      Self::UnsupportedDigest(_) => ErrorCode::ERR_CRYPTO_INVALID_DIGEST,
+      Self::Join(_) => unreachable!(),
+    }
+  }
 }
 
 fn pbkdf2_sync(
@@ -413,20 +472,36 @@ fn pbkdf2_sync(
 
 #[op2]
 pub fn op_node_pbkdf2(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: &[u8],
+  #[anybuffer] salt: &[u8],
   #[smi] iterations: u32,
   #[string] digest: &str,
   #[buffer] derived_key: &mut [u8],
 ) -> bool {
-  pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
+  pbkdf2_sync(password, salt, iterations, digest, derived_key).is_ok()
+}
+
+#[op2(fast)]
+pub fn op_node_pbkdf2_validate(
+  #[string] digest: &str,
+) -> Result<(), Pbkdf2Error> {
+  // Validate the digest algorithm name
+  match_fixed_digest_with_eager_block_buffer!(
+    digest,
+    fn <_D>() {
+      Ok(())
+    },
+    _ => {
+      Err(Pbkdf2Error::UnsupportedDigest(digest.to_string()))
+    }
+  )
 }
 
 #[op2(async)]
 #[serde]
 pub async fn op_node_pbkdf2_async(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: JsBuffer,
+  #[anybuffer] salt: JsBuffer,
   #[smi] iterations: u32,
   #[string] digest: String,
   #[number] keylen: usize,
@@ -569,7 +644,7 @@ fn scrypt(
     parallelization,
     keylen as usize,
   )
-  .map_err(|_| JsErrorBox::generic("scrypt params construction failed"))?;
+  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
 
   // Call into scrypt
   let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
@@ -1056,8 +1131,8 @@ pub fn op_node_verify_ed25519(
     _ => return Err(VerifyEd25519Error::ExpectedEd25519PublicKey),
   };
 
-  let verified = ring::signature::UnparsedPublicKey::new(
-    &ring::signature::ED25519,
+  let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
     ed25519.as_bytes().as_slice(),
   )
   .verify(data, signature)
