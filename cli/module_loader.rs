@@ -548,10 +548,10 @@ pub struct EnhancedGraphError {
 pub enum LoadPreparedModuleError {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(#[from] crate::emit::EmitParsedSourceHelperError),
+  NpmModuleLoad(#[from] Box<crate::emit::EmitParsedSourceHelperError>),
   #[class(inherit)]
   #[error(transparent)]
-  LoadMaybeCjs(#[from] LoadMaybeCjsError),
+  LoadMaybeCjs(#[from] Box<LoadMaybeCjsError>),
   #[class(inherit)]
   #[error(transparent)]
   Graph(#[from] Box<EnhancedGraphError>),
@@ -1025,7 +1025,8 @@ impl<TGraphContainer: ModuleGraphContainer>
         let transpile_result = self
           .emitter
           .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
-          .await?;
+          .await
+          .map_err(Box::new)?;
 
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
@@ -1045,7 +1046,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         .load_maybe_cjs(specifier, media_type, source)
         .await
         .map(Some)
-        .map_err(LoadPreparedModuleError::LoadMaybeCjs),
+        .map_err(|e| LoadPreparedModuleError::LoadMaybeCjs(Box::new(e))),
       None => Ok(None),
     }
   }

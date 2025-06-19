@@ -2306,6 +2306,7 @@ fn combine_files_config_with_cli_args(
 
 struct CombineOptionVecsWithOverride<'a, T: Clone> {
   root: Option<Vec<T>>,
+  #[allow(clippy::owned_cow)]
   member: Option<Cow<'a, Vec<T>>>,
   member_override_root: Option<&'a Vec<T>>,
 }
