@@ -8,6 +8,7 @@ use deno_media_type::MediaType;
 use deno_resolver::cjs::CjsTracker;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_core::ModuleSourceCode;
+use deno_runtime::deno_core::ModuleType;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::InNpmPackageChecker;
@@ -22,7 +23,7 @@ use crate::util::text_encoding::from_utf8_lossy_cow;
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
   pub found_url: Url,
-  pub media_type: MediaType,
+  pub module_type: ModuleType,
 }
 
 #[derive(Debug, Error, deno_error::JsError)]
@@ -211,7 +212,17 @@ impl<
     Ok(ModuleCodeStringSource {
       code,
       found_url: specifier.clone(),
-      media_type: MediaType::from_specifier(specifier),
+      module_type: module_type_from_media_type(MediaType::from_specifier(
+        specifier,
+      )),
     })
+  }
+}
+
+pub fn module_type_from_media_type(media_type: MediaType) -> ModuleType {
+  match media_type {
+    MediaType::Json => ModuleType::Json,
+    MediaType::Wasm => ModuleType::Wasm,
+    _ => ModuleType::JavaScript,
   }
 }

@@ -533,7 +533,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     let result = self
-      .bundle_load(&args.path, requested_type_from_map(&args.with))
+      .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
     let result = match result {
       Ok(r) => r,
@@ -766,7 +766,7 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    requested_type: RequestedModuleType,
+    requested_type: &RequestedModuleType,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
   {
     log::debug!(

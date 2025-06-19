@@ -99,9 +99,12 @@ pub fn validate_import_attributes_callback(
   attributes: &HashMap<String, String>,
 ) {
   for (key, value) in attributes {
+    // todo(THIS PR): make bytes/text conditional
     let msg = if key != "type" {
       Some(format!("\"{key}\" attribute is not supported."))
-    } else if value != "json" && value != "$$deno-core-internal-wasm-module" {
+    } else if !matches!(value.as_str(), "json" | "bytes" | "text")
+      && value != "$$deno-core-internal-wasm-module"
+    {
       Some(format!("\"{value}\" is not a valid module type."))
     } else {
       None
@@ -1116,7 +1119,10 @@ fn common_runtime(
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),
-    ..Default::default()
+    extension_code_cache: None,
+    v8_platform: None,
+    custom_module_evaluation_cb: None,
+    eval_context_code_cache_cbs: None,
   })
 }
 

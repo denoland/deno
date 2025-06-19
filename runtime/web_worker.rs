@@ -652,7 +652,13 @@ impl WebWorker {
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),
-      ..Default::default()
+      extension_code_cache: None,
+      skip_op_registration: false,
+      v8_platform: None,
+      is_main: false,
+      wait_for_inspector_disconnect_callback: None,
+      custom_module_evaluation_cb: None,
+      eval_context_code_cache_cbs: None,
     });
 
     if let Some(op_summary_metrics) = op_summary_metrics {

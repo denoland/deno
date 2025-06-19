@@ -45,6 +45,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
+use deno_lib::loader::module_type_from_media_type;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::loader::StrippingTypesNodeModulesError;
@@ -643,7 +644,7 @@ impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: RequestedModuleType,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, CliModuleLoaderError> {
     self
       .0
@@ -659,26 +660,22 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: RequestedModuleType,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, CliModuleLoaderError> {
-    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
-
-    let module_type = match code_source.media_type {
-      MediaType::Json => ModuleType::Json,
-      MediaType::Wasm => ModuleType::Wasm,
-      _ => ModuleType::JavaScript,
-    };
+    let code_source = self
+      .load_code_source(specifier, maybe_referrer, requested_module_type)
+      .await?;
 
     // If we loaded a JSON file, but the "requested_module_type" (that is computed from
     // import attributes) is not JSON we need to fail.
-    if module_type == ModuleType::Json
-      && requested_module_type != RequestedModuleType::Json
+    if code_source.module_type == ModuleType::Json
+      && *requested_module_type != RequestedModuleType::Json
     {
       return Err(CliModuleLoaderError::MissingJsonAttribute);
     }
 
     Ok(ModuleSource::new_with_redirect(
-      module_type,
+      code_source.module_type,
       code_source.code,
       specifier,
       &code_source.found_url,
@@ -690,27 +687,22 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: RequestedModuleType,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
     let code_source = self
-      .load_code_source(specifier, maybe_referrer)
+      .load_code_source(specifier, maybe_referrer, requested_module_type)
       .await
       .map_err(JsErrorBox::from_err)?;
-    let module_type = match code_source.media_type {
-      MediaType::Json => ModuleType::Json,
-      MediaType::Wasm => ModuleType::Wasm,
-      _ => ModuleType::JavaScript,
-    };
 
     // If we loaded a JSON file, but the "requested_module_type" (that is computed from
     // import attributes) is not JSON we need to fail.
-    if module_type == ModuleType::Json
-      && requested_module_type != RequestedModuleType::Json
+    if code_source.module_type == ModuleType::Json
+      && *requested_module_type != RequestedModuleType::Json
     {
       return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
     let code = if self.shared.is_inspecting
-      || code_source.media_type == MediaType::Wasm
+      || code_source.module_type == ModuleType::Wasm
     {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
@@ -720,7 +712,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       code_without_source_map(code_source.code)
     };
 
-    let code_cache = if module_type == ModuleType::JavaScript {
+    let code_cache = if code_source.module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().map(|cache| {
         let code_hash = FastInsecureHasher::new_deno_versioned()
           .write_hashable(&code)
@@ -744,7 +736,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     };
 
     Ok(ModuleSource::new_with_redirect(
-      module_type,
+      code_source.module_type,
       code,
       specifier,
       &code_source.found_url,
@@ -756,9 +748,10 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
     match self
-      .load_prepared_module(specifier)
+      .load_prepared_module(specifier, requested_module_type)
       .await
       .map_err(LoadCodeSourceError::from_err)?
     {
@@ -1012,10 +1005,15 @@ impl<TGraphContainer: ModuleGraphContainer>
   async fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<Option<ModuleCodeStringSource>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
+    match self.load_prepared_module_or_defer_emit(
+      &graph,
+      specifier,
+      requested_module_type,
+    )? {
       Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
@@ -1034,7 +1032,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           // note: it's faster to provide a string if we know it's a string
           code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
-          media_type,
+          module_type: module_type_from_media_type(media_type),
         }))
       }
       Some(CodeOrDeferredEmit::Cjs {
@@ -1056,7 +1054,11 @@ impl<TGraphContainer: ModuleGraphContainer>
   ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
     // Note: keep this in sync with the async version above
     let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(&graph, specifier)? {
+    match self.load_prepared_module_or_defer_emit(
+      &graph,
+      specifier,
+      &RequestedModuleType::None,
+    )? {
       Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
@@ -1077,7 +1079,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           // note: it's faster to provide a string if we know it's a string
           code: ModuleSourceCode::String(transpile_result.into()),
           found_url: specifier.clone(),
-          media_type,
+          module_type: module_type_from_media_type(media_type),
         }))
       }
       Some(CodeOrDeferredEmit::Cjs { .. }) => {
@@ -1096,6 +1098,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
   ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
@@ -1119,11 +1122,32 @@ impl<TGraphContainer: ModuleGraphContainer>
         media_type,
         specifier,
         ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: ModuleSourceCode::String(source.clone().into()),
-        found_url: specifier.clone(),
-        media_type: *media_type,
-      }))),
+      })) => match requested_module_type {
+        RequestedModuleType::Other(value) if value == "bytes" => {
+          match source.try_get_original_bytes() {
+            Some(bytes) => {
+              Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+                code: ModuleSourceCode::Bytes(bytes.into()),
+                found_url: specifier.clone(),
+                module_type: ModuleType::Other("bytes".into()),
+              })))
+            }
+            None => Ok(None),
+          }
+        }
+        RequestedModuleType::Other(value) if value == "text" => {
+          Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+            code: ModuleSourceCode::String(source.text.clone().into()),
+            found_url: specifier.clone(),
+            module_type: ModuleType::Other("text".into()),
+          })))
+        }
+        _ => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+          code: ModuleSourceCode::String(source.text.clone().into()),
+          found_url: specifier.clone(),
+          module_type: module_type_from_media_type(*media_type),
+        }))),
+      },
       Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
@@ -1131,68 +1155,106 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if self
-          .shared
-          .cjs_tracker
-          .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
-          .map_err(JsErrorBox::from_err)?
-        {
-          return Ok(Some(CodeOrDeferredEmit::Cjs {
-            specifier,
-            media_type: *media_type,
-            source,
-          }));
+        match requested_module_type {
+          RequestedModuleType::Other(value) if value == "bytes" => {
+            match source.try_get_original_bytes() {
+              Some(bytes) => {
+                Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+                  code: ModuleSourceCode::Bytes(bytes.into()),
+                  found_url: specifier.clone(),
+                  module_type: ModuleType::Other("bytes".into()),
+                })))
+              }
+              None => Ok(None),
+            }
+          }
+          RequestedModuleType::Other(value) if value == "text" => {
+            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+              code: ModuleSourceCode::String(source.text.clone().into()),
+              found_url: specifier.clone(),
+              module_type: ModuleType::Other("text".into()),
+            })))
+          }
+          _ => {
+            if self
+              .shared
+              .cjs_tracker
+              .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
+              .map_err(JsErrorBox::from_err)?
+            {
+              return Ok(Some(CodeOrDeferredEmit::Cjs {
+                specifier,
+                media_type: *media_type,
+                source: &source.text,
+              }));
+            }
+            let code: ModuleCodeString = match media_type {
+              MediaType::JavaScript
+              | MediaType::Unknown
+              | MediaType::Mjs
+              | MediaType::Json => source.text.clone().into(),
+              MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+                Default::default()
+              }
+              MediaType::Cjs | MediaType::Cts => {
+                return Ok(Some(CodeOrDeferredEmit::Cjs {
+                  specifier,
+                  media_type: *media_type,
+                  source: &source.text,
+                }));
+              }
+              MediaType::TypeScript
+              | MediaType::Mts
+              | MediaType::Jsx
+              | MediaType::Tsx => {
+                return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
+                  specifier,
+                  media_type: *media_type,
+                  source: &source.text,
+                }));
+              }
+              MediaType::Css
+              | MediaType::Html
+              | MediaType::Sql
+              | MediaType::Wasm
+              | MediaType::SourceMap => {
+                panic!("Unexpected media type {media_type} for {specifier}")
+              }
+            };
+
+            // at this point, we no longer need the parsed source in memory, so free it
+            self.parsed_source_cache.free(specifier);
+
+            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+              code: ModuleSourceCode::String(code),
+              found_url: specifier.clone(),
+              module_type: module_type_from_media_type(*media_type),
+            })))
+          }
         }
-        let code: ModuleCodeString = match media_type {
-          MediaType::JavaScript
-          | MediaType::Unknown
-          | MediaType::Mjs
-          | MediaType::Json => source.clone().into(),
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            Default::default()
-          }
-          MediaType::Cjs | MediaType::Cts => {
-            return Ok(Some(CodeOrDeferredEmit::Cjs {
-              specifier,
-              media_type: *media_type,
-              source,
-            }));
-          }
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Jsx
-          | MediaType::Tsx => {
-            return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
-              specifier,
-              media_type: *media_type,
-              source,
-            }));
-          }
-          MediaType::Css
-          | MediaType::Html
-          | MediaType::Sql
-          | MediaType::Wasm
-          | MediaType::SourceMap => {
-            panic!("Unexpected media type {media_type} for {specifier}")
-          }
-        };
-
-        // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
-
-        Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code: ModuleSourceCode::String(code),
-          found_url: specifier.clone(),
-          media_type: *media_type,
-        })))
       }
       Some(deno_graph::Module::Wasm(WasmModule {
         source, specifier, ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: ModuleSourceCode::Bytes(source.clone().into()),
-        found_url: specifier.clone(),
-        media_type: MediaType::Wasm,
-      }))),
+      })) => {
+        match requested_module_type {
+          RequestedModuleType::Other(value) if value == "bytes" => {
+            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+              code: ModuleSourceCode::Bytes(source.clone().into()),
+              found_url: specifier.clone(),
+              module_type: ModuleType::Other("bytes".into()),
+            })))
+          }
+          RequestedModuleType::Other(value) if value == "text" => {
+            // TODO(THIS PR): Error here
+            todo!("");
+          }
+          _ => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+            code: ModuleSourceCode::Bytes(source.clone().into()),
+            found_url: specifier.clone(),
+            module_type: ModuleType::Wasm,
+          }))),
+        }
+      }
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
@@ -1240,7 +1302,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         Cow::Owned(text) => ModuleSourceCode::String(text.into()),
       },
       found_url: specifier.clone(),
-      media_type,
+      module_type: module_type_from_media_type(media_type),
     })
   }
 }
@@ -1326,7 +1388,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .load_inner(
             &specifier,
             maybe_referrer.as_ref(),
-            requested_module_type,
+            &requested_module_type,
           )
           .await
       }
@@ -1490,8 +1552,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> Option<String> {
     let graph = self.0.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
-      Some(deno_graph::Module::Js(module)) => &module.source,
-      Some(deno_graph::Module::Json(module)) => &module.source,
+      Some(deno_graph::Module::Js(module)) => &module.source.text,
+      Some(deno_graph::Module::Json(module)) => &module.source.text,
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.

@@ -853,7 +853,7 @@ impl<'a> GraphWalker<'a> {
             if self
               .tsconfig_resolver
               .check_js_for_specifier(&module.specifier)
-              || has_ts_check(module.media_type, &module.source)
+              || has_ts_check(module.media_type, &module.source.text)
             {
               Some((module.specifier.clone(), module.media_type))
             } else {
@@ -876,7 +876,7 @@ impl<'a> GraphWalker<'a> {
               module
                 .fast_check_module()
                 .map(|s| s.source.as_ref())
-                .unwrap_or(&module.source),
+                .unwrap_or(&module.source.text),
             );
           }
         }
@@ -896,7 +896,7 @@ impl<'a> GraphWalker<'a> {
       Module::Json(module) => {
         if let Some(hasher) = &mut self.maybe_hasher {
           hasher.write_str(module.specifier.as_str());
-          hasher.write_str(&module.source);
+          hasher.write_str(&module.source.text);
         }
         None
       }

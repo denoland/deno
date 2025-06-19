@@ -748,12 +748,12 @@ fn op_load_inner(
             module
               .fast_check_module()
               .map(|m| FastString::from(m.source.clone()))
-              .unwrap_or(module.source.clone().into()),
+              .unwrap_or(module.source.text.clone().into()),
           )
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
-          Some(FastString::from(module.source.clone()))
+          Some(FastString::from(module.source.text.clone()))
         }
         Module::Wasm(module) => {
           media_type = MediaType::Dts;

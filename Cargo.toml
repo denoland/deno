@@ -61,7 +61,7 @@ deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.351.0" }
 
 deno_cache_dir = "=0.22.2"
-deno_doc = "=0.178.0"
+deno_doc = "=0.178.1"
 deno_error = "=0.6.1"
 deno_graph = { version = "=0.95.1", default-features = false }
 deno_lint = "=0.76.0"
@@ -526,3 +526,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+eszip = { path = "../eszip" }
+deno_doc = { path = "../deno_doc" }
+deno_media_type = { path = "../deno_media_type" }
