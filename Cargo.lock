@@ -2190,6 +2190,7 @@ name = "deno_lib"
 version = "0.25.0"
 dependencies = [
  "aws-lc-rs",
+ "base64 0.22.1",
  "capacity_builder",
  "deno_error",
  "deno_fs",
