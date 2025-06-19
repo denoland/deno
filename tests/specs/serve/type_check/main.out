@@ -1,5 +1,5 @@
 Check [WILDCARD]
-TS2353 [ERROR]: Object literal may only specify known properties, and 'bad' does not exist in type 'ServeDefaultExport'.
+TS2353 [ERROR]: Object literal may only specify known properties, and 'bad' does not exist in type 'ServeDefaultExport<NetAddr>'.
   bad() {
   ~~~
     at [WILDCARD]main.ts:2:3
