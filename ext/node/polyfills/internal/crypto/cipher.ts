@@ -35,13 +35,17 @@ import {
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
+import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_VALUE,
+  ERR_UNKNOWN_ENCODING,
+} from "ext:deno_node/internal/errors.ts";
 
 import {
   isAnyArrayBuffer,
@@ -175,6 +179,8 @@ export class Cipheriv extends Transform implements Cipher {
 
   #autoPadding = true;
 
+  #encoding: string | undefined;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -204,6 +210,8 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    this.#validateOutputEncoding(encoding);
+
     const buf = new FastBuffer(16);
     if (this.#cache.cache.byteLength == 0) {
       const maybeTag = op_node_cipheriv_take(this.#context);
@@ -259,6 +267,8 @@ export class Cipheriv extends Transform implements Cipher {
       buf = Buffer.from(data, inputEncoding);
     }
 
+    this.#validateOutputEncoding(outputEncoding);
+
     let output;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
@@ -280,6 +290,22 @@ export class Cipheriv extends Transform implements Cipher {
     return outputEncoding === "buffer"
       ? output
       : output.toString(outputEncoding);
+  }
+
+  // This is only for validation of encoding change during the update.
+  #validateOutputEncoding(encoding: string) {
+    if (encoding === "buffer") {
+      return;
+    }
+
+    if (!Buffer.isEncoding(encoding)) {
+      throw new ERR_UNKNOWN_ENCODING(encoding);
+    }
+
+    if (this.#encoding && this.#encoding !== encoding) {
+      throw new Error("Cannot change encoding");
+    }
+    this.#encoding = encoding;
   }
 }
 
@@ -496,10 +522,15 @@ export function publicEncrypt(
 
 export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
-  // - node KeyObject
   // - web CryptoKey
   if (isStringOrBuffer(key)) {
     return { data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key) && key.type === "public") {
+    const data = key.export({ type: "spki", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
+  } else if (isKeyObject(key) && key.type === "private") {
+    const data = key.export({ type: "pkcs8", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {
