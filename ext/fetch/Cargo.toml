@@ -51,3 +51,4 @@ tokio-vsock.workspace = true
 
 [dev-dependencies]
 fast-socks5.workspace = true
+rustls.workspace = true
