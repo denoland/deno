@@ -33,6 +33,7 @@ use deno_graph::WorkspaceFastCheckOption;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_resolver::workspace::ScopedJsxImportSourceConfig;
@@ -687,6 +688,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
@@ -709,6 +711,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
@@ -728,6 +731,7 @@ impl ModuleGraphBuilder {
       resolver,
       root_permissions_container,
       sys,
+      compiler_options_resolver,
       tsconfig_resolver,
     }
   }

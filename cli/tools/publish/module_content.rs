@@ -11,6 +11,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::TsConfigResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
@@ -37,6 +38,7 @@ pub struct ModuleContentProvider<TSys: FsMetadata + FsRead = CliSys> {
   specifier_unfurler: SpecifierUnfurler<TSys>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   sys: TSys,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
 }
 
@@ -45,12 +47,14 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     parsed_source_cache: Arc<ParsedSourceCache>,
     specifier_unfurler: SpecifierUnfurler<TSys>,
     sys: TSys,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
   ) -> Self {
     Self {
       specifier_unfurler,
       parsed_source_cache,
       sys,
+      compiler_options_resolver,
       tsconfig_resolver,
     }
   }
@@ -409,6 +413,9 @@ mod test {
       .unwrap(),
     );
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
+    let compiler_options_resolver = Arc::new(
+      CompilerOptionsResolver::from_workspace(&sys, &workspace_dir.workspace),
+    );
     let tsconfig_resolver = Arc::new(TsConfigResolver::from_workspace(
       &sys,
       &workspace_dir.workspace,
@@ -417,6 +424,7 @@ mod test {
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,
       sys,
+      compiler_options_resolver,
       tsconfig_resolver,
     )
   }

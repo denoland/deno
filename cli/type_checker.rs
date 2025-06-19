@@ -16,6 +16,7 @@ use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
 use indexmap::IndexMap;
@@ -106,6 +107,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   tsconfig_resolver: Arc<CliTsConfigResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
@@ -120,6 +122,7 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     tsconfig_resolver: Arc<CliTsConfigResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
@@ -131,6 +134,7 @@ impl TypeChecker {
       node_resolver,
       npm_resolver,
       sys,
+      compiler_options_resolver,
       tsconfig_resolver,
       code_cache,
     }
@@ -235,6 +239,7 @@ impl TypeChecker {
         cjs_tracker: &self.cjs_tracker,
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
+        compiler_options_resolver: &self.compiler_options_resolver,
         tsconfig_resolver: &self.tsconfig_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -390,6 +395,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
+  compiler_options_resolver: &'a CompilerOptionsResolver,
   tsconfig_resolver: &'a CliTsConfigResolver,
   type_check_cache: TypeCheckCache,
   grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
@@ -471,6 +477,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       self.sys,
       self.node_resolver,
       self.npm_resolver,
+      self.compiler_options_resolver,
       self.tsconfig_resolver,
       self.npm_check_state_hash,
       compiler_options.as_ref(),
@@ -641,6 +648,7 @@ struct GraphWalker<'a> {
   sys: &'a CliSys,
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
+  compiler_options_resolver: &'a CompilerOptionsResolver,
   tsconfig_resolver: &'a CliTsConfigResolver,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
@@ -657,6 +665,7 @@ impl<'a> GraphWalker<'a> {
     sys: &'a CliSys,
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
+    compiler_options_resolver: &'a CompilerOptionsResolver,
     tsconfig_resolver: &'a CliTsConfigResolver,
     npm_cache_state_hash: Option<u64>,
     compiler_options: &CompilerOptions,
@@ -679,6 +688,7 @@ impl<'a> GraphWalker<'a> {
       sys,
       node_resolver,
       npm_resolver,
+      compiler_options_resolver,
       tsconfig_resolver,
       maybe_hasher,
       seen: HashSet::with_capacity(

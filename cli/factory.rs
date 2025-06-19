@@ -32,6 +32,7 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
@@ -687,6 +688,7 @@ impl CliFactory {
         self.cjs_tracker()?.clone(),
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
+        self.compiler_options_resolver()?.clone(),
         self.tsconfig_resolver()?.clone(),
       )))
     })
@@ -774,6 +776,12 @@ impl CliFactory {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
+  pub fn compiler_options_resolver(
+    &self,
+  ) -> Result<&Arc<CompilerOptionsResolver>, AnyError> {
+    Ok(self.workspace_factory()?.compiler_options_resolver()?)
+  }
+
   pub fn tsconfig_resolver(
     &self,
   ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
@@ -798,6 +806,7 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.sys(),
+            self.compiler_options_resolver()?.clone(),
             self.tsconfig_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
@@ -837,6 +846,7 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
+            self.compiler_options_resolver()?.clone(),
             self.tsconfig_resolver()?.clone(),
           )))
         }

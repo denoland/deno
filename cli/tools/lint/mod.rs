@@ -29,6 +29,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
@@ -90,6 +91,7 @@ pub async fn lint(
   let cli_options = factory.cli_options()?;
   let lint_rule_provider = factory.lint_rule_provider().await?;
   let is_stdin = lint_flags.is_stdin();
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let tsconfig_resolver = factory.tsconfig_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
@@ -99,6 +101,7 @@ pub async fn lint(
       lint_rule_provider,
       workspace_lint_options,
       lint_flags,
+      compiler_options_resolver,
       tsconfig_resolver,
     )?
   } else {
@@ -106,6 +109,7 @@ pub async fn lint(
       factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
+      compiler_options_resolver.clone(),
       tsconfig_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
@@ -165,6 +169,7 @@ async fn lint_with_watch_inner(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
+    factory.compiler_options_resolver()?.clone(),
     factory.tsconfig_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
@@ -245,6 +250,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   tsconfig_resolver: Arc<CliTsConfigResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -258,6 +264,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     tsconfig_resolver: Arc<CliTsConfigResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
@@ -268,6 +275,7 @@ impl WorkspaceLinter {
       caches,
       lint_rule_provider,
       module_graph_creator,
+      compiler_options_resolver,
       tsconfig_resolver,
       workspace_dir,
       reporter_lock,
@@ -341,6 +349,7 @@ impl WorkspaceLinter {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: resolve_lint_config(
+        &self.compiler_options_resolver,
         &self.tsconfig_resolver,
         member_dir.dir_url(),
       )?,
@@ -577,6 +586,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
+  compiler_options_resolver: &CompilerOptionsResolver,
   tsconfig_resolver: &CliTsConfigResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
@@ -585,8 +595,11 @@ fn lint_stdin(
   )));
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-  let deno_lint_config =
-    resolve_lint_config(tsconfig_resolver, start_dir.dir_url())?;
+  let deno_lint_config = resolve_lint_config(
+    compiler_options_resolver,
+    tsconfig_resolver,
+    start_dir.dir_url(),
+  )?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
@@ -654,6 +667,7 @@ fn handle_lint_result(
 }
 
 fn resolve_lint_config(
+  compiler_options_resolver: &CompilerOptionsResolver,
   tsconfig_resolver: &CliTsConfigResolver,
   specifier: &ModuleSpecifier,
 ) -> Result<deno_lint::linter::LintConfig, AnyError> {

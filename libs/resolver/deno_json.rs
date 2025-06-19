@@ -1,11 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::io::ErrorKind;
+use std::path::Path;
+
+use deno_config::deno_json::get_base_compiler_options_for_emit;
+use deno_config::deno_json::parse_compiler_options;
 use deno_config::deno_json::CompilerOptions;
 use deno_config::deno_json::CompilerOptionsParseError;
 use deno_config::deno_json::CompilerOptionsType;
 use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::TsTypeLib;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathKind;
+use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_path_util::url_from_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 #[cfg(feature = "sync")]
@@ -18,6 +27,10 @@ use url::Url;
 use crate::collections::FolderScopedMap;
 use crate::factory::WorkspaceRc;
 use crate::sync::new_rc;
+
+#[allow(clippy::disallowed_types)]
+pub type CompilerOptionsResolverRc =
+  crate::sync::MaybeArc<CompilerOptionsResolver>;
 
 #[allow(clippy::disallowed_types)]
 pub type TsConfigResolverRc<TSys> =
@@ -54,6 +67,213 @@ struct MemoizedValues {
   emit_compiler_options: OnceCell<CompilerOptionsRc>,
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
+}
+
+#[derive(Debug)]
+pub struct CompilerOptionsReference {
+  sources: Vec<CompilerOptionsSource>,
+  memoized: MemoizedValues,
+  logged_warnings: LoggedWarningsRc,
+}
+
+impl CompilerOptionsReference {
+  fn new(
+    sources: Vec<CompilerOptionsSource>,
+    logged_warnings: LoggedWarningsRc,
+  ) -> Self {
+    Self {
+      sources,
+      memoized: Default::default(),
+      logged_warnings,
+    }
+  }
+
+  pub fn compiler_options_for_lib(
+    &self,
+    lib: TsTypeLib,
+  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
+    self.compiler_options_inner(CompilerOptionsType::Check { lib })
+  }
+
+  pub fn compiler_options_for_emit(
+    &self,
+  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
+    self.compiler_options_inner(CompilerOptionsType::Emit)
+  }
+
+  fn compiler_options_inner(
+    &self,
+    typ: CompilerOptionsType,
+  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
+    let cell = match typ {
+      CompilerOptionsType::Bundle => unreachable!(),
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoWindow,
+      } => &self.memoized.deno_window_check_compiler_options,
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoWorker,
+      } => &self.memoized.deno_worker_check_compiler_options,
+      CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
+    };
+    cell.get_or_try_init(|| {
+      let mut result = CompilerOptionsWithIgnoredOptions {
+        compiler_options: get_base_compiler_options_for_emit(typ),
+        ignored_options: Vec::new(),
+      };
+      for source in &self.sources {
+        let object = serde_json::from_value(source.compiler_options.0.clone())
+          .map_err(|err| CompilerOptionsParseError {
+            specifier: source.specifier.clone(),
+            source: err,
+          })?;
+        let parsed = parse_compiler_options(object, Some(&source.specifier));
+        result.compiler_options.merge_object_mut(parsed.options);
+        if let Some(ignored) = parsed.maybe_ignored {
+          result.ignored_options.push(ignored);
+        }
+      }
+      check_warn_compiler_options(&result, &self.logged_warnings);
+      Ok(new_rc(result.compiler_options))
+    })
+  }
+
+  #[cfg(feature = "deno_ast")]
+  pub fn transpile_options(
+    &self,
+  ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
+    self.memoized.transpile_options.get_or_try_init(|| {
+      let compiler_options = self.compiler_options_for_emit()?;
+      compiler_options_to_transpile_and_emit_options(
+        compiler_options.as_ref().clone(),
+      )
+      .map(new_rc)
+      .map_err(|source| CompilerOptionsParseError {
+        specifier: self.sources.last().map(|s| s.specifier.clone()).expect(
+          "Compiler options parse errors must come from a user source.",
+        ),
+        source,
+      })
+    })
+  }
+}
+
+#[derive(Debug)]
+struct TsConfigReference {
+  compiler_options: CompilerOptionsReference,
+  files: FilePatterns,
+}
+
+impl TsConfigReference {
+  fn maybe_read_from_dir<TSys: FsRead>(
+    sys: &TSys,
+    dir_path: impl AsRef<Path>,
+    logged_warnings: &LoggedWarningsRc,
+  ) -> Option<Self> {
+    let path = dir_path.as_ref().join("tsconfig.json");
+    let warn = |err: &dyn std::fmt::Display| {
+      log::warn!("Failed reading {}: {}", path.display(), err);
+    };
+    let text = sys
+      .fs_read_to_string(&path)
+      .inspect_err(|e| {
+        if !matches!(e.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) {
+          warn(e)
+        }
+      })
+      .ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    let object = value.as_object();
+    let sources = if let Some(c) = object.and_then(|o| o.get("compilerOptions"))
+    {
+      vec![CompilerOptionsSource {
+        specifier: url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?,
+        compiler_options: CompilerOptions(c.clone()),
+      }]
+    } else {
+      Vec::new()
+    };
+
+    // TODO(nayeemrmn): To implement "extends", traverse it and recursively
+    // prepend the targets to `sources`.
+
+    let mut files = FilePatterns::new_with_base(path.parent()?.to_path_buf());
+    if let Some(object) = object {
+      if let Some(files_field) = object.get("files") {
+        // TODO(This PR): Implement.
+        // files.include = ...;
+      }
+      if let Some(include) = object.get("include") {
+        // TODO(This PR): Implement.
+        // files.include = ...;
+      }
+      if let Some(exclude) = object.get("exclude") {
+        // TODO(This PR): Implement.
+        // files.exclude = ...;
+      }
+    }
+    Some(Self {
+      compiler_options: CompilerOptionsReference::new(
+        sources,
+        logged_warnings.clone(),
+      ),
+      files,
+    })
+  }
+}
+
+#[derive(Debug)]
+pub struct CompilerOptionsResolver {
+  ts_configs: Vec<TsConfigReference>,
+  workspace_configs: FolderScopedMap<CompilerOptionsReference>,
+}
+
+impl CompilerOptionsResolver {
+  pub fn from_workspace<TSys: FsRead>(
+    sys: &TSys,
+    workspace: &WorkspaceRc,
+  ) -> Self {
+    let logged_warnings = new_rc(LoggedWarnings::default());
+    let mut ts_configs = Vec::new();
+    let mut workspace_configs = FolderScopedMap::new(
+      CompilerOptionsReference::new(Vec::new(), logged_warnings.clone()),
+    );
+    for dir_url in workspace.config_folders().keys() {
+      let dir = workspace.resolve_member_dir(dir_url);
+      workspace_configs.insert(
+        dir_url.clone(),
+        CompilerOptionsReference::new(
+          dir.to_configured_compiler_options_sources(),
+          logged_warnings.clone(),
+        ),
+      );
+      if let Some(ts_config) = TsConfigReference::maybe_read_from_dir(
+        sys,
+        dir.dir_path(),
+        &logged_warnings,
+      ) {
+        ts_configs.push(ts_config);
+      }
+    }
+    ts_configs.reverse();
+    Self {
+      ts_configs,
+      workspace_configs,
+    }
+  }
+
+  pub fn reference_for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> &CompilerOptionsReference {
+    if let Ok(path) = specifier.to_file_path() {
+      for ts_config in &self.ts_configs {
+        if ts_config.files.matches_path(&path, PathKind::File) {
+          return &ts_config.compiler_options;
+        }
+      }
+    }
+    self.workspace_configs.get_for_specifier(specifier)
+  }
 }
 
 #[derive(Debug)]

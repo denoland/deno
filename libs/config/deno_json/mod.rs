@@ -24,7 +24,6 @@ use serde_json::json;
 use serde_json::Value;
 use sys_traits::FsRead;
 use thiserror::Error;
-use ts::parse_compiler_options;
 use url::Url;
 
 use crate::glob::FilePatterns;
@@ -34,6 +33,7 @@ use crate::UrlToFilePathError;
 
 mod ts;
 
+pub use ts::parse_compiler_options;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::IgnoredCompilerOptions;

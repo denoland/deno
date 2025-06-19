@@ -1121,6 +1121,12 @@ pub struct WorkspaceDirLintConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct CompilerOptionsSource {
+  pub specifier: Url,
+  pub compiler_options: CompilerOptions,
+}
+
+#[derive(Debug, Clone)]
 pub struct WorkspaceDirectory {
   pub workspace: WorkspaceRc,
   /// The directory that this context is for. This is generally the cwd.
@@ -1447,6 +1453,37 @@ impl WorkspaceDirectory {
         .as_ref()
         .map(|p| p.root.is_none())
         .unwrap_or(true)
+  }
+
+  /// Gets a list of raw compiler options that the user provided, in a vec of
+  /// size 0-2 based on `[maybe_root, maybe_member].flatten()`.
+  pub fn to_configured_compiler_options_sources(
+    &self,
+  ) -> Vec<CompilerOptionsSource> {
+    let Some(deno_json) = self.deno_json.as_ref() else {
+      return Vec::new();
+    };
+    let root = deno_json.root.as_ref().and_then(|d| {
+      d.json
+        .compiler_options
+        .clone()
+        .map(|c| CompilerOptionsSource {
+          compiler_options: CompilerOptions(c),
+          specifier: d.specifier.clone(),
+        })
+    });
+    let member = deno_json.member.json.compiler_options.clone().map(|c| {
+      CompilerOptionsSource {
+        compiler_options: CompilerOptions(c),
+        specifier: deno_json.member.specifier.clone(),
+      }
+    });
+    match (root, member) {
+      (None, None) => Vec::new(),
+      (None, Some(member)) => vec![member],
+      (Some(root), None) => vec![root],
+      (Some(root), Some(member)) => vec![root, member],
+    }
   }
 
   /// Gets the combined compiler options that the user provided, without any of

@@ -41,6 +41,8 @@ use url::Url;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
+use crate::deno_json::CompilerOptionsResolver;
+use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TsConfigResolver;
 use crate::deno_json::TsConfigResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
@@ -254,6 +256,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
+  compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
   tsconfig_resolver: Deferred<TsConfigResolverRc<TSys>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
@@ -289,6 +292,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
+      compiler_options_resolver: Default::default(),
       tsconfig_resolver: Default::default(),
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
@@ -533,6 +537,17 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
         &self.workspace_directory()?.workspace,
       )?;
       Ok((new_rc(npmrc), path))
+    })
+  }
+
+  pub fn compiler_options_resolver(
+    &self,
+  ) -> Result<&CompilerOptionsResolverRc, WorkspaceDiscoverError> {
+    self.compiler_options_resolver.get_or_try_init(|| {
+      Ok(new_rc(CompilerOptionsResolver::from_workspace(
+        self.sys(),
+        &self.workspace_directory()?.workspace,
+      )))
     })
   }
 
