@@ -15,10 +15,13 @@ use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
+use deno_core::error::ModuleConcreteError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
+use deno_core::CustomModuleEvaluationKind;
 use deno_core::Extension;
+use deno_core::FastString;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
@@ -26,6 +29,7 @@ use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
@@ -34,6 +38,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -1121,7 +1126,7 @@ fn common_runtime(
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(Box::new(custom_module_evaluation_cb)),
     eval_context_code_cache_cbs: None,
   })
 }
@@ -1291,4 +1296,59 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .unwrap()
       .get_host_defined_options(scope, name)
   }
+}
+
+pub fn custom_module_evaluation_cb(
+  scope: &mut v8::HandleScope,
+  module_type: Cow<'_, str>,
+  module_name: &FastString,
+  code: ModuleSourceCode,
+) -> Result<CustomModuleEvaluationKind, JsErrorBox> {
+  match &*module_type {
+    "bytes" => Ok(bytes_module(scope, code)),
+    "text" => text_module(scope, module_name, code),
+    _ => Err(JsErrorBox::from_err(ModuleConcreteError::UnsupportedKind(
+      module_type.to_string(),
+    ))),
+  }
+}
+
+fn bytes_module(
+  scope: &mut v8::HandleScope,
+  code: ModuleSourceCode,
+) -> CustomModuleEvaluationKind {
+  // FsModuleLoader always returns bytes.
+  let ModuleSourceCode::Bytes(buf) = code else {
+    unreachable!()
+  };
+  let owned_buf = buf.to_vec();
+  let buf_len: usize = owned_buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(owned_buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  let uint8_array = v8::Uint8Array::new(scope, ab, 0, buf_len).unwrap();
+  let value: v8::Local<v8::Value> = uint8_array.into();
+  CustomModuleEvaluationKind::Synthetic(v8::Global::new(scope, value))
+}
+
+fn text_module(
+  scope: &mut v8::HandleScope,
+  module_name: &FastString,
+  code: ModuleSourceCode,
+) -> Result<CustomModuleEvaluationKind, JsErrorBox> {
+  // FsModuleLoader always returns bytes.
+  let ModuleSourceCode::Bytes(buf) = code else {
+    unreachable!()
+  };
+
+  let code = std::str::from_utf8(buf.as_bytes()).map_err(|e| {
+    JsErrorBox::generic(format!(
+      "Can't convert {module_name:?} source code to string: {e}"
+    ))
+  })?;
+  let str_ = v8::String::new(scope, code).unwrap();
+  let value: v8::Local<v8::Value> = str_.into();
+  Ok(CustomModuleEvaluationKind::Synthetic(v8::Global::new(
+    scope, value,
+  )))
 }

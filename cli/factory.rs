@@ -1041,6 +1041,7 @@ impl CliFactory {
         None
       },
       self.emitter()?.clone(),
+      self.file_fetcher()?.clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),

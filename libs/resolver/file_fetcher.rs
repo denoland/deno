@@ -455,11 +455,11 @@ impl<
     THttpClient: HttpClient + 'static,
   > Loader for DenoGraphLoader<TBlobStore, TSys, THttpClient>
 {
-  fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
-    if !self.cache_info_enabled {
-      return None;
-    }
+  fn cache_info_enabled(&self) -> bool {
+    self.cache_info_enabled
+  }
 
+  fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
     let local = self.get_local_path(specifier)?;
     if self.sys.fs_is_file_no_err(&local) {
       Some(CacheInfo { local: Some(local) })
