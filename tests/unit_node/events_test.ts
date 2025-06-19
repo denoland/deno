@@ -60,4 +60,4 @@ Deno.test("emit stack trace", () => {
 
   // @ts-ignore
   assert(error.stack.includes("at EventEmitter.emit (node:events"));
-})
+});
