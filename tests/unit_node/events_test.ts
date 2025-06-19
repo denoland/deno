@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import events, { addAbortListener, EventEmitter } from "node:events";
+import assert from "node:assert";
 
 EventEmitter.captureRejections = true;
 
@@ -44,3 +45,19 @@ Deno.test("addAbortListener", async () => {
   abortController.abort();
   await promise;
 });
+
+Deno.test("emit stack trace", () => {
+  const ee = new EventEmitter();
+  ee.on("foo", () => {
+    throw new Error("foo error");
+  });
+  let error;
+  try {
+    ee.emit("foo");
+  } catch (err) {
+    error = err;
+  }
+
+  // @ts-ignore
+  assert(error.stack.includes("at EventEmitter.emit (node:events"));
+})

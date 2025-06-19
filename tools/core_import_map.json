@@ -73,7 +73,7 @@
     "node:dns": "../ext/node/polyfills/dns.ts",
     "node:dns/promises": "../ext/node/polyfills/dns/promises.ts",
     "node:domain": "../ext/node/polyfills/domain.ts",
-    "node:events": "../ext/node/polyfills/events.ts",
+    "node:events": "../ext/node/polyfills/_events.mjs",
     "node:fs": "../ext/node/polyfills/fs.ts",
     "node:fs/promises": "../ext/node/polyfills/fs/promises.ts",
     "node:http": "../ext/node/polyfills/http.ts",

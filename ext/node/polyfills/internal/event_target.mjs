@@ -48,6 +48,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   Event as WebEvent,
   EventTarget as WebEventTarget,
+  kEvents,
 } from "ext:deno_web/02_event.js";
 
 import {
@@ -60,7 +61,6 @@ import { inspect } from "node:util";
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { kEvents } from "ext:deno_node/_events.mjs";
 import { EventEmitter } from "node:events";
 const {
   kMaxEventTargetListeners,
