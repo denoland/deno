@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use ring::digest::Context;
-use ring::digest::SHA256;
+use aws_lc_rs::digest::Context;
+use aws_lc_rs::digest::SHA256;
 
 /// Generate a SHA256 checksum of a slice of byte-slice-like things.
 pub fn gen(v: &[impl AsRef<[u8]>]) -> String {

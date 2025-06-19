@@ -2,6 +2,7 @@
 use std::future::Future;
 use std::rc::Rc;
 
+use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -24,7 +25,6 @@ use p384::NistP384;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::Rng;
-use ring::signature::Ed25519KeyPair;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::Oaep;
@@ -1131,8 +1131,8 @@ pub fn op_node_verify_ed25519(
     _ => return Err(VerifyEd25519Error::ExpectedEd25519PublicKey),
   };
 
-  let verified = ring::signature::UnparsedPublicKey::new(
-    &ring::signature::ED25519,
+  let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
     ed25519.as_bytes().as_slice(),
   )
   .verify(data, signature)
