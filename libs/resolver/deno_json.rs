@@ -309,8 +309,8 @@ impl TsConfigReference {
 
 #[derive(Debug)]
 pub struct CompilerOptionsResolver {
-  ts_configs: Vec<TsConfigReference>,
   workspace_configs: FolderScopedMap<CompilerOptionsReference>,
+  ts_configs: Vec<TsConfigReference>,
 }
 
 impl CompilerOptionsResolver {
@@ -342,8 +342,8 @@ impl CompilerOptionsResolver {
     }
     ts_configs.reverse();
     Self {
-      ts_configs,
       workspace_configs,
+      ts_configs,
     }
   }
 
@@ -359,6 +359,10 @@ impl CompilerOptionsResolver {
       }
     }
     self.workspace_configs.get_for_specifier(specifier)
+  }
+
+  pub fn reference_count(&self) -> usize {
+    self.workspace_configs.count() + self.ts_configs.len()
   }
 }
 
