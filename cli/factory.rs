@@ -689,7 +689,6 @@ impl CliFactory {
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
         self.compiler_options_resolver()?.clone(),
-        self.tsconfig_resolver()?.clone(),
       )))
     })
   }

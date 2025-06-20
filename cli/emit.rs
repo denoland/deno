@@ -24,7 +24,6 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::TranspileAndEmitOptions;
 
-use crate::args::CliTsConfigResolver;
 use crate::cache::EmitCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
@@ -35,7 +34,6 @@ pub struct Emitter {
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
-  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl Emitter {
@@ -44,14 +42,12 @@ impl Emitter {
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
-    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       cjs_tracker,
       emit_cache,
       parsed_source_cache,
       compiler_options_resolver,
-      tsconfig_resolver,
     }
   }
 
@@ -100,8 +96,9 @@ impl Emitter {
     source: &str,
   ) -> Result<Option<String>, AnyError> {
     let transpile_and_emit_options = self
-      .tsconfig_resolver
-      .transpile_and_emit_options(specifier)?;
+      .compiler_options_resolver
+      .reference_for_specifier(specifier)
+      .transpile_options()?;
     let source_hash =
       self.get_source_hash(module_kind, transpile_and_emit_options, source);
     Ok(self.emit_cache.get_emit_code(specifier, source_hash))
@@ -115,8 +112,9 @@ impl Emitter {
     source: &Arc<str>,
   ) -> Result<String, EmitParsedSourceHelperError> {
     let transpile_and_emit_options = self
-      .tsconfig_resolver
-      .transpile_and_emit_options(specifier)?;
+      .compiler_options_resolver
+      .reference_for_specifier(specifier)
+      .transpile_options()?;
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(
@@ -166,8 +164,9 @@ impl Emitter {
     source: &Arc<str>,
   ) -> Result<String, EmitParsedSourceHelperError> {
     let transpile_and_emit_options = self
-      .tsconfig_resolver
-      .transpile_and_emit_options(specifier)?;
+      .compiler_options_resolver
+      .reference_for_specifier(specifier)
+      .transpile_options()?;
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(
@@ -206,8 +205,9 @@ impl Emitter {
     source: &Arc<str>,
   ) -> Result<(String, String), AnyError> {
     let transpile_and_emit_options = self
-      .tsconfig_resolver
-      .transpile_and_emit_options(specifier)?;
+      .compiler_options_resolver
+      .reference_for_specifier(specifier)
+      .transpile_options()?;
     let mut emit_options = transpile_and_emit_options.emit.clone();
     emit_options.inline_sources = false;
     emit_options.source_map = SourceMapOption::Separate;
@@ -251,8 +251,9 @@ impl Emitter {
         // the option to not use them (though you should test this out because
         // this statement is probably wrong)
         let transpile_and_emit_options = self
-          .tsconfig_resolver
-          .transpile_and_emit_options(specifier)
+          .compiler_options_resolver
+          .reference_for_specifier(specifier)
+          .transpile_options()
           .map_err(JsErrorBox::from_err)?;
         let mut options = transpile_and_emit_options.emit.clone();
         options.source_map = SourceMapOption::None;
