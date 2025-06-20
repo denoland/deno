@@ -835,13 +835,18 @@ impl DenoPluginHandler {
         | MediaType::Cts
         | MediaType::Jsx
         | MediaType::Tsx
-    ) {
+    ) && !self
+      .module_graph_container
+      .graph()
+      .roots
+      .contains(&specifier)
+    {
       let code = self.apply_transform(
         &specifier,
         media_type,
         std::str::from_utf8(loaded.code.as_bytes())?,
       )?;
-      Ok(Some((code.as_bytes().to_vec(), loader)))
+      Ok(Some((code.into_bytes(), loader)))
     } else {
       Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
     }
