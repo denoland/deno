@@ -490,10 +490,6 @@ impl<TSys: FsRead + Clone> TsConfigResolver<TSys> {
 }
 
 impl<TSys: FsRead> TsConfigResolver<TSys> {
-  pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
-    self.folder_for_specifier(specifier).dir.check_js()
-  }
-
   #[cfg(feature = "deno_ast")]
   pub fn transpile_and_emit_options(
     &self,
@@ -519,15 +515,6 @@ impl<TSys: FsRead> TsConfigResolver<TSys> {
 
   pub fn folder_count(&self) -> usize {
     self.map.count()
-  }
-}
-
-#[cfg(feature = "graph")]
-impl<TSys: FsRead + std::fmt::Debug> deno_graph::CheckJsResolver
-  for TsConfigResolver<TSys>
-{
-  fn resolve(&self, specifier: &deno_graph::ModuleSpecifier) -> bool {
-    self.check_js_for_specifier(specifier)
   }
 }
 
