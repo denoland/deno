@@ -5,7 +5,7 @@
   "imports": {
     "@denotest/add": "jsr:@denotest/add@1"
   },
-  "patch": [
+  "links": [
     "../add"
   ]
 }

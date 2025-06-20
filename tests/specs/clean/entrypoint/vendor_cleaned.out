@@ -23,7 +23,6 @@
 - .bin
 - .deno
 -- .deno.lock
--- .deno.lock.poll
 -- .setup-cache.bin
 -- @denotest+add@1.0.0
 --- .initialized

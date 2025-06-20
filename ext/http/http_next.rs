@@ -1054,7 +1054,7 @@ where
     NetworkStream::Unix(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }

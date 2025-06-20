@@ -159,6 +159,8 @@ async fn run_test_client(
 }
 
 async fn create_https_server(allow_h2: bool) -> SocketAddr {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut tls_config = deno_tls::rustls::server::ServerConfig::builder()
     .with_no_client_auth()
     .with_single_cert(

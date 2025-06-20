@@ -1,9 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const {
+  Array,
+  MathMin,
+  NumberPOSITIVE_INFINITY,
+  ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  Promise,
+  ReflectApply,
+  StringPrototypeToString,
+  Symbol,
+} = primordials;
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
@@ -50,18 +60,22 @@ function _construct(callback) {
       if (args[0] === "open") {
         this.emit = orgEmit;
         callback();
-        Reflect.apply(orgEmit, this, args);
+        ReflectApply(orgEmit, this, args);
       } else if (args[0] === "error") {
         this.emit = orgEmit;
         callback(args[1]);
       } else {
-        Reflect.apply(orgEmit, this, args);
+        ReflectApply(orgEmit, this, args);
       }
     };
     stream.open();
   } else {
+    const streamPath = Buffer.isBuffer(stream.path)
+      // deno-lint-ignore prefer-primordials uses `toString` method from `node:buffer`
+      ? stream.path.toString()
+      : StringPrototypeToString(stream.path);
     stream[kFs].open(
-      stream.path.toString(),
+      streamPath,
       stream.flags,
       stream.mode,
       (er, fd) => {
@@ -95,10 +109,10 @@ function importFd(stream, options) {
     // that the descriptor won't get closed, or worse, replaced with
     // another one
     // https://github.com/nodejs/node/issues/35862
-    if (stream instanceof ReadStream) {
+    if (ObjectPrototypeIsPrototypeOf(ReadStream.prototype, stream)) {
       stream[kFs] = options.fs || { read: fsRead, close: fsClose };
     }
-    if (stream instanceof WriteStream) {
+    if (ObjectPrototypeIsPrototypeOf(WriteStream.prototype, stream)) {
       stream[kFs] = options.fs ||
         { write: fsWrite, writev: fsWritev, close: fsClose };
     }
@@ -109,7 +123,7 @@ function importFd(stream, options) {
 }
 
 export function ReadStream(path, options) {
-  if (!(this instanceof ReadStream)) {
+  if (!(ObjectPrototypeIsPrototypeOf(ReadStream.prototype, this))) {
     return new ReadStream(path, options);
   }
 
@@ -149,7 +163,7 @@ export function ReadStream(path, options) {
   }
 
   this.start = options.start;
-  this.end = options.end ?? Infinity;
+  this.end = options.end ?? NumberPOSITIVE_INFINITY;
   this.pos = undefined;
   this.bytesRead = 0;
   this[kIsPerformingIO] = false;
@@ -160,7 +174,7 @@ export function ReadStream(path, options) {
     this.pos = this.start;
   }
 
-  if (this.end !== Infinity) {
+  if (this.end !== NumberPOSITIVE_INFINITY) {
     validateInteger(this.end, "end", 0);
 
     if (this.start !== undefined && this.start > this.end) {
@@ -172,13 +186,14 @@ export function ReadStream(path, options) {
     }
   }
 
-  Reflect.apply(Readable, this, [options]);
+  ReflectApply(Readable, this, [options]);
 }
 
-Object.setPrototypeOf(ReadStream.prototype, Readable.prototype);
-Object.setPrototypeOf(ReadStream, Readable);
+ObjectSetPrototypeOf(ReadStream.prototype, Readable.prototype);
+ObjectSetPrototypeOf(ReadStream, Readable);
 
-Object.defineProperty(ReadStream.prototype, "autoClose", {
+ObjectDefineProperty(ReadStream.prototype, "autoClose", {
+  __proto__: null,
   get() {
     return this._readableState.autoDestroy;
   },
@@ -200,10 +215,12 @@ ReadStream.prototype._construct = _construct;
 
 ReadStream.prototype._read = async function (n) {
   n = this.pos !== undefined
-    ? Math.min(this.end - this.pos + 1, n)
-    : Math.min(this.end - this.bytesRead + 1, n);
+    ? MathMin(this.end - this.pos + 1, n)
+    : MathMin(this.end - this.bytesRead + 1, n);
 
   if (n <= 0) {
+    // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
+    // deno-lint-ignore prefer-primordials
     this.push(null);
     return;
   }
@@ -262,8 +279,12 @@ ReadStream.prototype._read = async function (n) {
       buffer = dst;
     }
 
+    // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
+    // deno-lint-ignore prefer-primordials
     this.push(buffer);
   } else {
+    // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
+    // deno-lint-ignore prefer-primordials
     this.push(null);
   }
 };
@@ -287,7 +308,8 @@ ReadStream.prototype.close = function (cb) {
   this.destroy();
 };
 
-Object.defineProperty(ReadStream.prototype, "pending", {
+ObjectDefineProperty(ReadStream.prototype, "pending", {
+  __proto__: null,
   get() {
     return this.fd === null;
   },
@@ -295,7 +317,7 @@ Object.defineProperty(ReadStream.prototype, "pending", {
 });
 
 export function WriteStream(path, options) {
-  if (!(this instanceof WriteStream)) {
+  if (!(ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this))) {
     return new WriteStream(path, options);
   }
 
@@ -363,17 +385,18 @@ export function WriteStream(path, options) {
     this.pos = this.start;
   }
 
-  Reflect.apply(Writable, this, [options]);
+  ReflectApply(Writable, this, [options]);
 
   if (options.encoding) {
     this.setDefaultEncoding(options.encoding);
   }
 }
 
-Object.setPrototypeOf(WriteStream.prototype, Writable.prototype);
-Object.setPrototypeOf(WriteStream, Writable);
+ObjectSetPrototypeOf(WriteStream.prototype, Writable.prototype);
+ObjectSetPrototypeOf(WriteStream, Writable);
 
-Object.defineProperty(WriteStream.prototype, "autoClose", {
+ObjectDefineProperty(WriteStream.prototype, "autoClose", {
+  __proto__: null,
   get() {
     return this._writableState.autoDestroy;
   },
@@ -487,7 +510,8 @@ WriteStream.prototype.close = function (cb) {
 // There is no shutdown() for files.
 WriteStream.prototype.destroySoon = WriteStream.prototype.end;
 
-Object.defineProperty(WriteStream.prototype, "pending", {
+ObjectDefineProperty(WriteStream.prototype, "pending", {
+  __proto__: null,
   get() {
     return this.fd === null;
   },

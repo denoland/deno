@@ -709,8 +709,7 @@
     },
     "name": {
       "type": "string",
-      "description": "The name of this JSR package. Must be scoped",
-      "pattern": "^@[a-z0-9-]+/[a-z0-9-]+$"
+      "description": "The name of this JSR or workspace package."
     },
     "version": {
       "type": "string",
@@ -743,6 +742,14 @@
       ]
     },
     "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "deprecated": true,
+      "description": "This unstable property was renamed to \"links\" in Deno 2.3.6."
+    },
+    "links": {
       "type": "array",
       "items": {
         "type": "string"

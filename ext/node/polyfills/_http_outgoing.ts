@@ -550,7 +550,7 @@ Object.defineProperties(
       if (data instanceof Buffer) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       }
-      if (data.buffer.byteLength > 0) {
+      if (data.byteLength > 0) {
         this._bodyWriter.ready.then(() => {
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {

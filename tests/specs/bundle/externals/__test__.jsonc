@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "requires_external": {
+      "steps": [{
+        "args": "bundle --external=foo --external=bar require_external.cjs",
+        "output": "[WILDCARD]require(\"foo\");[WILDCARD]require(\"bar/baz\");[WILDCARD]"
+      }]
+    },
+    "imports_external": {
+      "steps": [{
+        "args": "bundle --external=./ext/* --external=jsr:@std/* imports_ext.ts",
+        "output": "import.out"
+      }]
+    }
+  }
+}

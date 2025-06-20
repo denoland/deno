@@ -277,7 +277,8 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
     options: LifecycleScriptsExecutorOptions<'_>,
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
-    let mut bin_entries = BinEntries::new();
+    let sys = CliSys::default();
+    let mut bin_entries = BinEntries::new(&sys);
     // get custom commands for each bin available in the node_modules dir (essentially
     // the scripts that are in `node_modules/.bin`)
     let base = self
@@ -335,7 +336,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
       for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(script) = scripts.get(script_name) {
           if script_name == "install"
-            && is_broken_default_install_script(script, package_folder)
+            && is_broken_default_install_script(&sys, script, package_folder)
           {
             continue;
           }
@@ -445,7 +446,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   async fn resolve_baseline_custom_commands<'a>(
     &self,
     extra_info_provider: &CachedNpmPackageExtraInfoProvider,
-    bin_entries: &mut BinEntries<'a>,
+    bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
   ) -> crate::task_runner::TaskCustomCommands {
@@ -488,7 +489,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   >(
     &self,
     extra_info_provider: &CachedNpmPackageExtraInfoProvider,
-    bin_entries: &mut BinEntries<'a>,
+    bin_entries: &mut BinEntries<'a, CliSys>,
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
@@ -544,7 +545,8 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
   ) -> crate::task_runner::TaskCustomCommands {
-    let mut bin_entries = BinEntries::new();
+    let sys = CliSys::default();
+    let mut bin_entries = BinEntries::new(&sys);
     self
       .resolve_custom_commands_from_packages(
         extra_info_provider,

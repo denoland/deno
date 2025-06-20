@@ -109,3 +109,65 @@ Deno.test("[node/module findSourceMap] is a function", () => {
 Deno.test("[node/module register] is a function", () => {
   assertEquals(register("foo"), undefined);
 });
+
+Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {
+  // @ts-ignore Not documented but available
+  const originalCompile = Module.prototype._compile;
+
+  // @ts-ignore Not documented but available
+  Module.prototype._compile = function (content: string, filename: string) {
+    // deno-lint-ignore no-this-alias
+    const mod = this;
+    function require(id: string) {
+      return mod.require(id);
+    }
+    require.resolve = function (request: string) {
+      // @ts-ignore Not documented but available
+      return Module._resolveFilename(request, mod);
+    };
+    require.main = process.mainModule;
+
+    // Enable support to add extra extension types
+    // @ts-ignore Not documented but available
+    require.extensions = Module._extensions;
+    // @ts-ignore Not documented but available
+    require.cache = Module._cache;
+
+    const dirname = path.dirname(filename);
+
+    const wrapper = Module.wrap(content);
+    // @ts-ignore can't index by a symbol
+    const [f, err] = Deno[Deno.internal].core.evalContext(
+      wrapper,
+      `file:///${filename}`,
+      [true],
+    );
+    assertEquals(err, null);
+    const args = [
+      mod.exports,
+      require,
+      mod,
+      filename,
+      dirname,
+      process,
+    ];
+    f.apply(mod.exports, args);
+    return mod;
+  };
+
+  const src = `module.exports = {
+  clearImmediate: typeof clearImmediate,
+  clearTimeout: typeof clearTimeout, 
+  setImmediate: typeof setImmediate, 
+  global: typeof global
+};`;
+  // @ts-ignore Not documented but available
+  const ret = Module.prototype._compile(src, "file.js");
+  const exports = ret.exports;
+  assertEquals(exports.clearImmediate, "function");
+  assertEquals(exports.clearTimeout, "function");
+  assertEquals(exports.setImmediate, "function");
+  assertEquals(exports.global, "object");
+  // @ts-ignore Not documented but available
+  Module.prototype._compile = originalCompile;
+});

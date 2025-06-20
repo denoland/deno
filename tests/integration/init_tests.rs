@@ -199,7 +199,14 @@ async fn init_subcommand_serve() {
     .spawn_with_piped_output();
 
   tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-  let resp = reqwest::get("http://127.0.0.1:9500").await.unwrap();
+  let resp = match reqwest::get("http://127.0.0.1:9500").await {
+    Ok(resp) => resp,
+    Err(_) => {
+      // retry once
+      tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+      reqwest::get("http://127.0.0.1:9500").await.unwrap()
+    }
+  };
 
   let body = resp.text().await.unwrap();
   assert_eq!(body, "Home page");

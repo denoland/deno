@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { Buffer } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
+import { strictEqual } from "node:assert";
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
@@ -649,5 +650,14 @@ Deno.test({
     // @ts-expect-error Buffer.prototype.utf8Write is an undocumented API
     assertEquals(buf.utf8Write("abc", 0), 3);
     assertEquals([...buf], [0x61, 0x62, 0x63, 0, 0, 0, 0, 0]);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer.from pool",
+  fn() {
+    const a = Buffer.from("hello world");
+    const b = Buffer.from("hello world");
+    strictEqual(a.buffer, b.buffer);
   },
 });

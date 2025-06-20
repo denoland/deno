@@ -24,7 +24,8 @@ use super::deps::PackageLatestVersion;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -184,15 +185,17 @@ pub async fn outdated(
   let workspace = cli_options.workspace();
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let file_fetcher = CliFileFetcher::new(
+  let file_fetcher = create_cli_file_fetcher(
+    Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.sys(),
-    Default::default(),
-    None,
-    true,
-    CacheSetting::RespectHeaders,
-    log::Level::Trace,
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
   );
   let file_fetcher = Arc::new(file_fetcher);
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(

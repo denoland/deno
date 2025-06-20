@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use ring::agreement::Algorithm as RingAlgorithm;
-use ring::digest;
-use ring::hkdf;
-use ring::hmac::Algorithm as HmacAlgorithm;
-use ring::signature::EcdsaSigningAlgorithm;
-use ring::signature::EcdsaVerificationAlgorithm;
+use aws_lc_rs::agreement::Algorithm as RingAlgorithm;
+use aws_lc_rs::digest;
+use aws_lc_rs::hkdf;
+use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
+use aws_lc_rs::signature::EcdsaSigningAlgorithm;
+use aws_lc_rs::signature::EcdsaVerificationAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -40,8 +40,8 @@ pub enum CryptoNamedCurve {
 impl From<CryptoNamedCurve> for &RingAlgorithm {
   fn from(curve: CryptoNamedCurve) -> &'static RingAlgorithm {
     match curve {
-      CryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
-      CryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
+      CryptoNamedCurve::P256 => &aws_lc_rs::agreement::ECDH_P256,
+      CryptoNamedCurve::P384 => &aws_lc_rs::agreement::ECDH_P384,
     }
   }
 }
@@ -50,10 +50,10 @@ impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
   fn from(curve: CryptoNamedCurve) -> &'static EcdsaSigningAlgorithm {
     match curve {
       CryptoNamedCurve::P256 => {
-        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+        &aws_lc_rs::signature::ECDSA_P256_SHA256_FIXED_SIGNING
       }
       CryptoNamedCurve::P384 => {
-        &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+        &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED_SIGNING
       }
     }
   }
@@ -62,8 +62,8 @@ impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
 impl From<CryptoNamedCurve> for &EcdsaVerificationAlgorithm {
   fn from(curve: CryptoNamedCurve) -> &'static EcdsaVerificationAlgorithm {
     match curve {
-      CryptoNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED,
-      CryptoNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED,
+      CryptoNamedCurve::P256 => &aws_lc_rs::signature::ECDSA_P256_SHA256_FIXED,
+      CryptoNamedCurve::P384 => &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED,
     }
   }
 }
@@ -71,10 +71,10 @@ impl From<CryptoNamedCurve> for &EcdsaVerificationAlgorithm {
 impl From<CryptoHash> for HmacAlgorithm {
   fn from(hash: CryptoHash) -> HmacAlgorithm {
     match hash {
-      CryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-      CryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
-      CryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
-      CryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
+      CryptoHash::Sha1 => aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+      CryptoHash::Sha256 => aws_lc_rs::hmac::HMAC_SHA256,
+      CryptoHash::Sha384 => aws_lc_rs::hmac::HMAC_SHA384,
+      CryptoHash::Sha512 => aws_lc_rs::hmac::HMAC_SHA512,
     }
   }
 }

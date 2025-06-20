@@ -1,0 +1,16 @@
+{
+  "imports": {
+    "@std/assert/throws": "../../../util/std/assert/throws.ts",
+    "@std/internal/styles": "../../../util/std/internal/styles.ts",
+
+    "bare": "https://example.com/",
+    "https://example.com/rewrite": "https://example.com/rewritten",
+
+    "1": "https://example.com/PASS-1",
+    "null": "https://example.com/PASS-null",
+    "undefined": "https://example.com/PASS-undefined",
+    "[object Object]": "https://example.com/PASS-object",
+    "npm:preact": "https://example.com/preact",
+    "@denotest/add": "npm:@denotest/add@1.0"
+  }
+}

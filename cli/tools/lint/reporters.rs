@@ -10,7 +10,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use serde::Serialize;
 
-use super::LintError;
 use crate::args::LintReporterKind;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -181,6 +180,12 @@ struct JsonLintDiagnostic {
   pub message: String,
   pub code: String,
   pub hint: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LintError {
+  file_path: String,
+  message: String,
 }
 
 #[derive(Serialize)]

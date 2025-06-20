@@ -3,5 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "main": "./main.cjs",
-  "module": "./main.mjs"
+  "module": "./main.mjs",
+  "exports": {
+    ".": {
+      "import": "./main.mjs",
+      "require": "./main.cjs"
+    },
+    "./": {
+      "import": "./main.mjs",
+      "require": "./main.cjs"
+    },
+    "./*": "./*"
+  }
 }

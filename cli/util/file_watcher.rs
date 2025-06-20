@@ -105,6 +105,7 @@ pub struct PrintConfig {
   job_name: &'static str,
   /// Determine whether to clear the terminal screen; applicable to TTY environments only.
   clear_screen: bool,
+  pub print_finished: bool,
 }
 
 impl PrintConfig {
@@ -116,6 +117,7 @@ impl PrintConfig {
       banner: "Watcher",
       job_name,
       clear_screen,
+      print_finished: true,
     }
   }
 
@@ -128,6 +130,7 @@ impl PrintConfig {
       banner,
       job_name,
       clear_screen,
+      print_finished: true,
     }
   }
 }
@@ -281,8 +284,8 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-///    changes. For example, in the case where we would like to bundle, then `operation` would
-///    have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
   mut flags: Arc<Flags>,
   print_config: PrintConfig,
@@ -309,6 +312,7 @@ where
     banner,
     job_name,
     clear_screen,
+    print_finished,
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
@@ -378,17 +382,19 @@ where
       },
       success = operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
-        // TODO(bartlomieju): print exit code here?
-        info!(
-          "{} {} {}. Restarting on file change...",
-          colors::intense_blue(banner),
-          job_name,
-          if success {
-            "finished"
-          } else {
-            "failed"
-          }
-        );
+        if print_finished {
+          // TODO(bartlomieju): print exit code here?
+          info!(
+            "{} {} {}. Restarting on file change...",
+            colors::intense_blue(banner),
+            job_name,
+            if success {
+              "finished"
+            } else {
+              "failed"
+            }
+          );
+        }
       },
     }
     let receiver_future = async {

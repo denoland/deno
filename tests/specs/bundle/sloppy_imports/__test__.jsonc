@@ -1,0 +1,9 @@
+{
+  "steps": [{
+    "args": "bundle main.ts -o bundled.js",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run bundled.js",
+    "output": "foo\n"
+  }]
+}

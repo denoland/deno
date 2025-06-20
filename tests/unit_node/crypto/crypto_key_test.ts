@@ -230,6 +230,10 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyType, "rsa");
   assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+  assertEquals(
+    Object.getPrototypeOf(key.asymmetricKeyDetails),
+    Object.prototype,
+  );
 });
 
 Deno.test("createPrivateKey dh", function () {

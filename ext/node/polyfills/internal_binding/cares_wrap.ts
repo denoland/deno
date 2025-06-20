@@ -47,6 +47,10 @@ interface LookupAddress {
   family: number;
 }
 
+export const DNS_ORDER_VERBATIM = 0;
+export const DNS_ORDER_IPV4_FIRST = 1;
+export const DNS_ORDER_IPV6_FIRST = 2;
+
 export class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
@@ -75,7 +79,7 @@ export function getaddrinfo(
   hostname: string,
   family: number,
   _hints: number,
-  verbatim: boolean,
+  order: 0 | 1 | 2,
 ): number {
   let addresses: string[] = [];
 
@@ -99,9 +103,8 @@ export function getaddrinfo(
       }
     }
 
-    // TODO(cmorten): needs work
-    // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
-    if (!verbatim) {
+    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
+    if (order === DNS_ORDER_IPV4_FIRST) {
       addresses.sort((a: string, b: string): number => {
         if (isIPv4(a)) {
           return -1;
@@ -109,6 +112,15 @@ export function getaddrinfo(
           return 1;
         }
 
+        return 0;
+      });
+    } else if (order === DNS_ORDER_IPV6_FIRST) {
+      addresses.sort((a: string, b: string): number => {
+        if (isIPv6(a)) {
+          return -1;
+        } else if (isIPv6(b)) {
+          return 1;
+        }
         return 0;
       });
     }
@@ -576,3 +588,14 @@ export function strerror(code: number) {
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
+
+export default {
+  DNS_ORDER_VERBATIM,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  GetAddrInfoReqWrap,
+  getaddrinfo,
+  QueryReqWrap,
+  ChannelWrap,
+  strerror,
+};

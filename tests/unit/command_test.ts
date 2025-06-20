@@ -705,6 +705,7 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   async function commandClearEnv() {
+    Deno.env.set("DENO_COMMAND_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -723,13 +724,15 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_CLEAR_ENV_TESTING");
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   function commandSyncClearEnv() {
+    Deno.env.set("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -748,7 +751,8 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING");
   },
 );
 

@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  Hasher,
   op_node_create_hash,
   op_node_export_secret_key,
   op_node_get_hashes,
@@ -57,9 +58,6 @@ function unwrapErr(ok: boolean) {
   if (!ok) throw new ERR_CRYPTO_HASH_FINALIZED();
 }
 
-declare const __hasher: unique symbol;
-type Hasher = { __hasher: typeof __hasher };
-
 const kHandle = Symbol("kHandle");
 
 export function Hash(
@@ -70,7 +68,8 @@ export function Hash(
   if (!(this instanceof Hash)) {
     return new Hash(algorithm, options);
   }
-  if (!(typeof algorithm === "object")) {
+  const isCopy = algorithm instanceof Hasher;
+  if (!isCopy) {
     validateString(algorithm, "algorithm");
   }
   const xofLen = typeof options === "object" && options !== null
@@ -81,7 +80,7 @@ export function Hash(
   }
 
   try {
-    this[kHandle] = typeof algorithm === "object"
+    this[kHandle] = isCopy
       ? op_node_hash_clone(algorithm, xofLen)
       : op_node_create_hash(algorithm.toLowerCase(), xofLen);
   } catch (err) {

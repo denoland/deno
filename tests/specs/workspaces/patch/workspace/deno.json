@@ -1,6 +1,6 @@
 {
   "workspace": ["./my-pkg"],
-  "patch": [
+  "links": [
     "../add"
   ]
 }

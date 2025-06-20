@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use aws_lc_rs::signature::Ed25519KeyPair;
+use aws_lc_rs::signature::KeyPair;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use deno_core::op2;
@@ -7,8 +9,6 @@ use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use ring::signature::Ed25519KeyPair;
-use ring::signature::KeyPair;
 use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
@@ -23,7 +23,7 @@ pub enum Ed25519Error {
   Der(#[from] rsa::pkcs1::der::Error),
   #[class(generic)]
   #[error(transparent)]
-  KeyRejected(#[from] ring::error::KeyRejected),
+  KeyRejected(#[from] aws_lc_rs::error::KeyRejected),
 }
 
 #[op2(fast)]
@@ -62,9 +62,12 @@ pub fn op_crypto_verify_ed25519(
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
 ) -> bool {
-  ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey)
-    .verify(data, signature)
-    .is_ok()
+  aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
+    pubkey,
+  )
+  .verify(data, signature)
+  .is_ok()
 }
 
 // id-Ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }

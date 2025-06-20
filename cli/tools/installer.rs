@@ -36,7 +36,8 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::create_cli_file_fetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
@@ -189,6 +190,14 @@ pub async fn infer_name_from_url(
     if !npm_ref.req.name.contains('/') {
       return Some(npm_ref.req.name.into_string());
     }
+    if let Some(scope_and_pkg) = npm_ref.req.name.strip_prefix('@') {
+      if let Some((scope, package)) = scope_and_pkg.split_once('/') {
+        if package == "cli" {
+          return Some(scope.to_string());
+        }
+      }
+    }
+
     return None;
   }
 
@@ -380,15 +389,17 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let deps_file_fetcher = CliFileFetcher::new(
+  let deps_file_fetcher = create_cli_file_fetcher(
+    Default::default(),
     deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.sys(),
-    Default::default(),
-    None,
-    true,
-    CacheSetting::ReloadAll,
-    log::Level::Trace,
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::ReloadAll,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
   );
 
   let npmrc = factory.npmrc()?;
@@ -898,6 +909,14 @@ mod tests {
       )
       .await,
       None
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &http_client,
+        &Url::parse("npm:@slidev/cli@1.2").unwrap()
+      )
+      .await,
+      Some("slidev".to_string())
     );
   }
 

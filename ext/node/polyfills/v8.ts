@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
-const { ObjectPrototypeToString } = primordials;
+const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 import {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_statistics,
@@ -274,7 +274,7 @@ function arrayBufferViewIndexToType(index: number): any {
   if (index === 7) return Float32Array;
   if (index === 8) return Float64Array;
   if (index === 9) return DataView;
-  if (index === 10) return Buffer;
+  if (index === 10) return Buffer[SymbolSpecies];
   if (index === 11) return BigInt64Array;
   if (index === 12) return BigUint64Array;
   if (index === 13) return Float16Array;

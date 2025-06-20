@@ -298,7 +298,7 @@ class StatWatcher extends EventEmitter {
         while (true) {
           await delay(interval, { signal: this.#abortController.signal });
           const curr = await statAsync(filename);
-          if (curr?.mtime !== prev?.mtime) {
+          if (curr?.mtime.getTime() !== prev?.mtime.getTime()) {
             this.emit("change", curr, prev);
             prev = curr;
           }

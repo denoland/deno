@@ -65,9 +65,10 @@ function toNode(
     expected: unknown;
     message?: string | Error;
     operator?: string;
+    stackStartFn?: Function;
   },
 ) {
-  const { operator, message, actual, expected } = opts || {};
+  const { operator, message, actual, expected, stackStartFn } = opts || {};
   try {
     fn();
   } catch (e) {
@@ -78,6 +79,7 @@ function toNode(
           message,
           actual,
           expected,
+          stackStartFn,
         });
       } else if (message instanceof Error) {
         throw message;
@@ -87,6 +89,7 @@ function toNode(
           message: e.message,
           actual,
           expected,
+          stackStartFn,
         });
       }
     }
@@ -100,10 +103,11 @@ function assert(actual: unknown, message?: string | Error): asserts actual {
       message: "No value argument passed to `assert.ok()`",
     });
   }
-  toNode(
-    () => asserts.assert(actual),
-    { message, actual, expected: true },
-  );
+  if (actual) {
+    return;
+  }
+
+  equal(actual, true, message);
 }
 const ok = assert;
 
@@ -272,6 +276,7 @@ function equal(
       operator: "==",
       actual,
       expected,
+      stackStartFn: equal,
     },
   );
 }

@@ -114,9 +114,18 @@ impl DrawThread {
   pub fn hide() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
+    let is_showing =
+      internal_state.has_draw_thread && internal_state.hide_count == 0;
     internal_state.hide_count += 1;
 
-    Self::clear_and_stop_draw_thread(&mut internal_state);
+    if is_showing {
+      // Clear it on the current thread in order to stop it from
+      // showing immediately. Also, don't stop the draw thread here
+      // because the calling code might be called from outside a
+      // tokio runtime and when it goes to start the thread on the
+      // thread pool it might panic.
+      internal_state.static_text.eprint_clear();
+    }
   }
 
   /// Shows the draw thread if it was previously hidden.
@@ -125,9 +134,6 @@ impl DrawThread {
     let mut internal_state = internal_state.lock();
     if internal_state.hide_count > 0 {
       internal_state.hide_count -= 1;
-      if internal_state.hide_count == 0 {
-        Self::maybe_start_draw_thread(&mut internal_state);
-      }
     }
   }
 
@@ -157,7 +163,6 @@ impl DrawThread {
 
   fn maybe_start_draw_thread(internal_state: &mut InternalState) {
     if internal_state.has_draw_thread
-      || internal_state.hide_count > 0
       || internal_state.entries.is_empty()
       || !DrawThread::is_supported()
     {
@@ -174,62 +179,65 @@ impl DrawThread {
         let mut delay_ms = 120;
         {
           // Get the entries to render.
-          let entries = {
+          let maybe_entries = {
             let internal_state = &*INTERNAL_STATE;
             let internal_state = internal_state.lock();
             if internal_state.should_exit_draw_thread(drawer_id) {
               break;
             }
-            internal_state.entries.clone()
+            let should_display = internal_state.hide_count == 0;
+            should_display.then(|| internal_state.entries.clone())
           };
 
-          // this should always be set, but have the code handle
-          // it not being for some reason
-          let size = console_size();
+          if let Some(entries) = maybe_entries {
+            // this should always be set, but have the code handle
+            // it not being for some reason
+            let size = console_size();
 
-          // Call into the renderers outside the lock to prevent a potential
-          // deadlock between our internal state lock and the renderers
-          // internal state lock.
-          //
-          // Example deadlock if this code didn't do this:
-          // 1. Other thread - Renderer - acquired internal lock to update state
-          // 2. This thread  - Acquired internal state
-          // 3. Other thread - Renderer - drops DrawThreadGuard
-          // 4. This thread - Calls renderer.render within internal lock,
-          //    which attempts to acquire the other thread's Render's internal
-          //    lock causing a deadlock
-          let mut text = String::new();
-          if size != previous_size {
-            // means the user is actively resizing the console...
-            // wait a little bit until they stop resizing
-            previous_size = size;
-            delay_ms = 200;
-          } else if let Some(size) = size {
-            let mut should_new_line_next = false;
-            for entry in entries {
-              let new_text = entry.renderer.render(&size);
-              if should_new_line_next && !new_text.is_empty() {
-                text.push('\n');
+            // Call into the renderers outside the lock to prevent a potential
+            // deadlock between our internal state lock and the renderers
+            // internal state lock.
+            //
+            // Example deadlock if this code didn't do this:
+            // 1. Other thread - Renderer - acquired internal lock to update state
+            // 2. This thread  - Acquired internal state
+            // 3. Other thread - Renderer - drops DrawThreadGuard
+            // 4. This thread - Calls renderer.render within internal lock,
+            //    which attempts to acquire the other thread's Render's internal
+            //    lock causing a deadlock
+            let mut text = String::new();
+            if size != previous_size {
+              // means the user is actively resizing the console...
+              // wait a little bit until they stop resizing
+              previous_size = size;
+              delay_ms = 200;
+            } else if let Some(size) = size {
+              let mut should_new_line_next = false;
+              for entry in entries {
+                let new_text = entry.renderer.render(&size);
+                if should_new_line_next && !new_text.is_empty() {
+                  text.push('\n');
+                }
+                should_new_line_next = !new_text.is_empty();
+                text.push_str(&new_text);
               }
-              should_new_line_next = !new_text.is_empty();
-              text.push_str(&new_text);
-            }
 
-            // now reacquire the lock, ensure we should still be drawing, then
-            // output the text
-            {
-              let internal_state = &*INTERNAL_STATE;
-              let mut internal_state = internal_state.lock();
-              if internal_state.should_exit_draw_thread(drawer_id) {
-                break;
+              // now reacquire the lock, ensure we should still be drawing, then
+              // output the text
+              {
+                let internal_state = &*INTERNAL_STATE;
+                let mut internal_state = internal_state.lock();
+                if internal_state.should_exit_draw_thread(drawer_id) {
+                  break;
+                }
+                internal_state.static_text.eprint_with_size(
+                  &text,
+                  console_static_text::ConsoleSize {
+                    cols: Some(size.cols as u16),
+                    rows: Some(size.rows as u16),
+                  },
+                );
               }
-              internal_state.static_text.eprint_with_size(
-                &text,
-                console_static_text::ConsoleSize {
-                  cols: Some(size.cols as u16),
-                  rows: Some(size.rows as u16),
-                },
-              );
             }
           }
         }

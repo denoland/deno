@@ -1,0 +1,11 @@
+// [WILDCARD]foo.json
+var foo_default = {
+  hi: "bye",
+  thing: {
+    other: "thing"
+  }
+};
+
+// [WILDCARD]imports_json.ts
+console.log(foo_default);
+

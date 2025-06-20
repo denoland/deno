@@ -1,0 +1,4 @@
+[WILDCARD]
+error: Cannot import "[WILDLINE]foo.css" into a JavaScript file without an output path configured
+    at file://[WILDCARD]imports-css.tsx:1:7
+error: bundling failed

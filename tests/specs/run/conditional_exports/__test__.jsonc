@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A main.js",
+      "output": "no_condition.out"
+    },
+    {
+      "args": "run --unstable-node-conditions react-server -A main.js",
+      "output": "condition.out",
+      "exitCode": 1
+    }
+  ]
+}

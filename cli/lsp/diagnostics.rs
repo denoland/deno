@@ -1090,13 +1090,7 @@ async fn generate_ts_diagnostics(
   let mut enabled_modules_with_diagnostics = Vec::new();
   for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(
-        snapshot.clone(),
-        enabled_modules.iter().map(|m| m.specifier.as_ref()),
-        scope.as_ref(),
-        notebook_uri.as_ref(),
-        &token,
-      )
+      .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));

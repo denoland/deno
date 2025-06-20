@@ -84,6 +84,15 @@
               "type": "string"
             }
           },
+          "if": {
+            "type": "string",
+            "examples": [
+              "mac",
+              "linux",
+              "windows",
+              "unix"
+            ]
+          },
           "repeat": {
             "type": "number"
           },

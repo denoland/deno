@@ -55,6 +55,7 @@ deno_core::extension!(
     op_exit,
     op_delete_env,
     op_get_env,
+    op_get_env_no_permission_check,
     op_gid,
     op_hostname,
     op_loadavg,
@@ -182,21 +183,20 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
-  Ok(env::vars().collect())
+
+  Ok(
+    env::vars_os()
+      .filter_map(|(key_os, value_os)| {
+        key_os
+          .into_string()
+          .ok()
+          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      })
+      .collect(),
+  )
 }
 
-#[op2(stack_trace)]
-#[string]
-fn op_get_env(
-  state: &mut OpState,
-  #[string] key: String,
-) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key.as_str());
-
-  if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
-  }
-
+fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -210,6 +210,29 @@ fn op_get_env(
     v => Some(v?),
   };
   Ok(r)
+}
+
+#[op2]
+#[string]
+fn op_get_env_no_permission_check(
+  #[string] key: &str,
+) -> Result<Option<String>, OsError> {
+  get_env_var(key)
+}
+
+#[op2(stack_trace)]
+#[string]
+fn op_get_env(
+  state: &mut OpState,
+  #[string] key: &str,
+) -> Result<Option<String>, OsError> {
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
+
+  if !skip_permission_check {
+    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  }
+
+  get_env_var(key)
 }
 
 #[op2(fast, stack_trace)]
