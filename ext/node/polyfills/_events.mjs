@@ -36,7 +36,6 @@ const {
 } = primordials;
 
 const kRejection = Symbol.for("nodejs.rejection");
-export const kEvents = Symbol("kEvents");
 
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -60,10 +59,11 @@ import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
 import {
   eventTargetData,
+  kEvents,
   kResistStopImmediatePropagation,
 } from "ext:deno_web/02_event.js";
 
-export { addAbortListener } from "./internal/events/abort_listener.mjs";
+export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
