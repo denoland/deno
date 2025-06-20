@@ -1012,7 +1012,9 @@ impl ModuleGraphBuilder {
         } else {
           GraphKind::CodeOnly
         },
-        check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
+        check_js: CheckJsOption::Custom(
+          self.compiler_options_resolver.as_ref(),
+        ),
         exit_integrity_errors: true,
         allow_unknown_media_types,
         ignore_graph_errors: matches!(

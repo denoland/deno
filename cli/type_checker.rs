@@ -861,8 +861,9 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Cjs
           | MediaType::Jsx => {
             if self
-              .tsconfig_resolver
-              .check_js_for_specifier(&module.specifier)
+              .compiler_options_resolver
+              .reference_for_specifier(&module.specifier)
+              .check_js()
               || has_ts_check(module.media_type, &module.source)
             {
               Some((module.specifier.clone(), module.media_type))

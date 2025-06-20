@@ -71,6 +71,7 @@ struct MemoizedValues {
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
   jsx_import_source_config: OnceCell<Option<JsxImportSourceConfig>>,
+  check_js: OnceCell<bool>,
 }
 
 #[derive(Debug)]
@@ -227,6 +228,19 @@ impl CompilerOptionsReference {
       }))
     }).map(|c| c.as_ref())
   }
+
+  pub fn check_js(&self) -> bool {
+    *self.memoized.check_js.get_or_init(|| {
+      self
+        .sources
+        .iter()
+        .rev()
+        .find_map(|s| {
+          s.compiler_options.0.as_object()?.get("checkJs")?.as_bool()
+        })
+        .unwrap_or(false)
+    })
+  }
 }
 
 #[derive(Debug)]
@@ -345,6 +359,13 @@ impl CompilerOptionsResolver {
       }
     }
     self.workspace_configs.get_for_specifier(specifier)
+  }
+}
+
+#[cfg(feature = "graph")]
+impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
+  fn resolve(&self, specifier: &Url) -> bool {
+    self.reference_for_specifier(specifier).check_js()
   }
 }
 
