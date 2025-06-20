@@ -5,13 +5,14 @@ use std::ptr::NonNull;
 use crate::ffi::Bio;
 use crate::ffi::PKey;
 
-/// Safe wrapper around AWS-LC's NETSCAPE_SPKI structure.
 #[derive(Debug)]
 pub struct NetscapeSpki(*mut aws_lc_sys::NETSCAPE_SPKI);
 
 impl NetscapeSpki {
   /// Decodes a base64-encoded SPKI certificate.
   fn from_base64(data: &[u8]) -> Result<Self, &'static str> {
+    // SAFETY: Converting base64 SPKI data to a NETSCAPE_SPKI structure requires FFI calls.
+    // We cast the byte slice pointer to the required type and check for null returns.
     unsafe {
       let spki = aws_lc_sys::NETSCAPE_SPKI_b64_decode(
         data.as_ptr() as *const i8,
@@ -24,16 +25,18 @@ impl NetscapeSpki {
     }
   }
 
-  /// Verifies the signature of the SPKI certificate using the provided public key.
   fn verify(&self, pkey: &PKey) -> bool {
+    // SAFETY: Verifying SPKI certificate with a public key requires FFI calls.
+    // The function returns an integer where >0 means success.
     unsafe {
       let result = aws_lc_sys::NETSCAPE_SPKI_verify(self.0, pkey.as_ptr());
       result > 0
     }
   }
 
-  /// Accesses the SPKAC structure within the SPKI certificate.
   fn spkac(&self) -> Result<&aws_lc_sys::NETSCAPE_SPKAC, &'static str> {
+    // SAFETY: Accessing the spkac field of NETSCAPE_SPKI requires dereferencing raw pointers.
+    // We check both the struct pointer and the spkac field pointer for null values.
     unsafe {
       if self.0.is_null() || (*self.0).spkac.is_null() {
         return Err("Invalid SPKAC structure");
@@ -42,16 +45,19 @@ impl NetscapeSpki {
     }
   }
 
-  /// Extracts the public key from the SPKI certificate.
   fn get_public_key(&self) -> Result<PKey, &'static str> {
+    // SAFETY: Extracting the public key from SPKI requires an FFI call.
+    // The returned pointer is checked for null in the PKey::from_ptr function.
     unsafe {
       let pkey = aws_lc_sys::NETSCAPE_SPKI_get_pubkey(self.0);
       PKey::from_ptr(pkey).ok_or("Failed to extract public key")
     }
   }
 
-  /// Extracts the challenge string from the SPKI certificate.
   fn get_challenge(&self) -> Result<Vec<u8>, &'static str> {
+    // SAFETY: Extracting the challenge string requires several FFI calls and pointer operations.
+    // We check for null pointers and use a RAII guard (BufferGuard) to ensure proper cleanup.
+    // The challenge data is copied to a Vec to ensure memory safety after this function returns.
     unsafe {
       let spkac = self.spkac()?;
       let challenge = spkac.challenge;
@@ -66,7 +72,6 @@ impl NetscapeSpki {
         return Err("Failed to extract challenge string");
       }
 
-      // Create a wrapper that will free the buffer when dropped
       let _guard = BufferGuard(NonNull::new(buf).unwrap());
 
       let challenge_slice =
@@ -75,7 +80,6 @@ impl NetscapeSpki {
     }
   }
 
-  /// Returns the raw pointer without transferring ownership.
   pub fn as_ptr(&self) -> *mut aws_lc_sys::NETSCAPE_SPKI {
     self.0
   }
@@ -83,6 +87,8 @@ impl NetscapeSpki {
 
 impl Drop for NetscapeSpki {
   fn drop(&mut self) {
+    // SAFETY: We need to free the underlying NETSCAPE_SPKI when the NetscapeSpki wrapper is dropped.
+    // The null check ensures we don't try to free a null pointer.
     unsafe {
       if !self.0.is_null() {
         aws_lc_sys::NETSCAPE_SPKI_free(self.0);
@@ -91,11 +97,13 @@ impl Drop for NetscapeSpki {
   }
 }
 
-/// RAII guard for automatically freeing ASN1 string buffers
+// RAII guard for automatically freeing ASN1 string buffers
 struct BufferGuard(NonNull<u8>);
 
 impl Drop for BufferGuard {
   fn drop(&mut self) {
+    // SAFETY: We need to free the buffer allocated by ASN1_STRING_to_UTF8 when the guard is dropped.
+    // NonNull guarantees the pointer is not null.
     unsafe {
       aws_lc_sys::OPENSSL_free(self.0.as_ptr() as *mut std::ffi::c_void);
     }
@@ -123,6 +131,8 @@ pub fn verify_spkac(data: &[u8]) -> bool {
 fn extract_public_key_from_spkac(
   spki: &NetscapeSpki,
 ) -> Result<PKey, &'static str> {
+  // SAFETY: Extracting the public key from SPKAC requires FFI calls and pointer manipulation.
+  // We check for null pointers and properly handle ownership with the PKey wrapper.
   unsafe {
     let spkac = spki.spkac()?;
     let pubkey = spkac.pubkey;
@@ -137,21 +147,13 @@ fn extract_public_key_from_spkac(
 
 /// Exports the public key from the SPKAC data in PEM format.
 pub fn export_public_key(data: &[u8]) -> Option<Vec<u8>> {
-  let spki = match NetscapeSpki::from_base64(data) {
-    Ok(spki) => spki,
-    Err(_) => return None,
-  };
+  let spki = NetscapeSpki::from_base64(data).ok()?;
 
-  let pkey = match spki.get_public_key() {
-    Ok(pkey) => pkey,
-    Err(_) => return None,
-  };
+  let pkey = spki.get_public_key().ok()?;
 
-  let bio = match Bio::new_memory() {
-    Ok(bio) => bio,
-    Err(_) => return None,
-  };
-
+  let bio = Bio::new_memory().ok()?;
+  // SAFETY: Writing the public key to the BIO in PEM format requires an FFI call.
+  // We check the return value to ensure the operation succeeded.
   unsafe {
     let result = aws_lc_sys::PEM_write_bio_PUBKEY(bio.as_ptr(), pkey.as_ptr());
     if result <= 0 {
@@ -159,23 +161,14 @@ pub fn export_public_key(data: &[u8]) -> Option<Vec<u8>> {
     }
   }
 
-  match bio.get_contents() {
-    Ok(contents) => Some(contents),
-    Err(_) => None,
-  }
+  bio.get_contents().ok()
 }
 
 /// Exports the challenge string from the SPKAC data.
 pub fn export_challenge(data: &[u8]) -> Option<Vec<u8>> {
-  let spki = match NetscapeSpki::from_base64(data) {
-    Ok(spki) => spki,
-    Err(_) => return None,
-  };
+  let spki = NetscapeSpki::from_base64(data).ok()?;
 
-  match spki.get_challenge() {
-    Ok(challenge) => Some(challenge),
-    Err(_) => None,
-  }
+  spki.get_challenge().ok()
 }
 
 #[cfg(test)]
