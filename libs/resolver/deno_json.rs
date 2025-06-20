@@ -375,6 +375,50 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   }
 }
 
+/// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
+/// ahead of time as needed for the graph resolver.
+#[derive(Debug)]
+pub struct JsxImportSourceConfigResolver {
+  workspace_configs: FolderScopedMap<Option<JsxImportSourceConfigRc>>,
+  ts_configs: Vec<(Option<JsxImportSourceConfigRc>, FilePatterns)>,
+}
+
+impl JsxImportSourceConfigResolver {
+  pub fn from_compiler_options_resolver(
+    compiler_options_resolver: &CompilerOptionsResolver,
+  ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
+    Ok(Self {
+      workspace_configs: compiler_options_resolver
+        .workspace_configs
+        .try_map(|r| Ok(r.jsx_import_source_config()?.cloned()))?,
+      ts_configs: compiler_options_resolver
+        .ts_configs
+        .iter()
+        .map(|t| {
+          Ok((
+            t.compiler_options.jsx_import_source_config()?.cloned(),
+            t.files.clone(),
+          ))
+        })
+        .collect::<Result<_, _>>()?,
+    })
+  }
+
+  pub fn for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> Option<&JsxImportSourceConfigRc> {
+    if let Ok(path) = specifier.to_file_path() {
+      for (config, files) in &self.ts_configs {
+        if files.matches_path(&path, PathKind::File) {
+          return config.as_ref();
+        }
+      }
+    }
+    self.workspace_configs.get_for_specifier(specifier).as_ref()
+  }
+}
+
 #[derive(Debug)]
 pub struct TsConfigFolderInfo<TSys: FsRead> {
   pub dir: WorkspaceDirectory,

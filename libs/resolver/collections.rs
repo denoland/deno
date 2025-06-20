@@ -69,4 +69,18 @@ impl<TValue> FolderScopedMap<TValue> {
     debug_assert_eq!(dir_url.scheme(), "file");
     self.scoped.insert(dir_url, value);
   }
+
+  pub fn try_map<B, E>(
+    &self,
+    mut f: impl FnMut(&TValue) -> Result<B, E>,
+  ) -> Result<FolderScopedMap<B>, E> {
+    Ok(FolderScopedMap {
+      unscoped: f(&self.unscoped)?,
+      scoped: self
+        .scoped
+        .iter()
+        .map(|(s, v)| Ok((s.clone(), f(v)?)))
+        .collect::<Result<_, _>>()?,
+    })
+  }
 }

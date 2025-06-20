@@ -34,9 +34,9 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
-use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
@@ -758,12 +758,18 @@ impl ModuleGraphBuilder {
         MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
       }
     };
-    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
-      &self.cli_options.start_dir,
-    )?;
-    let graph_resolver = self
-      .resolver
-      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
+    let compiler_options_resolver = CompilerOptionsResolver::from_workspace(
+      &self.sys,
+      &self.cli_options.start_dir.workspace,
+    );
+    let jsx_import_source_config_resolver =
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &compiler_options_resolver,
+      )?;
+    let graph_resolver = self.resolver.as_graph_resolver(
+      self.cjs_tracker.as_ref(),
+      &jsx_import_source_config_resolver,
+    );
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -934,12 +940,18 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
-      &self.cli_options.start_dir,
-    )?;
-    let graph_resolver = self
-      .resolver
-      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
+    let compiler_options_resolver = CompilerOptionsResolver::from_workspace(
+      &self.sys,
+      &self.cli_options.start_dir.workspace,
+    );
+    let jsx_import_source_config_resolver =
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &compiler_options_resolver,
+      )?;
+    let graph_resolver = self.resolver.as_graph_resolver(
+      self.cjs_tracker.as_ref(),
+      &jsx_import_source_config_resolver,
+    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {

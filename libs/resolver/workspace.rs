@@ -11,11 +11,8 @@ use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_media_type::MediaType;
 use deno_npm::registry::NpmPackageVersionInfo;
@@ -1640,41 +1637,6 @@ impl BaseUrl<'_> {
       }
       None => Cow::Borrowed(target.as_str()),
     }
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct ScopedJsxImportSourceConfig {
-  unscoped: Option<JsxImportSourceConfig>,
-  by_scope: BTreeMap<UrlRc, Option<JsxImportSourceConfig>>,
-}
-
-impl ScopedJsxImportSourceConfig {
-  pub fn from_workspace_dir(
-    start_dir: &WorkspaceDirectory,
-  ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
-    let unscoped = start_dir.to_maybe_jsx_import_source_config()?;
-    let mut by_scope = BTreeMap::default();
-    for (dir_url, _) in start_dir.workspace.config_folders() {
-      let dir = start_dir.workspace.resolve_member_dir(dir_url);
-      let jsx_import_source_config_unscoped =
-        dir.to_maybe_jsx_import_source_config()?;
-      by_scope.insert(dir_url.clone(), jsx_import_source_config_unscoped);
-    }
-    Ok(Self { unscoped, by_scope })
-  }
-
-  /// Resolves the `JsxImportSourceConfig` to use for the provided referrer.
-  pub fn resolve_by_referrer(
-    &self,
-    referrer: &Url,
-  ) -> Option<&JsxImportSourceConfig> {
-    self
-      .by_scope
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, c)| c.as_ref())
-      .unwrap_or(self.unscoped.as_ref())
   }
 }
 
