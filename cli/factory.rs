@@ -952,7 +952,7 @@ impl CliFactory {
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
       for feature in deno_runtime::UNSTABLE_FEATURES {
-        if unstable_features.contains(&feature.name.to_string()) {
+        if unstable_features.contains(&feature.name) {
           checker.enable_feature(feature.name);
         }
       }

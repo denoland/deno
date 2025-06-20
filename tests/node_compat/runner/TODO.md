@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
+1211 tests out of 3993 have been ported from Node 23.9.0 (30.33% ported, 70.30% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -224,7 +224,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-assert-calltracker-getCalls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-getCalls.js)
 - [parallel/test-assert-calltracker-report.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-report.js)
 - [parallel/test-assert-calltracker-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-verify.js)
-- [parallel/test-assert-checktag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-checktag.js)
 - [parallel/test-assert-deep-with-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep-with-error.js)
 - [parallel/test-assert-deep.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep.js)
 - [parallel/test-assert-esm-cjs-message-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-esm-cjs-message-verify.js)

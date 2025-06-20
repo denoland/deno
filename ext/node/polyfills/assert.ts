@@ -383,11 +383,16 @@ function deepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  toNode(
-    () => asserts.assertEquals(actual, expected),
-    { message, actual, expected, operator: "deepStrictEqual" },
-  );
+  if (!asserts.equal(actual, expected)) {
+    throw new AssertionError({
+      message,
+      actual,
+      expected,
+      operator: "deepStrictEqual",
+    });
+  }
 }
+
 function notDeepStrictEqual(
   actual: unknown,
   expected: unknown,
