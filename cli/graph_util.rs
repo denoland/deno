@@ -47,7 +47,6 @@ use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::DenoSubcommand;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -689,7 +688,6 @@ pub struct ModuleGraphBuilder {
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
-  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -712,7 +710,6 @@ impl ModuleGraphBuilder {
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
-    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -732,7 +729,6 @@ impl ModuleGraphBuilder {
       root_permissions_container,
       sys,
       compiler_options_resolver,
-      tsconfig_resolver,
     }
   }
 
