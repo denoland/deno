@@ -82,11 +82,24 @@ export function equal(c: unknown, d: unknown): boolean {
     if (
       a &&
       b &&
-      ((ObjectPrototypeIsPrototypeOf(RegExpPrototype, a) &&
-        ObjectPrototypeIsPrototypeOf(RegExpPrototype, b)) ||
-        (ObjectPrototypeIsPrototypeOf(URLPrototype, a) &&
-          ObjectPrototypeIsPrototypeOf(URLPrototype, b)))
+      (ObjectPrototypeIsPrototypeOf(RegExpPrototype, a) &&
+        ObjectPrototypeIsPrototypeOf(RegExpPrototype, b))
     ) {
+      return String(a) === String(b);
+    }
+    if (
+      a && b && ObjectPrototypeIsPrototypeOf(URLPrototype, a) &&
+      ObjectPrototypeIsPrototypeOf(URLPrototype, b)
+    ) {
+      const keys = ObjectKeys(a);
+      if (keys.length !== ObjectKeys(b).length) {
+        return false;
+      }
+      for (const key of keys) {
+        if (!compare(a[key as keyof typeof a], b[key as keyof typeof b])) {
+          return false;
+        }
+      }
       return String(a) === String(b);
     }
     if (core.isDate(a) || core.isDate(b)) {
