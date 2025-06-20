@@ -173,13 +173,23 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler).await;
+    return bundle_watch(
+      flags,
+      bundler,
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+    )
+    .await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
-    process_result(&response, *DISABLE_HACK)?;
+    process_result(
+      &response,
+      input.clone(),
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+      *DISABLE_HACK,
+    )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       log::info!(
@@ -202,20 +212,26 @@ pub async fn bundle(
 async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
+  output_dir: Option<&Path>,
 ) -> Result<(), AnyError> {
-  let initial_roots = match &bundler.input {
-    BundlerInput::Entrypoints(entries) => entries
-      .iter()
-      .filter_map(|(_, root)| {
-        let url = Url::parse(root).ok()?;
-        deno_path_util::url_to_file_path(&url).ok()
-      })
-      .collect::<Vec<_>>(),
+  let (initial_roots, always_watch) = match &bundler.input {
+    BundlerInput::Entrypoints(entries) => (
+      entries
+        .iter()
+        .filter_map(|(_, root)| {
+          let url = Url::parse(root).ok()?;
+          deno_path_util::url_to_file_path(&url).ok()
+        })
+        .collect::<Vec<_>>(),
+      vec![],
+    ),
     BundlerInput::HtmlEntrypoint(entrypoint) => {
-      vec![entrypoint.path.clone()]
+      (vec![entrypoint.path.clone()], vec![entrypoint.path.clone()])
     }
   };
+  let always_watch = Rc::new(always_watch);
   let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let input = bundler.input.clone();
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
@@ -230,6 +246,8 @@ async fn bundle_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       let bundler = Rc::clone(&bundler);
       let current_roots = current_roots.clone();
+      let input = input.clone();
+      let always_watch = always_watch.clone();
       Ok(async move {
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
@@ -242,7 +260,7 @@ async fn bundle_watch(
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
-          process_result(&response, *DISABLE_HACK)?;
+          process_result(&response, input, output_dir, *DISABLE_HACK)?;
           log::info!(
             "{}",
             deno_terminal::colors::green(format!(
@@ -251,7 +269,8 @@ async fn bundle_watch(
             ))
           );
 
-          let new_watched = get_input_paths_for_watch(&response);
+          let mut new_watched = get_input_paths_for_watch(&response);
+          new_watched.extend(always_watch.iter().cloned());
           *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
         } else {
@@ -315,7 +334,7 @@ impl EsbuildBundler {
     mode: BundlingMode,
     on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
     cwd: PathBuf,
-    mut flags: EsbuildFlags,
+    flags: EsbuildFlags,
     input: BundlerInput,
   ) -> EsbuildBundler {
     EsbuildBundler {
@@ -1111,38 +1130,76 @@ fn handle_esbuild_errors_and_warnings(
   }
 }
 
+pub struct OutputFile {
+  pub path: PathBuf,
+  pub contents: Vec<u8>,
+}
+
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
 fn process_result(
   response: &BuildResponse,
-  // init_cwd: &Path,
+  input: BundlerInput,
+  outdir: Option<&Path>,
   should_replace_require_shim: bool,
 ) -> Result<(), AnyError> {
-  if let Some(output_files) = response.output_files.as_ref() {
-    let mut exists_cache = std::collections::HashSet::new();
-    for file in output_files.iter() {
+  let output_files = match input {
+    BundlerInput::HtmlEntrypoint(entrypoint) => {
+      entrypoint.patch_html_with_response(response, outdir.unwrap())?
+    }
+    _ => response
+      .output_files
+      .as_ref()
+      .map(|files| {
+        files
+          .iter()
+          .map(|f| OutputFile {
+            path: PathBuf::from(&f.path),
+            contents: f.contents.clone(),
+          })
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default(),
+  };
+  let mut exists_cache = std::collections::HashSet::new();
+  for file in output_files.iter() {
+    let bytes = if is_js(&file.path) || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
         replace_require_shim(&string)
       } else {
         string
       };
+      string.into_bytes()
+    } else {
+      file.contents.clone()
+    };
 
-      if file.path == "<stdout>" {
-        crate::display::write_to_stdout_ignore_sigpipe(string.as_bytes())?;
-        continue;
-      }
-      let path = PathBuf::from(&file.path);
-
-      if let Some(parent) = path.parent() {
-        if !exists_cache.contains(parent) {
-          if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-          }
-          exists_cache.insert(parent.to_path_buf());
-        }
-      }
-
-      std::fs::write(&file.path, string)?;
+    if file.path.ends_with("<stdout>") {
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      continue;
     }
+    let path = PathBuf::from(&file.path);
+
+    if let Some(parent) = path.parent() {
+      if !exists_cache.contains(parent) {
+        if !parent.exists() {
+          std::fs::create_dir_all(parent)?;
+        }
+        exists_cache.insert(parent.to_path_buf());
+      }
+    }
+
+    std::fs::write(&file.path, bytes)?;
   }
   Ok(())
 }
