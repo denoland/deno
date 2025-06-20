@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::deno_json::CompilerOptionsResolver;
-use deno_resolver::deno_json::TsConfigResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
 use sys_traits::FsMetadata;
@@ -39,7 +38,6 @@ pub struct ModuleContentProvider<TSys: FsMetadata + FsRead = CliSys> {
   parsed_source_cache: Arc<ParsedSourceCache>,
   sys: TSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
-  tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
 }
 
 impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
@@ -48,14 +46,12 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     specifier_unfurler: SpecifierUnfurler<TSys>,
     sys: TSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
-    tsconfig_resolver: Arc<TsConfigResolver<TSys>>,
   ) -> Self {
     Self {
       specifier_unfurler,
       parsed_source_cache,
       sys,
       compiler_options_resolver,
-      tsconfig_resolver,
     }
   }
 
@@ -231,13 +227,11 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     text_info: &SourceTextInfo,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> Result<JsxFolderOptions<'a>, AnyError> {
-    let tsconfig_folder_info =
-      self.tsconfig_resolver.folder_for_specifier(specifier);
-    let jsx_config = tsconfig_folder_info
-      .dir
-      .to_maybe_jsx_import_source_config()?;
-    let transpile_options =
-      &tsconfig_folder_info.transpile_options()?.transpile;
+    let compiler_options = self
+      .compiler_options_resolver
+      .reference_for_specifier(specifier);
+    let jsx_config = compiler_options.jsx_import_source_config()?;
+    let transpile_options = &compiler_options.transpile_options()?.transpile;
     let jsx_runtime = if transpile_options.jsx_automatic {
       "automatic"
     } else {
@@ -258,7 +252,6 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         maybe_import_source.unwrap_or_else(|| import_source.to_string())
       };
     let jsx_import_source = jsx_config
-      .as_ref()
       .and_then(|c| c.import_source.as_ref())
       .map(|jsx_import_source| {
         unfurl_import_source(
@@ -268,7 +261,6 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         )
       });
     let jsx_import_source_types = jsx_config
-      .as_ref()
       .and_then(|c| c.import_source_types.as_ref())
       .map(|jsx_import_source_types| {
         unfurl_import_source(
@@ -416,16 +408,11 @@ mod test {
     let compiler_options_resolver = Arc::new(
       CompilerOptionsResolver::from_workspace(&sys, &workspace_dir.workspace),
     );
-    let tsconfig_resolver = Arc::new(TsConfigResolver::from_workspace(
-      &sys,
-      &workspace_dir.workspace,
-    ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,
       sys,
       compiler_options_resolver,
-      tsconfig_resolver,
     )
   }
 }

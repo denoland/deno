@@ -13,6 +13,9 @@ use deno_config::deno_json::TsTypeLib;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathKind;
 use deno_config::workspace::CompilerOptionsSource;
+use deno_config::workspace::JsxImportSourceConfig;
+use deno_config::workspace::JsxImportSourceSpecifierConfig;
+use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_path_util::url_from_file_path;
 use deno_terminal::colors;
@@ -67,6 +70,7 @@ struct MemoizedValues {
   emit_compiler_options: OnceCell<CompilerOptionsRc>,
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
+  jsx_import_source_config: OnceCell<Option<JsxImportSourceConfig>>,
 }
 
 #[derive(Debug)]
@@ -154,6 +158,74 @@ impl CompilerOptionsReference {
         source,
       })
     })
+  }
+
+  pub fn jsx_import_source_config(
+    &self,
+  ) -> Result<Option<&JsxImportSourceConfig>, ToMaybeJsxImportSourceConfigError>
+  {
+    self.memoized.jsx_import_source_config.get_or_try_init(|| {
+      let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
+      let is_jsx_automatic = matches!(
+        jsx,
+        Some(("react-jsx" | "react-jsxdev" | "precompile", _)),
+      );
+      let import_source = self.sources.iter().rev().find_map(|s| {
+        Some(JsxImportSourceSpecifierConfig {
+          specifier: s.compiler_options.0.as_object()?.get("jsxImportSource")?.as_str()?.to_string(),
+          base: s.specifier.clone()
+        })
+      }).or_else(|| {
+        if !is_jsx_automatic {
+          return None;
+        }
+        Some(JsxImportSourceSpecifierConfig {
+          base: self.sources.last()?.specifier.clone(),
+          specifier: "react".to_string()
+        })
+      });
+      let import_source_types = self.sources.iter().rev().find_map(|s| {
+        Some(JsxImportSourceSpecifierConfig {
+          specifier: s.compiler_options.0.as_object()?.get("jsxImportSourceTypes")?.as_str()?.to_string(),
+          base: s.specifier.clone()
+        })
+      }).or_else(|| import_source.clone());
+      let module = match jsx {
+        Some(("react-jsx", _)) => "jsx-runtime".to_string(),
+        Some(("react-jsxdev", _)) => "jsx-dev-runtime".to_string(),
+        Some(("react", _)) | None => {
+          if let Some(import_source) = &import_source {
+            return Err(
+              ToMaybeJsxImportSourceConfigError::InvalidJsxImportSourceValue(
+                import_source.base.clone(),
+              ),
+            );
+          }
+          if let Some(import_source_types) = &import_source_types {
+            return Err(
+              ToMaybeJsxImportSourceConfigError::InvalidJsxImportSourceTypesValue(
+                import_source_types.base.clone(),
+              ),
+            );
+          }
+          return Ok(None);
+        }
+        Some(("precompile", _)) => "jsx-runtime".to_string(),
+        Some((setting, setting_source)) => {
+          return Err(
+            ToMaybeJsxImportSourceConfigError::InvalidJsxCompilerOption {
+              value: setting.to_string(),
+              specifier: setting_source.clone(),
+            },
+          )
+        }
+      };
+      Ok(Some(JsxImportSourceConfig {
+        module,
+        import_source,
+        import_source_types,
+      }))
+    }).map(|c| c.as_ref())
   }
 }
 
