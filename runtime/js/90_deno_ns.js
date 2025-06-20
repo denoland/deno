@@ -166,6 +166,7 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
+  telemetry: telemetry.telemetry,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -228,9 +229,5 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
 });
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
-
-denoNsUnstableById[unstableIds.otel] = {
-  telemetry: telemetry.telemetry,
-};
 
 export { denoNs, denoNsUnstableById, unstableIds };
