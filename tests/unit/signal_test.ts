@@ -5,7 +5,7 @@ Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
     const msg =
-      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got ";
+      "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), and ctrl-close (SIGUP), but got ";
     assertThrows(
       () => {
         Deno.addSignalListener("SIGALRM", () => {});
@@ -19,13 +19,6 @@ Deno.test(
       },
       Error,
       msg + "SIGCHLD",
-    );
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGHUP", () => {});
-      },
-      Error,
-      msg + "SIGHUP",
     );
     assertThrows(
       () => {
