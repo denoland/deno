@@ -833,6 +833,8 @@ impl DenoPluginHandler {
         | MediaType::Mts
         | MediaType::Cjs
         | MediaType::Cts
+        | MediaType::Jsx
+        | MediaType::Tsx
     ) {
       let code = self.apply_transform(
         &specifier,
