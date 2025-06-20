@@ -1140,3 +1140,8 @@ pub fn op_node_verify_ed25519(
 
   Ok(verified)
 }
+
+#[op2(fast)]
+pub fn op_node_verify_spkac(#[buffer] spkac: &[u8]) -> bool {
+  deno_crypto_provider::verify_spkac(spkac)
+}

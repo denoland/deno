@@ -4,6 +4,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
+import { op_node_verify_spkac } from "ext:core/ops";
 
 export class Certificate {
   static Certificate = Certificate;
@@ -15,8 +16,8 @@ export class Certificate {
     notImplemented("crypto.Certificate.exportPublicKey");
   }
 
-  static verifySpkac(_spkac: BinaryLike, _encoding?: string): boolean {
-    notImplemented("crypto.Certificate.verifySpkac");
+  static verifySpkac(spkac: BinaryLike, _encoding?: string): boolean {
+    return op_node_verify_spkac(spkac);
   }
 }
 
