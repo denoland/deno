@@ -17,6 +17,7 @@ const {
   ReflectOwnKeys,
   RegExpPrototype,
   RegExpPrototypeTest,
+  SafeIterator,
   SafeMap,
   SafeRegExp,
   String,
@@ -95,7 +96,7 @@ export function equal(c: unknown, d: unknown): boolean {
       if (keys.length !== ObjectKeys(b).length) {
         return false;
       }
-      for (const key of keys) {
+      for (const key of new SafeIterator(keys)) {
         if (!compare(a[key as keyof typeof a], b[key as keyof typeof b])) {
           return false;
         }
