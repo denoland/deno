@@ -1998,11 +1998,12 @@ fn analyze_module(
     }
     Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::Parse {
+        deno_graph::ModuleErrorKind::Parse {
           specifier,
           mtime: None,
           diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
-        },
+        }
+        .into_box(),
       )),
       ResolutionMode::Import,
     ),

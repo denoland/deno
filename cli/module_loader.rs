@@ -928,7 +928,10 @@ impl<TGraphContainer: ModuleGraphContainer>
           self.has_module_changed_on_file_system(specifier, module.mtime())
         }
         deno_graph::ModuleEntryRef::Err(err) => {
-          if matches!(err, deno_graph::ModuleError::Missing { .. }) {
+          if matches!(
+            err.as_kind(),
+            deno_graph::ModuleErrorKind::Missing { .. }
+          ) {
             self.mtime_of_specifier(specifier).is_some() // it exists now
           } else {
             self.has_module_changed_on_file_system(specifier, err.mtime())

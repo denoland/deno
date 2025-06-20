@@ -24,6 +24,7 @@ use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
@@ -184,7 +185,7 @@ pub fn graph_walk_errors<'a>(
         should_ignore_resolution_error_for_types(err)
       }
       ModuleGraphError::ModuleError(module_error) => {
-        matches!(module_error, ModuleError::Missing { .. })
+        matches!(module_error.as_kind(), ModuleErrorKind::Missing { .. })
       }
     }
   }
@@ -198,8 +199,8 @@ pub fn graph_walk_errors<'a>(
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
       && matches!(
-        error,
-        ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType { .. })
+        error.as_module_error_kind(),
+        Some(ModuleErrorKind::UnsupportedMediaType { .. })
       )
     {
       return true;
@@ -248,8 +249,8 @@ pub fn graph_walk_errors<'a>(
       if is_root
         && options.allow_unknown_jsr_exports
         && matches!(
-          error,
-          ModuleGraphError::ModuleError(ModuleError::Load {
+          error.as_module_error_kind(),
+          Some(ModuleErrorKind::Load {
             err: ModuleLoadError::Jsr(JsrLoadError::UnknownExport { .. }),
             ..
           })
@@ -297,15 +298,15 @@ pub fn module_error_for_tsc_diagnostic<'a>(
   sys: &CliSys,
   error: &'a ModuleError,
 ) -> Option<ModuleNotFoundGraphErrorRef<'a>> {
-  match error {
-    ModuleError::Missing {
+  match error.as_kind() {
+    ModuleErrorKind::Missing {
       specifier,
       maybe_referrer,
     } => Some(ModuleNotFoundGraphErrorRef {
       specifier,
       maybe_range: maybe_referrer.as_ref(),
     }),
-    ModuleError::Load {
+    ModuleErrorKind::Load {
       specifier,
       maybe_referrer,
       err: ModuleLoadError::Loader(_),
@@ -788,6 +789,8 @@ impl ModuleGraphBuilder {
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
+          unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
+          unstable_text_imports: self.cli_options.unstable_raw_imports(),
         },
         options.npm_caching,
       )
@@ -1052,9 +1055,9 @@ fn enhanced_sloppy_imports_error_message(
   sys: &CliSys,
   error: &ModuleError,
 ) -> Option<String> {
-  match error {
-    ModuleError::Load { specifier, err: ModuleLoadError::Loader(_), .. } // ex. "Is a directory" error
-    | ModuleError::Missing { specifier, .. } => {
+  match error.as_kind() {
+    ModuleErrorKind::Load { specifier, err: ModuleLoadError::Loader(_), .. } // ex. "Is a directory" error
+    | ModuleErrorKind::Missing { specifier, .. } => {
       let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
         "{} {}",
@@ -1083,8 +1086,8 @@ pub fn maybe_additional_sloppy_imports_message(
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
-  match err {
-    ModuleError::Load {
+  match err.as_kind() {
+    ModuleErrorKind::Load {
       specifier,
       err: ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
         checksum_err,
@@ -1107,7 +1110,7 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::Load {
+    ModuleErrorKind::Load {
       err: ModuleLoadError::Jsr(
         JsrLoadError::PackageVersionManifestChecksumIntegrity(
           package_nv,
@@ -1132,7 +1135,7 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.expected,
       ))
     }
-    ModuleError::Load {
+    ModuleErrorKind::Load {
       specifier,
       err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
       ..

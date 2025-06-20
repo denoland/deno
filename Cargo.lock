@@ -2055,6 +2055,7 @@ name = "deno_graph"
 version = "0.95.1"
 dependencies = [
  "async-trait",
+ "boxed_error",
  "capacity_builder",
  "data-url",
  "deno_ast",
@@ -2063,7 +2064,6 @@ dependencies = [
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
- "encoding_rs",
  "futures",
  "import_map",
  "indexmap 2.9.0",
@@ -2260,7 +2260,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.8"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0ec0dada9dc5ac4733b4175d36f6a150b7dd68fab46db35cb1ef00dd7366acb"
 dependencies = [
  "data-url",
  "encoding_rs",

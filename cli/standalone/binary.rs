@@ -715,6 +715,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         features: self.cli_options.unstable_features(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
+        raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
       },
       otel_config: self.cli_options.otel_config(),

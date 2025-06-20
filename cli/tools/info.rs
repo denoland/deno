@@ -16,6 +16,7 @@ use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_lib::util::checksum;
@@ -550,7 +551,7 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleError::Missing { .. } = *err {
+        if let ModuleErrorKind::Missing { .. } = err.as_kind() {
           bail!("module could not be found");
         } else {
           bail!("{:#}", err);
@@ -700,11 +701,11 @@ impl<'a> GraphDisplayContext<'a> {
     specifier: &ModuleSpecifier,
   ) -> DisplayTreeNode {
     self.seen.insert(specifier.to_string());
-    match err {
-      ModuleError::InvalidTypeAssertion { .. } => {
+    match err.as_kind() {
+      ModuleErrorKind::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import attribute)")
       }
-      ModuleError::Load { err, .. } => {
+      ModuleErrorKind::Load { err, .. } => {
         use deno_graph::ModuleLoadError::*;
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
@@ -722,16 +723,17 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::Parse { .. } | ModuleError::WasmParse { .. } => {
+      ModuleErrorKind::Parse { .. } | ModuleErrorKind::WasmParse { .. } => {
         self.build_error_msg(specifier, "(parsing error)")
       }
-      ModuleError::UnsupportedImportAttributeType { .. } => {
+      ModuleErrorKind::UnsupportedImportAttributeType { .. } => {
         self.build_error_msg(specifier, "(unsupported import attribute)")
       }
-      ModuleError::UnsupportedMediaType { .. } => {
+      ModuleErrorKind::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleError::Missing { .. } | ModuleError::MissingDynamic { .. } => {
+      ModuleErrorKind::Missing { .. }
+      | ModuleErrorKind::MissingDynamic { .. } => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

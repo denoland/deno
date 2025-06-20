@@ -19,7 +19,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
-use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
@@ -48,7 +48,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
-use crate::module_loader::EnhancedGraphError;
 use crate::module_loader::LoadCodeSourceError;
 use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::LoadPreparedModuleError;
@@ -629,11 +628,8 @@ impl BundleLoadError {
         LoadCodeSourceErrorKind::LoadPreparedModule(
           LoadPreparedModuleError::Graph(ref e),
         ) => matches!(
-          &**e,
-          EnhancedGraphError {
-            error: ModuleError::UnsupportedMediaType { .. },
-            ..
-          }
+          e.error.as_kind(),
+          ModuleErrorKind::UnsupportedMediaType { .. },
         ),
         _ => false,
       },

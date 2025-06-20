@@ -719,9 +719,10 @@ fn op_load_inner(
     };
     let maybe_module = match graph.try_get(specifier) {
       Ok(maybe_module) => maybe_module,
-      Err(err) => match err {
-        deno_graph::ModuleError::UnsupportedMediaType {
-          media_type, ..
+      Err(err) => match err.as_kind() {
+        deno_graph::ModuleErrorKind::UnsupportedMediaType {
+          media_type,
+          ..
         } => {
           return Ok(Some(LoadResponse {
             data: FastString::from_static(""),
@@ -1012,8 +1013,8 @@ fn resolve_graph_specifier_types(
   let maybe_module = match graph.try_get(specifier) {
     Ok(Some(module)) => Some(module),
     Ok(None) => None,
-    Err(err) => match err {
-      deno_graph::ModuleError::UnsupportedMediaType {
+    Err(err) => match err.as_kind() {
+      deno_graph::ModuleErrorKind::UnsupportedMediaType {
         specifier,
         media_type,
         ..
