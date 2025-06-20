@@ -3709,7 +3709,7 @@ See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs
 }
 
 fn publish_subcommand() -> Command {
-  command("publish", "Publish the current working directory's package or workspace to JSR", UnstableArgsConfig::ResolutionOnly)
+  command("publish", "Publish the current working directory's package or workspace to JSR or npm", UnstableArgsConfig::ResolutionOnly)
     .defer(|cmd| {
       cmd
         .arg(
