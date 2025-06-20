@@ -47,6 +47,8 @@ type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
 #[allow(clippy::disallowed_types)]
 pub type TranspileAndEmitOptionsRc =
   crate::sync::MaybeArc<TranspileAndEmitOptions>;
+#[allow(clippy::disallowed_types)]
+pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 
 #[cfg(feature = "deno_ast")]
 #[derive(Debug)]
@@ -70,7 +72,7 @@ struct MemoizedValues {
   emit_compiler_options: OnceCell<CompilerOptionsRc>,
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
-  jsx_import_source_config: OnceCell<Option<JsxImportSourceConfig>>,
+  jsx_import_source_config: OnceCell<Option<JsxImportSourceConfigRc>>,
   check_js: OnceCell<bool>,
 }
 
@@ -163,7 +165,7 @@ impl CompilerOptionsReference {
 
   pub fn jsx_import_source_config(
     &self,
-  ) -> Result<Option<&JsxImportSourceConfig>, ToMaybeJsxImportSourceConfigError>
+  ) -> Result<Option<&JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>
   {
     self.memoized.jsx_import_source_config.get_or_try_init(|| {
       let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
@@ -221,11 +223,11 @@ impl CompilerOptionsReference {
           )
         }
       };
-      Ok(Some(JsxImportSourceConfig {
+      Ok(Some(new_rc(JsxImportSourceConfig {
         module,
         import_source,
         import_source_types,
-      }))
+      })))
     }).map(|c| c.as_ref())
   }
 
