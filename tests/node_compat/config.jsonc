@@ -245,6 +245,7 @@
       "test-arm-math-illegal-instruction.js",
       "test-assert-async.js",
       "test-assert-builtins-not-read-from-filesystem.js",
+      "test-assert-checktag.js",
       "test-assert-fail.js",
       "test-assert.js",
       "test-async-hooks-run-in-async-scope-caught-exception.js",
