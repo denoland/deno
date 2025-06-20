@@ -472,9 +472,7 @@ impl Command {
       cwd: self.cwd.as_deref().map(Cow::Borrowed),
       stdio,
     })
-    .map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
-    })
+    .map_err(|err| std::io::Error::other(err.to_string()))
     .map(|process| Child {
       inner: FusedChild::Child(ChildDropGuard {
         inner: process,
