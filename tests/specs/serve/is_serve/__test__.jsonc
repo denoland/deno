@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "serve": {
+      "args": "serve --check --host 0.0.0.0 --port 12469 main.ts",
+      "output": "serve.out"
+    },
+    "run": {
+      "args": "run -A --check main.ts",
+      "output": "run.out"
+    }
+  }
+}
