@@ -215,7 +215,6 @@ function assertNotDeepOrStrict(a, b, err) {
     () => assert.deepEqual(a, b),
     err || re`${a}\n\nshould loosely deep-equal\n\n${b}`
   );
-
   assert.throws(
     () => assert.deepStrictEqual(a, b),
     err || { code: 'ERR_ASSERTION' }
