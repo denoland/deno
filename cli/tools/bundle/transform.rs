@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use deno_ast::swc;
 use deno_ast::swc::ast::Bool;
 use deno_ast::swc::ecma_visit::VisitMut;
@@ -27,7 +29,7 @@ impl VisitMut for BundleTransform {
           if self.is_entrypoint {
             return;
           } else {
-            let span = member.span.clone();
+            let span = member.span;
             *node = swc::ast::Expr::Lit(swc::ast::Lit::Bool(Bool {
               span,
               value: false,
