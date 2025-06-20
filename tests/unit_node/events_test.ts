@@ -51,13 +51,13 @@ Deno.test("emit stack trace", () => {
   ee.on("foo", () => {
     throw new Error("foo error");
   });
-  let error;
   try {
     ee.emit("foo");
   } catch (err) {
-    error = err;
-  }
+    assert(err instanceof Error);
+    assert(err.stack);
 
-  // @ts-ignore
-  assert(error.stack.includes("at EventEmitter.emit (node:events"));
+    // The location of `emit` func is `node:events`
+    assert(err.stack.includes("at EventEmitter.emit (node:events"));
+  }
 });
