@@ -3,7 +3,6 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  DatePrototype,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   DatePrototypeGetTime,
