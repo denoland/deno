@@ -451,6 +451,7 @@ pub struct PublishFlags {
   pub allow_dirty: bool,
   pub no_provenance: bool,
   pub set_version: Option<String>,
+  pub npm: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3720,6 +3721,14 @@ fn publish_subcommand() -> Command {
         .arg(config_arg())
         .arg(no_config_arg())
         .arg(
+          Arg::new("npm")
+            .long("npm")
+            .help("Publish an npm package")
+            .action(ArgAction::SetTrue)
+            .conflicts_with_all(["allow-slow-types", "no-provenance", "set-version"])
+            .help_heading(PUBLISH_HEADING)
+        )
+        .arg(
           Arg::new("dry-run")
             .long("dry-run")
             .help("Prepare the package for publishing performing all checks and validations without uploading")
@@ -5880,6 +5889,7 @@ fn publish_parse(
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
     set_version: matches.remove_one::<String>("set-version"),
+    npm: matches.get_flag("npm"),
   });
 
   Ok(())
@@ -11791,6 +11801,7 @@ mod tests {
           allow_dirty: true,
           no_provenance: true,
           set_version: Some("1.0.1".to_string()),
+          npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()

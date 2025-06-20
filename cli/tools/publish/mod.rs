@@ -26,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
@@ -59,6 +60,7 @@ mod auth;
 mod diagnostics;
 mod graph;
 mod module_content;
+mod npm;
 mod paths;
 mod provenance;
 mod publish_order;
@@ -73,7 +75,12 @@ use unfurl::SpecifierUnfurler;
 pub async fn publish(
   flags: Arc<Flags>,
   publish_flags: PublishFlags,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<(), AnyError> {
+  if publish_flags.npm {
+    return npm::publish_to_npm(flags, publish_flags, roots).await;
+  }
+
   let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
