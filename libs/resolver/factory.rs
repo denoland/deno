@@ -24,7 +24,6 @@ pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
-use indexmap::IndexMap;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -42,6 +41,7 @@ use url::Url;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
+use crate::collections::FolderScopedMap;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TsConfigResolver;
@@ -1046,49 +1046,46 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
 #[derive(Debug)]
 pub struct WorkspaceDirectoryProvider {
   pub workspace: WorkspaceRc,
-  dirs: IndexMap<UrlRc, Deferred<WorkspaceDirectoryRc>>,
+  dirs: FolderScopedMap<Deferred<WorkspaceDirectoryRc>>,
 }
 
 impl WorkspaceDirectoryProvider {
   pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
     let workspace = dir.workspace.clone();
-    let dirs = workspace
-      .config_folders()
-      .keys()
-      .map(|s| {
-        (
-          s.clone(),
-          if s == dir.dir_url() {
-            Deferred::from(dir.clone())
-          } else {
-            Deferred::default()
-          },
-        )
-      })
-      .collect();
+    let mut dirs = FolderScopedMap::new(Deferred::default());
+    for dir_url in workspace.config_folders().keys() {
+      if dir_url == workspace.root_dir() {
+        continue;
+      } else if dir_url == dir.dir_url() {
+        dirs.insert(dir_url.clone(), Deferred::from(dir.clone()));
+      } else {
+        dirs.insert(dir_url.clone(), Deferred::default());
+      }
+    }
     Self { workspace, dirs }
   }
 
   pub fn root(&self) -> &WorkspaceDirectoryRc {
-    let root_dir_url = self.workspace.root_dir();
-    self
-      .dirs
-      .get(root_dir_url)
-      .expect("root dir should be in config folders")
-      .get_or_init(|| new_rc(self.workspace.resolve_member_dir(root_dir_url)))
+    self.dirs.unscoped.get_or_init(|| {
+      new_rc(self.workspace.resolve_member_dir(self.workspace.root_dir()))
+    })
   }
 
-  pub fn all(&self) -> IndexMap<&UrlRc, &WorkspaceDirectoryRc> {
-    self
-      .dirs
-      .iter()
-      .map(|(s, d)| {
-        (
-          s,
-          d.get_or_init(|| new_rc(self.workspace.resolve_member_dir(s))),
-        )
-      })
-      .collect()
+  pub fn entries(
+    &self,
+  ) -> impl Iterator<Item = (Option<&UrlRc>, &WorkspaceDirectoryRc)> {
+    self.dirs.entries().map(|(s, d)| {
+      (
+        s,
+        d.get_or_init(|| {
+          new_rc(
+            self
+              .workspace
+              .resolve_member_dir(s.unwrap_or(self.workspace.root_dir())),
+          )
+        }),
+      )
+    })
   }
 }
 

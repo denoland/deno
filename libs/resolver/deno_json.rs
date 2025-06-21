@@ -329,10 +329,10 @@ impl CompilerOptionsResolver {
         root_dir.to_configured_compiler_options_sources(),
         logged_warnings.clone(),
       ));
-    for (dir_url, dir) in workspace_directory_provider.all() {
-      if dir_url == root_dir.dir_url() {
+    for (dir_url, dir) in workspace_directory_provider.entries() {
+      let Some(dir_url) = dir_url else {
         continue;
-      }
+      };
       workspace_configs.insert(
         dir_url.clone(),
         CompilerOptionsReference::new(
