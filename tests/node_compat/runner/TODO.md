@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
+1211 tests out of 3993 have been ported from Node 23.9.0 (30.33% ported, 70.30% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -489,7 +489,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-async-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-async-sign-verify.js)
 - [parallel/test-crypto-authenticated-stream.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated-stream.js)
 - [parallel/test-crypto-authenticated.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated.js)
-- [parallel/test-crypto-certificate.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-certificate.js)
 - [parallel/test-crypto-cipheriv-decipheriv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-cipheriv-decipheriv.js)
 - [parallel/test-crypto-classes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-classes.js)
 - [parallel/test-crypto-des3-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-des3-wrap.js)

@@ -11,12 +11,18 @@ pub struct NetscapeSpki(*mut aws_lc_sys::NETSCAPE_SPKI);
 impl NetscapeSpki {
   /// Decodes a base64-encoded SPKI certificate.
   fn from_base64(data: &[u8]) -> Result<Self, &'static str> {
+    // Trim trailing characters for compatibility with OpenSSL.
+    let end = data
+      .iter()
+      .rposition(|&b| !b" \n\r\t".contains(&b))
+      .map_or(0, |i| i + 1);
+
     // SAFETY: Converting base64 SPKI data to a NETSCAPE_SPKI structure requires FFI calls.
     // We cast the byte slice pointer to the required type and check for null returns.
     unsafe {
       let spki = aws_lc_sys::NETSCAPE_SPKI_b64_decode(
         data.as_ptr() as *const i8,
-        data.len() as isize,
+        end as isize,
       );
       if spki.is_null() {
         return Err("Failed to decode base64 SPKI data");
@@ -26,7 +32,7 @@ impl NetscapeSpki {
   }
 
   fn verify(&self, pkey: &PKey) -> bool {
-    // SAFETY: Verifying SPKI certificate with a public key requires FFI calls.
+    // SAFETY: Verifying SPKI certificate with a public key requires FFI calls.:with
     // The function returns an integer where >0 means success.
     unsafe {
       let result = aws_lc_sys::NETSCAPE_SPKI_verify(self.0, pkey.as_ptr());
@@ -176,11 +182,17 @@ mod tests {
   use crate::spki::verify_spkac;
 
   #[test]
-  fn test_verify_spkac() {
+  fn test_md_spkac() {
     // md4 and md5 based signatures are not supported.
     // https://github.com/aws/aws-lc/commit/7e28b9ee89d85fbc80b69bc0eeb0070de81ac563
     let spkac_data = br#"MIICUzCCATswggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC33FiIiiexwLe/P8DZx5HsqFlmUO7/lvJ7necJVNwqdZ3ax5jpQB0p6uxfqeOvzcN3k5V7UFb/Am+nkSNZMAZhsWzCU2Z4Pjh50QYz3f0Hour7/yIGStOLyYY3hgLK2K8TbhgjQPhdkw9+QtKlpvbL8fLgONAoGrVOFnRQGcr70iFffsm79mgZhKVMgYiHPJqJgGHvCtkGg9zMgS7p63+Q3ZWedtFS2RhMX3uCBy/mH6EOlRCNBbRmA4xxNzyf5GQaki3T+Iz9tOMjdPP+CwV2LqEdylmBuik8vrfTb3qIHLKKBAI8lXN26wWtA3kN4L7NP+cbKlCRlqctvhmylLH1AgMBAAEWE3RoaXMtaXMtYS1jaGFsbGVuZ2UwDQYJKoZIhvcNAQEEBQADggEBAIozmeW1kfDfAVwRQKileZGLRGCD7AjdHLYEe16xTBPve8Af1bDOyuWsAm4qQLYA4FAFROiKeGqxCtIErEvm87/09tCfF1My/1Uj+INjAk39DK9J9alLlTsrwSgd1lb3YlXY7TyitCmh7iXLo4pVhA2chNA3njiMq3CUpSvGbpzrESL2dv97lv590gUD988wkTDVyYsf0T8+X0Kww3AgPWGji+2f2i5/jTfD/s1lK1nqi7ZxFm0pGZoy1MJ51SCEy7Y82ajroI+5786nC02mo9ak7samca4YDZOoxN4d3tax4B/HDF5dqJSm1/31xYLDTfujCM5FkSjRc4m6hnriEkc="#;
 
     assert!(!verify_spkac(spkac_data));
+  }
+
+  #[test]
+  fn test_spkac_verify() {
+    let spkac = b"MIICUzCCATswggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXzfKgGnkkOF7+VwMzGpiWy5nna/VGJOfPBsCVg5WooJHN9nAFyqLxoV0WyhwvIdHhIgcTX2L4BHRa+4B0zb4stRHK02ZknJvionK4kBfa+k7Q4DzasW3ulLCTXPLVBKzW9QSzE4Wult17BX6uSUy3Bpr/Nuk6B4Ja3JnFpdSYmJbWP55kRONFBZYPCXr7T8k6hzEHcevFE/PUi6IU+LKiwyGH5KXAUzRbMtqbZLn/rEAmEBxmv/z/+shAwiRE8s9RqBi+pVdwqWdw6ibNkbM7G3j4CMyfAk7EOpGf5loRIrVWB4XrVYWb2EQ6sd9LfiQ9GwqlFYw006MUo6nxoEtNAgMBAAEWE3RoaXMtaXMtYS1jaGFsbGVuZ2UwDQYJKoZIhvcNAQELBQADggEBAHUw1UoZjG7TCb/JhFo5p8XIFeizGEwYoqttBoVTQ+MeCfnNoLLeAyId0atb2jPnYsI25Z/PHHV1N9t0L/NelY3rZC/Z00Wx8IGeslnGXXbqwnp36Umb0r2VmxTr8z1QaToGyOQXp4Xor9qbQFoANIivyVUYsuqJ1FnDJCC/jBPo4IWiQbTst331v2fiVdV+/XUh9AIjcm4085b65HjFwLxDeWhbgAZ+UfhqBbTVA1K8uUqS8e3gbeaNstZvnclxZ3PlHSk8v1RdIG4e5ThTOwPH5u/7KKeafn9SwgY/Q8KqaVfHHCv1IeVlijamjnyFhWc35kGlBUNgLOnWAOE3GsM=";
+    assert!(verify_spkac(spkac));
   }
 }
