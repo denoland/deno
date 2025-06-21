@@ -32,22 +32,10 @@ use crate::factory::WorkspaceDirectoryProvider;
 use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-pub type CompilerOptionsResolverRc =
-  crate::sync::MaybeArc<CompilerOptionsResolver>;
-
-#[allow(clippy::disallowed_types)]
 type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
-#[allow(clippy::disallowed_types)]
-type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
-#[cfg(feature = "deno_ast")]
-#[allow(clippy::disallowed_types)]
-pub type TranspileAndEmitOptionsRc =
-  crate::sync::MaybeArc<TranspileAndEmitOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
   crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
-#[allow(clippy::disallowed_types)]
-pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 
 #[cfg(feature = "deno_ast")]
 #[derive(Debug)]
@@ -58,11 +46,19 @@ pub struct TranspileAndEmitOptions {
   pub pre_computed_hash: u64,
 }
 
+#[cfg(feature = "deno_ast")]
+#[allow(clippy::disallowed_types)]
+pub type TranspileAndEmitOptionsRc =
+  crate::sync::MaybeArc<TranspileAndEmitOptions>;
+
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
   folders: crate::sync::MaybeDashSet<Url>,
 }
+
+#[allow(clippy::disallowed_types)]
+type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
@@ -267,7 +263,7 @@ impl CompilerOptionsData {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct TsConfigFileFilter {
   // Note that `files`, `include` and `exclude` are overwritten, not merged,
   // when using `extends`. So we only need to store one referrer for `files`.
@@ -500,6 +496,10 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type CompilerOptionsResolverRc =
+  crate::sync::MaybeArc<CompilerOptionsResolver>;
+
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug)]
@@ -543,6 +543,9 @@ impl JsxImportSourceConfigResolver {
     self.workspace_configs.get_for_specifier(specifier).as_ref()
   }
 }
+
+#[allow(clippy::disallowed_types)]
+pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 
 #[cfg(feature = "deno_ast")]
 fn compiler_options_to_transpile_and_emit_options(
