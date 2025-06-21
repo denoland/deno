@@ -323,30 +323,28 @@ impl CompilerOptionsResolver {
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_configs = Vec::new();
+    let root_dir = workspace_directory_provider.root();
     let mut workspace_configs =
       FolderScopedMap::new(CompilerOptionsReference::new(
-        workspace_directory_provider
-          .root()
-          .to_configured_compiler_options_sources(),
+        root_dir.to_configured_compiler_options_sources(),
         logged_warnings.clone(),
       ));
     for (dir_url, dir) in workspace_directory_provider.entries() {
-      let Some(dir_url) = dir_url else {
-        continue;
-      };
-      workspace_configs.insert(
-        dir_url.clone(),
-        CompilerOptionsReference::new(
-          dir.to_configured_compiler_options_sources(),
-          logged_warnings.clone(),
-        ),
-      );
       if let Some(ts_config) = TsConfigReference::maybe_read_from_dir(
         sys,
         dir.dir_path(),
         &logged_warnings,
       ) {
         ts_configs.push(ts_config);
+      }
+      if let Some(dir_url) = dir_url {
+        workspace_configs.insert(
+          dir_url.clone(),
+          CompilerOptionsReference::new(
+            dir.to_configured_compiler_options_sources(),
+            logged_warnings.clone(),
+          ),
+        );
       }
     }
     ts_configs.reverse();

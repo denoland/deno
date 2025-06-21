@@ -266,29 +266,24 @@ impl TypeChecker {
     graph: &ModuleGraph,
     lib: TsTypeLib,
   ) -> Result<Vec<CheckGroup<'a>>, CheckError> {
-    let mut imports_for_specifier: HashMap<Arc<Url>, Rc<Vec<Url>>> =
-      HashMap::with_capacity(self.tsconfig_resolver.folder_count());
+    let mut imports_for_specifier: HashMap<_, Rc<Vec<Url>>> =
+      HashMap::with_capacity(self.compiler_options_resolver.reference_count());
     let mut groups_by_key: IndexMap<_, CheckGroup> =
-      IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
+      IndexMap::with_capacity(self.compiler_options_resolver.reference_count());
     for root in &graph.roots {
-      let folder = self.tsconfig_resolver.folder_for_specifier(root);
-      let imports =
-        match imports_for_specifier.entry(folder.dir.dir_url().clone()) {
-          std::collections::hash_map::Entry::Occupied(entry) => {
-            entry.get().clone()
-          }
-          std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-            let value = Rc::new(resolve_graph_imports_for_workspace_dir(
-              graph,
-              &folder.dir,
-            ));
-            vacant_entry.insert(value.clone());
-            value
-          }
-        };
-      let compiler_options = folder.lib_compiler_options(lib)?;
-      let entry = groups_by_key.entry((compiler_options, imports.clone()));
-      let entry = match entry {
+      let compiler_options_reference =
+        self.compiler_options_resolver.reference_for_specifier(root);
+      let dir = self.workspace_directory_provider.for_specifier(root);
+      let compiler_options =
+        compiler_options_reference.compiler_options_for_lib(lib)?;
+      let imports = imports_for_specifier
+        .entry(dir.dir_url())
+        .or_insert_with(|| {
+          Rc::new(resolve_graph_imports_for_workspace_dir(graph, dir))
+        })
+        .clone();
+      let group_key = (compiler_options, imports.clone());
+      let group = match groups_by_key.entry(group_key) {
         indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
         indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroup {
           roots: Default::default(),
@@ -296,14 +291,13 @@ impl TypeChecker {
           imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
-          referrer: folder
-            .dir
+          referrer: dir
             .maybe_deno_json()
             .map(|d| d.specifier.clone())
-            .unwrap_or_else(|| folder.dir.dir_url().as_ref().clone()),
+            .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
         }),
       };
-      entry.roots.push(root.clone());
+      group.roots.push(root.clone());
     }
     Ok(groups_by_key.into_values().collect())
   }
@@ -349,6 +343,7 @@ fn resolve_graph_imports_for_workspace_dir(
   specifiers
 }
 
+#[derive(Debug)]
 struct CheckGroup<'a> {
   roots: Vec<Url>,
   imports: Rc<Vec<Url>>,
