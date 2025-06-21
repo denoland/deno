@@ -205,7 +205,7 @@ pub async fn compile_eszip(
   };
 
   let transpile_and_emit_options = compiler_options_resolver
-    .reference_for_specifier(cli_options.workspace().root_dir())
+    .for_specifier(cli_options.workspace().root_dir())
     .transpile_options()?;
   let transpile_options = transpile_and_emit_options.transpile.clone();
   let emit_options = transpile_and_emit_options.emit.clone();

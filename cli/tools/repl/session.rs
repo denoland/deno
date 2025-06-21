@@ -251,7 +251,7 @@ impl ReplSession {
         )
       })?;
     let experimental_decorators = compiler_options_resolver
-      .reference_for_specifier(&cwd_url)
+      .for_specifier(&cwd_url)
       .transpile_options()?
       .transpile
       .use_ts_decorators;

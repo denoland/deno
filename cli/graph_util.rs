@@ -861,8 +861,8 @@ impl ModuleGraphBuilder {
           // them later based on the folder we're type checking.
           self
             .compiler_options_resolver
-            .references()
-            .flat_map(|r| r.compiler_options_types().as_ref().clone())
+            .all()
+            .flat_map(|d| d.compiler_options_types().as_ref().clone())
             .map(|(referrer, imports)| deno_graph::ReferrerImports {
               referrer,
               imports,

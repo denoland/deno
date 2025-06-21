@@ -97,7 +97,7 @@ impl Emitter {
   ) -> Result<Option<String>, AnyError> {
     let transpile_and_emit_options = self
       .compiler_options_resolver
-      .reference_for_specifier(specifier)
+      .for_specifier(specifier)
       .transpile_options()?;
     let source_hash =
       self.get_source_hash(module_kind, transpile_and_emit_options, source);
@@ -113,7 +113,7 @@ impl Emitter {
   ) -> Result<String, EmitParsedSourceHelperError> {
     let transpile_and_emit_options = self
       .compiler_options_resolver
-      .reference_for_specifier(specifier)
+      .for_specifier(specifier)
       .transpile_options()?;
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
@@ -165,7 +165,7 @@ impl Emitter {
   ) -> Result<String, EmitParsedSourceHelperError> {
     let transpile_and_emit_options = self
       .compiler_options_resolver
-      .reference_for_specifier(specifier)
+      .for_specifier(specifier)
       .transpile_options()?;
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
@@ -206,7 +206,7 @@ impl Emitter {
   ) -> Result<(String, String), AnyError> {
     let transpile_and_emit_options = self
       .compiler_options_resolver
-      .reference_for_specifier(specifier)
+      .for_specifier(specifier)
       .transpile_options()?;
     let mut emit_options = transpile_and_emit_options.emit.clone();
     emit_options.inline_sources = false;
@@ -252,7 +252,7 @@ impl Emitter {
         // this statement is probably wrong)
         let transpile_and_emit_options = self
           .compiler_options_resolver
-          .reference_for_specifier(specifier)
+          .for_specifier(specifier)
           .transpile_options()
           .map_err(JsErrorBox::from_err)?;
         let mut options = transpile_and_emit_options.emit.clone();

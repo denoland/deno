@@ -227,9 +227,8 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     text_info: &SourceTextInfo,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> Result<JsxFolderOptions<'a>, AnyError> {
-    let compiler_options = self
-      .compiler_options_resolver
-      .reference_for_specifier(specifier);
+    let compiler_options =
+      self.compiler_options_resolver.for_specifier(specifier);
     let jsx_config = compiler_options.jsx_import_source_config()?;
     let transpile_options = &compiler_options.transpile_options()?.transpile;
     let jsx_runtime = if transpile_options.jsx_automatic {

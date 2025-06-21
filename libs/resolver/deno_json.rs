@@ -77,13 +77,13 @@ struct MemoizedValues {
 }
 
 #[derive(Debug)]
-pub struct CompilerOptionsReference {
+pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
 }
 
-impl CompilerOptionsReference {
+impl CompilerOptionsData {
   fn new(
     sources: Vec<CompilerOptionsSource>,
     logged_warnings: LoggedWarningsRc,
@@ -306,12 +306,12 @@ impl TsConfigFileFilter {
 type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
-struct TsConfigReference {
-  compiler_options: CompilerOptionsReference,
+struct TsConfigData {
+  compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
 }
 
-impl TsConfigReference {
+impl TsConfigData {
   fn maybe_read_from_dir<TSys: FsRead>(
     sys: &TSys,
     dir_path: impl AsRef<Path>,
@@ -337,7 +337,7 @@ impl TsConfigReference {
     let object = value.as_ref().and_then(|v| v.as_object());
 
     // TODO(nayeemrmn): Implement `extends`.
-    let extends_targets = Vec::<&TsConfigReference>::new();
+    let extends_targets = Vec::<&TsConfigData>::new();
 
     let compiler_options_value = object
       .and_then(|o| o.get("compilerOptions"))
@@ -412,7 +412,7 @@ impl TsConfigReference {
           .find_map(|t| t.filter.exclude.clone())
       });
     Some(Self {
-      compiler_options: CompilerOptionsReference::new(
+      compiler_options: CompilerOptionsData::new(
         sources,
         logged_warnings.clone(),
       ),
@@ -428,8 +428,8 @@ impl TsConfigReference {
 
 #[derive(Debug)]
 pub struct CompilerOptionsResolver {
-  workspace_configs: FolderScopedMap<CompilerOptionsReference>,
-  ts_configs: Vec<TsConfigReference>,
+  workspace_configs: FolderScopedMap<CompilerOptionsData>,
+  ts_configs: Vec<TsConfigData>,
 }
 
 impl CompilerOptionsResolver {
@@ -440,23 +440,20 @@ impl CompilerOptionsResolver {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_configs = Vec::new();
     let root_dir = workspace_directory_provider.root();
-    let mut workspace_configs =
-      FolderScopedMap::new(CompilerOptionsReference::new(
-        root_dir.to_configured_compiler_options_sources(),
-        logged_warnings.clone(),
-      ));
+    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
+      root_dir.to_configured_compiler_options_sources(),
+      logged_warnings.clone(),
+    ));
     for (dir_url, dir) in workspace_directory_provider.entries() {
-      if let Some(ts_config) = TsConfigReference::maybe_read_from_dir(
-        sys,
-        dir.dir_path(),
-        &logged_warnings,
-      ) {
+      if let Some(ts_config) =
+        TsConfigData::maybe_read_from_dir(sys, dir.dir_path(), &logged_warnings)
+      {
         ts_configs.push(ts_config);
       }
       if let Some(dir_url) = dir_url {
         workspace_configs.insert(
           dir_url.clone(),
-          CompilerOptionsReference::new(
+          CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             logged_warnings.clone(),
           ),
@@ -470,10 +467,7 @@ impl CompilerOptionsResolver {
     }
   }
 
-  pub fn reference_for_specifier(
-    &self,
-    specifier: &Url,
-  ) -> &CompilerOptionsReference {
+  pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
     if let Ok(path) = url_to_file_path(specifier) {
       for ts_config in &self.ts_configs {
         if ts_config.filter.includes_path(&path) {
@@ -484,7 +478,7 @@ impl CompilerOptionsResolver {
     self.workspace_configs.get_for_specifier(specifier)
   }
 
-  pub fn references(&self) -> impl Iterator<Item = &CompilerOptionsReference> {
+  pub fn all(&self) -> impl Iterator<Item = &CompilerOptionsData> {
     self
       .workspace_configs
       .entries()
@@ -492,7 +486,7 @@ impl CompilerOptionsResolver {
       .chain(self.ts_configs.iter().map(|t| &t.compiler_options))
   }
 
-  pub fn reference_count(&self) -> usize {
+  pub fn size(&self) -> usize {
     self.workspace_configs.count() + self.ts_configs.len()
   }
 
@@ -502,7 +496,7 @@ impl CompilerOptionsResolver {
 #[cfg(feature = "graph")]
 impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   fn resolve(&self, specifier: &Url) -> bool {
-    self.reference_for_specifier(specifier).check_js()
+    self.for_specifier(specifier).check_js()
   }
 }
 
@@ -521,7 +515,7 @@ impl JsxImportSourceConfigResolver {
     Ok(Self {
       workspace_configs: compiler_options_resolver
         .workspace_configs
-        .try_map(|r| Ok(r.jsx_import_source_config()?.cloned()))?,
+        .try_map(|d| Ok(d.jsx_import_source_config()?.cloned()))?,
       ts_configs: compiler_options_resolver
         .ts_configs
         .iter()

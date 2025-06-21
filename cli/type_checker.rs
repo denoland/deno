@@ -15,7 +15,7 @@ use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_resolver::deno_json::CompilerOptionsReference;
+use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_semver::npm::NpmPackageNvReference;
@@ -262,25 +262,20 @@ impl TypeChecker {
     graph: &ModuleGraph,
     lib: TsTypeLib,
   ) -> Result<Vec<CheckGroup<'a>>, CheckError> {
-    let reference_count = self.compiler_options_resolver.reference_count();
-    let mut imports_for_specifier = HashMap::with_capacity(reference_count);
-    let mut groups_by_key = IndexMap::with_capacity(reference_count);
+    let group_count = self.compiler_options_resolver.size();
+    let mut imports_for_specifier = HashMap::with_capacity(group_count);
+    let mut groups_by_key = IndexMap::with_capacity(group_count);
     for root in &graph.roots {
-      let compiler_options_reference =
-        self.compiler_options_resolver.reference_for_specifier(root);
+      let compiler_options_data =
+        self.compiler_options_resolver.for_specifier(root);
       let compiler_options =
-        compiler_options_reference.compiler_options_for_lib(lib)?;
+        compiler_options_data.compiler_options_for_lib(lib)?;
       let imports = imports_for_specifier
-        .entry(
-          compiler_options_reference
-            .sources
-            .last()
-            .map(|s| &s.specifier),
-        )
+        .entry(compiler_options_data.sources.last().map(|s| &s.specifier))
         .or_insert_with(|| {
-          Rc::new(resolve_graph_imports_for_reference(
+          Rc::new(resolve_graph_imports_for_compiler_options_data(
             graph,
-            compiler_options_reference,
+            compiler_options_data,
           ))
         })
         .clone();
@@ -312,11 +307,11 @@ impl TypeChecker {
 /// `compilerOptions.types` which they currently seem to. In fact, if they were
 /// more general than that, we don't really have sufficient context to group
 /// them for type-checking.
-fn resolve_graph_imports_for_reference(
+fn resolve_graph_imports_for_compiler_options_data(
   graph: &ModuleGraph,
-  compiler_options_reference: &CompilerOptionsReference,
+  data: &CompilerOptionsData,
 ) -> Vec<Url> {
-  let mut specifiers = compiler_options_reference
+  let mut specifiers = data
     .sources
     .iter()
     .filter_map(|s| graph.imports.get(&s.specifier))
@@ -836,7 +831,7 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Jsx => {
             if self
               .compiler_options_resolver
-              .reference_for_specifier(&module.specifier)
+              .for_specifier(&module.specifier)
               .check_js()
               || has_ts_check(module.media_type, &module.source)
             {

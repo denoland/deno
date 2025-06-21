@@ -658,7 +658,7 @@ fn resolve_lint_config(
   specifier: &ModuleSpecifier,
 ) -> Result<deno_lint::linter::LintConfig, AnyError> {
   let transpile_options = &compiler_options_resolver
-    .reference_for_specifier(specifier)
+    .for_specifier(specifier)
     .transpile_options()?
     .transpile;
   Ok(deno_lint::linter::LintConfig {
