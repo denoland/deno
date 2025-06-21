@@ -2,6 +2,7 @@
 
 use std::io::ErrorKind;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_config::deno_json::get_base_compiler_options_for_emit;
 use deno_config::deno_json::parse_compiler_options;
@@ -10,8 +11,7 @@ use deno_config::deno_json::CompilerOptionsParseError;
 use deno_config::deno_json::CompilerOptionsType;
 use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::TsTypeLib;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathKind;
+use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
@@ -266,10 +266,48 @@ impl CompilerOptionsReference {
   }
 }
 
+#[derive(Debug, Clone)]
+struct TsConfigFileFilter {
+  // Note that `files`, `include` and `exclude` are overwritten, not merged,
+  // when using `extends`. So we only need to store one referrer for `files`.
+  // See: https://www.typescriptlang.org/tsconfig/#extends.
+  files: Option<(Url, Vec<PathBuf>)>,
+  include: Option<PathOrPatternSet>,
+  exclude: Option<PathOrPatternSet>,
+  dir_path: PathBuf,
+}
+
+impl TsConfigFileFilter {
+  fn includes_path(&self, path: impl AsRef<Path>) -> bool {
+    let path = path.as_ref();
+    if let Some((_, files)) = &self.files {
+      if files.iter().any(|p| p == path) {
+        return true;
+      }
+    }
+    if let Some(exclude) = &self.exclude {
+      if exclude.matches_path(path) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if include.matches_path(path) {
+        return true;
+      }
+    } else if path.starts_with(&self.dir_path) {
+      return true;
+    }
+    false
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
+
 #[derive(Debug)]
 struct TsConfigReference {
   compiler_options: CompilerOptionsReference,
-  files: FilePatterns,
+  filter: TsConfigFileFilterRc,
 }
 
 impl TsConfigReference {
@@ -278,10 +316,12 @@ impl TsConfigReference {
     dir_path: impl AsRef<Path>,
     logged_warnings: &LoggedWarningsRc,
   ) -> Option<Self> {
-    let path = dir_path.as_ref().join("tsconfig.json");
+    let dir_path = dir_path.as_ref();
+    let path = dir_path.join("tsconfig.json");
     let warn = |err: &dyn std::fmt::Display| {
       log::warn!("Failed reading {}: {}", path.display(), err);
     };
+    let url = url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?;
     let text = sys
       .fs_read_to_string(&path)
       .inspect_err(|e| {
@@ -290,42 +330,101 @@ impl TsConfigReference {
         }
       })
       .ok()?;
-    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
-    let object = value.as_object();
-    let sources = if let Some(c) = object.and_then(|o| o.get("compilerOptions"))
-    {
-      vec![CompilerOptionsSource {
-        specifier: url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?,
-        compiler_options: CompilerOptions(c.clone()),
-      }]
-    } else {
-      Vec::new()
-    };
+    let value = serde_json::from_str::<serde_json::Value>(&text)
+      .inspect_err(|e| warn(e))
+      .ok();
+    let object = value.as_ref().and_then(|v| v.as_object());
 
-    // TODO(nayeemrmn): To implement "extends", traverse it and recursively
-    // prepend the targets to `sources`.
+    // TODO(nayeemrmn): Implement `extends`.
+    let extends_targets = Vec::<&TsConfigReference>::new();
 
-    let mut files = FilePatterns::new_with_base(path.parent()?.to_path_buf());
-    if let Some(object) = object {
-      if let Some(files_field) = object.get("files") {
-        // TODO(This PR): Implement.
-        // files.include = ...;
-      }
-      if let Some(include) = object.get("include") {
-        // TODO(This PR): Implement.
-        // files.include = ...;
-      }
-      if let Some(exclude) = object.get("exclude") {
-        // TODO(This PR): Implement.
-        // files.exclude = ...;
-      }
-    }
+    let compiler_options_value = object
+      .and_then(|o| o.get("compilerOptions"))
+      .filter(|v| !v.is_null());
+    let sources = extends_targets
+      .iter()
+      .flat_map(|t| &t.compiler_options.sources)
+      .cloned()
+      .chain(compiler_options_value.map(|v| CompilerOptionsSource {
+        specifier: url.clone(),
+        compiler_options: CompilerOptions(v.clone()),
+      }))
+      .collect();
+    let files = object
+      .and_then(|o| {
+        let files = o
+          .get("files")?
+          .as_array()?
+          .iter()
+          .filter_map(|v| {
+            let path = Path::new(v.as_str()?);
+            if path.is_absolute() {
+              Some(path.to_path_buf())
+            } else {
+              Some(dir_path.join(path))
+            }
+          })
+          .collect();
+        Some((url, files))
+      })
+      .or_else(|| {
+        extends_targets
+          .iter()
+          .rev()
+          .find_map(|t| t.filter.files.clone())
+      });
+    let include = object
+      .and_then(|o| {
+        Some(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
+            dir_path,
+            &o.get("include")?
+              .as_array()?
+              .iter()
+              .filter_map(|v| Some(v.as_str()?.to_string()))
+              .collect::<Vec<_>>(),
+          )
+          .ok()?,
+        )
+      })
+      .or_else(|| {
+        extends_targets
+          .iter()
+          .rev()
+          .find_map(|t| t.filter.include.clone())
+      })
+      .or_else(|| files.is_some().then(Default::default));
+    let exclude = object
+      .and_then(|o| {
+        Some(
+          PathOrPatternSet::from_exclude_relative_path_or_patterns(
+            dir_path,
+            &o.get("exclude")?
+              .as_array()?
+              .iter()
+              .filter_map(|v| Some(v.as_str()?.to_string()))
+              .collect::<Vec<_>>(),
+          )
+          .ok()?,
+        )
+      })
+      .or_else(|| {
+        extends_targets
+          .iter()
+          .rev()
+          .find_map(|t| t.filter.exclude.clone())
+      });
     Some(Self {
       compiler_options: CompilerOptionsReference::new(
         sources,
         logged_warnings.clone(),
       ),
-      files,
+      filter: new_rc(TsConfigFileFilter {
+        files,
+        include,
+        exclude,
+        dir_path: dir_path.to_path_buf(),
+      }),
     })
   }
 }
@@ -380,7 +479,7 @@ impl CompilerOptionsResolver {
   ) -> &CompilerOptionsReference {
     if let Ok(path) = specifier.to_file_path() {
       for ts_config in &self.ts_configs {
-        if ts_config.files.matches_path(&path, PathKind::File) {
+        if ts_config.filter.includes_path(&path) {
           return &ts_config.compiler_options;
         }
       }
@@ -399,6 +498,8 @@ impl CompilerOptionsResolver {
   pub fn reference_count(&self) -> usize {
     self.workspace_configs.count() + self.ts_configs.len()
   }
+
+  // pub fn ts_config_files(&self) -> impl Iterator<Item = (&Url, )> {}
 }
 
 #[cfg(feature = "graph")]
@@ -413,7 +514,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 #[derive(Debug)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs: FolderScopedMap<Option<JsxImportSourceConfigRc>>,
-  ts_configs: Vec<(Option<JsxImportSourceConfigRc>, FilePatterns)>,
+  ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 
 impl JsxImportSourceConfigResolver {
@@ -430,7 +531,7 @@ impl JsxImportSourceConfigResolver {
         .map(|t| {
           Ok((
             t.compiler_options.jsx_import_source_config()?.cloned(),
-            t.files.clone(),
+            t.filter.clone(),
           ))
         })
         .collect::<Result<_, _>>()?,
@@ -442,8 +543,8 @@ impl JsxImportSourceConfigResolver {
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
     if let Ok(path) = specifier.to_file_path() {
-      for (config, files) in &self.ts_configs {
-        if files.matches_path(&path, PathKind::File) {
+      for (config, filter) in &self.ts_configs {
+        if filter.includes_path(&path) {
           return config.as_ref();
         }
       }

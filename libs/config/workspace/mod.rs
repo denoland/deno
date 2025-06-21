@@ -1465,22 +1465,28 @@ impl WorkspaceDirectory {
     };
     let root = deno_json.root.as_ref().and_then(|d| {
       Some(CompilerOptionsSource {
-        compiler_options: CompilerOptions(d.json.compiler_options.clone()?),
+        compiler_options: CompilerOptions(
+          d.json
+            .compiler_options
+            .as_ref()
+            .filter(|v| !v.is_null())
+            .cloned()?,
+        ),
         specifier: d.specifier.clone(),
       })
     });
-    let member = deno_json.member.json.compiler_options.clone().map(|c| {
-      CompilerOptionsSource {
+    let member = deno_json
+      .member
+      .json
+      .compiler_options
+      .as_ref()
+      .filter(|v| !v.is_null())
+      .cloned()
+      .map(|c| CompilerOptionsSource {
         compiler_options: CompilerOptions(c),
         specifier: deno_json.member.specifier.clone(),
-      }
-    });
-    match (root, member) {
-      (None, None) => Vec::new(),
-      (None, Some(member)) => vec![member],
-      (Some(root), None) => vec![root],
-      (Some(root), Some(member)) => vec![root, member],
-    }
+      });
+    root.into_iter().chain(member).collect()
   }
 
   /// Gets the combined compiler options that the user provided, without any of
