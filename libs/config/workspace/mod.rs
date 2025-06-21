@@ -1464,13 +1464,10 @@ impl WorkspaceDirectory {
       return Vec::new();
     };
     let root = deno_json.root.as_ref().and_then(|d| {
-      d.json
-        .compiler_options
-        .clone()
-        .map(|c| CompilerOptionsSource {
-          compiler_options: CompilerOptions(c),
-          specifier: d.specifier.clone(),
-        })
+      Some(CompilerOptionsSource {
+        compiler_options: CompilerOptions(d.json.compiler_options.clone()?),
+        specifier: d.specifier.clone(),
+      })
     });
     let member = deno_json.member.json.compiler_options.clone().map(|c| {
       CompilerOptionsSource {
