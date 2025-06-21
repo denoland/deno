@@ -17,6 +17,7 @@ use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 #[cfg(feature = "sync")]
@@ -375,17 +376,15 @@ impl TsConfigReference {
       });
     let include = object
       .and_then(|o| {
-        Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            dir_path,
-            &o.get("include")?
-              .as_array()?
-              .iter()
-              .filter_map(|v| Some(v.as_str()?.to_string()))
-              .collect::<Vec<_>>(),
-          )
-          .ok()?,
+        PathOrPatternSet::from_include_relative_path_or_patterns(
+          dir_path,
+          &o.get("include")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .collect::<Vec<_>>(),
         )
+        .ok()
       })
       .or_else(|| {
         extends_targets
@@ -396,17 +395,15 @@ impl TsConfigReference {
       .or_else(|| files.is_some().then(Default::default));
     let exclude = object
       .and_then(|o| {
-        Some(
-          PathOrPatternSet::from_exclude_relative_path_or_patterns(
-            dir_path,
-            &o.get("exclude")?
-              .as_array()?
-              .iter()
-              .filter_map(|v| Some(v.as_str()?.to_string()))
-              .collect::<Vec<_>>(),
-          )
-          .ok()?,
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
+          dir_path,
+          &o.get("exclude")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .collect::<Vec<_>>(),
         )
+        .ok()
       })
       .or_else(|| {
         extends_targets
@@ -477,7 +474,7 @@ impl CompilerOptionsResolver {
     &self,
     specifier: &Url,
   ) -> &CompilerOptionsReference {
-    if let Ok(path) = specifier.to_file_path() {
+    if let Ok(path) = url_to_file_path(specifier) {
       for ts_config in &self.ts_configs {
         if ts_config.filter.includes_path(&path) {
           return &ts_config.compiler_options;
@@ -542,7 +539,7 @@ impl JsxImportSourceConfigResolver {
     &self,
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
-    if let Ok(path) = specifier.to_file_path() {
+    if let Ok(path) = url_to_file_path(specifier) {
       for (config, filter) in &self.ts_configs {
         if filter.includes_path(&path) {
           return config.as_ref();

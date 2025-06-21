@@ -430,7 +430,7 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   regex_string
 }
 
-impl<'a> DiagnosticsByFolderRealIterator<'a> {
+impl DiagnosticsByFolderRealIterator<'_> {
   #[allow(clippy::too_many_arguments)]
   #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
