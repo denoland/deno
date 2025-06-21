@@ -245,7 +245,8 @@ impl TypeChecker {
         type_check_cache: TypeCheckCache::new(
           self.caches.type_checking_cache_db(),
         ),
-        grouped_roots,
+        groups: grouped_roots,
+        current_group_index: 0,
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
@@ -260,10 +261,10 @@ impl TypeChecker {
     &'a self,
     graph: &ModuleGraph,
     lib: TsTypeLib,
-  ) -> Result<IndexMap<CheckGroupKey<'a>, CheckGroupInfo>, CheckError> {
+  ) -> Result<Vec<CheckGroup<'a>>, CheckError> {
     let mut imports_for_specifier: HashMap<Arc<Url>, Rc<Vec<Url>>> =
       HashMap::with_capacity(self.tsconfig_resolver.folder_count());
-    let mut roots_by_config: IndexMap<_, CheckGroupInfo> =
+    let mut groups_by_key: IndexMap<_, CheckGroup> =
       IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
     for root in &graph.roots {
       let folder = self.tsconfig_resolver.folder_for_specifier(root);
@@ -282,15 +283,13 @@ impl TypeChecker {
           }
         };
       let compiler_options = folder.lib_compiler_options(lib)?;
-      let key = CheckGroupKey {
-        compiler_options,
-        imports,
-      };
-      let entry = roots_by_config.entry(key);
+      let entry = groups_by_key.entry((compiler_options, imports.clone()));
       let entry = match entry {
         indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
-        indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroupInfo {
+        indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroup {
           roots: Default::default(),
+          compiler_options,
+          imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
           referrer: folder
@@ -302,7 +301,7 @@ impl TypeChecker {
       };
       entry.roots.push(root.clone());
     }
-    Ok(roots_by_config)
+    Ok(groups_by_key.into_values().collect())
   }
 }
 
@@ -346,16 +345,11 @@ fn resolve_graph_imports_for_workspace_dir(
   specifiers
 }
 
-/// Key to use to group roots together by config.
-#[derive(Debug, Hash, PartialEq, Eq)]
-struct CheckGroupKey<'a> {
-  compiler_options: &'a Arc<CompilerOptions>,
-  imports: Rc<Vec<Url>>,
-}
-
-struct CheckGroupInfo {
+struct CheckGroup<'a> {
   roots: Vec<Url>,
+  imports: Rc<Vec<Url>>,
   referrer: Url,
+  compiler_options: &'a Arc<CompilerOptions>,
 }
 
 pub struct DiagnosticsByFolderIterator<'a>(
@@ -396,7 +390,8 @@ struct DiagnosticsByFolderRealIterator<'a> {
   npm_resolver: &'a CliNpmResolver,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
-  grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
+  groups: Vec<CheckGroup<'a>>,
+  current_group_index: usize,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
   seen_diagnotics: HashSet<String>,
@@ -408,8 +403,9 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
   type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let (group_key, group_info) = self.grouped_roots.shift_remove_index(0)?;
-    let mut result = self.check_diagnostics_in_folder(&group_key, group_info);
+    let check_group = self.groups.get(self.current_group_index)?;
+    self.current_group_index += 1;
+    let mut result = self.check_diagnostics_in_folder(check_group);
     if let Ok(diagnostics) = &mut result {
       diagnostics.retain(|d| {
         if let (Some(file_name), Some(start)) = (&d.file_name, &d.start) {
@@ -455,8 +451,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
-    group_key: &'a CheckGroupKey<'a>,
-    group_info: CheckGroupInfo,
+    check_group: &CheckGroup,
   ) -> Result<Diagnostics, CheckError> {
     fn log_provided_roots(provided_roots: &[Url]) {
       for root in provided_roots {
@@ -469,7 +464,6 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     // walk the graph
-    let compiler_options = group_key.compiler_options;
     let mut graph_walker = GraphWalker::new(
       &self.graph,
       self.sys,
@@ -477,15 +471,14 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       self.npm_resolver,
       self.compiler_options_resolver,
       self.npm_check_state_hash,
-      compiler_options.as_ref(),
+      check_group.compiler_options,
       self.options.type_check_mode,
     );
-    let mut provided_roots = group_info.roots;
-    for import in group_key.imports.iter() {
-      graph_walker.add_config_import(import, &group_info.referrer);
+    for import in check_group.imports.iter() {
+      graph_walker.add_config_import(import, &check_group.referrer);
     }
 
-    for root in &provided_roots {
+    for root in &check_group.roots {
       graph_walker.add_root(root);
     }
 
@@ -502,7 +495,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
 
     if root_names.is_empty() {
       if missing_diagnostics.has_diagnostic() {
-        log_provided_roots(&provided_roots);
+        log_provided_roots(&check_group.roots);
       }
       return Ok(missing_diagnostics);
     }
@@ -511,18 +504,21 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       // do not type check if we know this is type checked
       if let Some(check_hash) = maybe_check_hash {
         if self.type_check_cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked {}", group_info.referrer);
+          log::debug!("Already type checked {}", &check_group.referrer);
           return Ok(Default::default());
         }
       }
     }
 
     // log out the roots that we're checking
-    log_provided_roots(&provided_roots);
+    log_provided_roots(&check_group.roots);
 
     // the first root will always either be the specifier that the user provided
     // or the first specifier in a directory
-    let first_root = provided_roots.remove(0);
+    let first_root = check_group
+      .roots
+      .first()
+      .expect("must be at least one root");
 
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
@@ -530,13 +526,13 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     let maybe_tsbuildinfo = if self.options.reload {
       None
     } else {
-      self.type_check_cache.get_tsbuildinfo(&first_root)
+      self.type_check_cache.get_tsbuildinfo(first_root)
     };
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
     let compiler_options_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write_hashable(compiler_options)
+      .write_hashable(check_group.compiler_options)
       .finish();
     let code_cache = self.code_cache.as_ref().map(|c| {
       let c: Arc<dyn deno_runtime::code_cache::CodeCache> = c.clone();
@@ -544,7 +540,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     });
     let response = tsc::exec(
       tsc::Request {
-        config: compiler_options.clone(),
+        config: check_group.compiler_options.clone(),
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
         hash_data: compiler_options_hash_data,
@@ -590,7 +586,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       self
         .type_check_cache
-        .set_tsbuildinfo(&first_root, &tsbuildinfo);
+        .set_tsbuildinfo(first_root, &tsbuildinfo);
     }
 
     if !diagnostics.has_diagnostic() {
