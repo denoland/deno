@@ -408,7 +408,7 @@ mod test {
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
     let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
       &sys,
-      &WorkspaceDirectoryProvider::from_initial_dir(&new_rc(workspace_dir)),
+      &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
     ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
