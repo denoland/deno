@@ -16,7 +16,6 @@ use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_path_util::url_from_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
@@ -29,16 +28,11 @@ use url::Url;
 
 use crate::collections::FolderScopedMap;
 use crate::factory::WorkspaceDirectoryProvider;
-use crate::factory::WorkspaceRc;
 use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsResolverRc =
   crate::sync::MaybeArc<CompilerOptionsResolver>;
-
-#[allow(clippy::disallowed_types)]
-pub type TsConfigResolverRc<TSys> =
-  crate::sync::MaybeArc<TsConfigResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
 type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
@@ -421,151 +415,6 @@ impl JsxImportSourceConfigResolver {
       }
     }
     self.workspace_configs.get_for_specifier(specifier).as_ref()
-  }
-}
-
-#[derive(Debug)]
-pub struct TsConfigFolderInfo<TSys: FsRead> {
-  pub dir: WorkspaceDirectory,
-  logged_warnings: LoggedWarningsRc,
-  memoized: MemoizedValues,
-  sys: TSys,
-}
-
-impl<TSys: FsRead> TsConfigFolderInfo<TSys> {
-  pub fn lib_compiler_options(
-    &self,
-    lib: TsTypeLib,
-  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
-    let cell = match lib {
-      TsTypeLib::DenoWindow => {
-        &self.memoized.deno_window_check_compiler_options
-      }
-      TsTypeLib::DenoWorker => {
-        &self.memoized.deno_worker_check_compiler_options
-      }
-    };
-
-    cell.get_or_try_init(|| {
-      let compiler_options_result = self.dir.to_resolved_compiler_options(
-        &self.sys,
-        CompilerOptionsType::Check { lib },
-      )?;
-      check_warn_compiler_options(
-        &compiler_options_result,
-        &self.logged_warnings,
-      );
-      Ok(new_rc(compiler_options_result.compiler_options))
-    })
-  }
-
-  pub fn emit_compiler_options(
-    &self,
-  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
-    self.memoized.emit_compiler_options.get_or_try_init(|| {
-      let compiler_options_result = self
-        .dir
-        .to_resolved_compiler_options(&self.sys, CompilerOptionsType::Emit)?;
-      check_warn_compiler_options(
-        &compiler_options_result,
-        &self.logged_warnings,
-      );
-      Ok(new_rc(compiler_options_result.compiler_options))
-    })
-  }
-
-  #[cfg(feature = "deno_ast")]
-  pub fn transpile_options(
-    &self,
-  ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
-    self.memoized.transpile_options.get_or_try_init(|| {
-      let compiler_options = self.emit_compiler_options()?;
-      compiler_options_to_transpile_and_emit_options(
-        compiler_options.as_ref().clone(),
-      )
-      .map(new_rc)
-      .map_err(|source| CompilerOptionsParseError {
-        specifier: self
-          .dir
-          .maybe_deno_json()
-          .map(|d| d.specifier.clone())
-          .unwrap_or_else(|| {
-            // will never happen because each dir should have a
-            // deno.json if we got here
-            debug_assert!(false);
-            self.dir.dir_url().as_ref().clone()
-          }),
-        source,
-      })
-    })
-  }
-}
-
-#[derive(Debug)]
-pub struct TsConfigResolver<TSys: FsRead> {
-  map: FolderScopedMap<TsConfigFolderInfo<TSys>>,
-}
-
-impl<TSys: FsRead + Clone> TsConfigResolver<TSys> {
-  pub fn from_workspace(sys: &TSys, workspace: &WorkspaceRc) -> Self {
-    // separate the workspace into directories that have compiler options
-    let root_dir = workspace.resolve_member_dir(workspace.root_dir());
-    let logged_warnings = new_rc(LoggedWarnings::default());
-    let mut map = FolderScopedMap::new(TsConfigFolderInfo {
-      dir: root_dir,
-      logged_warnings: logged_warnings.clone(),
-      memoized: Default::default(),
-      sys: sys.clone(),
-    });
-    for (url, folder) in workspace.config_folders() {
-      let folder_has_compiler_options = folder
-        .deno_json
-        .as_ref()
-        .map(|d| d.json.compiler_options.is_some())
-        .unwrap_or(false);
-      if url != workspace.root_dir() && folder_has_compiler_options {
-        let dir = workspace.resolve_member_dir(url);
-        map.insert(
-          url.clone(),
-          TsConfigFolderInfo {
-            dir,
-            logged_warnings: logged_warnings.clone(),
-            memoized: Default::default(),
-            sys: sys.clone(),
-          },
-        );
-      }
-    }
-    Self { map }
-  }
-}
-
-impl<TSys: FsRead> TsConfigResolver<TSys> {
-  #[cfg(feature = "deno_ast")]
-  pub fn transpile_and_emit_options(
-    &self,
-    specifier: &Url,
-  ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
-    let value = self.map.get_for_specifier(specifier);
-    value.transpile_options()
-  }
-
-  pub fn folder_for_specifier(
-    &self,
-    specifier: &Url,
-  ) -> &TsConfigFolderInfo<TSys> {
-    self.folder_for_specifier_str(specifier.as_str())
-  }
-
-  pub fn folder_for_specifier_str(
-    &self,
-    specifier: &str,
-  ) -> &TsConfigFolderInfo<TSys> {
-    self.map.get_for_specifier_str(specifier)
-  }
-
-  pub fn folder_count(&self) -> usize {
-    self.map.count()
   }
 }
 

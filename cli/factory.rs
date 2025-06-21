@@ -64,7 +64,6 @@ use crate::args::BundleFlags;
 use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -782,12 +781,6 @@ impl CliFactory {
     Ok(self.workspace_factory()?.compiler_options_resolver()?)
   }
 
-  pub fn tsconfig_resolver(
-    &self,
-  ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
-    Ok(self.workspace_factory()?.tsconfig_resolver()?)
-  }
-
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
     self
       .services
@@ -808,7 +801,6 @@ impl CliFactory {
             self.sys(),
             self.workspace_directory_provider()?.clone(),
             self.compiler_options_resolver()?.clone(),
-            self.tsconfig_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
             } else {

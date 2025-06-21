@@ -59,8 +59,6 @@ use thiserror::Error;
 use crate::sys::CliSys;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
-pub type CliTsConfigResolver =
-  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));

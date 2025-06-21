@@ -25,7 +25,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::CompilerOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
@@ -110,7 +109,6 @@ pub struct TypeChecker {
   sys: CliSys,
   workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
-  tsconfig_resolver: Arc<CliTsConfigResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
@@ -126,7 +124,6 @@ impl TypeChecker {
     sys: CliSys,
     workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
-    tsconfig_resolver: Arc<CliTsConfigResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
     Self {
@@ -139,7 +136,6 @@ impl TypeChecker {
       sys,
       workspace_directory_provider,
       compiler_options_resolver,
-      tsconfig_resolver,
       code_cache,
     }
   }

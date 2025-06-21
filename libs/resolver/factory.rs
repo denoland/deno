@@ -44,8 +44,6 @@ use crate::cjs::IsCjsResolutionMode;
 use crate::collections::FolderScopedMap;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
-use crate::deno_json::TsConfigResolver;
-use crate::deno_json::TsConfigResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
 use crate::lockfile::LockfileLock;
@@ -260,7 +258,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
-  tsconfig_resolver: Deferred<TsConfigResolverRc<TSys>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
@@ -297,7 +294,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
       compiler_options_resolver: Default::default(),
-      tsconfig_resolver: Default::default(),
       workspace_directory: Default::default(),
       workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
@@ -552,17 +548,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       Ok(new_rc(CompilerOptionsResolver::new(
         self.sys(),
         self.workspace_directory_provider()?,
-      )))
-    })
-  }
-
-  pub fn tsconfig_resolver(
-    &self,
-  ) -> Result<&TsConfigResolverRc<TSys>, WorkspaceDiscoverError> {
-    self.tsconfig_resolver.get_or_try_init(|| {
-      Ok(new_rc(TsConfigResolver::from_workspace(
-        self.sys(),
-        &self.workspace_directory()?.workspace,
       )))
     })
   }
