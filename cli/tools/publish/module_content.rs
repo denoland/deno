@@ -285,6 +285,7 @@ mod test {
 
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_file_path;
+  use deno_resolver::factory::WorkspaceDirectoryProvider;
   use deno_resolver::workspace::WorkspaceResolver;
   use pretty_assertions::assert_eq;
   use sys_traits::impls::InMemorySys;
@@ -405,9 +406,10 @@ mod test {
       .unwrap(),
     );
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
-    let compiler_options_resolver = Arc::new(
-      CompilerOptionsResolver::from_workspace(&sys, &workspace_dir.workspace),
-    );
+    let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
+      &sys,
+      &WorkspaceDirectoryProvider::from_initial_dir(&new_rc(workspace_dir)),
+    ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,

@@ -28,6 +28,7 @@ use sys_traits::FsRead;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
+use crate::factory::WorkspaceDirectoryProvider;
 use crate::factory::WorkspaceRc;
 use crate::sync::new_rc;
 
@@ -316,24 +317,22 @@ pub struct CompilerOptionsResolver {
 }
 
 impl CompilerOptionsResolver {
-  pub fn from_workspace<TSys: FsRead>(
+  pub fn new<TSys: FsRead>(
     sys: &TSys,
-    workspace: &WorkspaceRc,
+    workspace_directory_provider: &WorkspaceDirectoryProvider,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_configs = Vec::new();
+    let root_dir = workspace_directory_provider.root();
     let mut workspace_configs =
       FolderScopedMap::new(CompilerOptionsReference::new(
-        workspace
-          .resolve_member_dir(workspace.root_dir())
-          .to_configured_compiler_options_sources(),
+        root_dir.to_configured_compiler_options_sources(),
         logged_warnings.clone(),
       ));
-    for dir_url in workspace.config_folders().keys() {
-      if dir_url == workspace.root_dir() {
+    for (dir_url, dir) in workspace_directory_provider.all() {
+      if dir_url == root_dir.dir_url() {
         continue;
       }
-      let dir = workspace.resolve_member_dir(dir_url);
       workspace_configs.insert(
         dir_url.clone(),
         CompilerOptionsReference::new(

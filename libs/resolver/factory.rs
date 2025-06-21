@@ -24,6 +24,7 @@ pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
+use indexmap::IndexMap;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -85,6 +86,8 @@ type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
 
+#[allow(clippy::disallowed_types)]
+type UrlRc = crate::sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
 #[allow(clippy::disallowed_types)]
@@ -259,6 +262,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
   tsconfig_resolver: Deferred<TsConfigResolverRc<TSys>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
+  workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
@@ -295,6 +299,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       compiler_options_resolver: Default::default(),
       tsconfig_resolver: Default::default(),
       workspace_directory: Default::default(),
+      workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
       initial_cwd,
@@ -544,9 +549,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     &self,
   ) -> Result<&CompilerOptionsResolverRc, WorkspaceDiscoverError> {
     self.compiler_options_resolver.get_or_try_init(|| {
-      Ok(new_rc(CompilerOptionsResolver::from_workspace(
+      Ok(new_rc(CompilerOptionsResolver::new(
         self.sys(),
-        &self.workspace_directory()?.workspace,
+        self.workspace_directory_provider()?,
       )))
     })
   }
@@ -627,6 +632,16 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
         }
       };
       Ok(new_rc(dir))
+    })
+  }
+
+  pub fn workspace_directory_provider(
+    &self,
+  ) -> Result<&WorkspaceDirectoryProviderRc, WorkspaceDiscoverError> {
+    self.workspace_directory_provider.get_or_try_init(|| {
+      Ok(new_rc(WorkspaceDirectoryProvider::from_initial_dir(
+        self.workspace_directory()?,
+      )))
     })
   }
 
@@ -1027,3 +1042,56 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     )
   }
 }
+
+#[derive(Debug)]
+pub struct WorkspaceDirectoryProvider {
+  pub workspace: WorkspaceRc,
+  dirs: IndexMap<UrlRc, Deferred<WorkspaceDirectoryRc>>,
+}
+
+impl WorkspaceDirectoryProvider {
+  pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
+    let workspace = dir.workspace.clone();
+    let dirs = workspace
+      .config_folders()
+      .keys()
+      .map(|s| {
+        (
+          s.clone(),
+          if s == dir.dir_url() {
+            Deferred::from(dir.clone())
+          } else {
+            Deferred::default()
+          },
+        )
+      })
+      .collect();
+    Self { workspace, dirs }
+  }
+
+  pub fn root(&self) -> &WorkspaceDirectoryRc {
+    let root_dir_url = self.workspace.root_dir();
+    self
+      .dirs
+      .get(root_dir_url)
+      .expect("root dir should be in config folders")
+      .get_or_init(|| new_rc(self.workspace.resolve_member_dir(root_dir_url)))
+  }
+
+  pub fn all(&self) -> IndexMap<&UrlRc, &WorkspaceDirectoryRc> {
+    self
+      .dirs
+      .iter()
+      .map(|(s, d)| {
+        (
+          s,
+          d.get_or_init(|| new_rc(self.workspace.resolve_member_dir(s))),
+        )
+      })
+      .collect()
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceDirectoryProviderRc =
+  crate::sync::MaybeArc<WorkspaceDirectoryProvider>;

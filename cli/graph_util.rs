@@ -35,6 +35,7 @@ use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
+use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
@@ -758,10 +759,10 @@ impl ModuleGraphBuilder {
         MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
       }
     };
-    let compiler_options_resolver = CompilerOptionsResolver::from_workspace(
-      &self.sys,
-      &self.cli_options.start_dir.workspace,
-    );
+    let workspace_directory_resolver =
+      WorkspaceDirectoryProvider::from_initial_dir(&self.cli_options.start_dir);
+    let compiler_options_resolver =
+      CompilerOptionsResolver::new(&self.sys, &workspace_directory_resolver);
     let jsx_import_source_config_resolver =
       JsxImportSourceConfigResolver::from_compiler_options_resolver(
         &compiler_options_resolver,
@@ -940,10 +941,10 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let compiler_options_resolver = CompilerOptionsResolver::from_workspace(
-      &self.sys,
-      &self.cli_options.start_dir.workspace,
-    );
+    let workspace_directory_resolver =
+      WorkspaceDirectoryProvider::from_initial_dir(&self.cli_options.start_dir);
+    let compiler_options_resolver =
+      CompilerOptionsResolver::new(&self.sys, &workspace_directory_resolver);
     let jsx_import_source_config_resolver =
       JsxImportSourceConfigResolver::from_compiler_options_resolver(
         &compiler_options_resolver,
