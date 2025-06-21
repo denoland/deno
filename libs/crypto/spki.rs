@@ -21,7 +21,7 @@ impl NetscapeSpki {
     // We cast the byte slice pointer to the required type and check for null returns.
     unsafe {
       let spki = aws_lc_sys::NETSCAPE_SPKI_b64_decode(
-        data.as_ptr() as *const i8,
+        data.as_ptr() as *const _,
         end as isize,
       );
       if spki.is_null() {

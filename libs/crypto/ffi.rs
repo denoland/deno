@@ -78,8 +78,7 @@ impl Bio {
         return Err("No content in BIO");
       }
 
-      let data =
-        std::slice::from_raw_parts(content_ptr, len);
+      let data = std::slice::from_raw_parts(content_ptr, len);
       Ok(data.to_vec())
     }
   }
