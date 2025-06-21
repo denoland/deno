@@ -1593,31 +1593,25 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
-  // will have the BOM stripped
+
   let charset =
     deno_media_type::encoding::detect_charset_local_file(&file_bytes);
-  let text =
-    deno_media_type::encoding::decode_owned_source(charset, file_bytes)
-      .with_context(|| {
-        anyhow!("{} is not a valid UTF-8 file", file_path.display())
-      })?;
+  let text = deno_media_type::encoding::decode_owned_source(
+    charset,
+    file_bytes.to_vec(),
+  )
+  .with_context(|| {
+    anyhow!("{} is not a valid UTF-8 file", file_path.display())
+  })?;
 
   Ok(FileContents { text, had_bom })
 }
 
 fn write_file_contents(
   file_path: &Path,
-  mut file_contents: FileContents,
+  file_contents: FileContents,
 ) -> Result<(), AnyError> {
-  let file_text = if file_contents.had_bom {
-    // add back the BOM
-    file_contents.text.insert(0, '\u{FEFF}');
-    file_contents.text
-  } else {
-    file_contents.text
-  };
-
-  Ok(fs::write(file_path, file_text)?)
+  Ok(fs::write(file_path, file_contents.text)?)
 }
 
 pub async fn run_parallelized<F>(
@@ -1842,5 +1836,24 @@ mod test {
       // should use double quotes for the string with a single quote
       "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
     );
+  }
+
+  #[test]
+  fn test_formated_removes_utf8_bom() {
+    let bytes = b"\xEF\xBB\xBFlet a = 1;";
+    let s_ref = std::str::from_utf8(bytes).unwrap();
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      s_ref,
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(file_text, "let a = 1;\n",);
   }
 }
