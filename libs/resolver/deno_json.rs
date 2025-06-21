@@ -330,6 +330,9 @@ impl CompilerOptionsResolver {
         logged_warnings.clone(),
       ));
     for dir_url in workspace.config_folders().keys() {
+      if dir_url == workspace.root_dir() {
+        continue;
+      }
       let dir = workspace.resolve_member_dir(dir_url);
       workspace_configs.insert(
         dir_url.clone(),
