@@ -10,12 +10,12 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::CompilerOptionsReference;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_semver::npm::NpmPackageNvReference;
@@ -268,29 +268,39 @@ impl TypeChecker {
     for root in &graph.roots {
       let compiler_options_reference =
         self.compiler_options_resolver.reference_for_specifier(root);
-      let dir = self.workspace_directory_provider.for_specifier(root);
       let compiler_options =
         compiler_options_reference.compiler_options_for_lib(lib)?;
       let imports = imports_for_specifier
-        .entry(dir.dir_url())
+        .entry(
+          compiler_options_reference
+            .sources
+            .last()
+            .map(|s| &s.specifier),
+        )
         .or_insert_with(|| {
-          Rc::new(resolve_graph_imports_for_workspace_dir(graph, dir))
+          Rc::new(resolve_graph_imports_for_reference(
+            graph,
+            compiler_options_reference,
+          ))
         })
         .clone();
       let group_key = (compiler_options, imports.clone());
       let group = match groups_by_key.entry(group_key) {
         indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
-        indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroup {
-          roots: Default::default(),
-          compiler_options,
-          imports,
-          // this is slightly hacky. It's used as the referrer for resolving
-          // npm imports in the key
-          referrer: dir
-            .maybe_deno_json()
-            .map(|d| d.specifier.clone())
-            .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
-        }),
+        indexmap::map::Entry::Vacant(entry) => {
+          let dir = self.workspace_directory_provider.for_specifier(root);
+          entry.insert(CheckGroup {
+            roots: Default::default(),
+            compiler_options,
+            imports,
+            // this is slightly hacky. It's used as the referrer for resolving
+            // npm imports in the key
+            referrer: dir
+              .maybe_deno_json()
+              .map(|d| d.specifier.clone())
+              .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
+          })
+        }
       };
       group.roots.push(root.clone());
     }
@@ -298,41 +308,21 @@ impl TypeChecker {
   }
 }
 
-fn resolve_graph_imports_for_workspace_dir(
+/// This function assumes that 'graph imports' strictly refer to
+/// `compilerOptions.types` which they currently seem to. In fact, if they were
+/// more general than that, we don't really have sufficient context to group
+/// them for type-checking.
+fn resolve_graph_imports_for_reference(
   graph: &ModuleGraph,
-  dir: &WorkspaceDirectory,
+  compiler_options_reference: &CompilerOptionsReference,
 ) -> Vec<Url> {
-  fn resolve_graph_imports_for_referrer<'a>(
-    graph: &'a ModuleGraph,
-    referrer: &'a Url,
-  ) -> Option<impl Iterator<Item = Url> + 'a> {
-    let imports = graph.imports.get(referrer)?;
-    Some(
-      imports
-        .dependencies
-        .values()
-        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
-        .map(|url| graph.resolve(url))
-        .cloned(),
-    )
-  }
-
-  let root_deno_json = dir.workspace.root_deno_json();
-  let member_deno_json = dir.maybe_deno_json().filter(|c| {
-    Some(&c.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
-  });
-  let mut specifiers = root_deno_json
-    .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
-    .into_iter()
-    .flatten()
-    .flatten()
-    .chain(
-      member_deno_json
-        .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
-        .into_iter()
-        .flatten()
-        .flatten(),
-    )
+  let mut specifiers = compiler_options_reference
+    .sources
+    .iter()
+    .filter_map(|s| graph.imports.get(&s.specifier))
+    .flat_map(|i| i.dependencies.values())
+    .filter_map(|d| Some(graph.resolve(d.get_type().or_else(|| d.get_code())?)))
+    .cloned()
     .collect::<Vec<_>>();
   specifiers.sort();
   specifiers

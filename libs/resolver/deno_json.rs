@@ -73,7 +73,7 @@ struct MemoizedValues {
 
 #[derive(Debug)]
 pub struct CompilerOptionsReference {
-  sources: Vec<CompilerOptionsSource>,
+  pub sources: Vec<CompilerOptionsSource>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
 }
