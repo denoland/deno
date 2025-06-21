@@ -29,6 +29,7 @@ import {
   op_require_stat,
   op_require_try_self,
   op_require_try_self_parent_path,
+  op_require_fallback_resolve,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -875,6 +876,16 @@ Module._resolveFilename = function (
     } catch {
       // ignore
     }
+  }
+
+  try {
+  const resolved = op_require_fallback_resolve(request, parent?.filename);
+  if (resolved && resolved.startsWith("file://")) {
+    return resolved.slice(7);
+  }
+
+  } catch {
+
   }
 
   // throw the original error
