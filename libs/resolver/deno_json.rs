@@ -43,6 +43,9 @@ type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
 pub type TranspileAndEmitOptionsRc =
   crate::sync::MaybeArc<TranspileAndEmitOptions>;
 #[allow(clippy::disallowed_types)]
+pub type CompilerOptionsTypesRc =
+  crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
+#[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 
 #[cfg(feature = "deno_ast")]
@@ -67,6 +70,7 @@ struct MemoizedValues {
   emit_compiler_options: OnceCell<CompilerOptionsRc>,
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
+  compiler_options_types: OnceCell<CompilerOptionsTypesRc>,
   jsx_import_source_config: OnceCell<Option<JsxImportSourceConfigRc>>,
   check_js: OnceCell<bool>,
 }
@@ -155,6 +159,28 @@ impl CompilerOptionsReference {
         ),
         source,
       })
+    })
+  }
+
+  pub fn compiler_options_types(&self) -> &CompilerOptionsTypesRc {
+    self.memoized.compiler_options_types.get_or_init(|| {
+      let types = self
+        .sources
+        .iter()
+        .filter_map(|s| {
+          let types = s
+            .compiler_options
+            .0
+            .as_object()?
+            .get("types")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .collect();
+          Some((s.specifier.clone(), types))
+        })
+        .collect();
+      new_rc(types)
     })
   }
 
@@ -360,6 +386,14 @@ impl CompilerOptionsResolver {
       }
     }
     self.workspace_configs.get_for_specifier(specifier)
+  }
+
+  pub fn references(&self) -> impl Iterator<Item = &CompilerOptionsReference> {
+    self
+      .workspace_configs
+      .entries()
+      .map(|(_, r)| r)
+      .chain(self.ts_configs.iter().map(|t| &t.compiler_options))
   }
 
   pub fn reference_count(&self) -> usize {

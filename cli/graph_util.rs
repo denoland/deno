@@ -857,19 +857,17 @@ impl ModuleGraphBuilder {
           return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
         }
         let imports = if graph.graph_kind().include_types() {
-          // Resolve all the imports from every deno.json. We'll separate
+          // Resolve all the imports from every config file. We'll separate
           // them later based on the folder we're type checking.
-          let mut imports = Vec::new();
-          for deno_json in self.cli_options.workspace().deno_jsons() {
-            let maybe_imports = deno_json.to_compiler_option_types()?;
-            imports.extend(maybe_imports.into_iter().map(
-              |(referrer, imports)| deno_graph::ReferrerImports {
-                referrer,
-                imports,
-              },
-            ));
-          }
-          imports
+          self
+            .compiler_options_resolver
+            .references()
+            .flat_map(|r| r.compiler_options_types().as_ref().clone())
+            .map(|(referrer, imports)| deno_graph::ReferrerImports {
+              referrer,
+              imports,
+            })
+            .collect::<Vec<_>>()
         } else {
           Vec::new()
         };
