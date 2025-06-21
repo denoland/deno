@@ -8,8 +8,8 @@
       "elipses.txt",
       "empty.txt",
       "keys/rsa_public.pem",
-      "keys/rsa_spkac.spkac",
       "keys/rsa_spkac_invalid.spkac",
+      "keys/rsa_spkac.spkac",
       "x.txt"
     ],
     "internet": [
