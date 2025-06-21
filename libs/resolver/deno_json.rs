@@ -323,10 +323,11 @@ impl CompilerOptionsResolver {
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_configs = Vec::new();
-    let root_dir = workspace_directory_provider.root();
     let mut workspace_configs =
       FolderScopedMap::new(CompilerOptionsReference::new(
-        root_dir.to_configured_compiler_options_sources(),
+        workspace_directory_provider
+          .root()
+          .to_configured_compiler_options_sources(),
         logged_warnings.clone(),
       ));
     for (dir_url, dir) in workspace_directory_provider.entries() {
