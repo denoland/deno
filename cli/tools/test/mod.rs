@@ -650,6 +650,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
+  preload_modules: Vec<Url>,
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
@@ -662,6 +663,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
+      preload_modules,
       permissions_container,
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
@@ -717,6 +719,8 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
+    // TODO(bartlomieju):
+    vec![],
     permissions_container,
     worker_sender,
     &options,

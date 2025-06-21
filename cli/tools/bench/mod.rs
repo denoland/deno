@@ -190,6 +190,8 @@ async fn bench_specifier_inner(
     .create_custom_worker(
       WorkerExecutionMode::Bench,
       specifier.clone(),
+      // TODO(bartlomieju):
+      vec![],
       permissions_container,
       vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
