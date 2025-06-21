@@ -42,6 +42,7 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::SmallStackString;
+use indexmap::IndexMap;
 use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
@@ -859,15 +860,37 @@ impl ModuleGraphBuilder {
         let imports = if graph.graph_kind().include_types() {
           // Resolve all the imports from every config file. We'll separate
           // them later based on the folder we're type checking.
-          self
+          let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
+            self.compiler_options_resolver.size(),
+          );
+          for (referrer, files) in self
+            .compiler_options_resolver
+            .ts_configs()
+            .iter()
+            .filter_map(|t| t.files())
+          {
+            imports_by_referrer
+              .entry(referrer)
+              .or_default()
+              .extend(files.iter().map(|f| f.relative_specifier.clone()));
+          }
+          for (referrer, types) in self
             .compiler_options_resolver
             .all()
-            .flat_map(|d| d.compiler_options_types().as_ref().clone())
+            .flat_map(|d| d.compiler_options_types().as_ref())
+          {
+            imports_by_referrer
+              .entry(referrer)
+              .or_default()
+              .extend(types.clone());
+          }
+          imports_by_referrer
+            .into_iter()
             .map(|(referrer, imports)| deno_graph::ReferrerImports {
-              referrer,
+              referrer: referrer.clone(),
               imports,
             })
-            .collect::<Vec<_>>()
+            .collect()
         } else {
           Vec::new()
         };

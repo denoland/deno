@@ -15,7 +15,7 @@ use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_resolver::deno_json::CompilerOptionsData;
+use deno_resolver::deno_json::CompilerOptionsEntry;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_semver::npm::NpmPackageNvReference;
@@ -266,16 +266,17 @@ impl TypeChecker {
     let mut imports_for_specifier = HashMap::with_capacity(group_count);
     let mut groups_by_key = IndexMap::with_capacity(group_count);
     for root in &graph.roots {
-      let compiler_options_data =
-        self.compiler_options_resolver.for_specifier(root);
+      let compiler_options_entry =
+        self.compiler_options_resolver.entry_for_specifier(root);
+      let compiler_options_data = compiler_options_entry.compiler_options();
       let compiler_options =
         compiler_options_data.compiler_options_for_lib(lib)?;
       let imports = imports_for_specifier
-        .entry(compiler_options_data.sources.last().map(|s| &s.specifier))
+        .entry(compiler_options_entry.config_specifier())
         .or_insert_with(|| {
-          Rc::new(resolve_graph_imports_for_compiler_options_data(
+          Rc::new(resolve_graph_imports_for_compiler_options_entry(
             graph,
-            compiler_options_data,
+            compiler_options_entry,
           ))
         })
         .clone();
@@ -303,18 +304,17 @@ impl TypeChecker {
   }
 }
 
-/// This function assumes that 'graph imports' strictly refer to
-/// `compilerOptions.types` which they currently seem to. In fact, if they were
-/// more general than that, we don't really have sufficient context to group
-/// them for type-checking.
-fn resolve_graph_imports_for_compiler_options_data(
+/// This function assumes that 'graph imports' strictly refer to tsconfig
+/// `files` and `compilerOptions.types` which they currently do. In fact, if
+/// they were more general than that, we don't really have sufficient context to
+/// group them for type-checking.
+fn resolve_graph_imports_for_compiler_options_entry(
   graph: &ModuleGraph,
-  data: &CompilerOptionsData,
+  entry: CompilerOptionsEntry,
 ) -> Vec<Url> {
-  let mut specifiers = data
-    .sources
-    .iter()
-    .filter_map(|s| graph.imports.get(&s.specifier))
+  let mut specifiers = entry
+    .source_specifiers()
+    .filter_map(|s| graph.imports.get(s))
     .flat_map(|i| i.dependencies.values())
     .filter_map(|d| Some(graph.resolve(d.get_type().or_else(|| d.get_code())?)))
     .cloned()

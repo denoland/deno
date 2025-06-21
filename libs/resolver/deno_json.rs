@@ -263,12 +263,41 @@ impl CompilerOptionsData {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct TsConfigFile {
+  pub relative_specifier: String,
+  pub absolute_path: PathBuf,
+}
+
+impl TsConfigFile {
+  fn from_raw(raw: &str, dir_path: impl AsRef<Path>) -> Self {
+    let relative_specifier = if raw.starts_with("./")
+      || raw.starts_with("../")
+      || raw.starts_with("/")
+    {
+      raw.to_string()
+    } else {
+      format!("./{raw}")
+    };
+    let path = Path::new(raw);
+    let absolute_path = if path.is_absolute() {
+      path.to_path_buf()
+    } else {
+      dir_path.as_ref().join(path)
+    };
+    Self {
+      relative_specifier,
+      absolute_path,
+    }
+  }
+}
+
 #[derive(Debug)]
 struct TsConfigFileFilter {
   // Note that `files`, `include` and `exclude` are overwritten, not merged,
   // when using `extends`. So we only need to store one referrer for `files`.
   // See: https://www.typescriptlang.org/tsconfig/#extends.
-  files: Option<(Url, Vec<PathBuf>)>,
+  files: Option<(Url, Vec<TsConfigFile>)>,
   include: Option<PathOrPatternSet>,
   exclude: Option<PathOrPatternSet>,
   dir_path: PathBuf,
@@ -278,7 +307,7 @@ impl TsConfigFileFilter {
   fn includes_path(&self, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
     if let Some((_, files)) = &self.files {
-      if files.iter().any(|p| p == path) {
+      if files.iter().any(|f| f.absolute_path == path) {
         return true;
       }
     }
@@ -302,8 +331,9 @@ impl TsConfigFileFilter {
 type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
-struct TsConfigData {
-  compiler_options: CompilerOptionsData,
+pub struct TsConfigData {
+  pub specifier: Url,
+  pub compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
 }
 
@@ -318,7 +348,7 @@ impl TsConfigData {
     let warn = |err: &dyn std::fmt::Display| {
       log::warn!("Failed reading {}: {}", path.display(), err);
     };
-    let url = url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?;
+    let specifier = url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?;
     let text = sys
       .fs_read_to_string(&path)
       .inspect_err(|e| {
@@ -343,7 +373,7 @@ impl TsConfigData {
       .flat_map(|t| &t.compiler_options.sources)
       .cloned()
       .chain(compiler_options_value.map(|v| CompilerOptionsSource {
-        specifier: url.clone(),
+        specifier: specifier.clone(),
         compiler_options: CompilerOptions(v.clone()),
       }))
       .collect();
@@ -353,16 +383,9 @@ impl TsConfigData {
           .get("files")?
           .as_array()?
           .iter()
-          .filter_map(|v| {
-            let path = Path::new(v.as_str()?);
-            if path.is_absolute() {
-              Some(path.to_path_buf())
-            } else {
-              Some(dir_path.join(path))
-            }
-          })
+          .filter_map(|v| Some(TsConfigFile::from_raw(v.as_str()?, dir_path)))
           .collect();
-        Some((url, files))
+        Some((specifier.clone(), files))
       })
       .or_else(|| {
         extends_targets
@@ -408,6 +431,7 @@ impl TsConfigData {
           .find_map(|t| t.filter.exclude.clone())
       });
     Some(Self {
+      specifier,
       compiler_options: CompilerOptionsData::new(
         sources,
         logged_warnings.clone(),
@@ -419,6 +443,42 @@ impl TsConfigData {
         dir_path: dir_path.to_path_buf(),
       }),
     })
+  }
+
+  pub fn files(&self) -> Option<(&Url, &Vec<TsConfigFile>)> {
+    let (referrer, files) = self.filter.files.as_ref()?;
+    Some((referrer, files))
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum CompilerOptionsEntry<'a> {
+  Workspace(&'a CompilerOptionsData),
+  TsConfig(&'a TsConfigData),
+}
+
+impl<'a> CompilerOptionsEntry<'a> {
+  pub fn compiler_options(&self) -> &'a CompilerOptionsData {
+    match self {
+      Self::Workspace(d) => d,
+      Self::TsConfig(t) => &t.compiler_options,
+    }
+  }
+
+  pub fn config_specifier(&self) -> Option<&'a Url> {
+    match self {
+      Self::Workspace(d) => d.sources.last().map(|s| &s.specifier),
+      Self::TsConfig(t) => Some(&t.specifier),
+    }
+  }
+
+  pub fn source_specifiers(&self) -> impl Iterator<Item = &'a Url> {
+    let sources = self.compiler_options().sources.iter().map(|s| &s.specifier);
+    let ts_config_specifier = match self {
+      Self::Workspace(_) => None,
+      Self::TsConfig(t) => Some(&t.specifier),
+    };
+    sources.chain(ts_config_specifier)
   }
 }
 
@@ -464,14 +524,23 @@ impl CompilerOptionsResolver {
   }
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
+    self.entry_for_specifier(specifier).compiler_options()
+  }
+
+  pub fn entry_for_specifier<'a>(
+    &'a self,
+    specifier: &Url,
+  ) -> CompilerOptionsEntry<'a> {
     if let Ok(path) = url_to_file_path(specifier) {
       for ts_config in &self.ts_configs {
         if ts_config.filter.includes_path(&path) {
-          return &ts_config.compiler_options;
+          return CompilerOptionsEntry::TsConfig(ts_config);
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier)
+    CompilerOptionsEntry::Workspace(
+      self.workspace_configs.get_for_specifier(specifier),
+    )
   }
 
   pub fn all(&self) -> impl Iterator<Item = &CompilerOptionsData> {
@@ -486,7 +555,9 @@ impl CompilerOptionsResolver {
     self.workspace_configs.count() + self.ts_configs.len()
   }
 
-  // pub fn ts_config_files(&self) -> impl Iterator<Item = (&Url, )> {}
+  pub fn ts_configs(&self) -> &Vec<TsConfigData> {
+    &self.ts_configs
+  }
 }
 
 #[cfg(feature = "graph")]
