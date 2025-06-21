@@ -193,7 +193,7 @@ export class Dirent {
   }
 }
 
-class DirentFromStats extends Dirent {
+export class DirentFromStats extends Dirent {
   constructor(name, stats) {
     super(name, null);
     this[kStats] = stats;

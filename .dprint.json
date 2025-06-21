@@ -33,6 +33,7 @@
     "cli/tsc/dts/typescript.d.ts",
     "cli/tools/doc/prism.css",
     "cli/tools/doc/prism.js",
+    "ext/node/polyfills/deps",
     "ext/websocket/autobahn/reports",
     "gh-pages",
     "libs/config/testdata",
