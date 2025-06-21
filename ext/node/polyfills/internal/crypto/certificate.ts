@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
 import {
   op_node_cert_export_challenge,
   op_node_cert_export_public_key,
@@ -9,7 +8,6 @@ import {
 } from "ext:core/ops";
 import { Buffer } from "node:buffer";
 import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
-const { ObjectPrototypeIsPrototypeOf } = primordials;
 
 // The functions contained in this file cover the SPKAC format
 // (also referred to as Netscape SPKI). A general description of
@@ -44,7 +42,8 @@ function exportChallenge(spkac, encoding) {
 // For backwards compatibility reasons, this cannot be converted into a
 // ES6 Class.
 export function Certificate() {
-  if (!ObjectPrototypeIsPrototypeOf(this, Certificate)) {
+  // deno-lint-ignore prefer-primordials
+  if (!(this instanceof Certificate)) {
     return new Certificate();
   }
 }
