@@ -1065,6 +1065,17 @@ impl WorkspaceDirectoryProvider {
     Self { workspace, dirs }
   }
 
+  pub fn for_specifier(&self, specifier: &Url) -> &WorkspaceDirectoryRc {
+    let (dir_url, dir) = self.dirs.entry_for_specifier(specifier);
+    dir.get_or_init(|| {
+      new_rc(
+        self
+          .workspace
+          .resolve_member_dir(dir_url.unwrap_or(self.workspace.root_dir())),
+      )
+    })
+  }
+
   pub fn root(&self) -> &WorkspaceDirectoryRc {
     self.dirs.unscoped.get_or_init(|| {
       new_rc(self.workspace.resolve_member_dir(self.workspace.root_dir()))
