@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1211 tests out of 3993 have been ported from Node 23.9.0 (30.33% ported, 70.30% remaining).
+1212 tests out of 3993 have been ported from Node 23.9.0 (30.35% ported, 70.27% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -767,7 +767,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)
 - [parallel/test-fs-internal-assertencoding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-internal-assertencoding.js)
-- [parallel/test-fs-lchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-lchmod.js)
 - [parallel/test-fs-link.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-link.js)
 - [parallel/test-fs-make-callback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-make-callback.js)
 - [parallel/test-fs-makeStatsCallback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-makeStatsCallback.js)

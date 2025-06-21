@@ -155,6 +155,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
 
+  fn lchmod_sync(&self, path: &Path, mode: u32) -> FsResult<()>;
+  async fn lchmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()>;
+
   fn lchown_sync(
     &self,
     path: &Path,
