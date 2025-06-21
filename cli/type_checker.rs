@@ -17,6 +17,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
 use indexmap::IndexMap;
@@ -107,6 +108,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
+  workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   tsconfig_resolver: Arc<CliTsConfigResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -122,6 +124,7 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
+    workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     tsconfig_resolver: Arc<CliTsConfigResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -134,6 +137,7 @@ impl TypeChecker {
       node_resolver,
       npm_resolver,
       sys,
+      workspace_directory_provider,
       compiler_options_resolver,
       tsconfig_resolver,
       code_cache,
