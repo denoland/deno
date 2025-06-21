@@ -262,10 +262,9 @@ impl TypeChecker {
     graph: &ModuleGraph,
     lib: TsTypeLib,
   ) -> Result<Vec<CheckGroup<'a>>, CheckError> {
-    let mut imports_for_specifier: HashMap<_, Rc<Vec<Url>>> =
-      HashMap::with_capacity(self.compiler_options_resolver.reference_count());
-    let mut groups_by_key: IndexMap<_, CheckGroup> =
-      IndexMap::with_capacity(self.compiler_options_resolver.reference_count());
+    let reference_count = self.compiler_options_resolver.reference_count();
+    let mut imports_for_specifier = HashMap::with_capacity(reference_count);
+    let mut groups_by_key = IndexMap::with_capacity(reference_count);
     for root in &graph.roots {
       let compiler_options_reference =
         self.compiler_options_resolver.reference_for_specifier(root);
