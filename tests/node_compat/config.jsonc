@@ -7,6 +7,9 @@
       "echo.js",
       "elipses.txt",
       "empty.txt",
+      "keys/rsa_public.pem",
+      "keys/rsa_spkac.spkac",
+      "keys/rsa_spkac_invalid.spkac",
       "x.txt"
     ],
     "internet": [
