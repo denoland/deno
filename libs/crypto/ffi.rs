@@ -79,7 +79,7 @@ impl Bio {
       }
 
       let data =
-        std::slice::from_raw_parts(content_ptr as *const u8, len as usize);
+        std::slice::from_raw_parts(content_ptr, len);
       Ok(data.to_vec())
     }
   }
