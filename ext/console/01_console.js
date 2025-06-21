@@ -34,6 +34,8 @@ import {
   op_preview_entries,
 } from "ext:core/ops";
 import * as ops from "ext:core/ops";
+import { URLPrototype } from "ext:deno_url/00_url.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,
@@ -919,6 +921,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
+      } else if (
+        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        !(recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        base = value.href;
+        if (keys.length === 0 && protoProps === undefined) {
+          return base;
+        }
       } else {
         if (keys.length === 0 && protoProps === undefined) {
           // TODO(wafuwafu13): Implement
@@ -1298,7 +1308,8 @@ function getKeys(value, showHidden) {
       keys = ObjectGetOwnPropertyNames(value);
     }
     if (symbols.length !== 0) {
-      const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
+      const filter = (key) =>
+        ObjectPrototypePropertyIsEnumerable(value, key) && key !== webidl.brand;
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }

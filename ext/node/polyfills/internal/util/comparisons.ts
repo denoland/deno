@@ -2,6 +2,10 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
+import { primordials } from "ext:core/mod.js";
+const {
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -27,6 +31,7 @@ import {
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
 } from "ext:deno_node/internal_binding/util.ts";
+import { URLPrototype } from "ext:deno_url/00_url.js";
 
 enum valueType {
   noIterator,
@@ -219,6 +224,14 @@ function innerDeepEqual(
     }
   } else if (isBoxedPrimitive(val1)) {
     if (!isEqualBoxedPrimitive(val1, val2)) {
+      return false;
+    }
+  } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, val1)) {
+    // URL objects are not equal if the hrefs are not equal
+    if (
+      !ObjectPrototypeIsPrototypeOf(URLPrototype, val2) ||
+      (val1 as URL).href !== (val2 as URL).href
+    ) {
       return false;
     }
   } else if (
