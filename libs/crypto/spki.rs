@@ -17,8 +17,7 @@ impl NetscapeSpki {
       .rposition(|&b| !b" \n\r\t".contains(&b))
       .map_or(0, |i| i + 1);
 
-    // SAFETY: Converting base64 SPKI data to a NETSCAPE_SPKI structure requires FFI calls.
-    // We cast the byte slice pointer to the required type and check for null returns.
+    // SAFETY: Cast data pointer to convert base64 to NETSCAPE_SPKI
     unsafe {
       let spki = aws_lc_sys::NETSCAPE_SPKI_b64_decode(
         data.as_ptr() as *const _,
@@ -32,8 +31,7 @@ impl NetscapeSpki {
   }
 
   fn verify(&self, pkey: &PKey) -> bool {
-    // SAFETY: Verifying SPKI certificate with a public key requires FFI calls.:with
-    // The function returns an integer where >0 means success.
+    // SAFETY: Use public key to verify SPKI certificate
     unsafe {
       let result = aws_lc_sys::NETSCAPE_SPKI_verify(self.0, pkey.as_ptr());
       result > 0
@@ -41,8 +39,7 @@ impl NetscapeSpki {
   }
 
   fn spkac(&self) -> Result<&aws_lc_sys::NETSCAPE_SPKAC, &'static str> {
-    // SAFETY: Accessing the spkac field of NETSCAPE_SPKI requires dereferencing raw pointers.
-    // We check both the struct pointer and the spkac field pointer for null values.
+    // SAFETY: Access spkac field via raw pointer with null checks
     unsafe {
       if self.0.is_null() || (*self.0).spkac.is_null() {
         return Err("Invalid SPKAC structure");
@@ -52,8 +49,7 @@ impl NetscapeSpki {
   }
 
   fn get_public_key(&self) -> Result<PKey, &'static str> {
-    // SAFETY: Extracting the public key from SPKI requires an FFI call.
-    // The returned pointer is checked for null in the PKey::from_ptr function.
+    // SAFETY: Extract public key, null checked by PKey::from_ptr
     unsafe {
       let pkey = aws_lc_sys::NETSCAPE_SPKI_get_pubkey(self.0);
       PKey::from_ptr(pkey).ok_or("Failed to extract public key")
@@ -61,9 +57,7 @@ impl NetscapeSpki {
   }
 
   fn get_challenge(&self) -> Result<Vec<u8>, &'static str> {
-    // SAFETY: Extracting the challenge string requires several FFI calls and pointer operations.
-    // We check for null pointers and use a RAII guard (BufferGuard) to ensure proper cleanup.
-    // The challenge data is copied to a Vec to ensure memory safety after this function returns.
+    // SAFETY: Extract challenge with null checks and BufferGuard for cleanup
     unsafe {
       let spkac = self.spkac()?;
       let challenge = spkac.challenge;
@@ -93,8 +87,7 @@ impl NetscapeSpki {
 
 impl Drop for NetscapeSpki {
   fn drop(&mut self) {
-    // SAFETY: We need to free the underlying NETSCAPE_SPKI when the NetscapeSpki wrapper is dropped.
-    // The null check ensures we don't try to free a null pointer.
+    // SAFETY: Free NETSCAPE_SPKI with null check
     unsafe {
       if !self.0.is_null() {
         aws_lc_sys::NETSCAPE_SPKI_free(self.0);
@@ -108,8 +101,7 @@ struct BufferGuard(NonNull<u8>);
 
 impl Drop for BufferGuard {
   fn drop(&mut self) {
-    // SAFETY: We need to free the buffer allocated by ASN1_STRING_to_UTF8 when the guard is dropped.
-    // NonNull guarantees the pointer is not null.
+    // SAFETY: Free ASN1_STRING buffer (NonNull guarantees non-null)
     unsafe {
       aws_lc_sys::OPENSSL_free(self.0.as_ptr() as *mut std::ffi::c_void);
     }
@@ -137,8 +129,7 @@ pub fn verify_spkac(data: &[u8]) -> bool {
 fn extract_public_key_from_spkac(
   spki: &NetscapeSpki,
 ) -> Result<PKey, &'static str> {
-  // SAFETY: Extracting the public key from SPKAC requires FFI calls and pointer manipulation.
-  // We check for null pointers and properly handle ownership with the PKey wrapper.
+  // SAFETY: Extract public key with null checks and proper ownership
   unsafe {
     let spkac = spki.spkac()?;
     let pubkey = spkac.pubkey;
@@ -158,8 +149,7 @@ pub fn export_public_key(data: &[u8]) -> Option<Vec<u8>> {
   let pkey = spki.get_public_key().ok()?;
 
   let bio = Bio::new_memory().ok()?;
-  // SAFETY: Writing the public key to the BIO in PEM format requires an FFI call.
-  // We check the return value to ensure the operation succeeded.
+  // SAFETY: Write public key to BIO in PEM format, check result
   unsafe {
     let result = aws_lc_sys::PEM_write_bio_PUBKEY(bio.as_ptr(), pkey.as_ptr());
     if result <= 0 {
