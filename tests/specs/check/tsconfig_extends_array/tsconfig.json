@@ -1,0 +1,3 @@
+{
+  "extends": ["./dom_files.tsconfig.json", "./dom.tsconfig.json"]
+}

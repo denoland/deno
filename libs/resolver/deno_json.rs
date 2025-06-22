@@ -26,6 +26,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
@@ -280,7 +281,7 @@ impl TsConfigFile {
   fn from_raw(raw: &str, dir_path: impl AsRef<Path>) -> Self {
     let relative_specifier = if raw.starts_with("./")
       || raw.starts_with("../")
-      || raw.starts_with("/")
+      || raw.starts_with('/')
     {
       raw.to_string()
     } else {
@@ -357,6 +358,7 @@ struct TsConfigCollector<'a, TSys: FsRead> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<Url, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
+  currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
   logged_warnings: &'a LoggedWarningsRc,
 }
@@ -367,6 +369,7 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
       roots: Default::default(),
       collected: Default::default(),
       read_cache: Default::default(),
+      currently_reading: Default::default(),
       sys,
       logged_warnings,
     }
@@ -411,7 +414,7 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
       } else {
         Cow::Owned(dir_path.join(reference_path))
       };
-      match self.read_ts_config_with_cache(reference_path.to_path_buf()) {
+      match self.read_ts_config_with_cache(&reference_path) {
         Ok(ts_config) => self.visit_reference(ts_config),
         Err(err) if err.kind() == ErrorKind::IsADirectory => {
           if let Ok(ts_config) =
@@ -430,17 +433,25 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: PathBuf,
+    path: impl AsRef<Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
+    let path = normalize_path(path.as_ref());
     self.read_cache.get(&path).cloned().unwrap_or_else(|| {
+      if !self.currently_reading.insert(path.clone()) {
+        return Err(Rc::new(std::io::Error::new(
+          ErrorKind::Other,
+          "Cycle detected while following `extends`.",
+        )));
+      }
       let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
+      self.currently_reading.pop();
       self.read_cache.insert(path, result.clone());
       result
     })
   }
 
   fn read_ts_config(
-    &self,
+    &mut self,
     path: impl AsRef<Path>,
   ) -> Result<TsConfigData, std::io::Error> {
     let path = path.as_ref();
@@ -459,21 +470,37 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
       .inspect_err(|e| warn(e))
       .ok();
     let object = value.as_ref().and_then(|v| v.as_object());
-
-    // TODO(nayeemrmn): Implement `extends`.
-    let extends_targets = Vec::<&TsConfigData>::new();
-
-    let compiler_options_value = object
-      .and_then(|o| o.get("compilerOptions"))
-      .filter(|v| !v.is_null());
+    let extends_targets = object
+      .and_then(|o| o.get("extends"))
+      .into_iter()
+      .flat_map(|v| {
+        if let Some(s) = v.as_str() {
+          vec![s]
+        } else if let Some(a) = v.as_array() {
+          a.iter().filter_map(|v| v.as_str()).collect()
+        } else {
+          Vec::new()
+        }
+      })
+      .filter(|s| {
+        s.starts_with("./") || s.starts_with("../") || s.starts_with('/')
+      })
+      .filter_map(|s| url_to_file_path(&specifier.join(s).ok()?).ok())
+      .filter_map(|p| self.read_ts_config_with_cache(p).ok())
+      .collect::<Vec<_>>();
     let sources = extends_targets
       .iter()
       .flat_map(|t| &t.compiler_options.sources)
       .cloned()
-      .chain(compiler_options_value.map(|v| CompilerOptionsSource {
-        specifier: specifier.clone(),
-        compiler_options: CompilerOptions(v.clone()),
-      }))
+      .chain(
+        object
+          .and_then(|o| o.get("compilerOptions"))
+          .filter(|v| !v.is_null())
+          .map(|v| CompilerOptionsSource {
+            specifier: specifier.clone(),
+            compiler_options: CompilerOptions(v.clone()),
+          }),
+      )
       .collect();
     let dir_path = path.parent().expect("file path should have a parent");
     let files = object
