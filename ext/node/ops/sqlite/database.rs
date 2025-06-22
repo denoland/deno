@@ -232,7 +232,7 @@ impl<'a> ApplyChangesetOptions<'a> {
 }
 
 pub struct DatabaseSync {
-  conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
   statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
   options: DatabaseSyncOptions,
   location: String,
