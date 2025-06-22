@@ -1,0 +1,11 @@
+TS2584 [ERROR]: Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.
+document.body.innerHTML = "<div>Hello</div>";
+~~~~~~~~
+    at file:///[WILDLINE]main.deno.ts:2:1
+
+TS2304 [ERROR]: Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />
+Deno.readTextFileSync("hello.txt");
+~~~~
+    at file:///[WILDLINE]main.dom.ts:1:1
+
+error: Type checking failed.

@@ -20,6 +20,7 @@ use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
+use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -287,9 +288,9 @@ impl TsConfigFile {
     };
     let path = Path::new(raw);
     let absolute_path = if path.is_absolute() {
-      path.to_path_buf()
+      normalize_path(path)
     } else {
-      dir_path.as_ref().join(path)
+      normalize_path(dir_path.as_ref().join(path))
     };
     Self {
       relative_specifier,
