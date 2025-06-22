@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_config::deno_json::get_base_compiler_options_for_emit;
 use deno_config::deno_json::parse_compiler_options;
@@ -20,6 +24,7 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
+use indexmap::IndexMap;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
@@ -263,6 +268,7 @@ impl CompilerOptionsData {
   }
 }
 
+// A resolved element of the `files` array in a tsconfig.
 #[derive(Debug, Clone)]
 pub struct TsConfigFile {
   pub relative_specifier: String,
@@ -335,28 +341,119 @@ pub struct TsConfigData {
   pub specifier: Url,
   pub compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
+  references: Vec<String>,
 }
 
 impl TsConfigData {
-  fn maybe_read_from_dir<TSys: FsRead>(
-    sys: &TSys,
-    dir_path: impl AsRef<Path>,
-    logged_warnings: &LoggedWarningsRc,
-  ) -> Option<Self> {
-    let dir_path = dir_path.as_ref();
-    let path = dir_path.join("tsconfig.json");
+  pub fn files(&self) -> Option<(&Url, &Vec<TsConfigFile>)> {
+    let (referrer, files) = self.filter.files.as_ref()?;
+    Some((referrer, files))
+  }
+}
+
+#[derive(Debug)]
+struct TsConfigCollector<'a, TSys: FsRead> {
+  roots: BTreeSet<PathBuf>,
+  collected: IndexMap<Url, Rc<TsConfigData>>,
+  read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
+  sys: &'a TSys,
+  logged_warnings: &'a LoggedWarningsRc,
+}
+
+impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
+  fn new(sys: &'a TSys, logged_warnings: &'a LoggedWarningsRc) -> Self {
+    Self {
+      roots: Default::default(),
+      collected: Default::default(),
+      read_cache: Default::default(),
+      sys,
+      logged_warnings,
+    }
+  }
+
+  fn add_root(&mut self, path: PathBuf) {
+    self.roots.insert(path);
+  }
+
+  fn collect(mut self) -> Vec<TsConfigData> {
+    for root in std::mem::take(&mut self.roots) {
+      let Ok(ts_config) = self.read_ts_config_with_cache(root) else {
+        continue;
+      };
+      self.visit_reference(ts_config);
+    }
+    let Self { collected, .. } = { self };
+    collected
+      .into_values()
+      .map(|t| {
+        Rc::try_unwrap(t).expect(
+          "No other references should be held since the read cache is dropped.",
+        )
+      })
+      .collect()
+  }
+
+  fn visit_reference(&mut self, ts_config: Rc<TsConfigData>) {
+    if self.collected.contains_key(&ts_config.specifier) {
+      return;
+    }
+    let Some(dir_path) = url_to_file_path(&ts_config.specifier)
+      .ok()
+      .and_then(|p| Some(p.parent()?.to_path_buf()))
+    else {
+      return;
+    };
+    for reference in &ts_config.references {
+      let reference_path = Path::new(reference);
+      let reference_path = if reference_path.is_absolute() {
+        Cow::Borrowed(reference_path)
+      } else {
+        Cow::Owned(dir_path.join(reference_path))
+      };
+      match self.read_ts_config_with_cache(reference_path.to_path_buf()) {
+        Ok(ts_config) => self.visit_reference(ts_config),
+        Err(err) if err.kind() == ErrorKind::IsADirectory => {
+          if let Ok(ts_config) =
+            self.read_ts_config_with_cache(reference_path.join("tsconfig.json"))
+          {
+            self.visit_reference(ts_config)
+          }
+        }
+        _ => {}
+      }
+    }
+    self
+      .collected
+      .insert(ts_config.specifier.clone(), ts_config);
+  }
+
+  fn read_ts_config_with_cache(
+    &mut self,
+    path: PathBuf,
+  ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
+    self.read_cache.get(&path).cloned().unwrap_or_else(|| {
+      let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
+      self.read_cache.insert(path, result.clone());
+      result
+    })
+  }
+
+  fn read_ts_config(
+    &self,
+    path: impl AsRef<Path>,
+  ) -> Result<TsConfigData, std::io::Error> {
+    let path = path.as_ref();
     let warn = |err: &dyn std::fmt::Display| {
       log::warn!("Failed reading {}: {}", path.display(), err);
     };
-    let specifier = url_from_file_path(&path).inspect_err(|e| warn(e)).ok()?;
-    let text = sys
-      .fs_read_to_string(&path)
-      .inspect_err(|e| {
-        if !matches!(e.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) {
-          warn(e)
-        }
-      })
-      .ok()?;
+    let specifier = url_from_file_path(path)
+      .inspect_err(|e| warn(e))
+      .map_err(|err| std::io::Error::new(ErrorKind::InvalidInput, err))?;
+    let text = self.sys.fs_read_to_string(path).inspect_err(|e| {
+      if !matches!(e.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) {
+        warn(e)
+      }
+    })?;
     let value = serde_json::from_str::<serde_json::Value>(&text)
       .inspect_err(|e| warn(e))
       .ok();
@@ -377,6 +474,7 @@ impl TsConfigData {
         compiler_options: CompilerOptions(v.clone()),
       }))
       .collect();
+    let dir_path = path.parent().expect("file path should have a parent");
     let files = object
       .and_then(|o| {
         let files = o
@@ -430,11 +528,17 @@ impl TsConfigData {
           .rev()
           .find_map(|t| t.filter.exclude.clone())
       });
-    Some(Self {
+    let references = object
+      .and_then(|o| o.get("references")?.as_array())
+      .into_iter()
+      .flatten()
+      .filter_map(|v| Some(v.as_object()?.get("path")?.as_str()?.to_string()))
+      .collect();
+    Ok(TsConfigData {
       specifier,
       compiler_options: CompilerOptionsData::new(
         sources,
-        logged_warnings.clone(),
+        self.logged_warnings.clone(),
       ),
       filter: new_rc(TsConfigFileFilter {
         files,
@@ -442,12 +546,8 @@ impl TsConfigData {
         exclude,
         dir_path: dir_path.to_path_buf(),
       }),
+      references,
     })
-  }
-
-  pub fn files(&self) -> Option<(&Url, &Vec<TsConfigFile>)> {
-    let (referrer, files) = self.filter.files.as_ref()?;
-    Some((referrer, files))
   }
 }
 
@@ -494,18 +594,14 @@ impl CompilerOptionsResolver {
     workspace_directory_provider: &WorkspaceDirectoryProvider,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
-    let mut ts_configs = Vec::new();
     let root_dir = workspace_directory_provider.root();
     let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
       root_dir.to_configured_compiler_options_sources(),
       logged_warnings.clone(),
     ));
+    let mut ts_config_collector = TsConfigCollector::new(sys, &logged_warnings);
     for (dir_url, dir) in workspace_directory_provider.entries() {
-      if let Some(ts_config) =
-        TsConfigData::maybe_read_from_dir(sys, dir.dir_path(), &logged_warnings)
-      {
-        ts_configs.push(ts_config);
-      }
+      ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       if let Some(dir_url) = dir_url {
         workspace_configs.insert(
           dir_url.clone(),
@@ -516,10 +612,9 @@ impl CompilerOptionsResolver {
         );
       }
     }
-    ts_configs.reverse();
     Self {
       workspace_configs,
-      ts_configs,
+      ts_configs: ts_config_collector.collect(),
     }
   }
 
