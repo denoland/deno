@@ -1,10 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+mod backup;
 mod database;
 mod session;
 mod statement;
 mod validators;
 
+pub use backup::op_node_database_backup;
 pub use database::DatabaseSync;
 pub use session::Session;
 pub use statement::StatementSync;
