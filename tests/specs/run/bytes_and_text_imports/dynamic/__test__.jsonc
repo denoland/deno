@@ -6,7 +6,7 @@
       "exitCode": 1
     },
     "permissions": {
-      "args": "run --allow-read=non_analyzable.txt main.ts",
+      "args": "run --allow-read=non_analyzable.txt,non_analyzable_utf8_bom.txt main.ts",
       "output": "main.out"
     }
   }
