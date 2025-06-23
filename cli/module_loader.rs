@@ -823,8 +823,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         }
 
         match requested_module_type {
-          RequestedModuleType::Other(module_type)
-            if module_type == "bytes" || module_type == "text" =>
+          RequestedModuleType::Text | RequestedModuleType::Bytes =>
           {
             let file = self
               .shared
@@ -860,7 +859,11 @@ impl<TGraphContainer: ModuleGraphContainer>
             Ok(ModuleCodeStringSource {
               code: ModuleSourceCode::Bytes(file.source.into()),
               found_url: file.url,
-              module_type: ModuleType::Other(module_type.clone()),
+              module_type: match requested_module_type {
+                RequestedModuleType::Text => ModuleType::Text,
+                RequestedModuleType::Bytes => ModuleType::Bytes,
+                _ => unreachable!(),
+              },
             })
           }
           _ => Err(LoadCodeSourceError::from_err(LoadUnpreparedModuleError {
@@ -1192,23 +1195,23 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         ..
       })) => match requested_module_type {
-        RequestedModuleType::Other(value) if value == "bytes" => {
+        RequestedModuleType::Bytes => {
           match source.try_get_original_bytes() {
             Some(bytes) => {
               Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
                 code: ModuleSourceCode::Bytes(bytes.into()),
                 found_url: specifier.clone(),
-                module_type: ModuleType::Other("bytes".into()),
+                module_type: ModuleType::Bytes,
               })))
             }
             None => Ok(None),
           }
         }
-        RequestedModuleType::Other(value) if value == "text" => {
+        RequestedModuleType::Text => {
           Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
             code: ModuleSourceCode::String(source.text.clone().into()),
             found_url: specifier.clone(),
-            module_type: ModuleType::Other("text".into()),
+            module_type: ModuleType::Text,
           })))
         }
         _ => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
@@ -1225,23 +1228,23 @@ impl<TGraphContainer: ModuleGraphContainer>
         ..
       })) => {
         match requested_module_type {
-          RequestedModuleType::Other(value) if value == "bytes" => {
+          RequestedModuleType::Bytes => {
             match source.try_get_original_bytes() {
               Some(bytes) => {
                 Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
                   code: ModuleSourceCode::Bytes(bytes.into()),
                   found_url: specifier.clone(),
-                  module_type: ModuleType::Other("bytes".into()),
+                  module_type: ModuleType::Bytes,
                 })))
               }
               None => Ok(None),
             }
           }
-          RequestedModuleType::Other(value) if value == "text" => {
+          RequestedModuleType::Text => {
             Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
               code: ModuleSourceCode::String(source.text.clone().into()),
               found_url: specifier.clone(),
-              module_type: ModuleType::Other("text".into()),
+              module_type: ModuleType::Text,
             })))
           }
           _ => {
@@ -1306,14 +1309,14 @@ impl<TGraphContainer: ModuleGraphContainer>
         source, specifier, ..
       })) => {
         match requested_module_type {
-          RequestedModuleType::Other(value) if value == "bytes" => {
+          RequestedModuleType::Bytes => {
             Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
               code: ModuleSourceCode::Bytes(source.clone().into()),
               found_url: specifier.clone(),
               module_type: ModuleType::Other("bytes".into()),
             })))
           }
-          RequestedModuleType::Other(value) if value == "text" => {
+          RequestedModuleType::Text => {
             // TODO(THIS PR): Error here
             todo!("");
           }
@@ -1471,8 +1474,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
+    requested_module_type: RequestedModuleType,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
+
+    if matches!(requested_module_type, RequestedModuleType::Text | RequestedModuleType::Bytes) {
+      return Box::pin(deno_core::futures::future::ready(Ok(())));
+    }
+
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }

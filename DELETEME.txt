@@ -1,2 +1,3 @@
 - Dynamic import with type bytes
 - non-analyzable dynamic import of bytes
+- Test for wasm module as text
