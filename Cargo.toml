@@ -33,6 +33,7 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "libs/config",
+  "libs/crypto",
   "libs/node_resolver",
   "libs/npm_cache",
   "libs/npm_installer",
@@ -113,6 +114,7 @@ denort_helper = { version = "0.5.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.201.0", path = "./bench_util" }
 deno_config = { version = "=0.57.0", features = ["workspace"], path = "./libs/config" }
+deno_crypto_provider = { version = "0.1.0", path = "./libs/crypto" }
 deno_features = { version = "0.4.0", path = "./runtime/features" }
 deno_lib = { version = "0.25.0", path = "./cli/lib" }
 deno_npm_cache = { version = "0.26.0", path = "./libs/npm_cache" }
@@ -134,6 +136,7 @@ async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.0.0" }
+aws-lc-sys = { version = "0.26.0" }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
