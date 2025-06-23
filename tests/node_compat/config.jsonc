@@ -250,6 +250,7 @@
       "test-assert-builtins-not-read-from-filesystem.js",
       "test-assert-checktag.js",
       "test-assert-fail.js",
+      "test-assert-if-error.js",
       "test-assert.js",
       "test-async-hooks-run-in-async-scope-caught-exception.js",
       "test-async-hooks-run-in-async-scope-this-arg.js",
