@@ -1326,26 +1326,15 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Some(deno_graph::Module::Wasm(WasmModule {
         source, specifier, ..
-      })) => {
-        match requested_module_type {
-          RequestedModuleType::Bytes => {
-            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-              code: ModuleSourceCode::Bytes(source.clone().into()),
-              found_url: specifier.clone(),
-              module_type: ModuleType::Other("bytes".into()),
-            })))
-          }
-          RequestedModuleType::Text => {
-            // TODO(THIS PR): Error here
-            todo!("");
-          }
-          _ => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-            code: ModuleSourceCode::Bytes(source.clone().into()),
-            found_url: specifier.clone(),
-            module_type: ModuleType::Wasm,
-          }))),
-        }
-      }
+      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+        code: ModuleSourceCode::Bytes(source.clone().into()),
+        found_url: specifier.clone(),
+        module_type: match requested_module_type {
+          RequestedModuleType::Bytes => ModuleType::Bytes,
+          RequestedModuleType::Text => ModuleType::Text, // nonsensical, but allowed
+          _ => ModuleType::Wasm,
+        },
+      }))),
       Some(deno_graph::Module::External(module))
         if matches!(
           requested_module_type,
