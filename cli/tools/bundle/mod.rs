@@ -424,7 +424,7 @@ enum BundleError {
   #[error(transparent)]
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[error(transparent)]
-  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
+  PrepareModuleLoad(#[from] Box<crate::module_loader::PrepareModuleLoadError>),
   #[error(transparent)]
   ResolveReqWithSubPath(#[from] deno_resolver::npm::ResolveReqWithSubPathError),
   #[error(transparent)]

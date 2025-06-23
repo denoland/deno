@@ -416,10 +416,10 @@ impl crate::Kill for ChildProcess {
           "Process not found",
         )
       } else {
-        std::io::Error::new(
-          std::io::ErrorKind::Other,
-          format!("Failed to kill process: {}", e.as_uv_error()),
-        )
+        std::io::Error::other(format!(
+          "Failed to kill process: {}",
+          e.as_uv_error()
+        ))
       }
     })
   }
