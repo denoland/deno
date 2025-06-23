@@ -27,6 +27,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { primordials } from "ext:core/mod.js";
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -48,6 +50,8 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
+
+const { PromisePrototypeThen } = primordials
 
 export enum socketType {
   SOCKET,
@@ -212,7 +216,7 @@ export class Pipe extends ConnectionWrap {
     if (isWindows) {
       let listener;
       try {
-        listener = PromiseThen(
+        listener = PromisePrototypeThen(
           Deno.pipe.open({
             path: this.#address!,
             kind: "windows",

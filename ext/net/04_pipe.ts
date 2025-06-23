@@ -18,7 +18,7 @@ const {
   SetPrototypeAdd,
   SetPrototypeDelete,
   SetPrototypeForEach,
-  PromiseThen,
+  PromisePrototypeThen,
 } = primordials;
 import {
   readableStreamForRidUnrefable,
@@ -173,7 +173,7 @@ function open(opts: WindowsListenOptions | UnixListenOptions) {
       return new Pipe(rid);
     case "windows":
       rid = op_pipe_open(opts, "Deno.pipe.open");
-      return PromiseThen(op_pipe_windows_wait(rid), () => new Pipe(rid));
+      return PromisePrototypeThen(op_pipe_windows_wait(rid), () => new Pipe(rid));
     default:
       throw new Error(`Unsupported kind: ${opts.kind}`);
   }
