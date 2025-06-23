@@ -51,7 +51,7 @@ import {
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
-const { PromisePrototypeThen } = primordials
+const { PromisePrototypeThen } = primordials;
 
 export enum socketType {
   SOCKET,
