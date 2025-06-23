@@ -8,18 +8,19 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_config::deno_json::get_base_compiler_options_for_emit;
 use deno_config::deno_json::parse_compiler_options;
 use deno_config::deno_json::CompilerOptions;
 use deno_config::deno_json::CompilerOptionsParseError;
-use deno_config::deno_json::CompilerOptionsType;
 use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
-use deno_config::deno_json::TsTypeLib;
 use deno_config::glob::PathOrPatternSet;
+use deno_config::workspace::get_base_compiler_options_for_emit;
 use deno_config::workspace::CompilerOptionsSource;
+use deno_config::workspace::CompilerOptionsSourceKind;
+use deno_config::workspace::CompilerOptionsType;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
+use deno_config::workspace::TsTypeLib;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -89,6 +90,7 @@ struct MemoizedValues {
 #[derive(Debug)]
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
+  source_kind: CompilerOptionsSourceKind,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
 }
@@ -96,10 +98,12 @@ pub struct CompilerOptionsData {
 impl CompilerOptionsData {
   fn new(
     sources: Vec<CompilerOptionsSource>,
+    source_kind: CompilerOptionsSourceKind,
     logged_warnings: LoggedWarningsRc,
   ) -> Self {
     Self {
       sources,
+      source_kind,
       memoized: Default::default(),
       logged_warnings,
     }
@@ -134,7 +138,10 @@ impl CompilerOptionsData {
     };
     cell.get_or_try_init(|| {
       let mut result = CompilerOptionsWithIgnoredOptions {
-        compiler_options: get_base_compiler_options_for_emit(typ),
+        compiler_options: get_base_compiler_options_for_emit(
+          typ,
+          self.source_kind,
+        ),
         ignored_options: Vec::new(),
       };
       for source in &self.sources {
@@ -603,6 +610,7 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
       specifier,
       compiler_options: CompilerOptionsData::new(
         sources,
+        CompilerOptionsSourceKind::TsConfig,
         self.logged_warnings.clone(),
       ),
       filter: new_rc(TsConfigFileFilter {
@@ -663,6 +671,7 @@ impl CompilerOptionsResolver {
     let root_dir = workspace_directory_provider.root();
     let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
       root_dir.to_configured_compiler_options_sources(),
+      CompilerOptionsSourceKind::DenoJson,
       logged_warnings.clone(),
     ));
     let mut ts_config_collector =
@@ -674,6 +683,7 @@ impl CompilerOptionsResolver {
           dir_url.clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
+            CompilerOptionsSourceKind::DenoJson,
             logged_warnings.clone(),
           ),
         );
