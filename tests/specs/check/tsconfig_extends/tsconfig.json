@@ -1,4 +1,4 @@
 {
-  "extends": "./dom.tsconfig.json",
+  "extends": "./tsconfig.dom.json",
   "files": ["main.dom.ts"]
 }

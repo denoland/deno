@@ -1,5 +1,5 @@
 {
   "references": [
-    { "path": "dom_tsconfig" }
+    { "path": "tsconfig_dom" }
   ]
 }
