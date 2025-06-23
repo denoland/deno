@@ -300,9 +300,8 @@ mod test {
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
 
-  use crate::npm::CliNpmResolver;
-
   use super::*;
+  use crate::npm::CliNpmResolver;
 
   #[test]
   fn test_module_content_jsx() {
