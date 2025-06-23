@@ -51,7 +51,7 @@ where
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_pipe_listen<NP>(
+pub fn op_pipe_open<NP>(
   state: &mut OpState,
   #[serde] args: ListenArgs,
   #[string] api_name: String,
@@ -114,9 +114,4 @@ where
   let pipe = NamedPipe::new_sender(path)?;
   let rid = state.resource_table.add(pipe);
   Ok(rid)
-}
-
-#[op2(fast)]
-pub fn op_pipe_windows_connect() {
-  unreachable!();
 }

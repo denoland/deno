@@ -2315,6 +2315,7 @@ dependencies = [
  "deno_tls",
  "hickory-proto",
  "hickory-resolver",
+ "nix 0.27.1",
  "pin-project",
  "quinn",
  "rustls-tokio-stream",

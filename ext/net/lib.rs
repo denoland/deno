@@ -2,15 +2,13 @@
 
 pub mod io;
 pub mod ops;
-#[cfg(unix)]
-#[path = "ops_unix_pipe.rs"]
-mod ops_pipe;
-#[cfg(windows)]
-#[path = "ops_win_pipe.rs"]
-mod ops_pipe;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
+#[cfg(unix)]
+mod ops_unix_pipe;
+#[cfg(windows)]
+mod ops_win_pipe;
 mod quic;
 pub mod raw;
 pub mod resolve_addr;
@@ -19,6 +17,22 @@ pub mod tcp;
 mod unix_pipe;
 #[cfg(windows)]
 mod win_pipe;
+
+mod ops_pipe {
+  use deno_core::op2;
+
+  #[cfg(unix)]
+  pub use super::ops_unix_pipe::*;
+
+  #[cfg(unix)]
+  #[op2(fast)]
+  pub fn op_pipe_windows_wait() {
+    unreachable!()
+  }
+
+  #[cfg(windows)]
+  pub use super::ops_win_pipe::*;
+}
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -231,9 +245,9 @@ deno_core::extension!(deno_net,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
 
-    ops_pipe::op_pipe_listen<P>,
+    ops_pipe::op_pipe_open<P>,
     ops_pipe::op_pipe_connect<P>,
-    ops_pipe::op_pipe_windows_connect,
+    ops_pipe::op_pipe_windows_wait,
   ],
   esm = [ "01_net.js", "02_tls.js", "04_pipe.ts" ],
   lazy_loaded_esm = [ "03_quic.js" ],

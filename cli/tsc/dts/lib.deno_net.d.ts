@@ -1031,12 +1031,10 @@ declare namespace Deno {
      */
     export interface Options {
       path: string;
-      kind: Kind;
     }
 
     /** @category Network */
     export interface WindowsListenOptions extends Options {
-      kind: "windows";
       maxInstances?: number;
       pipeMode: PipeMode;
       inbound?: boolean;
@@ -1058,29 +1056,24 @@ declare namespace Deno {
     export function connect(options: Options): Pipe;
 
     /**
-     * Connect to a named pipe.
-     *
-     * @category Network
-     */
-    export function listen(options: Options): Pipe;
-
-    /**
-     * Connect to a named pipe.
+     * Open a named pipe.
      *
      * only works on Windows.
      *
      * @category Network
      */
-    export function listen(options: WindowsListenOptions): Pipe;
+    export function open(
+      options: WindowsListenOptions & { kind: "windows" },
+    ): Promise<Pipe>;
 
     /**
-     * Connect to a named pipe.
+     * Open a named pipe.
      *
      * only works on Unix-like systems.
      *
      * @category Network
      */
-    export function listen(options: UnixListenOptions): Pipe;
+    export function open(options: UnixListenOptions & { kind: "unix" }): Pipe;
   }
 
   /** @category Network */

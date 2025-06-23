@@ -60,7 +60,7 @@ struct ConnectArgs {
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_pipe_listen<NP>(
+pub fn op_pipe_open<NP>(
   state: &mut OpState,
   #[serde] args: ListenArgs,
   #[string] api_name: String,
@@ -99,7 +99,7 @@ where
 }
 
 #[op2(async, stack_trace)]
-pub async fn op_pipe_windows_connect(
+pub async fn op_pipe_windows_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), NetError> {

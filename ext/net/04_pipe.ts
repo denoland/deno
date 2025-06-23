@@ -7,8 +7,8 @@ const {
 } = core;
 import {
   op_pipe_connect,
-  op_pipe_listen,
-  op_pipe_windows_connect,
+  op_pipe_open,
+  op_pipe_windows_wait,
 } from "ext:core/ops";
 const {
   Error,
@@ -151,51 +151,6 @@ class Pipe {
   }
 }
 
-class WindowsPipe extends Pipe {
-  readonly #promise: Promise<void>;
-  #connected: boolean = false;
-  #connectError: unknown;
-
-  constructor(rid: number, promise: Promise<void>) {
-    super(rid);
-    this.#promise = promise;
-    core.refOpPromise(promise);
-
-    PromiseThen(promise, () => {
-      this.#connected = true;
-    }, (err) => {
-      this.#connectError = err;
-    });
-  }
-
-  ref() {
-    core.refOpPromise(this.#promise);
-    super.ref();
-  }
-
-  unref() {
-    core.unrefOpPromise(this.#promise);
-    super.unref();
-  }
-
-  async connect(): Promise<void> {
-    await this.#promise;
-  }
-
-  get connected(): boolean {
-    return this.#connected;
-  }
-
-  async read(buffer): Promise<number> {
-    await this.#promise;
-    return super.read(buffer);
-  }
-
-  async write(buffer): Promise<number> {
-    await this.#promise;
-    return super.write(buffer);
-  }
-}
 async function connect(opts: Options | WindowsConnectOptions) {
   let rid: number;
   switch (opts.kind) {
@@ -210,18 +165,18 @@ async function connect(opts: Options | WindowsConnectOptions) {
   }
 }
 
-function listen(opts: WindowsListenOptions | UnixListenOptions) {
+function open(opts: WindowsListenOptions | UnixListenOptions) {
   let rid: number;
   switch (opts.kind) {
     case "unix":
-      rid = op_pipe_listen(opts, "Deno.pipe.listen");
+      rid = op_pipe_open(opts, "Deno.pipe.open");
       return new Pipe(rid);
     case "windows":
-      rid = op_pipe_listen(opts, "Deno.pipe.listen");
-      return new WindowsPipe(rid, op_pipe_windows_connect(rid));
+      rid = op_pipe_open(opts, "Deno.pipe.open");
+      return PromiseThen(op_pipe_windows_wait(rid), () => new Pipe(rid));
     default:
       throw new Error(`Unsupported kind: ${opts.kind}`);
   }
 }
 
-export { connect, listen };
+export { connect, open };
