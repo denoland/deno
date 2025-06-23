@@ -15,6 +15,7 @@ https://github.com/denoland/deno_install
 - fix(bundle): enable sloppy imports by default when bundling (#29731)
 - fix(bundle): improve error handling and reporting (#29744)
 - fix(bundle): parse the allow-import flag, fix example in help text (#29733)
+- fix(bundle): transform import.meta.main (#29830)
 - fix(ext/napi): ensure the finalizer callback will be called (#29710)
 - fix(ext/node): DiffieHellman constructor behaviors (#29718)
 - fix(ext/node): Fix `crypto.pbkdf2` compat (#29738)
