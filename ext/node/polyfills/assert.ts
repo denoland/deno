@@ -29,7 +29,7 @@ const {
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
- } = primordials;
+} = primordials;
 
 function innerFail(obj: {
   actual?: unknown;
@@ -710,14 +710,14 @@ function ifError(err: any) {
       // This will remove any duplicated frames from the error frames taken
       // from within `ifError` and add the original error frames to the newly
       // created ones.
-      const origStackStart = StringPrototypeIndexOf(origStack, '\n    at');
+      const origStackStart = StringPrototypeIndexOf(origStack, "\n    at");
       if (origStackStart !== -1) {
         const originalFrames = StringPrototypeSplit(
           StringPrototypeSlice(origStack, origStackStart + 1),
-          '\n',
+          "\n",
         );
         // Filter all frames existing in err.stack.
-        let newFrames = StringPrototypeSplit(newErr.stack, '\n');
+        let newFrames = StringPrototypeSplit(newErr.stack, "\n");
         for (const errFrame of originalFrames) {
           // Find the first occurrence of the frame.
           const pos = ArrayPrototypeIndexOf(newFrames, errFrame);
@@ -727,8 +727,8 @@ function ifError(err: any) {
             break;
           }
         }
-        const stackStart = ArrayPrototypeJoin(newFrames, '\n');
-        const stackEnd = ArrayPrototypeJoin(originalFrames, '\n');
+        const stackStart = ArrayPrototypeJoin(newFrames, "\n");
+        const stackEnd = ArrayPrototypeJoin(originalFrames, "\n");
         newErr.stack = `${stackStart}\n${stackEnd}`;
       }
     }
