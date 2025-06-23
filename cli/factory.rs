@@ -778,7 +778,7 @@ impl CliFactory {
   pub fn compiler_options_resolver(
     &self,
   ) -> Result<&Arc<CompilerOptionsResolver>, AnyError> {
-    Ok(self.workspace_factory()?.compiler_options_resolver()?)
+    self.resolver_factory()?.compiler_options_resolver()
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {

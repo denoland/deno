@@ -27,6 +27,10 @@ use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
+use node_resolver::NodeResolutionKind;
+use node_resolver::NodeResolver;
+use node_resolver::ResolutionMode;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
@@ -36,6 +40,9 @@ use url::Url;
 
 use crate::collections::FolderScopedMap;
 use crate::factory::WorkspaceDirectoryProvider;
+use crate::npm::DenoInNpmPackageChecker;
+use crate::npm::NpmResolver;
+use crate::npm::NpmResolverSys;
 use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
@@ -360,24 +367,37 @@ fn is_maybe_directory_error(err: &std::io::Error) -> bool {
     || cfg!(windows) && kind == ErrorKind::PermissionDenied
 }
 
+type TsConfigNodeResolver<TSys> = NodeResolver<
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  NpmResolver<TSys>,
+  TSys,
+>;
+
 #[derive(Debug)]
-struct TsConfigCollector<'a, TSys: FsRead> {
+struct TsConfigCollector<'a, TSys: FsRead, NSys: NpmResolverSys> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<Url, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
+  node_resolver: &'a TsConfigNodeResolver<NSys>,
   logged_warnings: &'a LoggedWarningsRc,
 }
 
-impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
-  fn new(sys: &'a TSys, logged_warnings: &'a LoggedWarningsRc) -> Self {
+impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
+  fn new(
+    sys: &'a TSys,
+    node_resolver: &'a TsConfigNodeResolver<NSys>,
+    logged_warnings: &'a LoggedWarningsRc,
+  ) -> Self {
     Self {
       roots: Default::default(),
       collected: Default::default(),
       read_cache: Default::default(),
       currently_reading: Default::default(),
       sys,
+      node_resolver,
       logged_warnings,
     }
   }
@@ -473,9 +493,10 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
         warn(e)
       }
     })?;
-    let value = serde_json::from_str::<serde_json::Value>(&text)
+    let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
       .inspect_err(|e| warn(e))
-      .ok();
+      .ok()
+      .flatten();
     let object = value.as_ref().and_then(|v| v.as_object());
     let extends_targets = object
       .and_then(|o| o.get("extends"))
@@ -489,11 +510,20 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
           Vec::new()
         }
       })
-      .filter(|s| {
-        s.starts_with("./") || s.starts_with("../") || s.starts_with('/')
+      .filter_map(|s| {
+        let node_resolution = self
+          .node_resolver
+          .resolve(
+            s,
+            &specifier,
+            ResolutionMode::Require,
+            NodeResolutionKind::Execution,
+          )
+          .ok()?;
+        let url = node_resolution.into_url().ok()?;
+        let path = url_to_file_path(&url).ok()?;
+        self.read_ts_config_with_cache(&path).ok()
       })
-      .filter_map(|s| url_to_file_path(&specifier.join(s).ok()?).ok())
-      .filter_map(|p| self.read_ts_config_with_cache(p).ok())
       .collect::<Vec<_>>();
     let sources = extends_targets
       .iter()
@@ -624,9 +654,10 @@ pub struct CompilerOptionsResolver {
 }
 
 impl CompilerOptionsResolver {
-  pub fn new<TSys: FsRead>(
+  pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
     workspace_directory_provider: &WorkspaceDirectoryProvider,
+    node_resolver: &TsConfigNodeResolver<NSys>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let root_dir = workspace_directory_provider.root();
@@ -634,7 +665,8 @@ impl CompilerOptionsResolver {
       root_dir.to_configured_compiler_options_sources(),
       logged_warnings.clone(),
     ));
-    let mut ts_config_collector = TsConfigCollector::new(sys, &logged_warnings);
+    let mut ts_config_collector =
+      TsConfigCollector::new(sys, node_resolver, &logged_warnings);
     for (dir_url, dir) in workspace_directory_provider.entries() {
       ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       if let Some(dir_url) = dir_url {

@@ -257,7 +257,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
-  compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
@@ -293,7 +292,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
-      compiler_options_resolver: Default::default(),
       workspace_directory: Default::default(),
       workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
@@ -541,17 +539,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     })
   }
 
-  pub fn compiler_options_resolver(
-    &self,
-  ) -> Result<&CompilerOptionsResolverRc, WorkspaceDiscoverError> {
-    self.compiler_options_resolver.get_or_try_init(|| {
-      Ok(new_rc(CompilerOptionsResolver::new(
-        self.sys(),
-        self.workspace_directory_provider()?,
-      )))
-    })
-  }
-
   pub fn sys(&self) -> &TSys {
     &self.sys
   }
@@ -692,6 +679,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
   sys: NodeResolutionSys<TSys>,
   cjs_tracker: Deferred<CjsTrackerRc<DenoInNpmPackageChecker, TSys>>,
+  compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
   #[cfg(feature = "graph")]
   deno_resolver:
     async_once_cell::OnceCell<crate::graph::DefaultDenoResolverRc<TSys>>,
@@ -733,6 +721,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         options.node_resolution_cache.clone(),
       ),
       cjs_tracker: Default::default(),
+      compiler_options_resolver: Default::default(),
       raw_deno_resolver: Default::default(),
       #[cfg(feature = "graph")]
       deno_resolver: Default::default(),
@@ -792,6 +781,18 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.in_npm_package_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         self.options.is_cjs_resolution_mode,
+      )))
+    })
+  }
+
+  pub fn compiler_options_resolver(
+    &self,
+  ) -> Result<&CompilerOptionsResolverRc, anyhow::Error> {
+    self.compiler_options_resolver.get_or_try_init(|| {
+      Ok(new_rc(CompilerOptionsResolver::new(
+        &self.sys,
+        self.workspace_factory.workspace_directory_provider()?,
+        self.node_resolver()?,
       )))
     })
   }
