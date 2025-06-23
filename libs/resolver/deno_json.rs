@@ -353,6 +353,13 @@ impl TsConfigData {
   }
 }
 
+fn is_maybe_directory_error(err: &std::io::Error) -> bool {
+  let kind = err.kind();
+  kind == ErrorKind::IsADirectory
+    // This happens on Windows for some reason.
+    || cfg!(windows) && kind == ErrorKind::PermissionDenied
+}
+
 #[derive(Debug)]
 struct TsConfigCollector<'a, TSys: FsRead> {
   roots: BTreeSet<PathBuf>,
@@ -416,7 +423,7 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
       };
       match self.read_ts_config_with_cache(&reference_path) {
         Ok(ts_config) => self.visit_reference(ts_config),
-        Err(err) if err.kind() == ErrorKind::IsADirectory => {
+        Err(err) if is_maybe_directory_error(&err) => {
           if let Ok(ts_config) =
             self.read_ts_config_with_cache(reference_path.join("tsconfig.json"))
           {
@@ -462,7 +469,7 @@ impl<'a, TSys: FsRead> TsConfigCollector<'a, TSys> {
       .inspect_err(|e| warn(e))
       .map_err(|err| std::io::Error::new(ErrorKind::InvalidInput, err))?;
     let text = self.sys.fs_read_to_string(path).inspect_err(|e| {
-      if !matches!(e.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) {
+      if e.kind() != ErrorKind::NotFound && !is_maybe_directory_error(e) {
         warn(e)
       }
     })?;
