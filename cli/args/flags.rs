@@ -4574,6 +4574,7 @@ fn lock_args() -> [Arg; 3] {
 fn node_conditions_arg() -> Arg {
   Arg::new("unstable-node-conditions")
     .long("unstable-node-conditions")
+    .env("DENO_NODE_CONDITIONS")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
 }
