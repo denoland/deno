@@ -103,6 +103,7 @@ pub struct BootstrapOptions {
   pub inspect: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
+  pub auto_serve: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -141,6 +142,7 @@ impl Default for BootstrapOptions {
       inspect: false,
       args: Default::default(),
       is_standalone: false,
+      auto_serve: false,
       has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
@@ -198,6 +200,8 @@ struct BootstrapV8<'a>(
   bool,
   // is_standalone
   bool,
+  // auto serve
+  bool,
 );
 
 impl BootstrapOptions {
@@ -230,6 +234,7 @@ impl BootstrapOptions {
       self.otel_config.as_v8(),
       self.close_on_idle,
       self.is_standalone,
+      self.auto_serve,
     );
 
     bootstrap.serialize(ser).unwrap()
