@@ -819,8 +819,10 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       format_css(file_path, file_text, fmt_options)
     }
-    "html" => format_html(file_path, file_text, fmt_options, unstable_options),
-    "svelte" | "vue" | "astro" | "vto" | "njk" => {
+    "html" | "xml" | "svg" => {
+      format_html(file_path, file_text, fmt_options, unstable_options)
+    }
+    "svelte" | "vue" | "astro" | "vto" | "njk" | "mustache" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options, unstable_options)
       } else {
