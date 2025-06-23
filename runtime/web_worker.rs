@@ -62,7 +62,6 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::create_op_metrics;
-use crate::worker::custom_module_evaluation_cb;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 #[cfg(target_os = "linux")]
@@ -658,7 +657,7 @@ impl WebWorker {
       v8_platform: None,
       is_main: false,
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: Some(Box::new(custom_module_evaluation_cb)),
+      custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
     });
 

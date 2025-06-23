@@ -850,7 +850,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       .shared
       .file_fetcher
       .fetch_with_options(
-        &specifier,
+        specifier,
         FetchPermissionsOptionRef::Restricted(
           if is_dynamic {
             &self.permissions
@@ -877,8 +877,6 @@ impl<TGraphContainer: ModuleGraphContainer>
       .await?;
 
     Ok(ModuleCodeStringSource {
-      // todo(THIS PR): ensure utf8 bom is stripped in this case for text
-      // and decoding is lossy
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
       module_type: match requested_module_type {
@@ -1497,6 +1495,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
+    // always call this first unconditionally because it will be
+    // decremented unconditionally in "finish_load"
     self.0.shared.in_flight_loads_tracker.increase();
 
     if matches!(
