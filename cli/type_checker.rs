@@ -281,23 +281,22 @@ impl TypeChecker {
         })
         .clone();
       let group_key = (compiler_options, imports.clone());
-      let group = match groups_by_key.entry(group_key) {
-        indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
-        indexmap::map::Entry::Vacant(entry) => {
-          let dir = self.workspace_directory_provider.for_specifier(root);
-          entry.insert(CheckGroup {
-            roots: Default::default(),
-            compiler_options,
-            imports,
-            // this is slightly hacky. It's used as the referrer for resolving
-            // npm imports in the key
-            referrer: dir
-              .maybe_deno_json()
-              .map(|d| d.specifier.clone())
-              .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
-          })
+      let group = groups_by_key.entry(group_key).or_insert_with(|| {
+        let dir = self.workspace_directory_provider.for_specifier(root);
+        CheckGroup {
+          roots: Default::default(),
+          compiler_options,
+          imports,
+          // this is slightly hacky. It's used as the referrer for resolving
+          // npm imports in the key
+          referrer: self
+            .workspace_directory_provider
+            .for_specifier(root)
+            .maybe_deno_json()
+            .map(|d| d.specifier.clone())
+            .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
         }
-      };
+      });
       group.roots.push(root.clone());
     }
     Ok(groups_by_key.into_values().collect())
