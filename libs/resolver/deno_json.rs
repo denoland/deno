@@ -210,7 +210,7 @@ impl CompilerOptionsData {
       let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
       let is_jsx_automatic = matches!(
         jsx,
-        Some(("react-jsx" | "react-jsxdev" | "precompile", _)),
+        Some(("react-jsx" | "preserve" | "react-jsxdev" | "precompile", _)),
       );
       let import_source = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
@@ -233,7 +233,7 @@ impl CompilerOptionsData {
         })
       }).or_else(|| import_source.clone());
       let module = match jsx {
-        Some(("react-jsx", _)) => "jsx-runtime".to_string(),
+        Some(("react-jsx" | "preserve", _)) => "jsx-runtime".to_string(),
         Some(("react-jsxdev", _)) => "jsx-dev-runtime".to_string(),
         Some(("react", _)) | None => {
           if let Some(import_source) = &import_source {
