@@ -31,7 +31,6 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
-use deno_media_type::MediaType;
 use log::debug;
 use log::info;
 use log::warn;
@@ -538,15 +537,15 @@ pub fn format_html(
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
 ) -> impl Fn(
-  MediaType,
+  &str,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
   let unstable_sql = unstable_options.sql;
-  move |media_type, text, config| match media_type {
-    MediaType::Css => format_embedded_css(&text, config),
-    MediaType::Html => format_embedded_html(&text, config),
-    MediaType::Sql => {
+  move |lang, text, config| match lang {
+    "css" => format_embedded_css(&text, config),
+    "html" | "xml" | "svg" => format_embedded_html(lang, &text, config),
+    "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
       } else {
@@ -662,10 +661,17 @@ fn format_embedded_css(
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
+  lang: &str,
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
+
+  let language = match lang {
+    "xml" | "svg" => markup_fmt::Language::Xml,
+    _ => markup_fmt::Language::Html,
+  };
+
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
       indent_width: config.indent_width as usize,
@@ -725,12 +731,9 @@ fn format_embedded_html(
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
     },
   };
-  let text = markup_fmt::format_text(
-    text,
-    markup_fmt::Language::Html,
-    &options,
-    |code, _| Ok::<_, std::convert::Infallible>(code.into()),
-  )?;
+  let text = markup_fmt::format_text(text, language, &options, |code, _| {
+    Ok::<_, std::convert::Infallible>(code.into())
+  })?;
   Ok(Some(text.to_string()))
 }
 
