@@ -3,6 +3,7 @@
 mod esbuild;
 mod externals;
 mod transform;
+mod html;
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -113,13 +114,33 @@ pub async fn bundle(
 
   let resolved_entrypoints =
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
-  let _ = plugin_handler
-    .prepare_module_load(&resolved_entrypoints)
-    .await;
 
-  let roots =
-    resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
-  let _ = plugin_handler.prepare_module_load(&roots).await;
+  let input = if resolved_entrypoints.len() == 1
+    && resolved_entrypoints[0].as_str().ends_with(".html")
+  {
+    let path = resolved_entrypoints[0].to_file_path().unwrap();
+    let entrypoint = html::doit(&path)?;
+    let mut to_cache = vec![];
+    for script in &entrypoint.scripts {
+      if let Some(path) = &script.resolved_path {
+        to_cache.push(Url::from_file_path(path).unwrap());
+      }
+    }
+    let _ = plugin_handler.prepare_module_load(&to_cache).await;
+    // let entrypoint = entrypoint.temp_module;
+    BundlerInput::HtmlEntrypoint(entrypoint)
+  } else {
+    let _ = plugin_handler
+      .prepare_module_load(&resolved_entrypoints)
+      .await;
+
+    let roots =
+      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    let _ = plugin_handler.prepare_module_load(&roots).await;
+    BundlerInput::Entrypoints(
+      roots.into_iter().map(|e| ("".into(), e.into())).collect(),
+    )
+  };
 
   let esbuild = EsbuildService::new(
     esbuild_path,
@@ -136,8 +157,10 @@ pub async fn bundle(
     log::warn!("esbuild exited: {:?}", res);
   });
 
-  let esbuild_flags = configure_esbuild_flags(&bundle_flags);
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let esbuild_flags = configure_esbuild_flags(
+    &bundle_flags,
+    matches!(input, BundlerInput::HtmlEntrypoint(_)),
+  );
   let bundler = EsbuildBundler::new(
     client,
     plugin_handler.clone(),
@@ -148,18 +171,28 @@ pub async fn bundle(
     on_end_rx,
     init_cwd.clone(),
     esbuild_flags,
-    entries,
+    input.clone(),
   );
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler).await;
+    return bundle_watch(
+      flags,
+      bundler,
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+    )
+    .await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
-    process_result(&response, *DISABLE_HACK)?;
+    process_result(
+      &response,
+      input.clone(),
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+      *DISABLE_HACK,
+    )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       log::info!(
@@ -182,16 +215,26 @@ pub async fn bundle(
 async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
+  output_dir: Option<&Path>,
 ) -> Result<(), AnyError> {
-  let initial_roots = bundler
-    .roots
-    .iter()
-    .filter_map(|(_, root)| {
-      let url = Url::parse(root).ok()?;
-      deno_path_util::url_to_file_path(&url).ok()
-    })
-    .collect::<Vec<_>>();
+  let (initial_roots, always_watch) = match &bundler.input {
+    BundlerInput::Entrypoints(entries) => (
+      entries
+        .iter()
+        .filter_map(|(_, root)| {
+          let url = Url::parse(root).ok()?;
+          deno_path_util::url_to_file_path(&url).ok()
+        })
+        .collect::<Vec<_>>(),
+      vec![],
+    ),
+    BundlerInput::HtmlEntrypoint(entrypoint) => {
+      (vec![entrypoint.path.clone()], vec![entrypoint.path.clone()])
+    }
+  };
+  let always_watch = Rc::new(always_watch);
   let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let input = bundler.input.clone();
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
@@ -206,6 +249,8 @@ async fn bundle_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       let bundler = Rc::clone(&bundler);
       let current_roots = current_roots.clone();
+      let input = input.clone();
+      let always_watch = always_watch.clone();
       Ok(async move {
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
@@ -218,7 +263,7 @@ async fn bundle_watch(
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
-          process_result(&response, *DISABLE_HACK)?;
+          process_result(&response, input, output_dir, *DISABLE_HACK)?;
           log::info!(
             "{}",
             deno_terminal::colors::green(format!(
@@ -227,7 +272,8 @@ async fn bundle_watch(
             ))
           );
 
-          let new_watched = get_input_paths_for_watch(&response);
+          let mut new_watched = get_input_paths_for_watch(&response);
+          new_watched.extend(always_watch.iter().cloned());
           *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
         } else {
@@ -268,6 +314,12 @@ pub enum BundlingMode {
   Watch,
 }
 
+#[derive(Debug, Clone)]
+pub enum BundlerInput {
+  Entrypoints(Vec<(String, String)>),
+  HtmlEntrypoint(html::HtmlEntrypoint),
+}
+
 pub struct EsbuildBundler {
   client: esbuild_client::ProtocolClient,
   plugin_handler: Arc<DenoPluginHandler>,
@@ -275,7 +327,7 @@ pub struct EsbuildBundler {
   mode: BundlingMode,
   cwd: PathBuf,
   flags: EsbuildFlags,
-  roots: Vec<(String, String)>,
+  input: BundlerInput,
 }
 
 impl EsbuildBundler {
@@ -286,7 +338,7 @@ impl EsbuildBundler {
     on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
     cwd: PathBuf,
     flags: EsbuildFlags,
-    roots: Vec<(String, String)>,
+    input: BundlerInput,
   ) -> EsbuildBundler {
     EsbuildBundler {
       client,
@@ -295,7 +347,7 @@ impl EsbuildBundler {
       mode,
       cwd,
       flags,
-      roots,
+      input,
     }
   }
 
@@ -305,13 +357,28 @@ impl EsbuildBundler {
   // doesn't actually do anything, it's just registering the args/flags
   // we're going to use for all of the rebuilds.
   fn make_build_request(&self) -> protocol::BuildRequest {
+    let (stdin, resolve_dir, entries) = match &self.input {
+      BundlerInput::Entrypoints(entries) => (None, None, entries.clone()),
+      BundlerInput::HtmlEntrypoint(entrypoint) => (
+        Some(entrypoint.temp_module.as_bytes().to_vec()),
+        Some(
+          entrypoint
+            .path
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .to_string(),
+        ),
+        vec![],
+      ),
+    };
     protocol::BuildRequest {
-      entries: self.roots.clone(),
+      entries,
       key: 0,
       flags: self.flags.to_flags(),
       write: false,
-      stdin_contents: None.into(),
-      stdin_resolve_dir: None.into(),
+      stdin_contents: stdin.into(),
+      stdin_resolve_dir: resolve_dir.into(),
       abs_working_dir: self.cwd.to_string_lossy().to_string(),
       context: matches!(self.mode, BundlingMode::Watch),
       mangle_cache: None,
@@ -335,11 +402,10 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
-    let response = self
+    let response: BuildResponse = self
       .client
       .send_build_request(self.make_build_request())
-      .await
-      .unwrap();
+      .await?;
     Ok(response)
   }
 
@@ -1072,7 +1138,10 @@ async fn ensure_esbuild_downloaded(
   Ok(esbuild_path)
 }
 
-fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
+fn configure_esbuild_flags(
+  bundle_flags: &BundleFlags,
+  is_html: bool,
+) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
@@ -1108,6 +1177,11 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
     builder.metafile(true);
   }
 
+  if is_html {
+    builder.platform(esbuild_client::Platform::Browser);
+    builder.splitting(true);
+    builder.metafile(true);
+  }
   match bundle_flags.platform {
     crate::args::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
@@ -1139,38 +1213,76 @@ fn handle_esbuild_errors_and_warnings(
   }
 }
 
+pub struct OutputFile {
+  pub path: PathBuf,
+  pub contents: Vec<u8>,
+}
+
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
 fn process_result(
   response: &BuildResponse,
-  // init_cwd: &Path,
+  input: BundlerInput,
+  outdir: Option<&Path>,
   should_replace_require_shim: bool,
 ) -> Result<(), AnyError> {
-  if let Some(output_files) = response.output_files.as_ref() {
-    let mut exists_cache = std::collections::HashSet::new();
-    for file in output_files.iter() {
+  let output_files = match input {
+    BundlerInput::HtmlEntrypoint(entrypoint) => {
+      entrypoint.patch_html_with_response(response, outdir.unwrap())?
+    }
+    _ => response
+      .output_files
+      .as_ref()
+      .map(|files| {
+        files
+          .iter()
+          .map(|f| OutputFile {
+            path: PathBuf::from(&f.path),
+            contents: f.contents.clone(),
+          })
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default(),
+  };
+  let mut exists_cache = std::collections::HashSet::new();
+  for file in output_files.iter() {
+    let bytes = if is_js(&file.path) || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
         replace_require_shim(&string)
       } else {
         string
       };
+      string.into_bytes()
+    } else {
+      file.contents.clone()
+    };
 
-      if file.path == "<stdout>" {
-        crate::display::write_to_stdout_ignore_sigpipe(string.as_bytes())?;
-        continue;
-      }
-      let path = PathBuf::from(&file.path);
-
-      if let Some(parent) = path.parent() {
-        if !exists_cache.contains(parent) {
-          if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-          }
-          exists_cache.insert(parent.to_path_buf());
-        }
-      }
-
-      std::fs::write(&file.path, string)?;
+    if file.path.ends_with("<stdout>") {
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      continue;
     }
+    let path = PathBuf::from(&file.path);
+
+    if let Some(parent) = path.parent() {
+      if !exists_cache.contains(parent) {
+        if !parent.exists() {
+          std::fs::create_dir_all(parent)?;
+        }
+        exists_cache.insert(parent.to_path_buf());
+      }
+    }
+
+    std::fs::write(&file.path, bytes)?;
   }
   Ok(())
 }
