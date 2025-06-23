@@ -19,6 +19,7 @@
     ],
     "parallel": [
       "test-arm-math-illegal-instruction.js",
+      "test-assert-deep.js",
       "test-assert-fail.js",
       "test-assert.js",
       "test-blocklist.js",
