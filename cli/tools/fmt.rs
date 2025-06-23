@@ -301,7 +301,7 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             format_css(&fake_filename, text, fmt_options)
           }
-          "html" => {
+          "html" | "svg" | "xml" => {
             format_html(&fake_filename, text, fmt_options, unstable_options)
           }
           "svelte" | "vue" | "astro" | "vto" | "njk" => {
@@ -1701,6 +1701,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yaml"
         | "ipynb"
         | "sql"
+        | "xml"
+        | "svg"
+        | "mustache"
     )
   })
 }
