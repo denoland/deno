@@ -566,6 +566,9 @@ pub enum LoadPreparedModuleError {
   Graph(#[from] Box<EnhancedGraphError>),
   #[class(inherit)]
   #[error(transparent)]
+  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
+  #[class(inherit)]
+  #[error(transparent)]
   Other(#[from] JsErrorBox),
 }
 
@@ -823,49 +826,10 @@ impl<TGraphContainer: ModuleGraphContainer>
         }
 
         match requested_module_type {
-          RequestedModuleType::Text | RequestedModuleType::Bytes =>
-          {
-            let file = self
-              .shared
-              .file_fetcher
-              .fetch_with_options(
-                &specifier,
-                FetchPermissionsOptionRef::Restricted(
-                  if is_dynamic {
-                    &self.permissions
-                  } else {
-                    &self.parent_permissions
-                  },
-                  if is_dynamic {
-                    CheckSpecifierKind::Dynamic
-                  } else {
-                    CheckSpecifierKind::Static
-                  },
-                ),
-                FetchOptions {
-                  local: FetchLocalOptions {
-                    include_mtime: false,
-                  },
-                  maybe_auth: None,
-                  maybe_accept: None,
-                  maybe_cache_setting: Some(
-                    &deno_cache_dir::file_fetcher::CacheSetting::Only,
-                  ),
-                },
-              )
-              .await
-              .map_err(LoadCodeSourceError::from_err)?;
-
-            Ok(ModuleCodeStringSource {
-              code: ModuleSourceCode::Bytes(file.source.into()),
-              found_url: file.url,
-              module_type: match requested_module_type {
-                RequestedModuleType::Text => ModuleType::Text,
-                RequestedModuleType::Bytes => ModuleType::Bytes,
-                _ => unreachable!(),
-              },
-            })
-          }
+          RequestedModuleType::Text | RequestedModuleType::Bytes => self
+            .load_asset(&specifier, is_dynamic, requested_module_type)
+            .await
+            .map_err(LoadCodeSourceError::from_err),
           _ => Err(LoadCodeSourceError::from_err(LoadUnpreparedModuleError {
             specifier: specifier.into_owned(),
             maybe_referrer: maybe_referrer.cloned(),
@@ -873,6 +837,56 @@ impl<TGraphContainer: ModuleGraphContainer>
         }
       }
     }
+  }
+
+  async fn load_asset(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_dynamic: bool,
+    requested_module_type: &RequestedModuleType,
+  ) -> Result<ModuleCodeStringSource, deno_resolver::file_fetcher::FetchError>
+  {
+    let file = self
+      .shared
+      .file_fetcher
+      .fetch_with_options(
+        &specifier,
+        FetchPermissionsOptionRef::Restricted(
+          if is_dynamic {
+            &self.permissions
+          } else {
+            &self.parent_permissions
+          },
+          if is_dynamic {
+            CheckSpecifierKind::Dynamic
+          } else {
+            CheckSpecifierKind::Static
+          },
+        ),
+        FetchOptions {
+          local: FetchLocalOptions {
+            include_mtime: false,
+          },
+          maybe_auth: None,
+          maybe_accept: None,
+          maybe_cache_setting: Some(
+            &deno_cache_dir::file_fetcher::CacheSetting::Use,
+          ),
+        },
+      )
+      .await?;
+
+    Ok(ModuleCodeStringSource {
+      // todo(THIS PR): ensure utf8 bom is stripped in this case for text
+      // and decoding is lossy
+      code: ModuleSourceCode::Bytes(file.source.into()),
+      found_url: file.url,
+      module_type: match requested_module_type {
+        RequestedModuleType::Text => ModuleType::Text,
+        RequestedModuleType::Bytes => ModuleType::Bytes,
+        _ => unreachable!(),
+      },
+    })
   }
 
   async fn maybe_reload_dynamic(
@@ -1116,6 +1130,15 @@ impl<TGraphContainer: ModuleGraphContainer>
         .await
         .map(Some)
         .map_err(LoadPreparedModuleError::LoadMaybeCjs),
+      Some(CodeOrDeferredEmit::ExternalAsset { specifier }) => {
+        self.load_asset(
+          specifier,
+          /* do not use dynamic import permissions because this was statically analyzable */ false,
+          requested_module_type
+        ).await
+        .map(Some)
+        .map_err(LoadPreparedModuleError::from)
+      }
       None => Ok(None),
     }
   }
@@ -1162,7 +1185,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         // cjs export analysis is only async
         Ok(None)
       }
-      None => Ok(None),
+      Some(CodeOrDeferredEmit::ExternalAsset { .. }) | None => Ok(None),
     }
   }
 
@@ -1195,18 +1218,16 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         ..
       })) => match requested_module_type {
-        RequestedModuleType::Bytes => {
-          match source.try_get_original_bytes() {
-            Some(bytes) => {
-              Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-                code: ModuleSourceCode::Bytes(bytes.into()),
-                found_url: specifier.clone(),
-                module_type: ModuleType::Bytes,
-              })))
-            }
-            None => Ok(None),
+        RequestedModuleType::Bytes => match source.try_get_original_bytes() {
+          Some(bytes) => {
+            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+              code: ModuleSourceCode::Bytes(bytes.into()),
+              found_url: specifier.clone(),
+              module_type: ModuleType::Bytes,
+            })))
           }
-        }
+          None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
+        },
         RequestedModuleType::Text => {
           Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
             code: ModuleSourceCode::String(source.text.clone().into()),
@@ -1228,18 +1249,16 @@ impl<TGraphContainer: ModuleGraphContainer>
         ..
       })) => {
         match requested_module_type {
-          RequestedModuleType::Bytes => {
-            match source.try_get_original_bytes() {
-              Some(bytes) => {
-                Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-                  code: ModuleSourceCode::Bytes(bytes.into()),
-                  found_url: specifier.clone(),
-                  module_type: ModuleType::Bytes,
-                })))
-              }
-              None => Ok(None),
+          RequestedModuleType::Bytes => match source.try_get_original_bytes() {
+            Some(bytes) => {
+              Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
+                code: ModuleSourceCode::Bytes(bytes.into()),
+                found_url: specifier.clone(),
+                module_type: ModuleType::Bytes,
+              })))
             }
-          }
+            None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
+          },
           RequestedModuleType::Text => {
             Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
               code: ModuleSourceCode::String(source.text.clone().into()),
@@ -1327,6 +1346,16 @@ impl<TGraphContainer: ModuleGraphContainer>
           }))),
         }
       }
+      Some(deno_graph::Module::External(module))
+        if matches!(
+          requested_module_type,
+          RequestedModuleType::Bytes | RequestedModuleType::Text
+        ) =>
+      {
+        Ok(Some(CodeOrDeferredEmit::ExternalAsset {
+          specifier: &module.specifier,
+        }))
+      }
       Some(
         deno_graph::Module::External(_)
         | deno_graph::Module::Node(_)
@@ -1390,6 +1419,9 @@ enum CodeOrDeferredEmit<'a> {
     specifier: &'a ModuleSpecifier,
     media_type: MediaType,
     source: &'a Arc<str>,
+  },
+  ExternalAsset {
+    specifier: &'a ModuleSpecifier,
   },
 }
 
@@ -1478,7 +1510,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
 
-    if matches!(requested_module_type, RequestedModuleType::Text | RequestedModuleType::Bytes) {
+    if matches!(
+      requested_module_type,
+      RequestedModuleType::Text | RequestedModuleType::Bytes
+    ) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
