@@ -30,6 +30,7 @@ const-oid.workspace = true
 ctr.workspace = true
 data-encoding.workspace = true
 deno_core.workspace = true
+deno_crypto_provider.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
