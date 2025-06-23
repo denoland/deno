@@ -103,7 +103,6 @@ pub struct BootstrapOptions {
   pub inspect: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
-  pub auto_serve: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -113,6 +112,7 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub auto_serve: bool,
   pub otel_config: OtelConfig,
   pub close_on_idle: bool,
 }
