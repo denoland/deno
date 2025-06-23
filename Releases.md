@@ -8,9 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 2.3.7 / 2025.06.23
 
-- feat(bundle): add `--platform` flag to bundle (#29697)
-- feat(bundle): add `--sourcemap` flag (#29735)
-- feat(bundle): add watch mode to bundle (#29795)
+- feat(unstable): add `--platform` flag to deno bundle (#29697)
+- feat(unstable): add `--sourcemap` flag to deno bundle (#29735)
+- feat(unstable): add watch mode to deno bundle (#29795)
 - feat: allow base64 ca cert in args (#29814)
 - fix(bundle): enable sloppy imports by default when bundling (#29731)
 - fix(bundle): improve error handling and reporting (#29744)
