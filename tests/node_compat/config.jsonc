@@ -7,6 +7,9 @@
       "echo.js",
       "elipses.txt",
       "empty.txt",
+      "keys/rsa_public.pem",
+      "keys/rsa_spkac_invalid.spkac",
+      "keys/rsa_spkac.spkac",
       "x.txt"
     ],
     "internet": [
@@ -380,6 +383,7 @@
       "test-console-sync-write-error.js",
       "test-console-table.js",
       "test-console-tty-colors.js",
+      "test-crypto-certificate.js",
       "test-crypto-dh-constructor.js",
       "test-crypto-dh-errors.js",
       "test-crypto-dh-odd-key.js",
