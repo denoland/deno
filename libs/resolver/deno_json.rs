@@ -156,7 +156,9 @@ impl CompilerOptionsData {
           result.ignored_options.push(ignored);
         }
       }
-      check_warn_compiler_options(&result, &self.logged_warnings);
+      if self.source_kind != CompilerOptionsSourceKind::TsConfig {
+        check_warn_compiler_options(&result, &self.logged_warnings);
+      }
       Ok(new_rc(result.compiler_options))
     })
   }
