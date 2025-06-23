@@ -19,6 +19,7 @@ mod unix_pipe;
 mod win_pipe;
 
 mod ops_pipe {
+  #[cfg(unix)]
   use deno_core::op2;
 
   #[cfg(unix)]

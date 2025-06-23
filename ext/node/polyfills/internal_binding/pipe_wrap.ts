@@ -212,19 +212,40 @@ export class Pipe extends ConnectionWrap {
     if (isWindows) {
       let listener;
       try {
-        listener = Deno.pipe.listen({
+        listener = PromiseThen(Deno.pipe.open({
           path: this.#address!,
           kind: "windows",
           pipeMode: "byte",
+        }), () => {
+          this.#listener = listener;
+        }, e => {
+          if (e instanceof Deno.errors.NotCapable) {
+            throw e;
+          }
+
+          const code = codeMap.get(e.code ?? "UNKNOWN") ??
+              codeMap.get("UNKNOWN")!;
+
+          try {
+            this.afterConnect(req, code);
+          } catch {
+            // swallow callback errors.
+          }
         });
       } catch (e) {
         if (e instanceof Deno.errors.NotCapable) {
           throw e;
         }
-        return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
-      }
 
-      this.#listener = listener;
+        const code = codeMap.get(e.code ?? "UNKNOWN") ??
+            codeMap.get("UNKNOWN")!;
+
+        try {
+          this.afterConnect(req, code);
+        } catch {
+          // swallow callback errors.
+        }
+      }
 
       return 0;
     }
