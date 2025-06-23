@@ -5,17 +5,17 @@ use deno_ast::swc::ast::Bool;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitMutWith;
 
-pub struct BundleTransform {
+pub struct BundleImportMetaMainTransform {
   is_entrypoint: bool,
 }
 
-impl BundleTransform {
+impl BundleImportMetaMainTransform {
   pub fn new(is_entrypoint: bool) -> Self {
     Self { is_entrypoint }
   }
 }
 
-impl VisitMut for BundleTransform {
+impl VisitMut for BundleImportMetaMainTransform {
   fn visit_mut_expr(&mut self, node: &mut swc::ast::Expr) {
     // if entrypoint to bundle:
     //   import.meta.main => import.meta.main

@@ -858,7 +858,7 @@ impl DenoPluginHandler {
     media_type: deno_ast::MediaType,
     code: &str,
   ) -> Result<String, BundleLoadError> {
-    let mut transform = transform::BundleTransform::new(
+    let mut transform = transform::BundleImportMetaMainTransform::new(
       self
         .module_graph_container
         .graph()
