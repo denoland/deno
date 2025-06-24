@@ -4,6 +4,7 @@ use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
+use test_util::http_server;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
 use util::assert_not_contains;
@@ -2006,5 +2007,51 @@ setInterval(() => {
   );
 
   wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn bundle_watch() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+    console.log("hello");
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("-o")
+    .arg(t.path().join("output.js"))
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("bundled in", &mut stderr_lines).await;
+  let contents = t.path().join("output.js").read_to_string();
+  assert_contains!(contents, "console.log(\"hello\");");
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  file_to_watch.write(
+    r#"
+    console.log("hello world");
+"#,
+  );
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("bundled in", &mut stderr_lines).await;
+  let contents = t.path().join("output.js").read_to_string();
+  assert_contains!(contents, "console.log(\"hello world\");");
+
   check_alive_then_kill(child);
 }

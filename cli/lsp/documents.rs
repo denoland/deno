@@ -1406,11 +1406,18 @@ impl DocumentModules {
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {

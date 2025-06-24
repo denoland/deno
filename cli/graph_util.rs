@@ -77,6 +77,7 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub ignore_graph_errors: bool,
+  pub allow_unknown_jsr_exports: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -105,6 +106,7 @@ pub fn graph_valid(
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
       ignore_graph_errors: options.ignore_graph_errors,
+      allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
   if let Some(error) = errors.next() {
@@ -146,6 +148,7 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub kind: GraphKind,
   pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
+  pub allow_unknown_jsr_exports: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -242,6 +245,18 @@ pub fn graph_walk_errors<'a>(
           roots.contains(error.specifier())
         }
       };
+      if is_root
+        && options.allow_unknown_jsr_exports
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::Load {
+            err: ModuleLoadError::Jsr(JsrLoadError::UnknownExport { .. }),
+            ..
+          })
+        )
+      {
+        return None;
+      }
       let message = enhance_graph_error(
         sys,
         &error,
@@ -972,6 +987,7 @@ impl ModuleGraphBuilder {
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
       false,
+      false,
     )
   }
 
@@ -980,6 +996,7 @@ impl ModuleGraphBuilder {
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
+    allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
@@ -998,6 +1015,7 @@ impl ModuleGraphBuilder {
           self.cli_options.sub_command(),
           DenoSubcommand::Check { .. }
         ),
+        allow_unknown_jsr_exports,
       },
     )
   }

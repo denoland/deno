@@ -31,7 +31,6 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
-use deno_media_type::MediaType;
 use log::debug;
 use log::info;
 use log::warn;
@@ -301,7 +300,7 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             format_css(&fake_filename, text, fmt_options)
           }
-          "html" => {
+          "html" | "svg" | "xml" => {
             format_html(&fake_filename, text, fmt_options, unstable_options)
           }
           "svelte" | "vue" | "astro" | "vto" | "njk" => {
@@ -538,15 +537,15 @@ pub fn format_html(
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
 ) -> impl Fn(
-  MediaType,
+  &str,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
   let unstable_sql = unstable_options.sql;
-  move |media_type, text, config| match media_type {
-    MediaType::Css => format_embedded_css(&text, config),
-    MediaType::Html => format_embedded_html(&text, config),
-    MediaType::Sql => {
+  move |lang, text, config| match lang {
+    "css" => format_embedded_css(&text, config),
+    "html" | "xml" | "svg" => format_embedded_html(lang, &text, config),
+    "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
       } else {
@@ -617,6 +616,8 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
+      declaration_order_group_by:
+        config::DeclarationOrderGroupBy::NonDeclaration,
     },
   };
   // Wraps the text in a css block of `a { ... ;}`
@@ -662,10 +663,17 @@ fn format_embedded_css(
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
+  lang: &str,
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
+
+  let language = match lang {
+    "xml" | "svg" => markup_fmt::Language::Xml,
+    _ => markup_fmt::Language::Html,
+  };
+
   let options = config::FormatOptions {
     layout: config::LayoutOptions {
       indent_width: config.indent_width as usize,
@@ -699,6 +707,7 @@ fn format_embedded_html(
         config::ClosingTagLineBreakForEmpty::Fit,
       max_attrs_per_line: None,
       prefer_attrs_single_line: false,
+      single_attr_same_line: false,
       html_normal_self_closing: None,
       html_void_self_closing: None,
       component_self_closing: None,
@@ -724,12 +733,9 @@ fn format_embedded_html(
       ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
     },
   };
-  let text = markup_fmt::format_text(
-    text,
-    markup_fmt::Language::Html,
-    &options,
-    |code, _| Ok::<_, std::convert::Infallible>(code.into()),
-  )?;
+  let text = markup_fmt::format_text(text, language, &options, |code, _| {
+    Ok::<_, std::convert::Infallible>(code.into())
+  })?;
   Ok(Some(text.to_string()))
 }
 
@@ -818,8 +824,10 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       format_css(file_path, file_text, fmt_options)
     }
-    "html" => format_html(file_path, file_text, fmt_options, unstable_options),
-    "svelte" | "vue" | "astro" | "vto" | "njk" => {
+    "html" | "xml" | "svg" => {
+      format_html(file_path, file_text, fmt_options, unstable_options)
+    }
+    "svelte" | "vue" | "astro" | "vto" | "njk" | "mustache" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options, unstable_options)
       } else {
@@ -1477,6 +1485,7 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    declaration_order_group_by: DeclarationOrderGroupBy::NonDeclaration,
   };
 
   FormatOptions {
@@ -1515,6 +1524,7 @@ fn get_resolved_markup_fmt_config(
     closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
+    single_attr_same_line: false,
     html_normal_self_closing: None,
     html_void_self_closing: None,
     component_self_closing: None,
@@ -1697,6 +1707,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yaml"
         | "ipynb"
         | "sql"
+        | "xml"
+        | "svg"
+        | "mustache"
     )
   })
 }

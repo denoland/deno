@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 59;
+const cacheVersion = 63;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -1230,8 +1230,8 @@ const ci = {
         },
       ]),
     },
-    wasm: {
-      name: "build wasm32",
+    libs: {
+      name: "build libs",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1253,6 +1253,16 @@ const ci = {
           name: "Cargo check (deno_npm_installer)",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          ].join("\n"),
         },
       ]),
     },

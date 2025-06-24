@@ -5,6 +5,11 @@ use std::num::NonZeroU32;
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
+use aws_lc_rs::digest;
+use aws_lc_rs::hkdf;
+use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
+use aws_lc_rs::hmac::Key as HmacKey;
+use aws_lc_rs::pbkdf2;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use deno_core::op2;
@@ -27,11 +32,6 @@ use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
 use rand::SeedableRng;
-use ring::digest;
-use ring::hkdf;
-use ring::hmac::Algorithm as HmacAlgorithm;
-use ring::hmac::Key as HmacKey;
-use ring::pbkdf2;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::signature::SignatureEncoding;
@@ -162,7 +162,7 @@ pub enum CryptoError {
   UnsupportedAlgorithm,
   #[class(generic)]
   #[error(transparent)]
-  KeyRejected(#[from] ring::error::KeyRejected),
+  KeyRejected(#[from] aws_lc_rs::error::KeyRejected),
   #[class(generic)]
   #[error(transparent)]
   RSA(#[from] rsa::Error),
@@ -171,7 +171,7 @@ pub enum CryptoError {
   Pkcs1(#[from] rsa::pkcs1::Error),
   #[class(generic)]
   #[error(transparent)]
-  Unspecified(#[from] ring::error::Unspecified),
+  Unspecified(#[from] aws_lc_rs::error::Unspecified),
   #[class(type)]
   #[error("Invalid key format")]
   InvalidKeyFormat,
@@ -399,7 +399,7 @@ pub async fn op_crypto_sign_key(
 
         let key = HmacKey::new(hash, &args.key.data);
 
-        let signature = ring::hmac::sign(&key, data);
+        let signature = aws_lc_rs::hmac::sign(&key, data);
         signature.as_ref().to_vec()
       }
       _ => return Err(CryptoError::UnsupportedAlgorithm),
@@ -491,7 +491,7 @@ pub async fn op_crypto_verify_key(
         let hash: HmacAlgorithm =
           args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
         let key = HmacKey::new(hash, &args.key.data);
-        ring::hmac::verify(&key, data, &args.signature).is_ok()
+        aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
       }
       Algorithm::Ecdsa => {
         let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;

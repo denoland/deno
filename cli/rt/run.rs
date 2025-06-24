@@ -243,6 +243,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .into(),
         ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -960,6 +966,7 @@ pub async fn run(
     strace_ops: None,
     is_inspecting: false,
     is_standalone: true,
+    auto_serve: false,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)

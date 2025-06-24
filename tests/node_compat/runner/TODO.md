@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1204 tests out of 3993 have been ported from Node 23.9.0 (30.15% ported, 70.47% remaining).
+1212 tests out of 3993 have been ported from Node 23.9.0 (30.35% ported, 70.27% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -220,18 +220,15 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-aborted-util.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-aborted-util.js)
 - [parallel/test-abortsignal-cloneable.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-abortsignal-cloneable.js)
 - [parallel/test-accessor-properties.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-accessor-properties.js)
-- [parallel/test-assert-builtins-not-read-from-filesystem.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-builtins-not-read-from-filesystem.js)
 - [parallel/test-assert-calltracker-calls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-calls.js)
 - [parallel/test-assert-calltracker-getCalls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-getCalls.js)
 - [parallel/test-assert-calltracker-report.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-report.js)
 - [parallel/test-assert-calltracker-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-verify.js)
-- [parallel/test-assert-checktag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-checktag.js)
 - [parallel/test-assert-deep-with-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep-with-error.js)
 - [parallel/test-assert-deep.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep.js)
 - [parallel/test-assert-esm-cjs-message-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-esm-cjs-message-verify.js)
 - [parallel/test-assert-fail-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-fail-deprecation.js)
 - [parallel/test-assert-first-line.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-first-line.js)
-- [parallel/test-assert-if-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-if-error.js)
 - [parallel/test-assert-objects.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-objects.js)
 - [parallel/test-assert-typedarray-deepequal.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-typedarray-deepequal.js)
 - [parallel/test-async-hooks-async-await.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-async-hooks-async-await.js)
@@ -490,11 +487,9 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-async-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-async-sign-verify.js)
 - [parallel/test-crypto-authenticated-stream.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated-stream.js)
 - [parallel/test-crypto-authenticated.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated.js)
-- [parallel/test-crypto-certificate.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-certificate.js)
 - [parallel/test-crypto-cipheriv-decipheriv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-cipheriv-decipheriv.js)
 - [parallel/test-crypto-classes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-classes.js)
 - [parallel/test-crypto-des3-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-des3-wrap.js)
-- [parallel/test-crypto-dh-constructor.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-constructor.js)
 - [parallel/test-crypto-dh-curves.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-curves.js)
 - [parallel/test-crypto-dh-generate-keys.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-generate-keys.js)
 - [parallel/test-crypto-dh-group-setters.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-dh-group-setters.js)
@@ -506,9 +501,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-domains.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-domains.js)
 - [parallel/test-crypto-ecb.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-ecb.js)
 - [parallel/test-crypto-ecdh-convert-key.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-ecdh-convert-key.js)
-- [parallel/test-crypto-encoding-validation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-encoding-validation-error.js)
 - [parallel/test-crypto-fips.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-fips.js)
-- [parallel/test-crypto-gcm-explicit-short-tag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-gcm-explicit-short-tag.js)
 - [parallel/test-crypto-gcm-implicit-short-tag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-gcm-implicit-short-tag.js)
 - [parallel/test-crypto-getcipherinfo.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-getcipherinfo.js)
 - [parallel/test-crypto-hash-stream-pipe.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-hash-stream-pipe.js)
@@ -541,7 +534,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-keygen-rsa-pss.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-rsa-pss.js)
 - [parallel/test-crypto-keygen-sync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen-sync.js)
 - [parallel/test-crypto-keygen.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-keygen.js)
-- [parallel/test-crypto-oneshot-hash.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-oneshot-hash.js)
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-random.js)
@@ -769,7 +761,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-error-messages.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-error-messages.js)
 - [parallel/test-fs-exists.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-exists.js)
 - [parallel/test-fs-existssync-false.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-existssync-false.js)
-- [parallel/test-fs-fchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fchmod.js)
 - [parallel/test-fs-filehandle-use-after-close.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle-use-after-close.js)
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)
@@ -1629,6 +1620,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-connect-reset.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-connect-reset.js)
 - [parallel/test-net-deprecated-setsimultaneousaccepts.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-deprecated-setsimultaneousaccepts.js)
 - [parallel/test-net-end-destroyed.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-end-destroyed.js)
+- [parallel/test-net-error-twice.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-error-twice.js)
 - [parallel/test-net-large-string.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-large-string.js)
 - [parallel/test-net-listen-exclusive-random-ports.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-listen-exclusive-random-ports.js)
 - [parallel/test-net-listen-fd0.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-net-listen-fd0.js)
@@ -2734,7 +2726,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [sequential/test-cpu-prof-kill.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-kill.js)
 - [sequential/test-cpu-prof-name.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-name.js)
 - [sequential/test-cpu-prof-worker-argv.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-cpu-prof-worker-argv.js)
-- [sequential/test-crypto-timing-safe-equal.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-crypto-timing-safe-equal.js)
 - [sequential/test-debug-prompt.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debug-prompt.js)
 - [sequential/test-debugger-custom-port.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debugger-custom-port.js)
 - [sequential/test-debugger-debug-brk.js](https://github.com/nodejs/node/tree/v23.9.0/test/sequential/test-debugger-debug-brk.js)

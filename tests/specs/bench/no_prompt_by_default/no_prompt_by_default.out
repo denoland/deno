@@ -3,8 +3,8 @@ Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/no_prompt_by_default.ts
 
-benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
------------ ----------------------------- --------------------- --------------------------
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
 no prompt   error: NotCapable: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 error: Bench failed

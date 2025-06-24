@@ -31,7 +31,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::has_flag_env_var;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
@@ -475,6 +474,15 @@ pub struct BundleFlags {
   pub code_splitting: bool,
   pub one_file: bool,
   pub packages: PackageHandling,
+  pub sourcemap: Option<SourceMapType>,
+  pub platform: BundlePlatform,
+  pub watch: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum BundlePlatform {
+  Browser,
+  Deno,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -484,12 +492,29 @@ pub enum BundleFormat {
   Iife,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum SourceMapType {
+  Linked,
+  Inline,
+  External,
+}
+
 impl std::fmt::Display for BundleFormat {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       BundleFormat::Esm => write!(f, "esm"),
       BundleFormat::Cjs => write!(f, "cjs"),
       BundleFormat::Iife => write!(f, "iife"),
+    }
+  }
+}
+
+impl std::fmt::Display for SourceMapType {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      SourceMapType::Linked => write!(f, "linked"),
+      SourceMapType::Inline => write!(f, "inline"),
+      SourceMapType::External => write!(f, "external"),
     }
   }
 }
@@ -985,11 +1010,6 @@ impl Flags {
   }
 
   pub fn otel_config(&self) -> OtelConfig {
-    let has_unstable_flag = self
-      .unstable_config
-      .features
-      .contains(&String::from("otel"));
-
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
       Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),
@@ -1000,8 +1020,7 @@ impl Flags {
       Err(_) => None,
     };
 
-    let disabled =
-      !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
+    let disabled = otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
     let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
 
     let propagators = if default {
@@ -1243,6 +1262,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
                          Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
+  <g>DENO_AUTO_SERVE</>        If the entrypoint contains export default { fetch }, `deno run`
+                               behaves like `deno serve`.
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
                          Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
@@ -1292,6 +1313,7 @@ static DENO_HELP: &str = cstr!(
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
+    <g>deploy</>       Manage and publish applications with Deno Deploy
     <g>doc</>          Generate and show documentation for a module or built-ins
                   <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
     <g>fmt</>          Format source files
@@ -1345,6 +1367,12 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
   let mut flags = Flags::default();
 
+  // to pass all flags, even help and
+  if matches.subcommand_matches("deploy").is_some() {
+    deploy_parse(&mut flags, &mut matches.remove_subcommand().unwrap().1)?;
+    return Ok(flags);
+  }
+
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1394,6 +1422,13 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       } else {
         app
       };
+
+    if subcommand.get_name() == "deploy" {
+      flags.argv = vec![String::from("--help")];
+      flags.permissions.allow_all = true;
+      flags.subcommand = DenoSubcommand::Deploy;
+      return Ok(flags);
+    }
 
     help_parse(&mut flags, subcommand);
     return Ok(flags);
@@ -1456,7 +1491,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m)?,
-      "deploy" => deploy_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -1714,6 +1748,7 @@ pub fn clap_root() -> Command {
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
+        .subcommand(deploy_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
@@ -1732,12 +1767,6 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand());
-
-      let cmd = if std::env::var("DENO_DEPLOY_SUBCOMMAND").is_ok() {
-        cmd.subcommand(deploy_subcommand())
-      } else {
-        cmd
-      };
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -1926,15 +1955,30 @@ fn bundle_subcommand() -> Command {
       _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
     }
   }
+  fn platform_parser(s: &str) -> Result<BundlePlatform, clap::Error> {
+    match s {
+      "browser" => Ok(BundlePlatform::Browser),
+      "deno" => Ok(BundlePlatform::Deno),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
+  fn sourcemap_parser(s: &str) -> Result<SourceMapType, clap::Error> {
+    match s {
+      "linked" => Ok(SourceMapType::Linked),
+      "inline" => Ok(SourceMapType::Inline),
+      "external" => Ok(SourceMapType::External),
+      _ => Err(clap::Error::new(clap::error::ErrorKind::InvalidValue)),
+    }
+  }
   command(
     "bundle",
     "Output a single JavaScript file with all dependencies.
 
-  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+  deno bundle jsr:@std/http/file-server -o file-server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
-  deno bundle https://deno.land/std/examples/colors.ts
+  deno bundle jsr:@std/http/file-server
 ",
     UnstableArgsConfig::ResolutionOnly,
   )
@@ -1974,6 +2018,7 @@ If no output file is given, the output is written to standard output:
       .arg(
         Arg::new("format")
           .long("format")
+          .num_args(1)
           .value_parser(clap::builder::ValueParser::new(format_parser))
           .default_value("esm"),
       )
@@ -1981,6 +2026,7 @@ If no output file is given, the output is written to standard output:
         Arg::new("packages")
           .long("packages")
           .help("How to handle packages. Accepted values are 'bundle' or 'external'")
+          .num_args(1)
           .value_parser(clap::builder::ValueParser::new(packages_parser))
           .default_value("bundle"),
       )
@@ -2006,6 +2052,30 @@ If no output file is given, the output is written to standard output:
           .value_parser(value_parser!(bool))
           .num_args(0..=1)
           .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("sourcemap")
+          .long("sourcemap")
+          .help("Generate source map. Accepted values are 'linked', 'inline', or 'external'")
+          .require_equals(true)
+          .default_missing_value("linked")
+          .value_parser(clap::builder::ValueParser::new(sourcemap_parser))
+          .num_args(0..=1)
+          .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("watch")
+          .long("watch")
+          .help("Watch and rebuild on changes")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("platform")
+          .long("platform")
+          .help("Platform to bundle for. Accepted values are 'browser' or 'deno'")
+          .num_args(1)
+          .value_parser(clap::builder::ValueParser::new(platform_parser))
+          .default_value("deno"),
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
@@ -4826,8 +4896,10 @@ fn bundle_parse(
   let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  allow_import_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
+    watch: matches.get_flag("watch"),
     output_path: output,
     output_dir: outdir,
     external: matches
@@ -4839,6 +4911,8 @@ fn bundle_parse(
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
     one_file: matches.get_flag("one-file"),
+    platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
+    sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
   });
   Ok(())
 }
@@ -5025,14 +5099,14 @@ fn deploy_parse(
     .map(|args| args.collect())
     .unwrap_or_default();
 
-  if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
-    args.insert(
-      0,
-      format!(
-        "--endpoint={}",
-        std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()
-      ),
-    );
+  if matches.contains_id("help") {
+    args.push(String::from("--help"));
+  }
+
+  if let Ok(url) = std::env::var("DENO_DEPLOY_URL") {
+    let mut new_args = vec![String::from("--endpoint"), url];
+    new_args.extend(args);
+    args = new_args;
   }
 
   flags.argv = args;
@@ -6103,7 +6177,7 @@ fn reload_arg_parse(
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.ca_data = matches.remove_one::<String>("cert").map(CaData::File);
+  flags.ca_data = matches.remove_one::<String>("cert").and_then(CaData::parse);
 }
 
 fn enable_testing_features_arg_parse(
@@ -9732,6 +9806,28 @@ mod tests {
           "script.ts".to_string(),
         )),
         ca_data: Some(CaData::File("example.crt".to_owned())),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_with_base64_cafile() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--cert",
+      "base64:bWVvdw==",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        ca_data: Some(CaData::Bytes(b"meow".into())),
         code_cache_enabled: true,
         ..Flags::default()
       }

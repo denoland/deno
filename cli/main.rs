@@ -467,11 +467,18 @@ pub fn main() {
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
+  {
+    deno_subprocess_windows::disable_stdio_inheritance();
+    colors::enable_ansi(); // For Windows 10
+  }
   deno_runtime::deno_permissions::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
 
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
