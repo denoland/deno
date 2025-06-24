@@ -1354,6 +1354,7 @@ impl DocumentModules {
 
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
+  // TODO(nayeemrmn): Support notebook scopes here.
   pub fn inspect_or_temp_modules_by_scope(
     &self,
     document: &Document,
@@ -1405,11 +1406,18 @@ impl DocumentModules {
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1876,6 +1884,7 @@ impl OpenDocumentsGraphLoader<'_> {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
             content: Arc::from(doc.text.as_bytes().to_owned()),
+            mtime: None,
             specifier: doc.specifier.as_ref().clone(),
             maybe_headers: None,
           })))
@@ -1897,21 +1906,6 @@ impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
       Some(fut) => fut,
       None => self.inner_loader.load(specifier, options),
     }
-  }
-
-  fn cache_module_info(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    self.inner_loader.cache_module_info(
-      specifier,
-      media_type,
-      source,
-      module_info,
-    )
   }
 }
 
@@ -1942,6 +1936,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -1989,6 +1984,7 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
@@ -2000,9 +1996,13 @@ fn analyze_module(
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleError::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+        },
       )),
       ResolutionMode::Import,
     ),

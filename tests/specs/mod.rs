@@ -117,6 +117,9 @@ struct MultiStepMetaData {
   /// steps.
   #[serde(default)]
   pub temp_dir: bool,
+  /// Whether to run this test.
+  #[serde(rename = "if")]
+  pub if_cond: Option<String>,
   /// Whether the temporary directory should be canonicalized.
   ///
   /// This should be used sparingly, but is sometimes necessary
@@ -165,6 +168,7 @@ impl SingleTestMetaData {
     MultiStepMetaData {
       base: self.base,
       cwd: None,
+      if_cond: self.step.if_cond.clone(),
       temp_dir: self.temp_dir,
       canonicalized_temp_dir: self.canonicalized_temp_dir,
       symlinked_temp_dir: self.symlinked_temp_dir,
@@ -260,7 +264,7 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if metadata.ignore {
+    if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
@@ -293,7 +297,11 @@ fn run_test_inner(
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
   let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
-  for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
+  for step in metadata
+    .steps
+    .iter()
+    .filter(|s| should_run(s.if_cond.as_deref()))
+  {
     let run_func = || run_step(step, metadata, cwd, &context);
     if step.flaky {
       run_flaky(run_func);
@@ -379,9 +387,9 @@ fn test_context_from_metadata(
   context
 }
 
-fn should_run_step(step: &StepMetaData) -> bool {
-  if let Some(cond) = &step.if_cond {
-    match cond.as_str() {
+fn should_run(if_cond: Option<&str>) -> bool {
+  if let Some(cond) = if_cond {
+    match cond {
       "windows" => cfg!(windows),
       "unix" => cfg!(unix),
       "mac" => cfg!(target_os = "macos"),

@@ -800,6 +800,51 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_deno_config_setting_no_workspace() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir
+    .source_file("file.ts", "const foo_bar = 1;\nconsole.log(foo_bar);\n");
+  let temp_dir_for_deno_json = test_util::TempDir::new();
+  temp_dir_for_deno_json.write(
+    "deno.json",
+    json!({
+      "lint": {
+        "rules": { "include": ["camelcase"] },
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_workspace_folders(vec![]);
+    builder.set_deno_enable(true);
+    builder.set_config(temp_dir_for_deno_json.url().join("deno.json").unwrap());
+  });
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 6 },
+          "end": { "line": 0, "character": 13 },
+        },
+        "severity": 2,
+        "code": "camelcase",
+        "source": "deno-lint",
+        "message": "Identifier 'foo_bar' is not in camel case.\nConsider renaming `foo_bar` to `fooBar`",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_deno_json_imports_comments_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5947,6 +5992,74 @@ fn lsp_jsr_auto_import_completion_workspace_member() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_jsr_auto_import_completion_patch() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@org/package": "jsr:@org/package"
+      },
+      "links": ["package"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package/deno.json",
+    json!({
+      "name": "@org/package",
+      "exports": "./mod.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write("package/mod.ts", "export const someValue = 1;\n");
+  temp_dir.write("other.ts", "import \"@org/package\";\n");
+  let file = temp_dir.source_file("file.ts", "someValue;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "someValue")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "someValue",
+        "labelDetails": { "description": "@org/package" },
+        "kind": 6,
+        "detail": "Add import from \"@org/package\"\n\nconst someValue: 1",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { someValue } from \"@org/package\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10282,6 +10395,69 @@ fn lsp_auto_import_npm_export_node_modules_dir_manual() {
   client.shutdown();
 }
 
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "preact": "npm:preact",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
+  );
+  let file = temp_dir.source_file("file.ts", "useEffect;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test]
 #[timeout(300_000)]
@@ -11621,8 +11797,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 466, "character": 12 },
-                    "end": { "line": 466, "character": 16 },
+                    "start": { "line": 598, "character": 12 },
+                    "end": { "line": 598, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -11779,6 +11955,68 @@ fn lsp_jupyter_completions() {
     }),
   );
 
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_jupyter_tsx() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "npm:preact@^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+
+  // TODO(nayeemrmn): `deno install` should work here, it doesn't as of writing.
+  temp_dir.write("main.tsx", "");
+  context.run_deno("check main.tsx");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.notebook_did_open(
+    url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+    1,
+    vec![
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "<div></div>;\n",
+      }),
+    ],
+  );
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()) },
+      "position": { "line": 0, "character": 1 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(property) JSXInternal.IntrinsicElements.div: preact.JSX.HTMLAttributes<HTMLDivElement>\n```",
+      },
+      "range": {
+        "start": { "line": 0, "character": 1 },
+        "end": { "line": 0, "character": 4 },
+      },
+    }),
+  );
   client.shutdown();
 }
 
@@ -15663,7 +15901,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_deno_json_scopes_ts_config() {
+fn lsp_deno_json_scopes_compiler_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -18367,6 +18605,7 @@ fn definitely_typed_fallback() {
 #[timeout(300_000)]
 fn do_not_auto_import_from_definitely_typed() {
   for node_modules_dir in ["none", "auto", "manual"] {
+    eprintln!("node_modules_dir: {node_modules_dir}");
     let context = TestContextBuilder::for_npm().use_temp_cwd().build();
     let mut client = context.new_lsp_command().build();
     let temp = context.temp_dir();
@@ -18387,22 +18626,6 @@ fn do_not_auto_import_from_definitely_typed() {
       },
       "nodeModulesDir": node_modules_dir
     });
-    if node_modules_dir == "manual" {
-      // TODO: there's a (pre-existing) bug that prevents auto-imports
-      // from working with nodeModuleDir "manual" w/o a package.json
-      temp.write(
-        "package.json",
-        json!({
-          "dependencies": {
-            "@denotest/index-export-no-types": "1.0.0",
-          },
-          "devDependencies": {
-            "@types/denotest__index-export-no-types": "1.0.0",
-          }
-        })
-        .to_string(),
-      );
-    }
     temp.write("deno.json", deno_json.to_string());
     context.run_deno("install");
 
@@ -18427,26 +18650,36 @@ fn do_not_auto_import_from_definitely_typed() {
         "triggerKind": 2,
       }),
     );
-    let item = completions
+    let items = completions
       .items
       .iter()
-      .find(|it| it.label == "foo")
-      .unwrap();
-    eprintln!("item: {item:#?}");
-    let res = client.write_request("completionItem/resolve", json!(item));
-    eprintln!("resolved: {res}");
-    assert_json_subset(
-      res,
-      json!({
-        "label": "foo",
-        "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
-        "additionalTextEdits": [json!({
-          "range": source.range_of("{}"),
-          "newText": "{ foo }"
-        })]
-      }),
+      .filter(|i| i.label == "foo")
+      .map(|i| client.write_request("completionItem/resolve", json!(i)))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      json!(items),
+      json!([
+        {
+          "label": "foo",
+          "labelDetails": {
+            "description": "@denotest/index-export-no-types",
+          },
+          "kind": 3,
+          "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
+          "documentation": { "kind": "markdown", "value": "" },
+          "sortText": "\u{ffff}16_0",
+          "additionalTextEdits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 13 },
+                "end": { "line": 1, "character": 15 },
+              },
+              "newText": "{ foo }",
+            },
+          ],
+        },
+      ]),
     );
-
-    client.did_close_file(&source);
+    client.shutdown();
   }
 }

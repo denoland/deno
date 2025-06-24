@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::ModuleSpecifier;
-use deno_graph::FastCheckDiagnostic;
+use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;

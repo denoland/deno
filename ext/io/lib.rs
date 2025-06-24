@@ -10,9 +10,13 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 #[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
@@ -36,6 +40,8 @@ use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -847,6 +853,47 @@ impl crate::fs::File for StdFileResourceInner {
     Err(FsError::NotSupported)
   }
 
+  fn chown_sync(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      let owner = _uid.map(nix::unistd::Uid::from_raw);
+      let group = _gid.map(nix::unistd::Gid::from_raw);
+      let res = nix::unistd::fchown(self.handle, owner, group);
+      if let Err(err) = res {
+        Err(io::Error::from_raw_os_error(err as i32).into())
+      } else {
+        Ok(())
+      }
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          use std::os::fd::AsFd;
+          let owner = _uid.map(nix::unistd::Uid::from_raw);
+          let group = _gid.map(nix::unistd::Gid::from_raw);
+          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+            .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
+        })
+        .await
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
     self.with_sync(|file| Ok(file.seek(pos)?))
   }
@@ -993,13 +1040,13 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 

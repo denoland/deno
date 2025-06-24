@@ -4,6 +4,9 @@
 #![allow(clippy::print_stderr)]
 
 fn main() {
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
   setup_panic_hook();
   test_server::servers::run_all_servers();
 }

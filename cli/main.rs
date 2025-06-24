@@ -127,7 +127,18 @@ async fn run_subcommand(
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
-    DenoSubcommand::Bundle => exit_with_message("⚠️ `deno bundle` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
+    DenoSubcommand::Bundle(bundle_flags) => {
+      spawn_subcommand(async {
+        log::warn!(
+          "⚠️ {} is experimental and subject to changes",
+          colors::cyan("deno bundle")
+        );
+        tools::bundle::bundle(flags, bundle_flags).await
+      })
+    },
+    DenoSubcommand::Deploy => {
+      spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
+    }
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
@@ -456,11 +467,18 @@ pub fn main() {
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
+  {
+    deno_subprocess_windows::disable_stdio_inheritance();
+    colors::enable_ansi(); // For Windows 10
+  }
   deno_runtime::deno_permissions::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
 
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
@@ -625,7 +643,9 @@ fn wait_for_start(
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockAddr;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
@@ -662,6 +682,7 @@ fn wait_for_start(
         let (rx, tx) = stream.into_split();
         (Box::new(rx), Box::new(tx))
       }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");

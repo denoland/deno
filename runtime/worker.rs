@@ -92,18 +92,6 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     rx
   });
 
-pub fn import_meta_resolve_callback(
-  loader: &dyn ModuleLoader,
-  specifier: String,
-  referrer: String,
-) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
-  loader.resolve(
-    &specifier,
-    &referrer,
-    deno_core::ResolutionKind::DynamicImport,
-  )
-}
-
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
 pub fn validate_import_attributes_callback(
@@ -798,6 +786,7 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
@@ -931,6 +920,7 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -948,6 +938,7 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -963,6 +954,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("exit") event for node compat.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -980,6 +972,7 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -997,6 +990,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1116,18 +1110,30 @@ fn common_runtime(
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
     ),
-    import_meta_resolve_callback: Some(Box::new(import_meta_resolve_callback)),
     validate_import_attributes_cb: Some(Box::new(
       validate_import_attributes_callback,
     )),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops.then(|| {
-      Box::new(|stack| {
-        deno_permissions::prompter::set_current_stacktrace(stack)
-      }) as _
-    }),
+    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops
+      .then(create_permissions_stack_trace_callback),
     ..Default::default()
   })
+}
+
+pub fn create_permissions_stack_trace_callback(
+) -> deno_core::OpStackTraceCallback {
+  Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+      stack
+        .into_iter()
+        .map(|frame| {
+          deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
+            &frame,
+          )
+        })
+        .collect()
+    }))
+  }) as _
 }
 
 pub struct UnconfiguredRuntime {

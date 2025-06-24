@@ -343,16 +343,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         )),
         FixSuggestion::hint(cstr!("Use <u>import.meta.dirname</> instead.")),
       ];
-    } else if msg.contains("Buffer is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>Buffer</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(&[
-          cstr!("Import it explicitly with <u>import { Buffer } from \"node:buffer\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
-      ];
     } else if msg.contains("clearImmediate is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
@@ -370,16 +360,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         )),
         FixSuggestion::hint_multiline(
           &[cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
-      ];
-    } else if msg.contains("global is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>global</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(&[
-          cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>,"),
           cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
         ]),
       ];

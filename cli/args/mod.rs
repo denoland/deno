@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod deno_json;
 mod flags;
 mod flags_net;
 
@@ -17,6 +16,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
@@ -24,7 +24,6 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsConfig;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
@@ -38,8 +37,8 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
+use deno_lib::args::npm_process_state;
 use deno_lib::args::CaData;
-use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
@@ -60,6 +59,8 @@ use thiserror::Error;
 use crate::sys::CliSys;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
+pub type CliTsConfigResolver =
+  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
@@ -498,6 +499,10 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  pub fn node_conditions(&self) -> &[String] {
+    self.flags.node_conditions.as_ref()
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
@@ -597,7 +602,7 @@ impl CliOptions {
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_node_main(&self) -> bool {
-    NPM_PROCESS_STATE.is_some()
+    npm_process_state(&CliSys::default()).is_some()
   }
 
   /// Gets the explicitly specified NodeModulesDir setting.
@@ -981,9 +986,9 @@ impl CliOptions {
             std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
             Some(var)
           }
-          Err(_) => NpmPackageReqReference::from_str(&flags.script)
-            .ok()
-            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+          Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
+            |req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string(),
+          ),
         }
       }
       _ => None,
@@ -996,6 +1001,11 @@ impl CliOptions {
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
+  }
+
+  pub fn unstable_subdomain_wildcards(&self) -> bool {
+    self.flags.unstable_config.subdomain_wildcards
+      || self.workspace().has_unstable("subdomain-wildcards")
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
@@ -1025,34 +1035,33 @@ impl CliOptions {
       || self.workspace().has_unstable("sloppy-imports")
   }
 
-  pub fn unstable_features(&self) -> Vec<String> {
+  pub fn unstable_features(&self) -> Vec<&str> {
     let from_config_file = self.workspace().unstable_features();
     let unstable_features = from_config_file
       .iter()
+      .map(|s| s.as_str())
       .chain(
         self
           .flags
           .unstable_config
           .features
           .iter()
-          .filter(|f| !from_config_file.contains(f)),
+          .filter(|f| !from_config_file.contains(f))
+          .map(|s| s.as_str()),
       )
-      .map(|f| f.to_owned())
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
       for unstable_value_from_config_file in &unstable_features {
-        if !all_valid_unstable_flags
-          .contains(&unstable_value_from_config_file.as_str())
-        {
+        if !all_valid_unstable_flags.contains(unstable_value_from_config_file) {
           log::warn!(
             "{} '{}' isn't a valid unstable feature",
             colors::yellow("Warning"),

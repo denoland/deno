@@ -20,9 +20,70 @@ and limitations under the License.
 /// Worker APIs
 /////////////////////////////
 
+/**
+ * Specifies characteristics about the event listener or the event handler it can invoke.
+ *
+ * This interface extends `EventListenerOptions` and provides additional configuration
+ * options for controlling event listener behavior.
+ *
+ * @example
+ * ```ts
+ * target.addEventListener('message', handler, {
+ *   once: true,
+ *   passive: true,
+ *   signal: controller.signal
+ * });
+ * ```
+ */
+/**
+ * Options that can be specified when adding an event listener via `addEventListener`.
+ *
+ * This interface extends `EventListenerOptions` and provides additional configuration
+ * options for controlling event listener behavior in a worker context.
+ *
+ * @example
+ * ```ts
+ * // Register a message event handler that automatically removes itself after one invocation
+ * worker.addEventListener('message', handleMessageOnce, { once: true });
+ *
+ * // Register a message event handler that doesn't block the runtime while processing events
+ * worker.addEventListener('message', handleMessage, { passive: true });
+ *
+ * // Register a message event handler that can be removed via an AbortController
+ * const controller = new AbortController();
+ * worker.addEventListener('message', handleMessage, { signal: controller.signal });
+ *
+ * // Later, to remove the listener:
+ * controller.abort();
+ * ```
+ */
 interface AddEventListenerOptions extends EventListenerOptions {
+    /**
+     * When set to true, the listener will be automatically removed after being invoked once.
+     * If not specified, defaults to false.
+     */
     once?: boolean;
+
+    /**
+     * When set to true, indicates that the function specified by the listener will never call
+     * `preventDefault()`. This allows optimization of the processing of events.
+     * If a passive listener does try to call `preventDefault()`, it will be ignored.
+     */
     passive?: boolean;
+
+    /**
+     * An `AbortSignal` that can be used to remove the event listener by calling `abort()`
+     * on the controller that created the signal.
+     *
+     * @example
+     * ```ts
+     * const controller = new AbortController();
+     * target.addEventListener('mousemove', handler, { signal: controller.signal });
+     *
+     * // Later, to remove the listener:
+     * controller.abort();
+     * ```
+     */
     signal?: AbortSignal;
 }
 
