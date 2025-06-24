@@ -104,6 +104,7 @@ pub async fn op_pipe_windows_wait(
   #[smi] rid: ResourceId,
 ) -> Result<(), NetError> {
   let pipe = state.resource_table.get::<NamedPipe>(rid)?;
+  drop(state);
   pipe.connect().await?;
   Ok(())
 }
