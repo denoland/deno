@@ -1,12 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-// deno-lint-ignore-file no-node-globals
 
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
