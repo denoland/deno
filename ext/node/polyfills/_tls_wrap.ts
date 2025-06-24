@@ -32,6 +32,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
+import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -101,6 +102,30 @@ export class TLSSocket extends net.Socket {
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
+
+    let wrap;
+    let handle;
+    let wrapHasActiveWriteFromPrevOwner;
+    if (socket) {
+      if (socket instanceof net.Socket && socket._handle) {
+        // 1. connected socket
+        wrap = socket;
+      } else {
+        // 2. socket has no handle so it is js not c++
+        // 3. unconnected sockets are wrapped
+        // TLS expects to interact from C++ with a net.Socket that has a C++ stream
+        // handle, but a JS stream doesn't have one. Wrap it up to make it look like
+        // a socket.
+        wrap = new JSStreamSocket(socket);
+      }
+
+      handle = wrap._handle;
+      wrapHasActiveWriteFromPrevOwner = wrap.writableLength > 0;
+    } else {
+      // 4. no socket, one will be created with net.Socket().connect
+      wrap = null;
+      wrapHasActiveWriteFromPrevOwner = false;
+    }
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -192,7 +217,8 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
+        } catch (e) {
+          throw e;
           // TODO(kt3k): Handle this
         }
       };

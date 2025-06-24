@@ -46,6 +46,7 @@ const {
   TypedArrayPrototypeGetBuffer,
 } = primordials;
 
+export const kBoundSession = Symbol("kBoundSession");
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");

@@ -2364,6 +2364,7 @@ dependencies = [
  "deno_permissions",
  "deno_process",
  "deno_subprocess_windows",
+ "deno_unsync",
  "deno_whoami",
  "der",
  "digest",
