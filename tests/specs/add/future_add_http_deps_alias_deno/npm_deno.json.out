@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "chalk_alias": "npm:chalk@5.4.1"
+  }
+}

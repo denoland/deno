@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "path": "jsr:@std/path@^1.1.0"
+  }
+}

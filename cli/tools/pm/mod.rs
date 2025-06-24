@@ -11,6 +11,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -34,6 +35,7 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::registry;
 
 mod cache_deps;
 pub(crate) mod deps;
@@ -722,6 +724,7 @@ pub struct AddRmPackageReq {
 pub enum Prefix {
   Jsr,
   Npm,
+  Http,
 }
 
 impl From<crate::args::DefaultRegistry> for Prefix {
@@ -742,6 +745,8 @@ impl AddRmPackageReq {
         (Some(Prefix::Jsr), text)
       } else if let Some(text) = text.strip_prefix("npm:") {
         (Some(Prefix::Npm), text)
+      } else if text.starts_with("http:") || text.starts_with("https:") {
+        (Some(Prefix::Http), text)
       } else {
         (None, text)
       }
@@ -752,7 +757,7 @@ impl AddRmPackageReq {
     // - other_alias@npm:<package_name>
     // - @alias/other@jsr:<package_name>
     fn parse_alias(entry_text: &str) -> Option<(&str, &str)> {
-      for prefix in ["npm:", "jsr:"] {
+      for prefix in ["npm:", "jsr:", "http:", "https:"] {
         let Some(location) = entry_text.find(prefix) else {
           continue;
         };
@@ -814,6 +819,56 @@ impl AddRmPackageReq {
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
+        }))
+      }
+      Prefix::Http => {
+        let entry_text =
+          registry::get_jsr_alternative(&Url::parse(entry_text)?)
+            .unwrap_or(entry_text.to_owned());
+        let (maybe_prefix, entry_text) = parse_prefix(
+          entry_text.trim_start_matches('"').trim_end_matches('"'),
+        );
+        let package_req = match maybe_prefix {
+          Some(Prefix::Jsr) => {
+            JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?
+              .into_inner()
+              .req
+          }
+          Some(Prefix::Npm) => {
+            NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?
+              .into_inner()
+              .req
+          }
+          _ => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        };
+
+        let package_req = if package_req.version_req
+          == *deno_semver::WILDCARD_VERSION_REQ
+          && package_req.version_req.version_text() == "*"
+          && !entry_text.contains("@*")
+        {
+          let latest_req = VersionReq::from_raw_text_and_inner(
+            "latest".into(),
+            deno_semver::RangeSetOrTag::Tag("latest".into()),
+          );
+          PackageReq {
+            name: package_req.name,
+            version_req: latest_req,
+          }
+        } else {
+          package_req
+        };
+
+        Ok(Ok(match maybe_prefix {
+          Some(Prefix::Jsr) => AddRmPackageReq {
+            alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
+            value: AddRmPackageReqValue::Jsr(package_req),
+          },
+          Some(Prefix::Npm) => AddRmPackageReq {
+            alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
+            value: AddRmPackageReqValue::Npm(package_req),
+          },
+          _ => return Ok(Err(PackageReq::from_str(entry_text)?)),
         }))
       }
     }

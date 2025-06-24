@@ -146,6 +146,100 @@ fn add_npm() {
   }));
 }
 
+#[test]
+fn add_deno_land_http_package() {
+  let context = pm_context_builder()
+    .env("JSR_URL", "https://jsr.io/")
+    .build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("add https://deno.land/std@1.1.0/path/mod.ts")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add jsr:@std/path@1.1.0");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@std/path": "jsr:@std/path@^1.1.0"
+    }
+  }));
+}
+
+#[test]
+fn add_alias_deno_land_http_package() {
+  let context = pm_context_builder()
+    .env("JSR_URL", "https://jsr.io/")
+    .build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("add path@https://deno.land/std@1.1.0/path/mod.ts")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add jsr:@std/path@1.1.0");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "path": "jsr:@std/path@^1.1.0"
+    }
+  }));
+}
+
+#[test]
+fn add_esm_sh_http_package() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    temp_dir.path().join(".npmrc"),
+    "registry=https://registry.npmjs.org",
+  );
+
+  let output = context
+    .new_command()
+    .args("add https://esm.sh/chalk@5.4.1")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add npm:chalk@5.4.1");
+  temp_dir
+    .path()
+    .join("deno.json")
+    .assert_matches_json(json!({
+      "imports": {
+        "chalk": "npm:chalk@5.4.1"
+      }
+    }));
+}
+
+#[test]
+fn add_alias_esm_sh_http_package() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    temp_dir.path().join(".npmrc"),
+    "registry=https://registry.npmjs.org",
+  );
+
+  let output = context
+    .new_command()
+    .args("add chalk_alias@https://esm.sh/chalk@5.4.1")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add npm:chalk@5.4.1");
+  temp_dir
+    .path()
+    .join("deno.json")
+    .assert_matches_json(json!({
+      "imports": {
+        "chalk_alias": "npm:chalk@5.4.1"
+      }
+    }));
+}
+
 fn pm_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
