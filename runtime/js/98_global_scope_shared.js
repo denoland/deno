@@ -142,6 +142,8 @@ const windowOrWorkerGlobalScope = {
   EventSource: core.propWritable(eventSource.EventSource),
   performance: core.propWritable(performance.performance),
   process: core.propWritable(process),
+  setImmediate: core.propWritable(setImmediate),
+  clearImmediate: core.propWritable(clearImmediate),
   Buffer: core.propWritable(Buffer),
   global: {
     enumerable: true,
@@ -337,9 +339,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
-  setImmediate: core.propWritable(setImmediate),
-  clearImmediate: core.propWritable(clearImmediate),
-};
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };
