@@ -1012,11 +1012,6 @@ impl Flags {
   }
 
   pub fn otel_config(&self) -> OtelConfig {
-    let has_unstable_flag = self
-      .unstable_config
-      .features
-      .contains(&String::from("otel"));
-
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
       Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),
@@ -1027,8 +1022,7 @@ impl Flags {
       Err(_) => None,
     };
 
-    let disabled =
-      !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
+    let disabled = otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
     let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
 
     let propagators = if default {
