@@ -57,6 +57,7 @@ const NODE_IGNORED_TEST_DIRS = [
   "fixtures",
   "fuzzers",
   "js-native-api",
+  "known_issues",
   "node-api",
   "overlapped-checker",
   "report",
