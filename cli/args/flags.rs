@@ -477,6 +477,7 @@ pub struct BundleFlags {
   pub packages: PackageHandling,
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
+  pub watch: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
@@ -1268,6 +1269,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
                          Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
+  <g>DENO_AUTO_SERVE</>        If the entrypoint contains export default { fetch }, `deno run`
+                               behaves like `deno serve`.
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
                          Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
@@ -2058,6 +2061,12 @@ If no output file is given, the output is written to standard output:
           .value_parser(clap::builder::ValueParser::new(sourcemap_parser))
           .num_args(0..=1)
           .action(ArgAction::Set),
+      )
+      .arg(
+        Arg::new("watch")
+          .long("watch")
+          .help("Watch and rebuild on changes")
+          .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("platform")
@@ -4889,6 +4898,7 @@ fn bundle_parse(
   allow_import_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
+    watch: matches.get_flag("watch"),
     output_path: output,
     output_dir: outdir,
     external: matches
@@ -6166,7 +6176,7 @@ fn reload_arg_parse(
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.ca_data = matches.remove_one::<String>("cert").map(CaData::File);
+  flags.ca_data = matches.remove_one::<String>("cert").and_then(CaData::parse);
 }
 
 fn enable_testing_features_arg_parse(
@@ -9795,6 +9805,28 @@ mod tests {
           "script.ts".to_string(),
         )),
         ca_data: Some(CaData::File("example.crt".to_owned())),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_with_base64_cafile() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--cert",
+      "base64:bWVvdw==",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        ca_data: Some(CaData::Bytes(b"meow".into())),
         code_cache_enabled: true,
         ..Flags::default()
       }

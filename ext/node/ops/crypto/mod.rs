@@ -2,6 +2,7 @@
 use std::future::Future;
 use std::rc::Rc;
 
+use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -24,7 +25,6 @@ use p384::NistP384;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::Rng;
-use ring::signature::Ed25519KeyPair;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::Oaep;
@@ -1131,12 +1131,55 @@ pub fn op_node_verify_ed25519(
     _ => return Err(VerifyEd25519Error::ExpectedEd25519PublicKey),
   };
 
-  let verified = ring::signature::UnparsedPublicKey::new(
-    &ring::signature::ED25519,
+  let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
     ed25519.as_bytes().as_slice(),
   )
   .verify(data, signature)
   .is_ok();
 
   Ok(verified)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SpkacError {
+  #[error("spkac is too large")]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  #[class(range)]
+  BufferOutOfRange,
+}
+
+#[op2(fast)]
+pub fn op_node_verify_spkac(
+  #[buffer] spkac: &[u8],
+) -> Result<bool, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::verify_spkac(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_public_key(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_public_key(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_challenge(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_challenge(spkac))
 }
