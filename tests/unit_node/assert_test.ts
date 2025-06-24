@@ -30,3 +30,12 @@ Deno.test("[node/assert] CallTracker correctly exported", () => {
   assert.strictEqual(typeof assert.default.CallTracker, "function");
   assert.strictEqual(assert.CallTracker, assert.default.CallTracker);
 });
+
+Deno.test("[node/assert] deepStrictEqual(ArrayBuffer(2), ArrayBuffer(3)", () => {
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new ArrayBuffer(2), new ArrayBuffer(3));
+    },
+    assert.AssertionError,
+  );
+});
