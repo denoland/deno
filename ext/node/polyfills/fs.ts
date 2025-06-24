@@ -22,6 +22,7 @@ import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
+import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
 import { fchown, fchownSync } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstat, fstatPromise, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
@@ -215,6 +216,8 @@ export default {
   exists,
   existsSync,
   F_OK,
+  fchmod,
+  fchmodSync,
   fchown,
   fchownSync,
   fdatasync,
@@ -332,6 +335,8 @@ export {
   exists,
   existsSync,
   F_OK,
+  fchmod,
+  fchmodSync,
   fchown,
   fchownSync,
   fdatasync,

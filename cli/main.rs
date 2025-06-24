@@ -476,6 +476,10 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
+
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();

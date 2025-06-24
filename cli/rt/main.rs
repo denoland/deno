@@ -67,6 +67,11 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 
 fn main() {
   deno_runtime::deno_permissions::mark_standalone();
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
+
   let args: Vec<_> = env::args_os().collect();
   let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {

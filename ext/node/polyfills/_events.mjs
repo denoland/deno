@@ -72,11 +72,6 @@ const kMaxEventTargetListenersWarned = Symbol(
   "events.maxEventTargetListenersWarned",
 );
 
-let process;
-export function setProcess(p) {
-  process = p;
-}
-
 /**
  * Creates a new `EventEmitter` instance.
  * @param {{ captureRejections?: boolean; }} [opts]

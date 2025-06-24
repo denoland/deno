@@ -72,7 +72,7 @@ use tower_lsp::lsp_types as lsp;
 use super::code_lens;
 use super::code_lens::CodeLensData;
 use super::config;
-use super::config::LspTsConfig;
+use super::config::LspCompilerOptions;
 use super::documents::DocumentModule;
 use super::documents::DocumentText;
 use super::language_server;
@@ -296,7 +296,8 @@ impl Serialize for ChangeKind {
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
-  pub new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+  pub new_compiler_options_by_scope:
+    Option<BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>>,
   pub new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
 }
 
@@ -320,11 +321,15 @@ impl<'a> ToV8<'a> for PendingChange {
     };
     let project_version =
       v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
-    let new_configs_by_scope =
-      if let Some(new_configs_by_scope) = self.new_configs_by_scope {
+    let new_compiler_options_by_scope =
+      if let Some(new_compiler_options_by_scope) =
+        self.new_compiler_options_by_scope
+      {
         serde_v8::to_v8(
           scope,
-          new_configs_by_scope.into_iter().collect::<Vec<_>>(),
+          new_compiler_options_by_scope
+            .into_iter()
+            .collect::<Vec<_>>(),
         )
         .unwrap_or_else(|err| {
           lsp_warn!("Couldn't serialize ts configs: {err}");
@@ -353,7 +358,7 @@ impl<'a> ToV8<'a> for PendingChange {
         &[
           modified_scripts,
           project_version,
-          new_configs_by_scope,
+          new_compiler_options_by_scope,
           new_notebook_scopes,
         ],
       )
@@ -367,13 +372,15 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_compiler_options_by_scope: Option<
+      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+    >,
     new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
-    if let Some(new_configs_by_scope) = new_configs_by_scope {
-      self.new_configs_by_scope = Some(new_configs_by_scope);
+    if let Some(new_compiler_options_by_scope) = new_compiler_options_by_scope {
+      self.new_compiler_options_by_scope = Some(new_compiler_options_by_scope);
     }
     if let Some(new_notebook_scopes) = new_notebook_scopes {
       self.new_notebook_scopes = Some(new_notebook_scopes);
@@ -493,7 +500,9 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     documents: &[(Document, ChangeKind)],
-    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+    new_compiler_options_by_scope: Option<
+      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+    >,
     new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
   ) {
     let modified_scripts = documents
@@ -510,7 +519,7 @@ impl TsServer {
         pending_change.coalesce(
           snapshot.project_version,
           modified_scripts,
-          new_configs_by_scope,
+          new_compiler_options_by_scope,
           new_notebook_scopes,
         );
       }
@@ -518,7 +527,7 @@ impl TsServer {
         let pending_change = PendingChange {
           modified_scripts,
           project_version: snapshot.project_version,
-          new_configs_by_scope,
+          new_compiler_options_by_scope,
           new_notebook_scopes,
         };
         *pending = Some(pending_change);
@@ -5954,7 +5963,7 @@ mod tests {
           .tree
           .data_by_scope()
           .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
           .collect(),
       ),
       None,
@@ -6862,7 +6871,9 @@ mod tests {
     fn change<S: AsRef<str>>(
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
-      new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
+      new_compiler_options_by_scope: Option<
+        BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+      >,
     ) -> PendingChange {
       PendingChange {
         project_version,
@@ -6870,7 +6881,7 @@ mod tests {
           .into_iter()
           .map(|(s, c)| (s.as_ref().into(), c))
           .collect(),
-        new_configs_by_scope,
+        new_compiler_options_by_scope,
         new_notebook_scopes: None,
       }
     }

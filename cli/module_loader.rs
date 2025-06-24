@@ -38,7 +38,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -47,6 +46,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
+use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::loader::StrippingTypesNodeModulesError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
@@ -55,6 +55,7 @@ use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
@@ -226,7 +227,7 @@ impl ModuleLoadPreparer {
       .await?;
 
     if !skip_graph_roots_validation {
-      self.graph_roots_valid(graph, roots, allow_unknown_media_types)?;
+      self.graph_roots_valid(graph, roots, allow_unknown_media_types, false)?;
     }
 
     drop(_pb_clear_guard);
@@ -304,11 +305,13 @@ impl ModuleLoadPreparer {
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
+    allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_roots_valid(
       graph,
       roots,
       allow_unknown_media_types,
+      allow_unknown_jsr_exports,
     )
   }
 }
@@ -504,12 +507,41 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
+impl CliModuleLoaderFactory {
+  pub fn create_cli_module_loader(
+    &self,
+    root_permissions: PermissionsContainer,
+  ) -> CliModuleLoader<MainModuleGraphContainer> {
+    CliModuleLoader(Rc::new(CliModuleLoaderInner {
+      lib: self.shared.lib_window,
+      is_worker: false,
+      parent_permissions: root_permissions.clone(),
+      permissions: root_permissions,
+      graph_container: (*self.shared.main_module_graph_container).clone(),
+      node_code_translator: self.shared.node_code_translator.clone(),
+      emitter: self.shared.emitter.clone(),
+      parsed_source_cache: self.shared.parsed_source_cache.clone(),
+      shared: self.shared.clone(),
+      loaded_files: Default::default(),
+    }))
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
 #[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
 pub struct LoadUnpreparedModuleError {
   specifier: ModuleSpecifier,
   maybe_referrer: Option<ModuleSpecifier>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("{message}")]
+#[class(inherit)]
+pub struct EnhancedGraphError {
+  #[inherit]
+  pub error: deno_graph::ModuleError,
+  pub message: String,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -520,6 +552,9 @@ pub enum LoadPreparedModuleError {
   #[class(inherit)]
   #[error(transparent)]
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Graph(#[from] Box<EnhancedGraphError>),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -551,26 +586,116 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(inherit)]
+#[error(transparent)]
+pub struct LoadCodeSourceError(#[from] pub Box<LoadCodeSourceErrorKind>);
+
+impl LoadCodeSourceError {
+  pub fn from_err<E: Into<LoadCodeSourceErrorKind>>(err: E) -> Self {
+    Self(Box::new(err.into()))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadCodeSourceErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmModuleLoad(#[from] NpmModuleLoadError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadPreparedModule(#[from] LoadPreparedModuleError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] deno_core::error::ModuleLoaderError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmReqRef(#[from] ResolveNpmReqRefError),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CliModuleLoaderError {
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadCodeSource(#[from] LoadCodeSourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
+  #[class(generic)]
+  #[error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.")]
+  MissingJsonAttribute,
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] Box<deno_core::error::ModuleLoaderError>),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
+impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
+  pub async fn load_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    requested_module_type: RequestedModuleType,
+  ) -> Result<ModuleSource, CliModuleLoaderError> {
+    self
+      .0
+      .load_module_source(specifier, maybe_referrer, requested_module_type)
+      .await
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
+  async fn load_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    requested_module_type: RequestedModuleType,
+  ) -> Result<ModuleSource, CliModuleLoaderError> {
+    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
+
+    let module_type = match code_source.media_type {
+      MediaType::Json => ModuleType::Json,
+      MediaType::Wasm => ModuleType::Wasm,
+      _ => ModuleType::JavaScript,
+    };
+
+    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
+    // import attributes) is not JSON we need to fail.
+    if module_type == ModuleType::Json
+      && requested_module_type != RequestedModuleType::Json
+    {
+      return Err(CliModuleLoaderError::MissingJsonAttribute);
+    }
+
+    Ok(ModuleSource::new_with_redirect(
+      module_type,
+      code_source.code,
+      specifier,
+      &code_source.found_url,
+      None,
+    ))
+  }
+
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
-    let code_source = self.load_code_source(specifier, maybe_referrer).await?;
-    let code = if self.shared.is_inspecting
-      || code_source.media_type == MediaType::Wasm
-    {
-      // we need the code with the source map in order for
-      // it to work with --inspect or --inspect-brk
-      code_source.code
-    } else {
-      // v8 is slower when source maps are present, so we strip them
-      code_without_source_map(code_source.code)
-    };
+    let code_source = self
+      .load_code_source(specifier, maybe_referrer)
+      .await
+      .map_err(JsErrorBox::from_err)?;
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
       MediaType::Wasm => ModuleType::Wasm,
@@ -584,6 +709,16 @@ impl<TGraphContainer: ModuleGraphContainer>
     {
       return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
+    let code = if self.shared.is_inspecting
+      || code_source.media_type == MediaType::Wasm
+    {
+      // we need the code with the source map in order for
+      // it to work with --inspect or --inspect-brk
+      code_source.code
+    } else {
+      // v8 is slower when source maps are present, so we strip them
+      code_without_source_map(code_source.code)
+    };
 
     let code_cache = if module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().map(|cache| {
@@ -621,11 +756,11 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, JsErrorBox> {
+  ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
     match self
       .load_prepared_module(specifier)
       .await
-      .map_err(JsErrorBox::from_err)?
+      .map_err(LoadCodeSourceError::from_err)?
     {
       Some(code) => Ok(code),
       None => {
@@ -639,7 +774,9 @@ impl<TGraphContainer: ModuleGraphContainer>
             // but the repl may also end up here and it won't have
             // a referrer so create a referrer for it here
             None => Cow::Owned(
-              self.resolve_referrer("").map_err(JsErrorBox::from_err)?,
+              self
+                .resolve_referrer("")
+                .map_err(LoadCodeSourceError::from_err)?,
             ),
           };
           Cow::Owned(
@@ -652,10 +789,10 @@ impl<TGraphContainer: ModuleGraphContainer>
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?
+              .map_err(LoadCodeSourceError::from_err)?
               .unwrap()
               .into_url()
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(LoadCodeSourceError::from_err)?,
           )
         } else {
           Cow::Borrowed(specifier)
@@ -666,9 +803,9 @@ impl<TGraphContainer: ModuleGraphContainer>
             .npm_module_loader
             .load(&specifier, maybe_referrer)
             .await
-            .map_err(JsErrorBox::from_err);
+            .map_err(LoadCodeSourceError::from_err);
         }
-        Err(JsErrorBox::from_err(LoadUnpreparedModuleError {
+        Err(LoadCodeSourceError::from_err(LoadUnpreparedModuleError {
           specifier: specifier.into_owned(),
           maybe_referrer: maybe_referrer.cloned(),
         }))
@@ -868,7 +1005,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
     };
 
-    ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
+    // only verify this for an import and not import.meta.resolve
+    if !is_import_meta {
+      ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
+    }
+
     Ok(specifier)
   }
 
@@ -959,21 +1100,21 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
     let maybe_module = graph.try_get(specifier).map_err(|err| {
-      JsErrorBox::new(
-        err.get_class(),
-        enhance_graph_error(
+      Box::new(EnhancedGraphError {
+        message: enhance_graph_error(
           &self.shared.sys,
           &ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
         ),
-      )
+        error: err.clone(),
+      })
     })?;
 
     match maybe_module {
@@ -1122,8 +1263,9 @@ enum CodeOrDeferredEmit<'a> {
   },
 }
 
+#[derive(Clone)]
 // todo(dsherret): this double Rc boxing is not ideal
-struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
+pub struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
   Rc<CliModuleLoaderInner<TGraphContainer>>,
 );
 
@@ -1246,6 +1388,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               &graph,
               &[specifier],
               false,
+              false,
             )?;
           }
           return Ok(());
@@ -1290,6 +1433,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         module_load_preparer.graph_roots_valid(
           &graph_container.graph(),
           specifiers,
+          false,
           false,
         )?;
       }
