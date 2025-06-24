@@ -18,9 +18,9 @@ import {
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 import imported1 from "ext:deno_node/internal/errors.ts";
 import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
-import Duplex from "ext:deno_node/internal/streams/duplex.js";
-import Readable from "ext:deno_node/internal/streams/readable.js";
-import Writable from "ext:deno_node/internal/streams/writable.js";
+import Duplex from "node:_stream_duplex";
+import Readable from "node:_stream_readable";
+import Writable from "node:_stream_writable";
 import from from "ext:deno_node/internal/streams/from.js";
 import { isBlob } from "ext:deno_web/09_file.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";

@@ -3,7 +3,7 @@
 
 import { primordials } from "ext:core/mod.js";
 import { pipeline } from "ext:deno_node/internal/streams/pipeline.js";
-import Duplex from "ext:deno_node/internal/streams/duplex.js";
+import Duplex from "node:_stream_duplex";
 import { destroyer } from "ext:deno_node/internal/streams/destroy.js";
 
 import {

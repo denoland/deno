@@ -3,8 +3,8 @@
 
 import { primordials } from "ext:core/mod.js";
 import _mod1 from "ext:deno_node/internal/streams/legacy.js";
-import Readable from "ext:deno_node/internal/streams/readable.js";
-import Writable from "ext:deno_node/internal/streams/writable.js";
+import Readable from "node:_stream_readable";
+import Writable from "node:_stream_writable";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
 import { kOnConstructed } from "ext:deno_node/internal/streams/utils.js";

@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1212 tests out of 3993 have been ported from Node 23.9.0 (30.35% ported, 70.27% remaining).
+1214 tests out of 3993 have been ported from Node 23.9.0 (30.40% ported, 70.22% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2038,7 +2038,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-stdout-close-unref.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-close-unref.js)
 - [parallel/test-stdout-to-file.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-to-file.js)
 - [parallel/test-strace-openat-openssl.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-strace-openat-openssl.js)
-- [parallel/test-stream-aliases-legacy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-aliases-legacy.js)
 - [parallel/test-stream-base-prototype-accessors-enumerability.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-prototype-accessors-enumerability.js)
 - [parallel/test-stream-base-typechecking.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-typechecking.js)
 - [parallel/test-stream-consumers.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-consumers.js)

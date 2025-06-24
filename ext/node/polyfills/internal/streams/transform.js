@@ -4,7 +4,7 @@
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
 import _mod1 from "ext:deno_node/internal/errors.ts";
-import Duplex from "ext:deno_node/internal/streams/duplex.js";
+import Duplex from "node:_stream_duplex";
 import { getHighWaterMark } from "ext:deno_node/internal/streams/state.js";
 
 const {

@@ -2,7 +2,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-import Transform from "ext:deno_node/internal/streams/transform.js";
+import Transform from "node:_stream_transform";
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
