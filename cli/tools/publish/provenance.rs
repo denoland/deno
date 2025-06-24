@@ -3,6 +3,9 @@
 use std::collections::HashMap;
 use std::env;
 
+use aws_lc_rs::rand::SystemRandom;
+use aws_lc_rs::signature::EcdsaKeyPair;
+use aws_lc_rs::signature::KeyPair;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine as _;
@@ -15,9 +18,6 @@ use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
-use ring::rand::SystemRandom;
-use ring::signature::EcdsaKeyPair;
-use ring::signature::KeyPair;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
@@ -371,8 +371,8 @@ static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
     .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
 });
 
-static ALGORITHM: &ring::signature::EcdsaSigningAlgorithm =
-  &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
+static ALGORITHM: &aws_lc_rs::signature::EcdsaSigningAlgorithm =
+  &aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
 
 struct KeyMaterial {
   pub _case: &'static str,
@@ -437,7 +437,7 @@ impl<'a> FulcioSigner<'a> {
     let rng = SystemRandom::new();
     let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
     let ephemeral_signer =
-      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)?;
+      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref())?;
 
     Ok(Self {
       ephemeral_signer,
@@ -449,7 +449,7 @@ impl<'a> FulcioSigner<'a> {
   pub async fn sign(
     self,
     data: &[u8],
-  ) -> Result<(ring::signature::Signature, KeyMaterial), AnyError> {
+  ) -> Result<(aws_lc_rs::signature::Signature, KeyMaterial), AnyError> {
     // Request token from GitHub Actions for audience "sigstore"
     let token = self.gha_request_token("sigstore").await?;
     // Extract the subject from the token
@@ -490,7 +490,7 @@ impl<'a> FulcioSigner<'a> {
     &self,
     token: &str,
     public_key: String,
-    challenge: ring::signature::Signature,
+    challenge: aws_lc_rs::signature::Signature,
   ) -> Result<Vec<String>, AnyError> {
     let url = format!("{}/api/v2/signingCert", *DEFAULT_FULCIO_URL);
     let request_body = CreateSigningCertificateRequest {

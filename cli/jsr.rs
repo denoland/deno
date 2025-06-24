@@ -116,5 +116,6 @@ pub fn partial_jsr_package_version_info_from_slice(
       .unwrap_or_default(),
     module_graph_1: None,
     module_graph_2: None,
+    lockfile_checksum: None,
   })
 }

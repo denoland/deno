@@ -8,6 +8,8 @@ use std::io::SeekFrom;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,6 +37,8 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
@@ -582,7 +586,7 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
     &self,
     path: &Path,
   ) -> std::io::Result<
-    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
     if self.0.is_path_within(path) {
       let entries = self.0.read_dir_with_metadata(path)?;
@@ -905,9 +909,18 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 }
 
 impl sys_traits::EnvCurrentDir for DenoRtSys {
+  #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
     sys_traits::impls::RealSys.env_current_dir()
+  }
+}
+
+impl sys_traits::EnvHomeDir for DenoRtSys {
+  #[inline]
+  fn env_home_dir(&self) -> Option<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_home_dir()
   }
 }
 
@@ -1243,7 +1256,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
@@ -1381,16 +1394,23 @@ impl FileBackedVfs {
     )
   }
 
-  pub fn read_dir_with_metadata<'a>(
-    &'a self,
+  pub fn read_dir_with_metadata(
+    &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
-    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
-      parent_path: path.to_path_buf(),
-      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
-    }))
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(move |entry| FileBackedVfsDirEntry {
+          parent_path: path.to_path_buf(),
+          metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
+        })
+        .collect::<Vec<_>>()
+        .into_iter(),
+    )
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {

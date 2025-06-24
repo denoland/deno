@@ -101,6 +101,13 @@ pub async fn info(
                 .into(),
             );
           }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            );
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
@@ -137,7 +144,8 @@ pub async fn info(
       None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
     };
 
-    let mut loader = module_graph_builder.create_graph_loader();
+    let mut loader =
+      module_graph_builder.create_graph_loader_with_root_permissions();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
       .create_graph_with_loader(

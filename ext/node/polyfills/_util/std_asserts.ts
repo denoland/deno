@@ -1,9 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // vendored from std/assert/mod.ts
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
-  DatePrototype,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   DatePrototypeGetTime,
@@ -13,6 +12,7 @@ const {
   ObjectIs,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeToString,
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototype,
@@ -89,10 +89,10 @@ export function equal(c: unknown, d: unknown): boolean {
     ) {
       return String(a) === String(b);
     }
-    if (
-      ObjectPrototypeIsPrototypeOf(DatePrototype, a) &&
-      ObjectPrototypeIsPrototypeOf(DatePrototype, b)
-    ) {
+    if (core.isDate(a) || core.isDate(b)) {
+      if (!core.isDate(a) || !core.isDate(b)) {
+        return false;
+      }
       const aTime = DatePrototypeGetTime(a);
       const bTime = DatePrototypeGetTime(b);
       // Check for NaN equality manually since NaN is not
@@ -110,6 +110,9 @@ export function equal(c: unknown, d: unknown): boolean {
     }
     if (a && typeof a === "object" && b && typeof b === "object") {
       if (a && b && !constructorsEqual(a, b)) {
+        return false;
+      }
+      if (ObjectPrototypeToString(a) !== ObjectPrototypeToString(b)) {
         return false;
       }
       if (
@@ -198,9 +201,14 @@ export function equal(c: unknown, d: unknown): boolean {
 }
 
 function constructorsEqual(a: object, b: object) {
-  return a.constructor === b.constructor ||
-    a.constructor === Object && !b.constructor ||
-    !a.constructor && b.constructor === Object;
+  // Treat {} and Object.create(null) as not equal
+  if (
+    (a.constructor === Object && !b.constructor) ||
+    (!a.constructor && b.constructor === Object)
+  ) {
+    return false;
+  }
+  return a.constructor === b.constructor;
 }
 
 /** Make an assertion, error will be thrown if `expr` does not have truthy value. */

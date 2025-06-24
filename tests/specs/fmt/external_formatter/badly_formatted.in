@@ -11,6 +11,12 @@ margin: 0.5rem;
         ${OTHER_STYLES};
 		}
 	}
+
+  div { padding: ${condition ? expression1 + expression2 * expression3 : expression4}px; }
+
+  span {
+    ${SOME_STYLE}
+  }
 `;
 
 cssString = css`

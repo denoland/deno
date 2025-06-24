@@ -45,7 +45,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
-use crate::args::TsConfig;
+use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
@@ -457,7 +457,7 @@ pub struct RequestNpmState {
 pub struct Request {
   /// The TypeScript compiler options which will be serialized and sent to
   /// tsc.
-  pub config: Arc<TsConfig>,
+  pub config: Arc<CompilerOptions>,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
@@ -1486,7 +1486,7 @@ mod tests {
   use super::Diagnostic;
   use super::DiagnosticCategory;
   use super::*;
-  use crate::args::TsConfig;
+  use crate::args::CompilerOptions;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
@@ -1575,7 +1575,7 @@ mod tests {
         Default::default(),
       )
       .await;
-    let config = Arc::new(TsConfig::new(json!({
+    let config = Arc::new(CompilerOptions::new(json!({
       "allowJs": true,
       "checkJs": false,
       "esModuleInterop": true,

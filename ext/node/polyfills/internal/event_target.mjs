@@ -1,9 +1,38 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayFrom,
+  Boolean,
+  Error,
+  FinalizationRegistryPrototypeRegister,
+  FinalizationRegistryPrototypeUnregister,
+  FunctionPrototypeCall,
+  NumberIsInteger,
+  MapPrototypeClear,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeKeys,
+  MapPrototypeSet,
+  ObjectAssign,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptors,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
+  SafeArrayIterator,
+  SafeFinalizationRegistry,
+  SafeMap,
+  SafeWeakMap,
+  SafeWeakRef,
+  String,
+  Symbol,
+  SymbolFor,
+  SymbolToStringTag,
+  WeakMapPrototypeSet,
+  WeakRefPrototypeDeref,
+} = primordials;
 import {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
@@ -28,16 +57,16 @@ import {
 } from "ext:deno_node/internal/util.mjs";
 import { inspect } from "node:util";
 
-const kIsEventTarget = Symbol.for("nodejs.event_target");
+const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
+import { kEvents } from "ext:deno_node/_events.mjs";
 import { EventEmitter } from "node:events";
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,
 } = EventEmitter;
 
-const kEvents = Symbol("kEvents");
 const kIsBeingDispatched = Symbol("kIsBeingDispatched");
 const kStop = Symbol("kStop");
 const kTarget = Symbol("kTarget");
@@ -45,7 +74,7 @@ const kHandlers = Symbol("khandlers");
 const kWeakHandler = Symbol("kWeak");
 const kResistStopPropagation = Symbol("kResistStopPropagation");
 
-const kHybridDispatch = Symbol.for("nodejs.internal.kHybridDispatch");
+const kHybridDispatch = SymbolFor("nodejs.internal.kHybridDispatch");
 const kCreateEvent = Symbol("kCreateEvent");
 const kNewListener = Symbol("kNewListener");
 const kRemoveListener = Symbol("kRemoveListener");
@@ -105,7 +134,7 @@ class Event extends WebEvent {
       return name;
     }
 
-    const opts = Object.assign({}, options, {
+    const opts = ObjectAssign({}, options, {
       depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
@@ -291,10 +320,11 @@ class Event extends WebEvent {
   static BUBBLING_PHASE = 3;
 }
 
-Object.defineProperties(
+ObjectDefineProperties(
   Event.prototype,
   {
-    [Symbol.toStringTag]: {
+    [SymbolToStringTag]: {
+      __proto__: null,
       writable: true,
       enumerable: false,
       configurable: true,
@@ -316,6 +346,16 @@ Object.defineProperties(
     eventPhase: kEnumerableProperty,
     cancelBubble: kEnumerableProperty,
     stopPropagation: kEnumerableProperty,
+    // The parent class `WebEvent` has this field defined, which has greater
+    // precedence than Symbol.for('nodejs.util.inspect.custom') and shadow it.
+    // Overwriting it to `undefined` cancels the shadowing.
+    [SymbolFor("Deno.privateCustomInspect")]: {
+      __proto__: null,
+      value: undefined,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    },
   },
 );
 
@@ -340,6 +380,7 @@ class CustomEvent extends Event {
     }
     super(type, options);
     this[kDetail] = options?.detail ?? null;
+    this[SymbolToStringTag] = "CustomEvent";
   }
 
   /**
@@ -352,17 +393,6 @@ class CustomEvent extends Event {
     return this[kDetail];
   }
 }
-
-Object.defineProperties(CustomEvent.prototype, {
-  [Symbol.toStringTag]: {
-    __proto__: null,
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    value: "CustomEvent",
-  },
-  detail: kEnumerableProperty,
-});
 
 class NodeCustomEvent extends Event {
   constructor(type, options) {
@@ -380,10 +410,10 @@ let weakListenersState = null;
 // get garbage collected now that it's weak.
 let objectToWeakListenerMap = null;
 function weakListeners() {
-  weakListenersState ??= new FinalizationRegistry(
+  weakListenersState ??= new SafeFinalizationRegistry(
     (listener) => listener.remove(),
   );
-  objectToWeakListenerMap ??= new WeakMap();
+  objectToWeakListenerMap ??= new SafeWeakMap();
   return { registry: weakListenersState, map: objectToWeakListenerMap };
 }
 
@@ -419,16 +449,22 @@ class Listener {
     this.weak = Boolean(weak); // Don't retain the object
 
     if (this.weak) {
-      this.callback = new WeakRef(listener);
-      weakListeners().registry.register(listener, this, this);
+      this.callback = new SafeWeakRef(listener);
+      FinalizationRegistryPrototypeRegister(
+        weakListeners().registry,
+        listener,
+        this,
+        this,
+      );
       // Make the retainer retain the listener in a WeakMap
-      weakListeners().map.set(weak, listener);
+      WeakMapPrototypeSet(weakListeners().map, weak, listener);
       this.listener = this.callback;
     } else if (typeof listener === "function") {
       this.callback = listener;
       this.listener = listener;
     } else {
-      this.callback = Function.prototype.bind.call(
+      this.callback = FunctionPrototypeCall(
+        Function.prototype.bind,
         listener.handleEvent,
         listener,
       );
@@ -437,7 +473,9 @@ class Listener {
   }
 
   same(listener, capture) {
-    const myListener = this.weak ? this.listener.deref() : this.listener;
+    const myListener = this.weak
+      ? WeakRefPrototypeDeref(this.listener)
+      : this.listener;
     return myListener === listener && this.capture === capture;
   }
 
@@ -450,13 +488,13 @@ class Listener {
     }
     this.removed = true;
     if (this.weak) {
-      weakListeners().registry.unregister(this);
+      FinalizationRegistryPrototypeUnregister(weakListeners().registry, this);
     }
   }
 }
 
 function initEventTarget(self) {
-  self[kEvents] = new Map();
+  self[kEvents] = new SafeMap();
   self[kMaxEventTargetListeners] = EventEmitter.defaultMaxListeners;
   self[kMaxEventTargetListenersWarned] = false;
 }
@@ -515,7 +553,7 @@ class EventTarget extends WebEventTarget {
    *   signal?: AbortSignal
    * }} [options]
    */
-  addEventListener(type, listener, options = {}) {
+  addEventListener(type, listener, options = { __proto__: null }) {
     if (!isEventTarget(this)) {
       throw new ERR_INVALID_THIS("EventTarget");
     }
@@ -561,7 +599,7 @@ class EventTarget extends WebEventTarget {
       }, { once: true, [kWeakHandler]: this });
     }
 
-    let root = this[kEvents].get(type);
+    let root = MapPrototypeGet(this[kEvents], type);
 
     if (root === undefined) {
       root = { size: 1, next: undefined };
@@ -584,7 +622,7 @@ class EventTarget extends WebEventTarget {
         passive,
         weak,
       );
-      this[kEvents].set(type, root);
+      MapPrototypeSet(this[kEvents], type, root);
       return;
     }
 
@@ -621,7 +659,7 @@ class EventTarget extends WebEventTarget {
    *   capture?: boolean,
    * }} [options]
    */
-  removeEventListener(type, listener, options = {}) {
+  removeEventListener(type, listener, options = { __proto__: null }) {
     if (!isEventTarget(this)) {
       throw new ERR_INVALID_THIS("EventTarget");
     }
@@ -632,7 +670,7 @@ class EventTarget extends WebEventTarget {
     type = String(type);
     const capture = options?.capture === true;
 
-    const root = this[kEvents].get(type);
+    const root = MapPrototypeGet(this[kEvents], type);
     if (root === undefined || root.next === undefined) {
       return;
     }
@@ -643,7 +681,7 @@ class EventTarget extends WebEventTarget {
         handler.remove();
         root.size--;
         if (root.size === 0) {
-          this[kEvents].delete(type);
+          MapPrototypeDelete(this[kEvents], type);
         }
         this[kRemoveListener](root.size, type, listener, capture);
         break;
@@ -660,7 +698,7 @@ class EventTarget extends WebEventTarget {
       throw new ERR_INVALID_THIS("EventTarget");
     }
 
-    if (!(event instanceof globalThis.Event)) {
+    if (!ObjectPrototypeIsPrototypeOf(globalThis.Event.prototype, event)) {
       throw new ERR_INVALID_ARG_TYPE("event", "Event", event);
     }
 
@@ -687,7 +725,7 @@ class EventTarget extends WebEventTarget {
       event[kIsBeingDispatched] = true;
     }
 
-    const root = this[kEvents].get(type);
+    const root = MapPrototypeGet(this[kEvents], type);
     if (root === undefined || root.next === undefined) {
       if (event !== undefined) {
         event[kIsBeingDispatched] = false;
@@ -726,11 +764,11 @@ class EventTarget extends WebEventTarget {
           arg = createEvent();
         }
         const callback = handler.weak
-          ? handler.callback.deref()
+          ? WeakRefPrototypeDeref(handler.callback)
           : handler.callback;
         let result;
         if (callback) {
-          result = callback.call(this, arg);
+          result = FunctionPrototypeCall(callback, this, arg);
           if (!handler.isNodeStyleListener) {
             arg[kIsBeingDispatched] = false;
           }
@@ -763,20 +801,19 @@ class EventTarget extends WebEventTarget {
     }
 
     const opts = ObjectAssign({}, options, {
-      depth: Number.isInteger(options.depth)
-        ? options.depth - 1
-        : options.depth,
+      depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
     return `${name} ${inspect({}, opts)}`;
   }
 }
 
-Object.defineProperties(EventTarget.prototype, {
+ObjectDefineProperties(EventTarget.prototype, {
   addEventListener: kEnumerableProperty,
   removeEventListener: kEnumerableProperty,
   dispatchEvent: kEnumerableProperty,
-  [Symbol.toStringTag]: {
+  [SymbolToStringTag]: {
+    __proto__: null,
     writable: true,
     enumerable: false,
     configurable: true,
@@ -824,7 +861,7 @@ class NodeEventTarget extends EventTarget {
     if (!isNodeEventTarget(this)) {
       throw new ERR_INVALID_THIS("NodeEventTarget");
     }
-    return Array.from(this[kEvents].keys());
+    return ArrayFrom(MapPrototypeKeys(this[kEvents]));
   }
 
   /**
@@ -835,7 +872,7 @@ class NodeEventTarget extends EventTarget {
     if (!isNodeEventTarget(this)) {
       throw new ERR_INVALID_THIS("NodeEventTarget");
     }
-    const root = this[kEvents].get(String(type));
+    const root = MapPrototypeGet(this[kEvents], String(type));
     return root !== undefined ? root.size : 0;
   }
 
@@ -937,16 +974,16 @@ class NodeEventTarget extends EventTarget {
       throw new ERR_INVALID_THIS("NodeEventTarget");
     }
     if (type !== undefined) {
-      this[kEvents].delete(String(type));
+      MapPrototypeDelete(this[kEvents], String(type));
     } else {
-      this[kEvents].clear();
+      MapPrototypeClear(this[kEvents]);
     }
 
     return this;
   }
 }
 
-Object.defineProperties(NodeEventTarget.prototype, {
+ObjectDefineProperties(NodeEventTarget.prototype, {
   setMaxListeners: kEnumerableProperty,
   getMaxListeners: kEnumerableProperty,
   eventNames: kEnumerableProperty,
@@ -1000,7 +1037,7 @@ function validateEventListenerOptions(options) {
 }
 
 function isEventTarget(obj) {
-  return obj instanceof globalThis.EventTarget;
+  return ObjectPrototypeIsPrototypeOf(globalThis.EventTarget.prototype, obj);
 }
 
 function isNodeEventTarget(obj) {
@@ -1010,7 +1047,7 @@ function isNodeEventTarget(obj) {
 function addCatch(promise) {
   const then = promise.then;
   if (typeof then === "function") {
-    then.call(promise, undefined, function (err) {
+    FunctionPrototypeCall(then, promise, undefined, function (err) {
       // The callback is called with nextTick to avoid a follow-up
       // rejection from this promise.
       emitUncaughtException(err);
@@ -1031,7 +1068,7 @@ function makeEventHandler(handler) {
     if (typeof eventHandler.handler !== "function") {
       return;
     }
-    return Reflect.apply(eventHandler.handler, this, args);
+    return ReflectApply(eventHandler.handler, this, args);
   }
   eventHandler.handler = handler;
   return eventHandler;
@@ -1039,32 +1076,36 @@ function makeEventHandler(handler) {
 
 function defineEventHandler(emitter, name) {
   // 8.1.5.1 Event handlers - basically `on[eventName]` attributes
-  Object.defineProperty(emitter, `on${name}`, {
+  ObjectDefineProperty(emitter, `on${name}`, {
+    __proto__: null,
     get() {
-      return this[kHandlers]?.get(name)?.handler ?? null;
+      if (this[kHandlers]) {
+        return MapPrototypeGet(this[kHandlers], name)?.handler ?? null;
+      }
+      return null;
     },
     set(value) {
       if (!this[kHandlers]) {
-        this[kHandlers] = new Map();
+        this[kHandlers] = new SafeMap();
       }
-      let wrappedHandler = this[kHandlers]?.get(name);
+      let wrappedHandler = MapPrototypeGet(this[kHandlers], name);
       if (wrappedHandler) {
         if (typeof wrappedHandler.handler === "function") {
-          this[kEvents].get(name).size--;
-          const size = this[kEvents].get(name).size;
+          MapPrototypeGet(this[kEvents], name).size--;
+          const size = MapPrototypeGet(this[kEvents], name).size;
           this[kRemoveListener](size, name, wrappedHandler.handler, false);
         }
         wrappedHandler.handler = value;
         if (typeof wrappedHandler.handler === "function") {
-          this[kEvents].get(name).size++;
-          const size = this[kEvents].get(name).size;
+          MapPrototypeGet(this[kEvents], name).size++;
+          const size = MapPrototypeGet(this[kEvents], name).size;
           this[kNewListener](size, name, value, false, false, false, false);
         }
       } else {
         wrappedHandler = makeEventHandler(value);
         this.addEventListener(name, wrappedHandler);
       }
-      this[kHandlers].set(name, wrappedHandler);
+      MapPrototypeSet(this[kHandlers], name, wrappedHandler);
     },
     configurable: true,
     enumerable: true,
@@ -1074,13 +1115,13 @@ function defineEventHandler(emitter, name) {
 const EventEmitterMixin = (Superclass) => {
   class MixedEventEmitter extends Superclass {
     constructor(...args) {
-      super(...args);
-      EventEmitter.call(this);
+      super(...new SafeArrayIterator(args));
+      FunctionPrototypeCall(EventEmitter, this);
     }
   }
-  const protoProps = Object.getOwnPropertyDescriptors(EventEmitter.prototype);
+  const protoProps = ObjectGetOwnPropertyDescriptors(EventEmitter.prototype);
   delete protoProps.constructor;
-  Object.defineProperties(MixedEventEmitter.prototype, protoProps);
+  ObjectDefineProperties(MixedEventEmitter.prototype, protoProps);
   return MixedEventEmitter;
 };
 

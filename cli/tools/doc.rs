@@ -15,11 +15,11 @@ use deno_doc as doc;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
+use deno_graph::analysis::ModuleAnalyzer;
+use deno_graph::ast::EsParser;
 use deno_graph::source::NullFileSystem;
 use deno_graph::CheckJsOption;
-use deno_graph::EsParser;
 use deno_graph::GraphKind;
-use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
@@ -81,6 +81,7 @@ async fn generate_doc_nodes_for_builtin_types(
         jsr_url_provider: Default::default(),
         locker: None,
         module_analyzer: analyzer,
+        module_info_cacher: Default::default(),
         npm_resolver: None,
         reporter: None,
         resolver: None,
@@ -155,6 +156,7 @@ pub async fn doc(
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
           ignore_graph_errors: true,
+          allow_unknown_jsr_exports: false,
         },
       );
       for error in errors {

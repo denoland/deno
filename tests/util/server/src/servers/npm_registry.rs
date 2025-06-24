@@ -29,6 +29,7 @@ use super::string_body;
 use super::ServerKind;
 use super::ServerOptions;
 use crate::npm;
+use crate::root_path;
 
 pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(port, "npm registry server error", {
@@ -100,6 +101,7 @@ async fn run_npm_server_for_addr<F, S>(
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
+  ensure_esbuild_prebuilt().await.unwrap();
   run_server(
     ServerOptions {
       addr,
@@ -376,5 +378,47 @@ async fn download_npm_registry_file(
   };
   std::fs::create_dir_all(testdata_file_path.parent().unwrap())?;
   std::fs::write(testdata_file_path, bytes)?;
+  Ok(())
+}
+
+const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/de0d517e6f703fb4735b7aa5806f69fbdbb1d907/prebuilt/";
+
+async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
+  let bin_name = match (std::env::consts::ARCH, std::env::consts::OS) {
+    ("x86_64", "linux" | "macos" | "apple") => "esbuild-x64",
+    ("aarch64", "linux" | "macos" | "apple") => "esbuild-aarch64",
+    ("x86_64", "windows") => "esbuild-x64.exe",
+    ("aarch64", "windows") => "esbuild-arm64.exe",
+    _ => return Err(anyhow::anyhow!("unsupported platform")),
+  };
+
+  let folder = match std::env::consts::OS {
+    "linux" => "linux64",
+    "windows" => "win",
+    "macos" | "apple" => "mac",
+    _ => return Err(anyhow::anyhow!("unsupported platform")),
+  };
+  let esbuild_prebuilt = root_path()
+    .join("third_party/prebuilt")
+    .join(folder)
+    .join(bin_name);
+  if esbuild_prebuilt.exists() {
+    return Ok(());
+  }
+  let url = format!("{PREBUILT_URL}{folder}/{bin_name}");
+  let response = reqwest::get(url).await?;
+  let bytes = response.bytes().await?;
+
+  tokio::fs::create_dir_all(esbuild_prebuilt.parent()).await?;
+  tokio::fs::write(&esbuild_prebuilt, bytes).await?;
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = tokio::fs::metadata(&esbuild_prebuilt).await?.permissions();
+    perms.set_mode(0o755); // rwxr-xr-x
+    tokio::fs::set_permissions(&esbuild_prebuilt, perms).await?;
+  }
+
   Ok(())
 }
