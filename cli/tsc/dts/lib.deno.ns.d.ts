@@ -6328,7 +6328,6 @@ declare namespace Deno {
    * ```
    *
    * @category Telemetry
-   * @experimental
    */
   export namespace telemetry {
     /**
@@ -6339,7 +6338,6 @@ declare namespace Deno {
      * TracerProvider interface.
      *
      * @category Telemetry
-     * @experimental
      */
     // deno-lint-ignore no-explicit-any
     export const tracerProvider: any;
@@ -6352,7 +6350,6 @@ declare namespace Deno {
      * ContextManager interface.
      *
      * @category Telemetry
-     * @experimental
      */
     // deno-lint-ignore no-explicit-any
     export const contextManager: any;
@@ -6365,7 +6362,6 @@ declare namespace Deno {
      * MeterProvider interface.
      *
      * @category Telemetry
-     * @experimental
      */
     // deno-lint-ignore no-explicit-any
     export const meterProvider: any;
