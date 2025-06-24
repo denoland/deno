@@ -8,7 +8,7 @@
       "-n",
       "echo_test",
       "--root",
-      "$PWD",
+      "$PWD/bin",
       "-g",
       "https://localhost:5545/echo.ts"
     ],

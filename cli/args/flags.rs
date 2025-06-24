@@ -2871,12 +2871,12 @@ The executable name is inferred by default:
   - If the resulting name has an <p(245)>@...</> suffix, strip it.
 
 To change the installation root, use <c>--root</>:
-  <p(245)>deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server</>
+  <p(245)>deno install -g --allow-net --allow-read --root /usr/local/bin jsr:@std/http/file-server</>
 
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
   - <p(245)>DENO_INSTALL_ROOT</> environment variable
-  - <p(245)>$HOME/.deno</>
+  - <p(245)>$HOME/.deno/bin</>
 
 These must be added to the path manually if required."), UnstableArgsConfig::ResolutionAndRuntime)
     .visible_alias("i")
@@ -3076,12 +3076,12 @@ fn uninstall_subcommand() -> Command {
   <p(245)>deno uninstall --global file_server</>
 
 To change the installation root, use <c>--root</> flag:
-  <p(245)>deno uninstall --global --root /usr/local serve</>
+  <p(245)>deno uninstall --global --root /usr/local/bin serve</>
 
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
   - <p(245)>DENO_INSTALL_ROOT</> environment variable
-  - <p(245)>$HOME/.deno</>"),
+  - <p(245)>$HOME/.deno/bin</>"),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
