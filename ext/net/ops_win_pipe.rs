@@ -100,15 +100,11 @@ where
 
 #[op2(async, stack_trace)]
 pub async fn op_pipe_windows_wait(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), NetError> {
-  state
-    .borrow()
-    .resource_table
-    .get::<NamedPipe>(rid)?
-    .connect()
-    .await?;
+  let pipe = state.resource_table.get::<NamedPipe>(rid)?;
+  pipe.connect().await?;
   Ok(())
 }
 
