@@ -616,6 +616,8 @@ fn format_embedded_css(
       selector_override_comment_directive: "malva-selector-override".into(),
       ignore_comment_directive: "malva-ignore".into(),
       ignore_file_comment_directive: "malva-ignore-file".into(),
+      declaration_order_group_by:
+        config::DeclarationOrderGroupBy::NonDeclaration,
     },
   };
   // Wraps the text in a css block of `a { ... ;}`
@@ -1483,6 +1485,7 @@ fn get_resolved_malva_config(
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
+    declaration_order_group_by: DeclarationOrderGroupBy::NonDeclaration,
   };
 
   FormatOptions {
