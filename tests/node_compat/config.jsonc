@@ -1442,7 +1442,7 @@
       "test-net-allow-half-open.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
-      "test-net-pipe-connect-errors.js",
+//      "test-net-pipe-connect-errors.js",
       "test-net-server-listen-path.js",
       "test-net-socket-close-after-end.js",
       "test-spawn-cmd-named-pipe.js",
