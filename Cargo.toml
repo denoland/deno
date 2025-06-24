@@ -61,9 +61,9 @@ deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.351.0" }
 
 deno_cache_dir = "=0.22.2"
-deno_doc = "=0.178.1"
+deno_doc = "=0.179.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.95.1", default-features = false }
+deno_graph = { version = "=0.96.0", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.30.1"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
@@ -75,7 +75,7 @@ deno_task_shell = "=0.24.0"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.92.0"
+eszip = "=0.93.0"
 
 denokv_proto = "0.11.0"
 denokv_remote = "0.11.0"
@@ -528,7 +528,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_graph = { path = "../deno_graph" }
-eszip = { path = "../eszip" }
-deno_doc = { path = "../deno_doc" }
 deno_core = { git = "https://github.com/denoland/deno_core", rev = "ca6fd7f02813e67564f2354231466848458e1b91" }
