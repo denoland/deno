@@ -1,0 +1,37 @@
+{
+  "tempDir": true,
+  "tests": {
+    "uses_browser_field": {
+      "steps": [
+        {
+          "args": "run -A entry.ts",
+          "output": "[WILDCARD]main\n"
+        },
+        {
+          "args": "bundle --platform browser --output bundled.js entry.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A bundled.js",
+          "output": "[WILDCARD]browser\n"
+        }
+      ]
+    },
+    "uses_browser_export": {
+      "steps": [
+        {
+          "args": "run -A entry2.ts",
+          "output": "[WILDCARD]deno\n"
+        },
+        {
+          "args": "bundle --platform browser --output bundled.js entry2.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A bundled.js",
+          "output": "[WILDCARD]browser\n"
+        }
+      ]
+    }
+  }
+}

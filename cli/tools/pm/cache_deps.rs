@@ -95,6 +95,24 @@ pub async fn cache_top_level_deps(
               continue;
             }
             let resolved_req = graph.packages.mappings().get(req.req());
+            let resolved_req = resolved_req.and_then(|nv| {
+              // the version might end up being upgraded to a newer version that's already in
+              // the graph (due to a reverted change), in which case our exports could end up
+              // being wrong. to avoid that, see if there's a newer version that matches the version
+              // req.
+              let versions =
+                graph.packages.versions_by_name(&req.req().name)?;
+              let mut best = nv;
+              for version in versions {
+                if version.version > best.version
+                  && req.req().version_req.matches(&version.version)
+                {
+                  best = version;
+                }
+              }
+              Some(best)
+            });
+
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
               let nv = if let Some(req) = resolved_req {
@@ -170,7 +188,8 @@ pub async fn cache_top_level_deps(
         },
       )
       .await?;
-    maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots, true);
+    maybe_graph_error =
+      graph_builder.graph_roots_valid(graph, &roots, true, true);
   }
 
   npm_installer.cache_packages(PackageCaching::All).await?;

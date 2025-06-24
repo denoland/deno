@@ -4,12 +4,9 @@ test ... ok ([WILDLINE])
 
 ok | 1 passed | 0 failed ([WILDLINE])
 
---------------------------------
-File       | Branch % | Line % |
---------------------------------
- main.ts   |    100.0 |  100.0 |
---------------------------------
- All files |    100.0 |  100.0 |
---------------------------------
+| File      | Branch % | Line % |
+| --------- | -------- | ------ |
+| main.ts   |    100.0 |  100.0 |
+| All files |    100.0 |  100.0 |
 Lcov coverage report has been generated at [WILDLINE]
 HTML coverage report has been generated at [WILDLINE]

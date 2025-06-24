@@ -21,9 +21,9 @@ use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::TranspileAndEmitOptions;
 
-use crate::args::deno_json::TranspileAndEmitOptions;
-use crate::args::deno_json::TsConfigResolver;
+use crate::args::CliTsConfigResolver;
 use crate::cache::EmitCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
@@ -33,7 +33,7 @@ pub struct Emitter {
   cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
 }
 
 impl Emitter {
@@ -41,7 +41,7 @@ impl Emitter {
     cjs_tracker: Arc<CliCjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
   ) -> Self {
     Self {
       cjs_tracker,

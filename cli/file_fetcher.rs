@@ -282,6 +282,7 @@ mod tests {
     Arc<BlobStore>,
     Arc<GlobalHttpCache>,
   ) {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();

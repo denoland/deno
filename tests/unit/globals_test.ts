@@ -210,6 +210,6 @@ Deno.test(function mapGroupBy() {
 Deno.test(function nodeGlobalsRaise() {
   assertThrows(() => {
     // @ts-ignore yes that's the point
-    Buffer;
+    setImmediate;
   }, ReferenceError);
 });

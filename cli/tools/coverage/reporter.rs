@@ -161,7 +161,7 @@ impl SummaryCoverageReporter {
     };
 
     println!(
-      " {file_name} | {branch_percent} | {line_percent} |",
+      "| {file_name} | {branch_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
       line_percent = line_percent,
@@ -192,17 +192,19 @@ impl CoverageReporter for SummaryCoverageReporter {
       .max("All files".len());
 
     let header =
-      format!("{node:node_max$}  | Branch % | Line % |", node = "File");
-    let separator = "-".repeat(header.len());
-    println!("{}", separator);
+      format!("| {node:node_max$} | Branch % | Line % |", node = "File");
+    let separator = format!(
+      "| {} | {} | {} |",
+      "-".repeat(node_max),
+      "-".repeat(8),
+      "-".repeat(6)
+    );
     println!("{}", header);
     println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
-    println!("{}", separator);
     self.print_coverage_line("All files", node_max, root_stats);
-    println!("{}", separator);
   }
 }
 

@@ -9,6 +9,7 @@ export {
   EventEmitter,
   EventEmitterAsyncResource,
   getEventListeners,
+  getMaxListeners,
   listenerCount,
   on,
   once,

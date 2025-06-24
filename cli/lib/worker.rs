@@ -331,6 +331,8 @@ pub struct LibMainWorkerOptions {
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
+  // If the runtime should try to use `export default { fetch }`
+  pub auto_serve: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -474,6 +476,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
           is_standalone: shared.options.is_standalone,
+          auto_serve: shared.options.auto_serve,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -600,14 +603,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
+    let origin_storage_dir: Option<PathBuf> =
+      maybe_storage_key.as_ref().map(|key| {
+        shared
+          .options
+          .origin_data_folder_path
+          .as_ref()
+          .unwrap() // must be set if storage key resolver returns a value
+          .join(checksum::gen(&[key.as_bytes()]))
+      });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
       get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
@@ -653,6 +657,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         is_standalone: shared.options.is_standalone,
+        auto_serve: shared.options.auto_serve,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),

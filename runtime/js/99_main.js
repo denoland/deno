@@ -94,6 +94,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -264,7 +265,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (op_worker_get_type() === "module") {
+  if (op_worker_get_type() !== "classic") {
     throw new TypeError("Cannot import scripts in a module worker");
   }
 
@@ -730,7 +731,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -808,16 +809,24 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       12: serveWorkerCountOrIndex,
       13: otelConfig,
       15: standalone,
+      16: autoServe,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
 
-    if (mode === executionModes.serve) {
-      const hasMultipleThreads = serveIsMain
-        ? serveWorkerCountOrIndex > 0 // count > 0
+    let serveIsMain_ = serveIsMain;
+    let serveWorkerCountOrIndex_ = serveWorkerCountOrIndex;
+    if (autoServe) {
+      serveIsMain_ = true;
+      serveWorkerCountOrIndex_ = 0;
+    }
+
+    if (mode === executionModes.serve || autoServe) {
+      const hasMultipleThreads = serveIsMain_
+        ? serveWorkerCountOrIndex_ > 0 // count > 0
         : true;
       if (hasMultipleThreads) {
-        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const serveLogIndex = serveIsMain_ ? 0 : (serveWorkerCountOrIndex_ + 1);
         const base = `serve-worker-${serveLogIndex}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
@@ -836,14 +845,14 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
           try {
             serve = registerDeclarativeServer(main.default);
           } catch (e) {
-            if (mode === executionModes.serve) {
+            if (mode === executionModes.serve || autoServe) {
               throw e;
             }
           }
         }
 
         if (mode === executionModes.serve && !serve) {
-          if (serveIsMain) {
+          if (serveIsMain_) {
             // Only error if main worker
             import.meta.log(
               "error",
@@ -858,7 +867,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (serve) {
-          if (mode === executionModes.run) {
+          if (mode === executionModes.run && !autoServe) {
             import.meta.log(
               "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
@@ -868,12 +877,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
               "font-weight: normal;",
             );
           }
-          if (mode === executionModes.serve) {
+          if (mode === executionModes.serve || autoServe) {
             serve({
               servePort,
               serveHost,
-              workerCountWhenMain: serveIsMain
-                ? serveWorkerCountOrIndex
+              workerCountWhenMain: serveIsMain_
+                ? serveWorkerCountOrIndex_
                 : undefined,
             });
           }
@@ -993,6 +1002,7 @@ function bootstrapWorkerRuntime(
   name,
   internalName,
   workerId,
+  workerType,
   maybeWorkerMetadata,
   warmup = false,
 ) {
@@ -1022,6 +1032,10 @@ function bootstrapWorkerRuntime(
     hasBootstrapped = true;
 
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    if (workerType === "node") {
+      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+      delete workerRuntimeGlobalProperties["self"];
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
@@ -1042,8 +1056,8 @@ function bootstrapWorkerRuntime(
 
     core.wrapConsole(globalThis.console, core.v8Console);
 
-    event.defineEventHandler(self, "message");
-    event.defineEventHandler(self, "error", undefined, true);
+    event.defineEventHandler(globalThis, "message");
+    event.defineEventHandler(globalThis, "error", undefined, true);
 
     // `Deno.exit()` is an alias to `self.close()`. Setting and exit
     // code using an op in worker context is a no-op.
@@ -1139,6 +1153,7 @@ removeImportedOps();
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
 bootstrapWorkerRuntime(
+  undefined,
   undefined,
   undefined,
   undefined,

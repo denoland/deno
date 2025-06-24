@@ -55,6 +55,12 @@ pub enum SpecifierUnfurlerDiagnostic {
     range: SourceRange,
     package_name: String,
   },
+  UnsupportedPkgJsonJsrSpecifier {
+    specifier: ModuleSpecifier,
+    text_info: SourceTextInfo,
+    range: SourceRange,
+    package_name: String,
+  },
 }
 
 impl Diagnostic for SpecifierUnfurlerDiagnostic {
@@ -69,6 +75,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
         ..
       } => DiagnosticLevel::Error,
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier {
+        ..
+      } => DiagnosticLevel::Error,
     }
   }
 
@@ -78,6 +87,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       Self::ResolvingNpmWorkspacePackage { .. } => "npm-workspace-package",
       Self::UnsupportedPkgJsonFileSpecifier { .. } => {
         "unsupported-file-specifier"
+      }
+      Self::UnsupportedPkgJsonJsrSpecifier { .. } => {
+        "unsupported-jsr-specifier"
       }
     }
     .into()
@@ -99,6 +111,11 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       .into(),
       Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
         "unsupported package.json file specifier for '{}'",
+        package_name
+      )
+      .into(),
+      Self::UnsupportedPkgJsonJsrSpecifier { package_name, .. } => format!(
+        "unsupported package.json JSR specifier for '{}'",
         package_name
       )
       .into(),
@@ -127,6 +144,16 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
       },
       SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        specifier,
+        text_info,
+        range,
+        ..
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+      },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier {
         specifier,
         text_info,
         range,
@@ -186,6 +213,21 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
           description: Some("the import".into()),
         }],
       }),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier {
+        text_info,
+        range,
+        ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Warning,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the import".into()),
+        }],
+      }),
     }
   }
 
@@ -199,6 +241,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       ),
       SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => Some(
         "change the package dependency to point to something on npm instead".into()
+      ),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier { .. } => Some(
+        "move the JSR package dependency to deno.json instead".into()
       ),
     }
   }
@@ -222,6 +267,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => {
         Cow::Borrowed(&[])
       },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier { .. } => {
+        Cow::Borrowed(&[])
+      },
     }
   }
 
@@ -232,6 +280,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
 
 enum UnfurlSpecifierError {
   UnsupportedPkgJsonFileSpecifier {
+    package_name: String,
+  },
+  UnsupportedPkgJsonJsrSpecifier {
     package_name: String,
   },
   Workspace {
@@ -283,6 +334,19 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           } => {
             diagnostic_reporter(
               SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+                specifier: referrer.clone(),
+                package_name,
+                text_info: text_info.clone(),
+                range,
+              },
+            );
+            None
+          }
+          UnfurlSpecifierError::UnsupportedPkgJsonJsrSpecifier {
+            package_name,
+          } => {
+            diagnostic_reporter(
+              SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier {
                 specifier: referrer.clone(),
                 package_name,
                 text_info: text_info.clone(),
@@ -358,6 +422,13 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
             PackageJsonDepValue::File(_) => {
               return Err(
                 UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+                  package_name: alias.to_string(),
+                },
+              );
+            }
+            PackageJsonDepValue::JsrReq(_) => {
+              return Err(
+                UnfurlSpecifierError::UnsupportedPkgJsonJsrSpecifier {
                   package_name: alias.to_string(),
                 },
               );
@@ -813,7 +884,7 @@ mod tests {
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![ResolverWorkspaceJsrPackage {
-        is_patch: false,
+        is_link: false,
         base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
           .unwrap(),
         name: "@denotest/example".to_string(),
@@ -974,7 +1045,7 @@ export type * from "./c.d.ts";
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       None,
       vec![ResolverWorkspaceJsrPackage {
-        is_patch: false,
+        is_link: false,
         base: ModuleSpecifier::from_directory_path(
           cwd.join("publish/jsr.json"),
         )
