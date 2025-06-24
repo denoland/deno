@@ -1156,7 +1156,7 @@ pub enum CompilerOptionsSourceKind {
 #[derive(Debug, Clone)]
 pub struct CompilerOptionsSource {
   pub specifier: Url,
-  pub compiler_options: CompilerOptions,
+  pub compiler_options: Option<CompilerOptions>,
 }
 
 /// For a given configuration type get the starting point CompilerOptions
@@ -1570,30 +1570,28 @@ impl WorkspaceDirectory {
     let Some(deno_json) = self.deno_json.as_ref() else {
       return Vec::new();
     };
-    let root = deno_json.root.as_ref().and_then(|d| {
-      Some(CompilerOptionsSource {
-        compiler_options: CompilerOptions(
-          d.json
-            .compiler_options
-            .as_ref()
-            .filter(|v| !v.is_null())
-            .cloned()?,
-        ),
-        specifier: d.specifier.clone(),
-      })
+    let root = deno_json.root.as_ref().map(|d| CompilerOptionsSource {
+      specifier: d.specifier.clone(),
+      compiler_options: d
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
     });
-    let member = deno_json
-      .member
-      .json
-      .compiler_options
-      .as_ref()
-      .filter(|v| !v.is_null())
-      .cloned()
-      .map(|c| CompilerOptionsSource {
-        compiler_options: CompilerOptions(c),
-        specifier: deno_json.member.specifier.clone(),
-      });
-    root.into_iter().chain(member).collect()
+    let member = CompilerOptionsSource {
+      specifier: deno_json.member.specifier.clone(),
+      compiler_options: deno_json
+        .member
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
+    };
+    root.into_iter().chain([member]).collect()
   }
 
   /// Gets the combined compiler options that the user provided, without any of

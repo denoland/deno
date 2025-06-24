@@ -145,7 +145,10 @@ impl CompilerOptionsData {
         ignored_options: Vec::new(),
       };
       for source in &self.sources {
-        let object = serde_json::from_value(source.compiler_options.0.clone())
+        let Some(compiler_options) = source.compiler_options.as_ref() else {
+          continue;
+        };
+        let object = serde_json::from_value(compiler_options.0.clone())
           .map_err(|err| CompilerOptionsParseError {
             specifier: source.specifier.clone(),
             source: err,
@@ -190,6 +193,7 @@ impl CompilerOptionsData {
         .filter_map(|s| {
           let types = s
             .compiler_options
+            .as_ref()?
             .0
             .as_object()?
             .get("types")?
@@ -209,14 +213,14 @@ impl CompilerOptionsData {
   ) -> Result<Option<&JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>
   {
     self.memoized.jsx_import_source_config.get_or_try_init(|| {
-      let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
+      let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.as_ref()?.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
       let is_jsx_automatic = matches!(
         jsx,
         Some(("react-jsx" | "preserve" | "react-jsxdev" | "precompile", _)),
       );
       let import_source = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
-          specifier: s.compiler_options.0.as_object()?.get("jsxImportSource")?.as_str()?.to_string(),
+          specifier: s.compiler_options.as_ref()?.0.as_object()?.get("jsxImportSource")?.as_str()?.to_string(),
           base: s.specifier.clone()
         })
       }).or_else(|| {
@@ -230,7 +234,7 @@ impl CompilerOptionsData {
       });
       let import_source_types = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
-          specifier: s.compiler_options.0.as_object()?.get("jsxImportSourceTypes")?.as_str()?.to_string(),
+          specifier: s.compiler_options.as_ref()?.0.as_object()?.get("jsxImportSourceTypes")?.as_str()?.to_string(),
           base: s.specifier.clone()
         })
       }).or_else(|| import_source.clone());
@@ -279,7 +283,12 @@ impl CompilerOptionsData {
         .iter()
         .rev()
         .find_map(|s| {
-          s.compiler_options.0.as_object()?.get("checkJs")?.as_bool()
+          s.compiler_options
+            .as_ref()?
+            .0
+            .as_object()?
+            .get("checkJs")?
+            .as_bool()
         })
         .unwrap_or(false)
     })
@@ -356,7 +365,6 @@ type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
 pub struct TsConfigData {
-  pub specifier: Url,
   pub compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
   references: Vec<String>,
@@ -366,6 +374,15 @@ impl TsConfigData {
   pub fn files(&self) -> Option<(&Url, &Vec<TsConfigFile>)> {
     let (referrer, files) = self.filter.files.as_ref()?;
     Some((referrer, files))
+  }
+
+  fn specifier(&self) -> &Url {
+    &self
+      .compiler_options
+      .sources
+      .last()
+      .expect("Tsconfigs should always have at least one source.")
+      .specifier
   }
 }
 
@@ -434,10 +451,11 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
   }
 
   fn visit_reference(&mut self, ts_config: Rc<TsConfigData>) {
-    if self.collected.contains_key(&ts_config.specifier) {
+    let specifier = ts_config.specifier();
+    if self.collected.contains_key(specifier) {
       return;
     }
-    let Some(dir_path) = url_to_file_path(&ts_config.specifier)
+    let Some(dir_path) = url_to_file_path(specifier)
       .ok()
       .and_then(|p| Some(p.parent()?.to_path_buf()))
     else {
@@ -462,9 +480,7 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
         _ => {}
       }
     }
-    self
-      .collected
-      .insert(ts_config.specifier.clone(), ts_config);
+    self.collected.insert(specifier.clone(), ts_config);
   }
 
   fn read_ts_config_with_cache(
@@ -538,15 +554,14 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
       .iter()
       .flat_map(|t| &t.compiler_options.sources)
       .cloned()
-      .chain(
-        object
+      .chain([CompilerOptionsSource {
+        specifier: specifier.clone(),
+        compiler_options: object
           .and_then(|o| o.get("compilerOptions"))
           .filter(|v| !v.is_null())
-          .map(|v| CompilerOptionsSource {
-            specifier: specifier.clone(),
-            compiler_options: CompilerOptions(v.clone()),
-          }),
-      )
+          .cloned()
+          .map(CompilerOptions),
+      }])
       .collect();
     let dir_path = path.parent().expect("file path should have a parent");
     let files = object
@@ -557,7 +572,7 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
           .iter()
           .filter_map(|v| Some(TsConfigFile::from_raw(v.as_str()?, dir_path)))
           .collect();
-        Some((specifier.clone(), files))
+        Some((specifier, files))
       })
       .or_else(|| {
         extends_targets
@@ -609,7 +624,6 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
       .filter_map(|v| Some(v.as_object()?.get("path")?.as_str()?.to_string()))
       .collect();
     Ok(TsConfigData {
-      specifier,
       compiler_options: CompilerOptionsData::new(
         sources,
         CompilerOptionsSourceKind::TsConfig,
@@ -623,37 +637,6 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
       }),
       references,
     })
-  }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum CompilerOptionsEntry<'a> {
-  Workspace(&'a CompilerOptionsData),
-  TsConfig(&'a TsConfigData),
-}
-
-impl<'a> CompilerOptionsEntry<'a> {
-  pub fn compiler_options(&self) -> &'a CompilerOptionsData {
-    match self {
-      Self::Workspace(d) => d,
-      Self::TsConfig(t) => &t.compiler_options,
-    }
-  }
-
-  pub fn config_specifier(&self) -> Option<&'a Url> {
-    match self {
-      Self::Workspace(d) => d.sources.last().map(|s| &s.specifier),
-      Self::TsConfig(t) => Some(&t.specifier),
-    }
-  }
-
-  pub fn source_specifiers(&self) -> impl Iterator<Item = &'a Url> {
-    let sources = self.compiler_options().sources.iter().map(|s| &s.specifier);
-    let ts_config_specifier = match self {
-      Self::Workspace(_) => None,
-      Self::TsConfig(t) => Some(&t.specifier),
-    };
-    sources.chain(ts_config_specifier)
   }
 }
 
@@ -698,23 +681,14 @@ impl CompilerOptionsResolver {
   }
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
-    self.entry_for_specifier(specifier).compiler_options()
-  }
-
-  pub fn entry_for_specifier<'a>(
-    &'a self,
-    specifier: &Url,
-  ) -> CompilerOptionsEntry<'a> {
     if let Ok(path) = url_to_file_path(specifier) {
       for ts_config in &self.ts_configs {
         if ts_config.filter.includes_path(&path) {
-          return CompilerOptionsEntry::TsConfig(ts_config);
+          return &ts_config.compiler_options;
         }
       }
     }
-    CompilerOptionsEntry::Workspace(
-      self.workspace_configs.get_for_specifier(specifier),
-    )
+    self.workspace_configs.get_for_specifier(specifier)
   }
 
   pub fn all(&self) -> impl Iterator<Item = &CompilerOptionsData> {
