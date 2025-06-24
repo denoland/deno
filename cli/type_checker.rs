@@ -763,7 +763,17 @@ impl<'a> GraphWalker<'a> {
         Module::Wasm(module) => {
           maybe_module_dependencies = Some(&module.dependencies);
         }
-        Module::Json(_) | Module::Npm(_) | Module::External(_) => {}
+        Module::Json(_) | Module::Npm(_) => {}
+        Module::External(module) => {
+          // NPM files for `"nodeModulesDir": "manual"`.
+          let media_type = MediaType::from_specifier(&module.specifier);
+          if media_type.is_declaration() {
+            self.roots.push((
+              module.specifier.clone(),
+              media_type,
+            ));
+          }
+        }
         Module::Node(_) => {
           if !self.has_seen_node_builtin {
             self.has_seen_node_builtin = true;
