@@ -712,7 +712,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         subdomain_wildcards: self.cli_options.unstable_subdomain_wildcards(),
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
-        features: self.cli_options.unstable_features(),
+        features: self
+          .cli_options
+          .unstable_features()
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),

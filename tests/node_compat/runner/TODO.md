@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1208 tests out of 3993 have been ported from Node 23.9.0 (30.25% ported, 70.37% remaining).
+1212 tests out of 3993 have been ported from Node 23.9.0 (30.35% ported, 70.27% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -224,13 +224,11 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-assert-calltracker-getCalls.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-getCalls.js)
 - [parallel/test-assert-calltracker-report.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-report.js)
 - [parallel/test-assert-calltracker-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-calltracker-verify.js)
-- [parallel/test-assert-checktag.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-checktag.js)
 - [parallel/test-assert-deep-with-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep-with-error.js)
 - [parallel/test-assert-deep.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep.js)
 - [parallel/test-assert-esm-cjs-message-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-esm-cjs-message-verify.js)
 - [parallel/test-assert-fail-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-fail-deprecation.js)
 - [parallel/test-assert-first-line.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-first-line.js)
-- [parallel/test-assert-if-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-if-error.js)
 - [parallel/test-assert-objects.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-objects.js)
 - [parallel/test-assert-typedarray-deepequal.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-typedarray-deepequal.js)
 - [parallel/test-async-hooks-async-await.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-async-hooks-async-await.js)
@@ -489,7 +487,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-async-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-async-sign-verify.js)
 - [parallel/test-crypto-authenticated-stream.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated-stream.js)
 - [parallel/test-crypto-authenticated.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated.js)
-- [parallel/test-crypto-certificate.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-certificate.js)
 - [parallel/test-crypto-cipheriv-decipheriv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-cipheriv-decipheriv.js)
 - [parallel/test-crypto-classes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-classes.js)
 - [parallel/test-crypto-des3-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-des3-wrap.js)
