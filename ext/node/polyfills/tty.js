@@ -10,11 +10,7 @@ const {
 } = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import {
-  kStreamBaseField,
-  LibuvStreamWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
+import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
@@ -33,20 +29,6 @@ function isatty(fd) {
     return isTerminal(fd);
   } catch (_) {
     return false;
-  }
-}
-
-class TTY extends LibuvStreamWrap {
-  constructor(handle) {
-    super(providerType.TTYWRAP, handle);
-  }
-
-  ref() {
-    this[kStreamBaseField][io.REF]();
-  }
-
-  unref() {
-    this[kStreamBaseField][io.UNREF]();
   }
 }
 
