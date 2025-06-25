@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1214 tests out of 3993 have been ported from Node 23.9.0 (30.40% ported, 70.22% remaining).
+1216 tests out of 3993 have been ported from Node 23.9.0 (30.45% ported, 70.17% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2039,7 +2039,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-strace-openat-openssl.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-strace-openat-openssl.js)
 - [parallel/test-stream-base-prototype-accessors-enumerability.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-prototype-accessors-enumerability.js)
 - [parallel/test-stream-base-typechecking.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-typechecking.js)
-- [parallel/test-stream-consumers.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-consumers.js)
 - [parallel/test-stream-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-destroy.js)
 - [parallel/test-stream-pipe-deadlock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipe-deadlock.js)
 - [parallel/test-stream-pipeline-http2.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline-http2.js)
