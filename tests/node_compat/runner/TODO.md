@@ -227,7 +227,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-assert-deep-with-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep-with-error.js)
 - [parallel/test-assert-deep.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep.js)
 - [parallel/test-assert-esm-cjs-message-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-esm-cjs-message-verify.js)
-- [parallel/test-assert-fail-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-fail-deprecation.js)
 - [parallel/test-assert-first-line.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-first-line.js)
 - [parallel/test-assert-objects.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-objects.js)
 - [parallel/test-assert-typedarray-deepequal.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-typedarray-deepequal.js)

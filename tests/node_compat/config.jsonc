@@ -247,6 +247,7 @@
       "test-assert-async.js",
       "test-assert-builtins-not-read-from-filesystem.js",
       "test-assert-checktag.js",
+      "test-assert-fail-deprecation.js",
       "test-assert-fail.js",
       "test-assert-if-error.js",
       "test-assert.js",
