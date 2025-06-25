@@ -12,8 +12,9 @@ const { default: helloText } = await import("./hello.txt", {
 const { default: helloBytes } = await import("./hello.txt", {
   with: { type: "bytes" },
 });
+const nonAnalyzableTypeText = "text";
 const { default: nonAnalyzableText } = await import(nonAnalyzablePath(), {
-  with: { type: "text" },
+  with: { type: nonAnalyzableTypeText },
 });
 const { default: utf8BomText } = await import("./utf8_bom.txt", {
   with: { type: "text" },
