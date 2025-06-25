@@ -760,6 +760,11 @@ impl CliOptions {
         .as_ref()
         .map(ToOwned::to_owned)
         .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+      DenoSubcommand::Run(flags) => flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
