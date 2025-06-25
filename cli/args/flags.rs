@@ -4577,6 +4577,7 @@ fn lock_args() -> [Arg; 3] {
 fn node_conditions_arg() -> Arg {
   Arg::new("unstable-node-conditions")
     .long("unstable-node-conditions")
+    .help("Use this argument to specify custom conditions for npm package exports. You can also use DENO_NODE_CONDITIONS env var.")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
 }
