@@ -1,0 +1,4 @@
+[WILDCARD]
+Bundled [WILDCARD] modules in [WILDCARD]s
+  out/foo/main.js [WILDCARD]
+  out/bar/main.js [WILDCARD]

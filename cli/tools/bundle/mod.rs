@@ -4,12 +4,14 @@ mod esbuild;
 mod externals;
 mod transform;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
@@ -159,16 +161,11 @@ pub async fn bundle(
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
-    process_result(&response, *DISABLE_HACK)?;
+    let metafile = metafile_from_response(&response)?;
+    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      log::info!(
-        "{}",
-        deno_terminal::colors::green(format!(
-          "bundled in {}",
-          crate::display::human_elapsed(start.elapsed().as_millis()),
-        ))
-      );
+      print_finished_message(&metafile, &output_infos, start.elapsed())?;
     }
   }
 
@@ -177,6 +174,16 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+fn metafile_from_response(
+  response: &BuildResponse,
+) -> Result<esbuild_client::Metafile, AnyError> {
+  Ok(serde_json::from_str::<esbuild_client::Metafile>(
+    response.metafile.as_deref().ok_or_else(|| {
+      deno_core::anyhow::anyhow!("expected a metafile to be present")
+    })?,
+  )?)
 }
 
 async fn bundle_watch(
@@ -218,14 +225,10 @@ async fn bundle_watch(
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
-          process_result(&response, *DISABLE_HACK)?;
-          log::info!(
-            "{}",
-            deno_terminal::colors::green(format!(
-              "bundled in {}",
-              crate::display::human_elapsed(start.elapsed().as_millis()),
-            ))
-          );
+          let metafile = metafile_from_response(&response)?;
+          let output_infos =
+            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+          print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
           *current_roots.borrow_mut() = new_watched.clone();
@@ -1104,9 +1107,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
   }
-  if bundle_flags.watch {
-    builder.metafile(true);
-  }
+  builder.metafile(true);
 
   match bundle_flags.platform {
     crate::args::BundlePlatform::Browser => {
@@ -1139,38 +1140,115 @@ fn handle_esbuild_errors_and_warnings(
   }
 }
 
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
+struct OutputFileInfo {
+  relative_path: PathBuf,
+  size: usize,
+  is_js: bool,
+}
 fn process_result(
   response: &BuildResponse,
-  // init_cwd: &Path,
+  cwd: &Path,
   should_replace_require_shim: bool,
-) -> Result<(), AnyError> {
-  if let Some(output_files) = response.output_files.as_ref() {
-    let mut exists_cache = std::collections::HashSet::new();
-    for file in output_files.iter() {
+) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let mut exists_cache = std::collections::HashSet::new();
+  let output_files = response
+    .output_files
+    .as_ref()
+    .map(|v| Cow::Borrowed(v))
+    .unwrap_or_default();
+  let mut output_infos = Vec::new();
+  for file in output_files.iter() {
+    let path = Path::new(&file.path);
+    let relative_path =
+      pathdiff::diff_paths(&path, cwd).unwrap_or_else(|| path.to_path_buf());
+    let is_js = is_js(path);
+    let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
         replace_require_shim(&string)
       } else {
         string
       };
+      Cow::Owned(string.into_bytes())
+    } else {
+      Cow::Borrowed(&file.contents)
+    };
 
-      if file.path == "<stdout>" {
-        crate::display::write_to_stdout_ignore_sigpipe(string.as_bytes())?;
-        continue;
-      }
-      let path = PathBuf::from(&file.path);
-
-      if let Some(parent) = path.parent() {
-        if !exists_cache.contains(parent) {
-          if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-          }
-          exists_cache.insert(parent.to_path_buf());
-        }
-      }
-
-      std::fs::write(&file.path, string)?;
+    if file.path.ends_with("<stdout>") {
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      continue;
     }
+
+    if let Some(parent) = path.parent() {
+      if !exists_cache.contains(parent) {
+        if !parent.exists() {
+          std::fs::create_dir_all(parent)?;
+        }
+        exists_cache.insert(parent.to_path_buf());
+      }
+    }
+
+    output_infos.push(OutputFileInfo {
+      relative_path,
+      size: bytes.len(),
+      is_js,
+    });
+
+    std::fs::write(path, bytes.as_ref())?;
   }
+  Ok(output_infos)
+}
+
+fn print_finished_message(
+  metafile: &esbuild_client::Metafile,
+  output_infos: &[OutputFileInfo],
+  duration: Duration,
+) -> Result<(), AnyError> {
+  let mut output = String::new();
+  output.push_str(&format!(
+    "{} {} modules in {}",
+    deno_terminal::colors::green("Bundled"),
+    metafile.inputs.len(),
+    crate::display::human_elapsed(duration.as_millis()),
+  ));
+
+  let longest = output_infos
+    .iter()
+    .map(|info| info.relative_path.to_string_lossy().len())
+    .max()
+    .unwrap_or(0);
+  for info in output_infos {
+    output.push_str(&format!(
+      "\n  {} {}",
+      if info.is_js {
+        deno_terminal::colors::cyan(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      } else {
+        deno_terminal::colors::magenta(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      },
+      deno_terminal::colors::gray(
+        crate::display::human_size(info.size as f64,)
+      )
+    ));
+  }
+  output.push('\n');
+  crate::display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
+
   Ok(())
 }
