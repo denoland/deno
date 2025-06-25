@@ -4595,7 +4595,6 @@ fn lock_args() -> [Arg; 3] {
 fn node_conditions_arg() -> Arg {
   Arg::new("unstable-conditions")
     .long("unstable-conditions")
-    .short('C')
     .help("Use this argument to specify custom conditions for npm package exports. You can also use DENO_CONDITIONS env var.")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
@@ -12545,7 +12544,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       "run",
       "--unstable-conditions",
       "development",
-      "-C",
+      "--unstable-conditions",
       "production",
       "main.ts"
     ])
