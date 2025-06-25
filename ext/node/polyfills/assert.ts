@@ -420,17 +420,56 @@ function notDeepStrictEqual(
   );
 }
 
-function fail(message?: string | Error): never {
-  if (typeof message === "string" || message == null) {
-    throw createAssertionError({
-      message: message ?? "Failed",
-      operator: "fail",
-      generatedMessage: message == null,
-    });
+let warned = false;
+
+function fail(
+  actual?: string | Error,
+  expected?: unknown,
+  message?: string | Error,
+  operator?: string,
+  stackStartFn?: Function,
+): never {
+  const argsLen = arguments.length;
+
+  let internalMessage = false;
+  if (actual == null && argsLen <= 1) {
+    internalMessage = true;
+    message = "Failed";
+  } else if (argsLen === 1) {
+    message = actual;
+    actual = undefined;
   } else {
-    throw message;
+    if (warned === false) {
+      warned = true;
+      // deno-lint-ignore no-process-global
+      process.emitWarning(
+        "assert.fail() with more than one argument is deprecated. " +
+          "Please use assert.strictEqual() instead or only pass a message.",
+        "DeprecationWarning",
+        "DEP0094",
+      );
+    }
+    if (argsLen === 2) {
+      operator = "!=";
+    }
   }
+
+  if (message instanceof Error) throw message;
+
+  const errArgs = {
+    actual,
+    expected,
+    operator: operator === undefined ? "fail" : operator,
+    stackStartFn: stackStartFn || fail,
+    message,
+  };
+  const err = new AssertionError(errArgs);
+  if (internalMessage) {
+    err.generatedMessage = true;
+  }
+  throw err;
 }
+
 function match(actual: string, regexp: RegExp, message?: string | Error) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "regexp");

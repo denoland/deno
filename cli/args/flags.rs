@@ -31,7 +31,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::has_flag_env_var;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
@@ -1011,11 +1010,6 @@ impl Flags {
   }
 
   pub fn otel_config(&self) -> OtelConfig {
-    let has_unstable_flag = self
-      .unstable_config
-      .features
-      .contains(&String::from("otel"));
-
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
       Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),
@@ -1026,8 +1020,7 @@ impl Flags {
       Err(_) => None,
     };
 
-    let disabled =
-      !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
+    let disabled = otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
     let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
 
     let propagators = if default {
@@ -1269,6 +1262,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
   <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
                          Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
+  <g>DENO_AUTO_SERVE</>        If the entrypoint contains export default { fetch }, `deno run`
+                               behaves like `deno serve`.
   <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
                          Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
@@ -1318,6 +1313,7 @@ static DENO_HELP: &str = cstr!(
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
+    <g>deploy</>       Manage and publish applications with Deno Deploy
     <g>doc</>          Generate and show documentation for a module or built-ins
                   <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
     <g>fmt</>          Format source files
@@ -1371,6 +1367,12 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
   let mut flags = Flags::default();
 
+  // to pass all flags, even help and
+  if matches.subcommand_matches("deploy").is_some() {
+    deploy_parse(&mut flags, &mut matches.remove_subcommand().unwrap().1)?;
+    return Ok(flags);
+  }
+
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1420,6 +1422,13 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       } else {
         app
       };
+
+    if subcommand.get_name() == "deploy" {
+      flags.argv = vec![String::from("--help")];
+      flags.permissions.allow_all = true;
+      flags.subcommand = DenoSubcommand::Deploy;
+      return Ok(flags);
+    }
 
     help_parse(&mut flags, subcommand);
     return Ok(flags);
@@ -1482,7 +1491,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m)?,
-      "deploy" => deploy_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
       "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -1740,6 +1748,7 @@ pub fn clap_root() -> Command {
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
+        .subcommand(deploy_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
@@ -1758,12 +1767,6 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand());
-
-      let cmd = if std::env::var("DENO_DEPLOY_SUBCOMMAND").is_ok() {
-        cmd.subcommand(deploy_subcommand())
-      } else {
-        cmd
-      };
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -5096,14 +5099,14 @@ fn deploy_parse(
     .map(|args| args.collect())
     .unwrap_or_default();
 
-  if !has_flag_env_var("DENO_DEPLOY_SUBCOMMAND") {
-    args.insert(
-      0,
-      format!(
-        "--endpoint={}",
-        std::env::var("DENO_DEPLOY_SUBCOMMAND").unwrap()
-      ),
-    );
+  if matches.contains_id("help") {
+    args.push(String::from("--help"));
+  }
+
+  if let Ok(url) = std::env::var("DENO_DEPLOY_URL") {
+    let mut new_args = vec![String::from("--endpoint"), url];
+    new_args.extend(args);
+    args = new_args;
   }
 
   flags.argv = args;
