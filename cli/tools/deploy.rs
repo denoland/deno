@@ -37,6 +37,7 @@ pub async fn deploy(
     ),
     watch: None,
     bare: false,
+    coverage_dir: None,
   });
 
   tools::run::run_script(
