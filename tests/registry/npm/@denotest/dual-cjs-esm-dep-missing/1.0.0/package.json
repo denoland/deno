@@ -3,5 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "main": "./index.cjs",
-  "module": "./index.mjs"
+  "module": "./index.mjs",
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    }
+  }
 }

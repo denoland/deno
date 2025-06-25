@@ -4,6 +4,8 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
 
+use base64::prelude::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
@@ -42,9 +44,18 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub enum CaData {
   /// The string is a file path
   File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
+  /// The string holds the actual certificate
   Bytes(Vec<u8>),
+}
+
+impl CaData {
+  pub fn parse(input: String) -> Option<Self> {
+    if let Some(x) = input.strip_prefix("base64:") {
+      Some(CaData::Bytes(BASE64_STANDARD.decode(x).ok()?))
+    } else {
+      Some(CaData::File(input))
+    }
+  }
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
@@ -114,8 +125,8 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_data =
-    maybe_ca_data.or_else(|| std::env::var("DENO_CERT").ok().map(CaData::File));
+  let ca_data = maybe_ca_data
+    .or_else(|| std::env::var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {

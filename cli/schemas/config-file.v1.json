@@ -746,6 +746,14 @@
       "items": {
         "type": "string"
       },
+      "deprecated": true,
+      "description": "This unstable property was renamed to \"links\" in Deno 2.3.6."
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
       "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
     },
     "workspace": {

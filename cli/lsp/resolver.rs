@@ -37,7 +37,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
-use deno_resolver::workspace::WorkspaceNpmPatchPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmResolvers;
@@ -103,7 +103,7 @@ pub struct LspScopedResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
-  configured_npm_resolutions: Arc<ConfiguredNpmResolutions>,
+  configured_dep_resolutions: Arc<ConfiguredDepResolutions>,
   config_data: Option<Arc<ConfigData>>,
 }
 
@@ -125,7 +125,7 @@ impl Default for LspScopedResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       dep_info: Default::default(),
-      configured_npm_resolutions: Default::default(),
+      configured_dep_resolutions: Default::default(),
       config_data: None,
     }
   }
@@ -184,9 +184,9 @@ impl LspScopedResolver {
         )
       })
       .unwrap_or_default();
-    let configured_npm_resolutions = (|| {
+    let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
-      Some(Arc::new(ConfiguredNpmResolutions::new(
+      Some(Arc::new(ConfiguredDepResolutions::new(
         config_data.and_then(|d| d.resolver.maybe_import_map()),
         config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
@@ -209,7 +209,7 @@ impl LspScopedResolver {
       redirect_resolver,
       graph_imports,
       dep_info: Default::default(),
-      configured_npm_resolutions,
+      configured_dep_resolutions,
       config_data: config_data.cloned(),
     }
   }
@@ -283,7 +283,7 @@ impl LspScopedResolver {
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       graph_imports: self.graph_imports.clone(),
       dep_info: self.dep_info.clone(),
-      configured_npm_resolutions: self.configured_npm_resolutions.clone(),
+      configured_dep_resolutions: self.configured_dep_resolutions.clone(),
       config_data: self.config_data.clone(),
     })
   }
@@ -384,19 +384,13 @@ impl LspScopedResolver {
     )))
   }
 
-  pub fn file_url_to_npm_dep_key(
+  pub fn resource_url_to_configured_dep_key(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     self
-      .configured_npm_resolutions
+      .configured_dep_resolutions
       .dep_key_from_resolution(specifier)
-      .or_else(|| {
-        self
-          .node_resolver
-          .as_ref()?
-          .lookup_package_specifier_for_resolution(specifier)
-      })
   }
 
   pub fn npm_reqs(&self) -> BTreeSet<PackageReq> {
@@ -646,11 +640,11 @@ pub struct ScopeDepInfo {
 }
 
 #[derive(Debug, Default)]
-struct ConfiguredNpmResolutions {
+struct ConfiguredDepResolutions {
   deps_by_resolution: IndexMap<ModuleSpecifier, String>,
 }
 
-impl ConfiguredNpmResolutions {
+impl ConfiguredDepResolutions {
   fn new(
     import_map: Option<&ImportMap>,
     package_json: Option<&PackageJson>,
@@ -789,17 +783,16 @@ impl ConfiguredNpmResolutions {
           ) else {
             continue;
           };
-          let Some(url) = req.into_url().ok() else {
+          let Some(file_url) = req.into_url().ok() else {
             continue;
           };
-          let specifier = into_specifier_and_media_type(Some(url)).0;
           if dep_package_json.is_none() {
             dep_package_json = (|| {
-              let path = url_to_file_path(&specifier).ok()?;
+              let path = url_to_file_path(&file_url).ok()?;
               pkg_json_resolver.get_closest_package_json(&path).ok()?
             })();
           }
-          result.deps_by_resolution.insert(specifier, name.clone());
+          result.deps_by_resolution.insert(file_url, name.clone());
         }
         if let Some(dep_package_json) = &dep_package_json {
           insert_export_resolutions(
@@ -914,19 +907,19 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         npmrc.clone(),
       ));
-      let patch_packages: Arc<WorkspaceNpmPatchPackages> = self
+      let link_packages: Arc<WorkspaceNpmLinkPackages> = self
         .config_data
         .as_ref()
         .filter(|c| c.node_modules_dir.is_some()) // requires a node_modules dir
         .map(|d| {
-          Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          Arc::new(WorkspaceNpmLinkPackages::from_workspace(
             &d.member_dir.workspace,
           ))
         })
         .unwrap_or_default();
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
         self.services.npm_resolution.clone(),
-        patch_packages.clone(),
+        link_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             NpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -951,7 +944,7 @@ impl<'a> ResolverFactory<'a> {
         registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
-        patch_packages.clone(),
+        link_packages.clone(),
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
         Arc::new(NullLifecycleScriptsExecutor),
@@ -968,7 +961,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_node_modules_path.clone(),
         LifecycleScriptsConfig::default(),
         NpmSystemInfo::default(),
-        patch_packages,
+        link_packages,
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
@@ -1105,25 +1098,24 @@ impl<'a> ResolverFactory<'a> {
       .node_resolver
       .get_or_init(|| {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
-        Some(Arc::new(
-          CliNodeResolver::new(
-            self.in_npm_pkg_checker().clone(),
-            DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            self.pkg_json_resolver.clone(),
-            self.node_resolution_sys.clone(),
-            NodeResolverOptions {
-              conditions_from_resolution_mode: Default::default(),
-              typescript_version: Some(
-                deno_semver::Version::parse_standard(
-                  deno_lib::version::DENO_VERSION_INFO.typescript,
-                )
-                .unwrap(),
-              ),
-            },
-          )
-          .with_package_resolution_lookup_cache(),
-        ))
+        Some(Arc::new(CliNodeResolver::new(
+          self.in_npm_pkg_checker().clone(),
+          DenoIsBuiltInNodeModuleChecker,
+          npm_resolver.clone(),
+          self.pkg_json_resolver.clone(),
+          self.node_resolution_sys.clone(),
+          NodeResolverOptions {
+            conditions: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+            bundle_mode: false, // will change if we add support for moduleResolution bundler
+            prefer_browser_field: false,
+          },
+        )))
       })
       .as_ref()
   }
@@ -1213,16 +1205,19 @@ impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
     // this resolver assumes it will only be used with a single referrer
     // with the provided referrer kind
     debug_assert_eq!(referrer_range.specifier, *self.valid_referrer);
-    self.cli_resolver.resolve(
-      specifier_text,
-      &referrer_range.specifier,
-      referrer_range.range.start,
-      referrer_range
-        .resolution_mode
-        .map(node_resolver::ResolutionMode::from_deno_graph)
-        .unwrap_or(self.module_resolution_mode),
-      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
-    )
+    self
+      .cli_resolver
+      .resolve(
+        specifier_text,
+        &referrer_range.specifier,
+        referrer_range.range.start,
+        referrer_range
+          .resolution_mode
+          .map(node_resolver::ResolutionMode::from_deno_graph)
+          .unwrap_or(self.module_resolution_mode),
+        node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
+      )
+      .map_err(|err| err.into_deno_graph_error())
   }
 }
 

@@ -457,7 +457,7 @@ assert.throws(
   testBlockTypeError(assert.doesNotThrow, undefined);
 }
 
-// https://github.com/nodejs/node/issues/3275
+// https://github.com/nodejs/node/issues/3277765
 assert.throws(() => { throw 'error'; }, (err) => err === 'error');
 assert.throws(() => { throw new Error(); }, (err) => err instanceof Error);
 
@@ -778,8 +778,8 @@ assert.throws(
   {
     code: 'ERR_ASSERTION',
     constructor: assert.AssertionError,
-    generatedMessage: true,
     /* TODO(kt3k): Enable this assertion
+    generatedMessage: true,
     message: 'The expression evaluated to a falsy value:\n\n  ' +
              'assert.ok(null)\n'
     */
@@ -790,8 +790,8 @@ assert.throws(
   {
     code: 'ERR_ASSERTION',
     constructor: assert.AssertionError,
-    generatedMessage: true,
     /* TODO(kt3k): Enable this assertion
+    generatedMessage: true,
     message: 'The expression evaluated to a falsy value:\n\n  ' +
              "assert(typeof 123n === 'string')\n"
     */

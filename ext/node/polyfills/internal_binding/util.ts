@@ -98,7 +98,7 @@ export function getOwnNonIndexProperties(
     ...Object.getOwnPropertySymbols(obj),
   ];
 
-  if (Array.isArray(obj)) {
+  if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
     allProperties = allProperties.filter((k) => !isArrayIndex(k));
   }
 
@@ -137,3 +137,7 @@ export function arrayBufferViewHasBuffer(
 ): boolean {
   return op_node_view_has_buffer(view);
 }
+
+export const untransferableSymbol = Symbol.for(
+  "nodejs.worker_threads.untransferable",
+);

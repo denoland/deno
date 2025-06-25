@@ -1,0 +1,46 @@
+{
+  "spans": [],
+  "logs": [],
+  "metrics": [
+    {
+      "name": "delta_counter",
+      "description": "Counter with delta temporality",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    },
+    {
+      "name": "delta_counter",
+      "description": "Counter with delta temporality",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 2
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    }
+  ]
+}

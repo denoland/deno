@@ -57,6 +57,7 @@ const NODE_IGNORED_TEST_DIRS = [
   "fixtures",
   "fuzzers",
   "js-native-api",
+  "known_issues",
   "node-api",
   "overlapped-checker",
   "report",
@@ -71,6 +72,8 @@ const NODE_IGNORED_TEST_DIRS = [
 const NODE_IGNORED_TEST_CASES = new Set([
   "parallel/test-benchmark-cli.js", // testing private benchmark utility
   "parallel/test-buffer-backing-arraybuffer.js", // Deno does not allow heap-allocated ArrayBuffer, and we can't change it (for now)
+  "parallel/test-eventsource-disabled.js", // EventSource global is always available in Deno (Web API)
+  "parallel/test-crypto-secure-heap.js", // Secure heap is OpenSSL specific, not in Deno.
 ]);
 
 /** The group is the directory name of the test file.
@@ -97,13 +100,19 @@ enum NodeTestFileResult {
 interface NodeTestFileReport {
   result: NodeTestFileResult;
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
+  usesNodeTest: boolean; // whether the test uses `node:test` module
 }
 
 type TestReports = Record<string, NodeTestFileReport>;
 
+type SingleResultInfo = {
+  usesNodeTest?: 1; // Uses this form to minimize the size of the report.json
+};
+
 export type SingleResult = [
   pass: boolean | "IGNORE",
-  error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
+  error: ErrorExit | ErrorTimeout | ErrorUnexpected | undefined,
+  info: SingleResultInfo,
 ];
 type ErrorExit = {
   code: number;
@@ -153,14 +162,15 @@ async function runSingle(
   testPath: string,
   retry = 0,
 ): Promise<NodeTestFileReport> {
-  if (NODE_IGNORED_TEST_CASES.has(testPath)) {
-    return { result: NodeTestFileResult.IGNORED };
-  }
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
+  let usesNodeTest = false;
   try {
     const source = await Deno.readTextFile(testPath_);
-    const usesNodeTest = usesNodeTestModule(source);
+    usesNodeTest = usesNodeTestModule(source);
+    if (NODE_IGNORED_TEST_CASES.has(testPath)) {
+      return { result: NodeTestFileResult.IGNORED, usesNodeTest };
+    }
     const [v8Flags, nodeOptions] = getFlags(source);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
@@ -179,7 +189,7 @@ async function runSingle(
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
-      return { result: NodeTestFileResult.PASS };
+      return { result: NodeTestFileResult.PASS, usesNodeTest };
     } else {
       const output = usesNodeTest ? result.stdout : result.stderr;
       const outputText = new TextDecoder().decode(output);
@@ -190,6 +200,7 @@ async function runSingle(
           code: result.code,
           stderr,
         },
+        usesNodeTest,
       };
     }
   } catch (e) {
@@ -199,7 +210,11 @@ async function runSingle(
       } catch {
         // ignore
       }
-      return { result: NodeTestFileResult.FAIL, error: { timeout: TIMEOUT } };
+      return {
+        result: NodeTestFileResult.FAIL,
+        error: { timeout: TIMEOUT },
+        usesNodeTest,
+      };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, retry + 1);
@@ -207,6 +222,7 @@ async function runSingle(
       return {
         result: NodeTestFileResult.FAIL,
         error: { message: (e as Error).message },
+        usesNodeTest,
       };
     }
   }
@@ -221,11 +237,15 @@ function transformReportsIntoResults(
     if (value.result === NodeTestFileResult.SKIP) {
       throw new Error("Can't transform 'SKIP' result into `SingleResult`");
     }
-    let result: SingleResult = [true];
+    const info = {} as SingleResultInfo;
+    if (value.usesNodeTest) {
+      info.usesNodeTest = 1;
+    }
+    let result: SingleResult = [true, undefined, info];
     if (value.result === NodeTestFileResult.FAIL) {
-      result = [false, value.error];
+      result = [false, value.error, info];
     } else if (value.result === NodeTestFileResult.IGNORED) {
-      result = ["IGNORE"];
+      result = ["IGNORE", undefined, info];
     }
     results[key] = result;
   }

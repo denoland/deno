@@ -302,7 +302,7 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req.clone(),
+      Ok(req) => req.req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
@@ -351,7 +351,8 @@ fn add_deps_from_package_json(
         }
       };
       match v {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::JsrReq(_) => {
           // ignore
         }
         deno_package_json::PackageJsonDepValue::Req(req) => {
@@ -583,20 +584,40 @@ impl DepManager {
           DepKind::Npm => roots.push(
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
-          DepKind::Jsr => info_futures.push(async {
-            if let Some(nv) = self.jsr_fetch_resolver.req_to_nv(&dep.req).await
-            {
+          DepKind::Jsr => {
+            let resolved_nv = graph.packages.mappings().get(&dep.req);
+            let resolved_nv = resolved_nv
+              .and_then(|nv| {
+                let versions =
+                  graph.packages.versions_by_name(&dep.req.name)?;
+                let mut best = nv;
+                for version in versions {
+                  if version.version > best.version
+                    && dep.req.version_req.matches(&version.version)
+                  {
+                    best = version;
+                  }
+                }
+                Some(best)
+              })
+              .cloned();
+            info_futures.push(async {
+              let nv = if let Some(nv) = resolved_nv {
+                nv
+              } else {
+                self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
+              };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
               {
                 let specifier =
-                  ModuleSpecifier::parse(&format!("jsr:/{}/", dep.req))
+                  ModuleSpecifier::parse(&format!("jsr:/{}/", &dep.req))
                     .unwrap();
                 return Some((specifier, info));
               }
-            }
-            None
-          }),
+              None
+            });
+          }
         }
       }
     }

@@ -156,6 +156,7 @@ pub async fn doc(
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
           ignore_graph_errors: true,
+          allow_unknown_jsr_exports: false,
         },
       );
       for error in errors {

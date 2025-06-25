@@ -382,6 +382,30 @@ where
   Ok(())
 }
 
+#[op2(fast, stack_trace)]
+pub fn op_fs_fchmod_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_fs_fchmod_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_async(mode).await?;
+  Ok(())
+}
+
 #[op2(stack_trace)]
 pub fn op_fs_fchown_sync(
   state: &mut OpState,

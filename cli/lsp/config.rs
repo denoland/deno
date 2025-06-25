@@ -10,13 +10,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_config::deno_json::CompilerOptions;
+use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
-use deno_config::deno_json::TsConfig;
-use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::JsxImportSourceConfig;
@@ -1199,15 +1199,15 @@ impl Config {
 }
 
 #[derive(Debug, Serialize)]
-pub struct LspTsConfig {
+pub struct LspCompilerOptions {
   #[serde(flatten)]
-  inner: TsConfig,
+  inner: CompilerOptions,
 }
 
-impl Default for LspTsConfig {
+impl Default for LspCompilerOptions {
   fn default() -> Self {
     Self {
-      inner: TsConfig::new(json!({
+      inner: CompilerOptions::new(json!({
         "allowJs": true,
         "esModuleInterop": true,
         "experimentalDecorators": false,
@@ -1229,14 +1229,16 @@ impl Default for LspTsConfig {
   }
 }
 
-impl LspTsConfig {
-  pub fn new(raw_ts_config: TsConfigWithIgnoredOptions) -> Self {
-    let mut base_ts_config = Self::default();
-    for ignored_options in &raw_ts_config.ignored_options {
+impl LspCompilerOptions {
+  pub fn new(raw_compiler_options: CompilerOptionsWithIgnoredOptions) -> Self {
+    let mut base_compiler_options = Self::default();
+    for ignored_options in &raw_compiler_options.ignored_options {
       lsp_warn!("{}", ignored_options)
     }
-    base_ts_config.inner.merge_mut(raw_ts_config.ts_config);
-    base_ts_config
+    base_compiler_options
+      .inner
+      .merge_mut(raw_compiler_options.compiler_options);
+    base_compiler_options
   }
 }
 
@@ -1260,7 +1262,7 @@ pub struct ConfigData {
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub linter: Arc<CliLinter>,
-  pub ts_config: Arc<LspTsConfig>,
+  pub compiler_options: Arc<LspCompilerOptions>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
@@ -1568,17 +1570,21 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = member_dir
-      .to_raw_user_provided_tsconfig(&CliSys::default())
-      .map(LspTsConfig::new)
+    let compiler_options = member_dir
+      .to_raw_user_provided_compiler_options(&CliSys::default())
+      .map(LspCompilerOptions::new)
       .unwrap_or_default();
 
     let deno_lint_config =
-      if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")
+      if compiler_options.inner.0.get("jsx").and_then(|v| v.as_str())
+        == Some("react")
       {
-        let default_jsx_factory =
-          ts_config.inner.0.get("jsxFactory").and_then(|v| v.as_str());
-        let default_jsx_fragment_factory = ts_config
+        let default_jsx_factory = compiler_options
+          .inner
+          .0
+          .get("jsxFactory")
+          .and_then(|v| v.as_str());
+        let default_jsx_fragment_factory = compiler_options
           .inner
           .0
           .get("jsxFragmentFactory")
@@ -1823,7 +1829,7 @@ impl ConfigData {
       test_config,
       linter,
       exclude_files,
-      ts_config: Arc::new(ts_config),
+      compiler_options: Arc::new(compiler_options),
       byonm,
       node_modules_dir,
       vendor_dir,
@@ -2026,11 +2032,14 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_url, ws_settings) in
-      settings.by_workspace_folder.iter().chain([(
-        &Arc::new(Url::parse("file:///").unwrap()),
-        &Some(settings.unscoped.clone()),
-      )])
+    let fs_root_url = std::fs::canonicalize("/")
+      .ok()
+      .and_then(|p| Url::from_directory_path(p).ok())
+      .unwrap_or_else(|| Url::parse("file:///").unwrap());
+    for (folder_url, ws_settings) in settings
+      .by_workspace_folder
+      .iter()
+      .chain([(&Arc::new(fs_root_url), &Some(settings.unscoped.clone()))])
     {
       let mut ws_settings = ws_settings.as_ref();
       if Some(folder_url) == settings.first_folder.as_ref() {

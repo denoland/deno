@@ -183,7 +183,17 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
-  Ok(env::vars().collect())
+
+  Ok(
+    env::vars_os()
+      .filter_map(|(key_os, value_os)| {
+        key_os
+          .into_string()
+          .ok()
+          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      })
+      .collect(),
+  )
 }
 
 fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
