@@ -662,15 +662,18 @@ fn wait_for_start(
       deno_resolver::npm::DenoInNpmPackageChecker,
       crate::npm::CliNpmResolver,
       crate::sys::CliSys,
-    >(
+    >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
-      deno_lib::worker::create_isolate_create_params(
+      create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),
-      Some(roots.shared_array_buffer_store.clone()),
-      Some(roots.compiled_wasm_module_store.clone()),
-      vec![],
-    );
+      shared_array_buffer_store: Some(roots.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        roots.compiled_wasm_module_store.clone(),
+      ),
+      additional_extensions: vec![],
+      enable_raw_imports: false,
+    });
 
     let (rx, mut tx): (
       Box<dyn AsyncRead + Unpin>,
