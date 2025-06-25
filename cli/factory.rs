@@ -1153,6 +1153,7 @@ impl CliFactory {
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+      enable_raw_imports: cli_options.unstable_raw_imports(),
     })
   }
 
