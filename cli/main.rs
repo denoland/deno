@@ -548,6 +548,9 @@ fn resolve_flags_and_init(
 
   load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
+  if std::env::var("DENO_COMPAT").is_ok() {
+    flags.unstable_config.enable_node_compat();
+  }
   if flags.node_conditions.is_empty() {
     if let Ok(conditions) = std::env::var("DENO_NODE_CONDITIONS") {
       flags.node_conditions = conditions
