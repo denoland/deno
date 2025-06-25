@@ -97,6 +97,11 @@ pub fn init<
   .filter_module("editpe", log::LevelFilter::Error)
   // too verbose
   .filter_module("cranelift_codegen", log::LevelFilter::Off)
+  .write_style(if deno_terminal::colors::use_color() {
+    env_logger::WriteStyle::Always
+  } else {
+    env_logger::WriteStyle::Never
+  })
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

@@ -705,6 +705,7 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   async function commandClearEnv() {
+    Deno.env.set("DENO_COMMAND_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -723,13 +724,15 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_CLEAR_ENV_TESTING");
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   function commandSyncClearEnv() {
+    Deno.env.set("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -748,7 +751,8 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING");
   },
 );
 
@@ -1091,5 +1095,23 @@ Deno.test(
     });
     const child = await command.output();
     assertEquals(child.success, true);
+  },
+);
+
+Deno.test(
+  { ignore: Deno.build.os === "windows" },
+  async function abortChildProcessRightWhenItExitsShouldNotThrow() {
+    const controller = new AbortController();
+    const cb = () => controller.abort();
+    Deno.addSignalListener("SIGCHLD", cb);
+    const output = await new Deno.Command("true", { signal: controller.signal })
+      .output();
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
+    assertEquals(output.stdout, new Uint8Array());
+    assertEquals(output.stderr, new Uint8Array());
+
+    Deno.removeSignalListener("SIGCHLD", cb);
   },
 );

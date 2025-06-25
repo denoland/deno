@@ -55,6 +55,12 @@ pub struct PublishingTask {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Package {
+  pub latest_version: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiError {
   pub code: String,
   pub message: String,
@@ -117,16 +123,6 @@ pub async fn parse_response<T: DeserializeOwned>(
     x_deno_ray,
     data: serde_json::json!({}),
   })
-}
-
-pub async fn get_scope(
-  client: &HttpClient,
-  registry_api_url: &Url,
-  scope: &str,
-) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-  let scope_url = format!("{}scopes/{}", registry_api_url, scope);
-  let response = client.get(scope_url.parse()?)?.send().await?;
-  Ok(response)
 }
 
 pub fn get_package_api_url(

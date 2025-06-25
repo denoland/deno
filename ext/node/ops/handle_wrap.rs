@@ -44,7 +44,11 @@ pub struct AsyncWrap {
   async_id: i64,
 }
 
-impl GarbageCollected for AsyncWrap {}
+impl GarbageCollected for AsyncWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"AsyncWrap"
+  }
+}
 
 impl AsyncWrap {
   pub(crate) fn create(state: &mut OpState, provider: i32) -> Self {
@@ -85,7 +89,11 @@ pub struct HandleWrap {
   state: Rc<Cell<State>>,
 }
 
-impl GarbageCollected for HandleWrap {}
+impl GarbageCollected for HandleWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"HandleWrap"
+  }
+}
 
 impl HandleWrap {
   pub(crate) fn create(handle: Option<ResourceId>) -> Self {
@@ -239,7 +247,7 @@ mod tests {
     );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
+      extensions: vec![test_ext::init()],
       ..Default::default()
     });
 

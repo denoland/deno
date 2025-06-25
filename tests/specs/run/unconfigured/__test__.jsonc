@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "unconfigured": {
+      "args": "run -A main.ts",
+      "output": "main.out",
+      "if": "unix"
+    }
+  }
+}

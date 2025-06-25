@@ -49,6 +49,7 @@ extension!(runtime,
     {
       use deno_core::ascii_str_include;
       use deno_core::ExtensionFileSource;
+      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_features/flags.js", deno_features::JS_SOURCE));
       ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", ascii_str_include!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }

@@ -13,13 +13,16 @@ const server = Deno.serve(
     port: 0,
     onListen({ port }) {
       const command = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
+        args: [
+          "run",
+          "--env-file=env_file",
+          "-A",
+          "-q",
+          Deno.args[0],
+        ],
         env: {
-          OTEL_DENO: "true",
-          DENO_UNSTABLE_OTEL_DETERMINISTIC: "0",
-          OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
+          // rest of env is in env_file
           OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
-          OTEL_EXPORTER_OTLP_CERTIFICATE: "../../../testdata/tls/RootCA.crt",
         },
         stdout: "null",
       });
@@ -45,6 +48,18 @@ const server = Deno.serve(
           data.metrics.sort((a, b) => a.name.localeCompare(b.name));
           for (const metric of data.metrics) {
             if ("histogram" in metric) {
+              metric.histogram.dataPoints.sort((a, b) => {
+                const aKey = a.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                const bKey = b.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                return aKey.localeCompare(bKey);
+              });
+
               for (const dataPoint of metric.histogram.dataPoints) {
                 dataPoint.attributes.sort((a, b) => {
                   return a.key.localeCompare(b.key);
@@ -52,6 +67,18 @@ const server = Deno.serve(
               }
             }
             if ("sum" in metric) {
+              metric.sum.dataPoints.sort((a, b) => {
+                const aKey = a.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                const bKey = b.attributes
+                  .sort((x, y) => x.key.localeCompare(y.key))
+                  .map(({ key, value }) => `${key}:${JSON.stringify(value)}`)
+                  .join("|");
+                return aKey.localeCompare(bKey);
+              });
+
               for (const dataPoint of metric.sum.dataPoints) {
                 dataPoint.attributes.sort((a, b) => {
                   return a.key.localeCompare(b.key);

@@ -119,19 +119,19 @@ fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl AccessCheckFn + 'a {
-  move |resolved, path, options| {
-    permissions.check(resolved, options, path, api_name)
+  move |path, options, resolve| {
+    permissions.check(options, path, api_name, resolve)
   }
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   api_name: &'static str,
-) -> impl AccessCheckFn {
-  move |resolved, path, options| {
+) -> impl AccessCheckFn + 'static {
+  move |path, options, resolve| {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check(resolved, options, path, api_name)
+    permissions.check(options, path, api_name, resolve)
   }
 }
 
@@ -379,6 +379,56 @@ where
   fs.chown_async(path.clone(), uid, gid)
     .await
     .context_path("chown", &path)?;
+  Ok(())
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_fs_fchmod_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_fs_fchmod_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_async(mode).await?;
+  Ok(())
+}
+
+#[op2(stack_trace)]
+pub fn op_fs_fchown_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  file.chown_sync(uid, gid)?;
+  Ok(())
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_fs_fchown_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  file.chown_async(uid, gid).await?;
   Ok(())
 }
 

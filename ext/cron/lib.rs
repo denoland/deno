@@ -6,6 +6,7 @@ pub mod local;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::op2;
 use deno_core::OpState;
@@ -13,6 +14,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_features::FeatureChecker;
 
 pub use crate::interface::*;
 
@@ -93,7 +95,7 @@ where
   let cron_handler = {
     let state = state.borrow();
     state
-      .feature_checker
+      .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
     state.borrow::<Rc<C>>().clone()
   };

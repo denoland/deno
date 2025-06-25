@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.2.11"
+version = "2.3.7"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -45,15 +45,20 @@ node_resolver.workspace = true
 
 async-trait.workspace = true
 bincode.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+memmap2.workspace = true
+deno_subprocess_windows.workspace = true
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory"] }

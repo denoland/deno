@@ -30,7 +30,11 @@ pub(crate) struct Certificate {
   inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
 }
 
-impl deno_core::GarbageCollected for Certificate {}
+impl deno_core::GarbageCollected for Certificate {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Certificate"
+  }
+}
 
 impl Certificate {
   fn fingerprint<D: Digest>(&self) -> Option<String> {

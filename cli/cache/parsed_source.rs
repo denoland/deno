@@ -7,11 +7,11 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
-use deno_graph::CapturingEsParser;
-use deno_graph::DefaultEsParser;
-use deno_graph::EsParser;
-use deno_graph::ParseOptions;
-use deno_graph::ParsedSourceStore;
+use deno_graph::ast::CapturingEsParser;
+use deno_graph::ast::DefaultEsParser;
+use deno_graph::ast::EsParser;
+use deno_graph::ast::ParseOptions;
+use deno_graph::ast::ParsedSourceStore;
 
 /// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
 /// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause
@@ -31,6 +31,7 @@ impl<'a> LazyGraphSourceParser<'a> {
     Self { cache, graph }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn get_or_parse_source(
     &self,
     module_specifier: &ModuleSpecifier,
@@ -52,6 +53,7 @@ pub struct ParsedSourceCache {
 }
 
 impl ParsedSourceCache {
+  #[allow(clippy::result_large_err)]
   pub fn get_parsed_source_from_js_module(
     &self,
     module: &deno_graph::JsModule,
@@ -66,6 +68,7 @@ impl ParsedSourceCache {
     })
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn remove_or_parse_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -117,7 +120,7 @@ impl ParsedSourceCache {
 /// and in LSP settings the concurrency will be enforced
 /// at a higher level to ensure this will have the latest
 /// parsed source.
-impl deno_graph::ParsedSourceStore for ParsedSourceCache {
+impl deno_graph::ast::ParsedSourceStore for ParsedSourceCache {
   fn set_parsed_source(
     &self,
     specifier: ModuleSpecifier,

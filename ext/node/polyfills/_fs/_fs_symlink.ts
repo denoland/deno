@@ -1,11 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
 
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+
+const {
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 type SymlinkType = "file" | "dir" | "junction";
 
@@ -15,8 +20,10 @@ export function symlink(
   typeOrCallback: SymlinkType | CallbackWithError,
   maybeCallback?: CallbackWithError,
 ) {
-  target = target instanceof URL ? pathFromURL(target) : target;
-  path = path instanceof URL ? pathFromURL(path) : path;
+  target = ObjectPrototypeIsPrototypeOf(URL, target)
+    ? pathFromURL(target)
+    : target;
+  path = ObjectPrototypeIsPrototypeOf(URL, path) ? pathFromURL(path) : path;
 
   const type: SymlinkType = typeof typeOrCallback === "string"
     ? typeOrCallback
@@ -28,7 +35,11 @@ export function symlink(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.symlink(target, path, { type }).then(() => callback(null), callback);
+  PromisePrototypeThen(
+    Deno.symlink(target, path, { type }),
+    () => callback(null),
+    callback,
+  );
 }
 
 export const symlinkPromise = promisify(symlink) as (
@@ -42,8 +53,10 @@ export function symlinkSync(
   path: string | URL,
   type?: SymlinkType,
 ) {
-  target = target instanceof URL ? pathFromURL(target) : target;
-  path = path instanceof URL ? pathFromURL(path) : path;
+  target = ObjectPrototypeIsPrototypeOf(URL, target)
+    ? pathFromURL(target)
+    : target;
+  path = ObjectPrototypeIsPrototypeOf(URL, path) ? pathFromURL(path) : path;
   type = type || "file";
 
   Deno.symlinkSync(target, path, { type });

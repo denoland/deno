@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.110.0"
+version = "0.116.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_fetch.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true

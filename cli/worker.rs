@@ -12,6 +12,8 @@ use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -20,9 +22,7 @@ use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
-use crate::args::NpmCachingStrategy;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -274,6 +274,7 @@ impl CliMainWorker {
     Ok(Some(coverage_collector))
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
@@ -307,15 +308,13 @@ pub enum CreateCustomWorkerError {
   NpmPackageReq(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
-  AtomicWriteFileWithRetries(
-    #[from] crate::args::AtomicWriteFileWithRetriesError,
-  ),
+  LockfileWrite(#[from] deno_resolver::lockfile::LockfileWriteError),
 }
 
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
@@ -330,7 +329,7 @@ impl CliMainWorkerFactory {
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
     options: CliMainWorkerOptions,
@@ -365,6 +364,25 @@ impl CliMainWorkerFactory {
         self.root_permissions.clone(),
         vec![],
         Default::default(),
+        None,
+      )
+      .await
+  }
+
+  pub async fn create_main_worker_with_unconfigured_runtime(
+    &self,
+    mode: WorkerExecutionMode,
+    main_module: ModuleSpecifier,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
+    self
+      .create_custom_worker(
+        mode,
+        main_module,
+        self.root_permissions.clone(),
+        vec![],
+        Default::default(),
+        unconfigured_runtime,
       )
       .await
   }
@@ -376,6 +394,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
+    unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
@@ -432,6 +451,7 @@ impl CliMainWorkerFactory {
       permissions,
       custom_extensions,
       stdio,
+      unconfigured_runtime,
     )?;
 
     if self.needs_test_modules {
@@ -472,6 +492,7 @@ mod tests {
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
+  use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
   use deno_runtime::worker::WorkerOptions;
   use deno_runtime::worker::WorkerServiceOptions;
@@ -482,9 +503,11 @@ mod tests {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
-    let permission_desc_parser = Arc::new(
-      RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
-    );
+    let permission_desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(
+        crate::sys::CliSys::default(),
+        UnstableSubdomainWildcards::Enabled,
+      ));
     let options = WorkerOptions {
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       ..Default::default()

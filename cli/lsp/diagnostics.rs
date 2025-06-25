@@ -25,6 +25,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -40,6 +41,7 @@ use import_map::ImportMap;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
+use node_resolver::NodeResolutionKind;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::Duration;
@@ -47,6 +49,7 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis;
+use super::analysis::import_map_lookup;
 use super::client::Client;
 use super::config::Config;
 use super::documents::Document;
@@ -67,6 +70,7 @@ use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
+use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
 pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
@@ -454,19 +458,8 @@ impl DeferredDiagnostics {
           ambient.regex = None;
           continue;
         }
-        let mut regex_string = String::with_capacity(value.len() * 8);
-        regex_string.push('(');
-        let last = value.len() - 1;
-        for (idx, part) in value.into_iter().enumerate() {
-          let trimmed = part.trim_matches('"');
-          let escaped = regex::escape(trimmed);
-          let regex = escaped.replace("\\*", ".*");
-          regex_string.push_str(&regex);
-          if idx != last {
-            regex_string.push('|');
-          }
-        }
-        regex_string.push_str(")$");
+        let mut regex_string = ambient_modules_to_regex_string(&value);
+        regex_string.push('$');
         if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
         }) {
@@ -1097,13 +1090,7 @@ async fn generate_ts_diagnostics(
   let mut enabled_modules_with_diagnostics = Vec::new();
   for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(
-        snapshot.clone(),
-        enabled_modules.iter().map(|m| m.specifier.as_ref()),
-        scope.as_ref(),
-        notebook_uri.as_ref(),
-        &token,
-      )
+      .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
@@ -1185,22 +1172,18 @@ pub enum DenoDiagnostic {
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
-  /// A remote jsr package reference was not found in the cache.
+  /// A jsr package reference was not found in the cache.
   NotInstalledJsr(PackageReq, ModuleSpecifier),
-  /// A remote npm package reference was not found in the cache.
+  /// An npm package reference was not found in the cache.
   NotInstalledNpm(PackageReq, ModuleSpecifier),
+  /// An npm package reference was not exported by its package.
+  NoExportNpm(NpmPackageReqReference),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
-  /// The specifier resolved to a remote specifier that was redirected to
-  /// another specifier.
-  Redirect {
-    from: ModuleSpecifier,
-    to: ModuleSpecifier,
-  },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
-  /// Invalid `node:` specifier.
-  InvalidNodeSpecifier(ModuleSpecifier),
+  /// Unknown `node:` specifier.
+  UnknownNodeSpecifier(ModuleSpecifier),
   /// Bare specifier is used for `node:` specifier
   BareNodeSpecifier(String),
 }
@@ -1215,8 +1198,8 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NotInstalledJsr(_, _) => "not-installed-jsr",
       Self::NotInstalledNpm(_, _) => "not-installed-npm",
+      Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
-      Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => {
         if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
           "import-node-prefix-missing"
@@ -1239,7 +1222,7 @@ impl DenoDiagnostic {
           }
         }
       }
-      Self::InvalidNodeSpecifier(_) => "resolver-error",
+      Self::UnknownNodeSpecifier(_) => "resolver-error",
       Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
   }
@@ -1458,6 +1441,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NoExportNpm(pkg_ref) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{}\" does not define an export \"{}\".", pkg_ref.req(), pkg_ref.sub_path().unwrap_or(".")), None),
       Self::NoLocal(specifier) => {
         let sloppy_resolution = sloppy_imports_resolve(specifier, deno_resolver::workspace::ResolutionKind::Execution, CliSys::default());
         let data = sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| {
@@ -1469,7 +1453,6 @@ impl DenoDiagnostic {
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => {
         let mut message;
         message = enhanced_resolution_error_message(err);
@@ -1489,7 +1472,7 @@ impl DenoDiagnostic {
         graph_util::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
       )},
-      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
+      Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
       Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
@@ -1580,41 +1563,17 @@ fn maybe_ambient_specifier_resolution_err(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
   resolution: &Resolution,
+  resolution_kind: ResolutionKind,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
   import_map: Option<&ImportMap>,
 ) -> (Vec<DenoDiagnostic>, Vec<DenoDiagnostic>) {
-  fn check_redirect_diagnostic(
-    specifier: &ModuleSpecifier,
-    module: &DocumentModule,
-  ) -> Option<DenoDiagnostic> {
-    // If the module was redirected, we want to issue an informational
-    // diagnostic that indicates this. This then allows us to issue a code
-    // action to replace the specifier with the final redirected one.
-    if specifier.scheme() == "jsr" || specifier == module.specifier.as_ref() {
-      return None;
-    }
-    // don't bother warning about sloppy import redirects from .js to .d.ts
-    // because explaining how to fix this via a diagnostic involves using
-    // @ts-types and that's a bit complicated to explain
-    let is_sloppy_import_dts_redirect = module.specifier.scheme() == "file"
-      && module.media_type.is_declaration()
-      && !MediaType::from_specifier(specifier).is_declaration();
-    if is_sloppy_import_dts_redirect {
-      return None;
-    }
-
-    Some(DenoDiagnostic::Redirect {
-      from: specifier.clone(),
-      to: module.specifier.as_ref().clone(),
-    })
-  }
-
   let mut diagnostics = vec![];
   let mut deferred_diagnostics = vec![];
   match resolution {
@@ -1638,10 +1597,6 @@ fn diagnose_resolution(
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
           }
-        }
-        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &module)
-        {
-          diagnostics.push(diagnostic);
         }
         if module.media_type == MediaType::Json {
           match maybe_assert_type {
@@ -1670,17 +1625,29 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          let req = pkg_ref.into_inner().req;
-          if !npm_resolver.is_pkg_req_folder_cached(&req) {
-            diagnostics
-              .push(DenoDiagnostic::NotInstalledNpm(req, specifier.clone()));
+          let req = pkg_ref.req();
+          if !npm_resolver.is_pkg_req_folder_cached(req) {
+            diagnostics.push(DenoDiagnostic::NotInstalledNpm(
+              req.clone(),
+              specifier.clone(),
+            ));
+          } else if scoped_resolver
+            .npm_to_file_url(
+              &pkg_ref,
+              &referrer_module.specifier,
+              NodeResolutionKind::from_deno_graph(resolution_kind),
+              referrer_module.resolution_mode,
+            )
+            .is_none()
+          {
+            diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       {
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
-            .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
+            .push(DenoDiagnostic::UnknownNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
           let mut is_mapped = false;
           if let Some(import_map) = import_map {
@@ -1744,39 +1711,6 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  /// Given a specifier and a referring specifier, determine if a value in the
-  /// import map could be used as an import specifier that resolves using the
-  /// import map.
-  ///
-  /// This was inlined from the import_map crate in order to ignore more
-  /// entries.
-  fn import_map_lookup(
-    import_map: &ImportMap,
-    specifier: &Url,
-    referrer: &Url,
-  ) -> Option<String> {
-    let specifier_str = specifier.as_str();
-    for entry in import_map.entries_for_referrer(referrer) {
-      if let Some(address) = entry.value {
-        let address_str = address.as_str();
-        if referrer.as_str().starts_with(address_str) {
-          // ignore when the referrer has a common base with the
-          // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
-          // and there's a `"$src/": "./src/"` import map entry)
-          continue;
-        }
-        if address_str == specifier_str {
-          return Some(entry.raw_key.to_string());
-        }
-        if address_str.ends_with('/') && specifier_str.starts_with(address_str)
-        {
-          return Some(specifier_str.replace(address_str, entry.raw_key));
-        }
-      }
-    }
-    None
-  }
-
   if snapshot
     .resolver
     .in_node_modules(&referrer_module.specifier)
@@ -1829,22 +1763,27 @@ fn diagnose_dependency(
         .includes(i.specifier_range.range.start)
         .is_some()
     });
-
+  let resolution;
+  let resolution_kind;
+  if dependency.maybe_code.is_none()
+  // If not @ts-types, diagnose the types if the code errored because
+  // it's likely resolving into the node_modules folder, which might be
+  // erroring correctly due to resolution only being for bundlers. Let this
+  // fail at runtime if necessary, but don't bother erroring in the editor
+  || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+    && matches!(dependency.maybe_code, Resolution::Err(_))
+  {
+    resolution = &dependency.maybe_type;
+    resolution_kind = ResolutionKind::Types;
+  } else {
+    resolution = &dependency.maybe_code;
+    resolution_kind = ResolutionKind::Execution;
+  };
   let (resolution_diagnostics, deferred) = diagnose_resolution(
     snapshot,
     dependency_key,
-    if dependency.maybe_code.is_none()
-        // If not @ts-types, diagnose the types if the code errored because
-        // it's likely resolving into the node_modules folder, which might be
-        // erroring correctly due to resolution only being for bundlers. Let this
-        // fail at runtime if necessary, but don't bother erroring in the editor
-        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
-          && matches!(dependency.maybe_code, Resolution::Err(_))
-    {
-      &dependency.maybe_type
-    } else {
-      &dependency.maybe_code
-    },
+    resolution,
+    resolution_kind,
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
@@ -1880,6 +1819,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       &dependency.maybe_type,
+      ResolutionKind::Types,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,
@@ -1967,7 +1907,6 @@ mod tests {
 
   use deno_config::deno_json::ConfigFile;
   use deno_core::resolve_url;
-  use deno_semver::package::PackageNv;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -2006,26 +1945,6 @@ mod tests {
     }
   }
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   async fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
@@ -2037,10 +1956,7 @@ mod tests {
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_url.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
-      config
-        .tree
-        .inject_config_file(config_file, &default_registry())
-        .await;
+      config.tree.inject_config_file(config_file).await;
     }
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);

@@ -263,6 +263,25 @@ where
   Ok(nwritten)
 }
 
+#[op2(fast)]
+pub fn op_net_validate_multicast(
+  #[string] address: String,
+  #[string] multi_interface: String,
+) -> Result<(), NetError> {
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  if !addr.is_multicast() {
+    return Err(NetError::InvalidHostname(address));
+  }
+
+  if !interface_addr.is_multicast() {
+    return Err(NetError::InvalidHostname(multi_interface));
+  }
+
+  Ok(())
+}
+
 #[op2(async)]
 pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
@@ -390,6 +409,23 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+#[op2(async)]
+pub async fn op_net_set_broadcast_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  broadcast: bool,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+  socket.set_broadcast(broadcast)?;
+
+  Ok(())
+}
+
 /// If this token is present in op_net_connect_tcp call and
 /// the hostname matches with one of the resolved IPs, then
 /// the permission check is performed against the original hostname.
@@ -399,7 +435,11 @@ pub struct NetPermToken {
   pub resolved_ips: Vec<String>,
 }
 
-impl deno_core::GarbageCollected for NetPermToken {}
+impl deno_core::GarbageCollected for NetPermToken {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"NetPermToken"
+  }
+}
 
 impl NetPermToken {
   /// Checks if the given address is included in the resolved IPs.
@@ -422,11 +462,13 @@ pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
+  #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token).await
+  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token, resource_abort_id)
+    .await
 }
 
 #[inline]
@@ -434,6 +476,7 @@ pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
   net_perm_token: Option<&NetPermToken>,
+  resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -455,7 +498,32 @@ where
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(&addr).await?;
+
+  let cancel_handle = resource_abort_id.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
+    TcpStream::connect(&addr).or_cancel(cancel_handle).await?
+  } else {
+    TcpStream::connect(&addr).await
+  };
+
+  if let Some(cancel_rid) = resource_abort_id {
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
+  }
+
+  let tcp_stream = match tcp_stream_result {
+    Ok(tcp_stream) => tcp_stream,
+    Err(e) => return Err(NetError::Io(e)),
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -611,7 +679,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_vsock<NP>(
@@ -622,12 +690,15 @@ pub async fn op_net_connect_vsock<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  use std::sync::Arc;
+
+  use deno_features::FeatureChecker;
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockStream;
 
   state
     .borrow()
-    .feature_checker
+    .borrow::<Arc<FeatureChecker>>()
     .check_or_exit("vsock", "Deno.connect");
 
   state.borrow_mut().borrow_mut::<NP>().check_vsock(
@@ -656,7 +727,7 @@ where
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
@@ -666,7 +737,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_vsock<NP>(
@@ -677,10 +748,15 @@ pub fn op_net_listen_vsock<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  use std::sync::Arc;
+
+  use deno_features::FeatureChecker;
   use tokio_vsock::VsockAddr;
   use tokio_vsock::VsockListener;
 
-  state.feature_checker.check_or_exit("vsock", "Deno.listen");
+  state
+    .borrow::<Arc<FeatureChecker>>()
+    .check_or_exit("vsock", "Deno.listen");
 
   state
     .borrow_mut::<NP>()
@@ -694,7 +770,7 @@ where
   Ok((rid, local_addr.cid(), local_addr.port()))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
@@ -704,7 +780,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[op2(async)]
 #[serde]
 pub async fn op_net_accept_vsock(
@@ -743,7 +819,7 @@ pub async fn op_net_accept_vsock(
   ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[op2]
 #[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
@@ -752,7 +828,7 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
-pub enum DnsReturnRecord {
+pub enum DnsRecordData {
   A(String),
   Aaaa(String),
   Aname(String),
@@ -794,6 +870,13 @@ pub enum DnsReturnRecord {
   Txt(Vec<String>),
 }
 
+#[derive(Serialize, Eq, PartialEq, Debug)]
+#[serde()]
+pub struct DnsRecordWithTtl {
+  pub data: DnsRecordData,
+  pub ttl: u32,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveAddrArgs {
@@ -826,7 +909,7 @@ pub struct NameServer {
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: ResolveAddrArgs,
-) -> Result<Vec<DnsReturnRecord>, NetError>
+) -> Result<Vec<DnsRecordWithTtl>, NetError>
 where
   NP: NetPermissions + 'static,
 {
@@ -900,20 +983,29 @@ where
         NetError::DnsNotFound(e)
       }
       ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections { .. }) =>
+        if matches!(**kind, ProtoErrorKind::NoConnections) =>
       {
         NetError::DnsNotConnected(e)
       }
       ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout { .. }) =>
+        if matches!(**kind, ProtoErrorKind::Timeout) =>
       {
         NetError::DnsTimedOut(e)
       }
       _ => NetError::Dns(e),
     })?
+    .records()
     .iter()
-    .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
-    .collect::<Result<Vec<DnsReturnRecord>, NetError>>()
+    .filter_map(|rec| {
+      let r = format_rdata(record_type)(rec.data()).transpose();
+      r.map(|maybe_data| {
+        maybe_data.map(|data| DnsRecordWithTtl {
+          data,
+          ttl: rec.ttl(),
+        })
+      })
+    })
+    .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
 }
 
 #[op2(fast)]
@@ -956,22 +1048,22 @@ pub fn op_set_keepalive_inner(
   resource.set_keepalive(keepalive).map_err(NetError::Map)
 }
 
-fn rdata_to_return_record(
+fn format_rdata(
   ty: RecordType,
-) -> impl Fn(&RData) -> Result<Option<DnsReturnRecord>, NetError> {
+) -> impl Fn(&RData) -> Result<Option<DnsRecordData>, NetError> {
   use RecordType::*;
-  move |r: &RData| -> Result<Option<DnsReturnRecord>, NetError> {
+  move |r: &RData| -> Result<Option<DnsRecordData>, NetError> {
     let record = match ty {
-      A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
+      A => r.as_a().map(ToString::to_string).map(DnsRecordData::A),
       AAAA => r
         .as_aaaa()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::Aaaa),
+        .map(DnsRecordData::Aaaa),
       ANAME => r
         .as_aname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::Aname),
-      CAA => r.as_caa().map(|caa| DnsReturnRecord::Caa {
+        .map(DnsRecordData::Aname),
+      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
         critical: caa.issuer_critical(),
         tag: caa.tag().to_string(),
         value: match caa.value() {
@@ -998,12 +1090,12 @@ fn rdata_to_return_record(
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::Cname),
-      MX => r.as_mx().map(|mx| DnsReturnRecord::Mx {
+        .map(DnsRecordData::Cname),
+      MX => r.as_mx().map(|mx| DnsRecordData::Mx {
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
-      NAPTR => r.as_naptr().map(|naptr| DnsReturnRecord::Naptr {
+      NAPTR => r.as_naptr().map(|naptr| DnsRecordData::Naptr {
         order: naptr.order(),
         preference: naptr.preference(),
         flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
@@ -1011,12 +1103,9 @@ fn rdata_to_return_record(
         regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
         replacement: naptr.replacement().to_string(),
       }),
-      NS => r.as_ns().map(ToString::to_string).map(DnsReturnRecord::Ns),
-      PTR => r
-        .as_ptr()
-        .map(ToString::to_string)
-        .map(DnsReturnRecord::Ptr),
-      SOA => r.as_soa().map(|soa| DnsReturnRecord::Soa {
+      NS => r.as_ns().map(ToString::to_string).map(DnsRecordData::Ns),
+      PTR => r.as_ptr().map(ToString::to_string).map(DnsRecordData::Ptr),
+      SOA => r.as_soa().map(|soa| DnsRecordData::Soa {
         mname: soa.mname().to_string(),
         rname: soa.rname().to_string(),
         serial: soa.serial(),
@@ -1025,7 +1114,7 @@ fn rdata_to_return_record(
         expire: soa.expire(),
         minimum: soa.minimum(),
       }),
-      SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
+      SRV => r.as_srv().map(|srv| DnsRecordData::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
         port: srv.port(),
@@ -1039,7 +1128,7 @@ fn rdata_to_return_record(
             bytes.iter().map(|&b| b as char).collect::<String>()
           })
           .collect();
-        DnsReturnRecord::Txt(texts)
+        DnsRecordData::Txt(texts)
       }),
       _ => return Err(NetError::UnsupportedRecordType),
     };
@@ -1082,37 +1171,37 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_a() {
-    let func = rdata_to_return_record(RecordType::A);
+    let func = format_rdata(RecordType::A);
     let rdata = RData::A(A(Ipv4Addr::new(127, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::A("127.0.0.1".to_string()))
+      Some(DnsRecordData::A("127.0.0.1".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_aaaa() {
-    let func = rdata_to_return_record(RecordType::AAAA);
+    let func = format_rdata(RecordType::AAAA);
     let rdata = RData::AAAA(AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Aaaa("::1".to_string()))
+      Some(DnsRecordData::Aaaa("::1".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
-    let func = rdata_to_return_record(RecordType::ANAME);
+    let func = format_rdata(RecordType::ANAME);
     let rdata = RData::ANAME(ANAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Aname("".to_string()))
+      Some(DnsRecordData::Aname("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_caa() {
-    let func = rdata_to_return_record(RecordType::CAA);
+    let func = format_rdata(RecordType::CAA);
     let rdata = RData::CAA(CAA::new_issue(
       false,
       Some(Name::parse("example.com", None).unwrap()),
@@ -1120,7 +1209,7 @@ mod tests {
     ));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Caa {
+      Some(DnsRecordData::Caa {
         critical: false,
         tag: "issue".to_string(),
         value: "example.com; account=123456".to_string(),
@@ -1130,21 +1219,21 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_cname() {
-    let func = rdata_to_return_record(RecordType::CNAME);
+    let func = format_rdata(RecordType::CNAME);
     let rdata = RData::CNAME(CNAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Cname("".to_string()))
+      Some(DnsRecordData::Cname("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_mx() {
-    let func = rdata_to_return_record(RecordType::MX);
+    let func = format_rdata(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Mx {
+      Some(DnsRecordData::Mx {
         preference: 10,
         exchange: "".to_string()
       })
@@ -1153,7 +1242,7 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_naptr() {
-    let func = rdata_to_return_record(RecordType::NAPTR);
+    let func = format_rdata(RecordType::NAPTR);
     let rdata = RData::NAPTR(NAPTR::new(
       1,
       2,
@@ -1164,7 +1253,7 @@ mod tests {
     ));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Naptr {
+      Some(DnsRecordData::Naptr {
         order: 1,
         preference: 2,
         flags: "".to_string(),
@@ -1177,27 +1266,27 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_ns() {
-    let func = rdata_to_return_record(RecordType::NS);
+    let func = format_rdata(RecordType::NS);
     let rdata = RData::NS(NS(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Ns("".to_string()))
+      Some(DnsRecordData::Ns("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
-    let func = rdata_to_return_record(RecordType::PTR);
+    let func = format_rdata(RecordType::PTR);
     let rdata = RData::PTR(PTR(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Ptr("".to_string()))
+      Some(DnsRecordData::Ptr("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_soa() {
-    let func = rdata_to_return_record(RecordType::SOA);
+    let func = format_rdata(RecordType::SOA);
     let rdata = RData::SOA(SOA::new(
       Name::new(),
       Name::new(),
@@ -1209,7 +1298,7 @@ mod tests {
     ));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Soa {
+      Some(DnsRecordData::Soa {
         mname: "".to_string(),
         rname: "".to_string(),
         serial: 0,
@@ -1223,11 +1312,11 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_srv() {
-    let func = rdata_to_return_record(RecordType::SRV);
+    let func = format_rdata(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Srv {
+      Some(DnsRecordData::Srv {
         priority: 1,
         weight: 2,
         port: 3,
@@ -1238,7 +1327,7 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_txt() {
-    let func = rdata_to_return_record(RecordType::TXT);
+    let func = format_rdata(RecordType::TXT);
     let rdata = RData::TXT(TXT::from_bytes(vec![
       "foo".as_bytes(),
       "bar".as_bytes(),
@@ -1247,7 +1336,7 @@ mod tests {
     ]));
     assert_eq!(
       func(&rdata).unwrap(),
-      Some(DnsReturnRecord::Txt(vec![
+      Some(DnsRecordData::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
         "£".to_string(),
@@ -1285,10 +1374,10 @@ mod tests {
 
     fn check_write_path<'a>(
       &mut self,
-      p: &'a Path,
+      p: Cow<'a, Path>,
       _api_name: &str,
     ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(Cow::Borrowed(p))
+      Ok(p)
     }
 
     fn check_vsock(
@@ -1350,8 +1439,7 @@ mod tests {
     );
 
     let runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
-      feature_checker: Some(Arc::new(Default::default())),
+      extensions: vec![test_ext::init()],
       ..Default::default()
     });
 
@@ -1363,9 +1451,10 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
-        .boxed_local();
+    let mut connect_fut = op_net_connect_tcp_inner::<TestPermission>(
+      conn_state, ip_addr, None, None,
+    )
+    .boxed_local();
     let mut rid = None;
 
     tokio::select! {

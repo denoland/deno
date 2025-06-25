@@ -15,7 +15,6 @@ use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::FastString;
-use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -67,10 +66,12 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -239,6 +240,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           JsErrorBox::from_err(
             DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
               .into_box(),
+          )
+          .into(),
+        ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
           )
           .into(),
         ),
@@ -816,8 +823,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
-  let node_code_translator =
-    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+  ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -856,7 +865,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
-          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          is_link: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),
@@ -924,8 +933,14 @@ pub async fn run(
       }
     }
 
-    let desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
+    let desc_parser = Arc::new(RuntimePermissionDescriptorParser::new(
+      sys.clone(),
+      if metadata.unstable_config.subdomain_wildcards {
+        UnstableSubdomainWildcards::Enabled
+      } else {
+        UnstableSubdomainWildcards::Disabled
+      },
+    ));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
@@ -951,11 +966,12 @@ pub async fn run(
     strace_ops: None,
     is_inspecting: false,
     is_standalone: true,
+    auto_serve: false,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string())
       .or(std::env::args().next()),
     node_debug: std::env::var("NODE_DEBUG").ok(),
     origin_data_folder_path: None,
@@ -984,12 +1000,21 @@ pub async fn run(
     StorageKeyResolver::empty(),
     sys.clone(),
     lib_main_worker_options,
+    Default::default(),
   );
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  let is_single_threaded = metadata
+    .v8_flags
+    .contains(&String::from("--single-threaded"));
+  let v8_platform = if is_single_threaded {
+    Some(::deno_core::v8::Platform::new_single_threaded(true).make_shared())
+  } else {
+    None
+  };
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(None, true);
+  deno_core::JsRuntime::init_platform(v8_platform, true);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

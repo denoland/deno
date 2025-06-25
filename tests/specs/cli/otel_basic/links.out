@@ -79,8 +79,15 @@
           "traceId": "1234567890abcdef1234567890abcdef",
           "spanId": "1234567890abcdef",
           "traceState": "",
-          "attributes": [],
-          "droppedAttributesCount": 2,
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 1,
           "flags": 1
         }
       ],

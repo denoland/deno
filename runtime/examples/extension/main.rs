@@ -12,6 +12,7 @@ use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_fs::RealFs;
+use deno_permissions::UnstableSubdomainWildcards;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -39,9 +40,11 @@ async fn main() -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::from_file_path(js_path).unwrap();
   eprintln!("Running {main_module}...");
   let fs = Arc::new(RealFs);
-  let permission_desc_parser = Arc::new(
-    RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys),
-  );
+  let permission_desc_parser =
+    Arc::new(RuntimePermissionDescriptorParser::new(
+      sys_traits::impls::RealSys,
+      UnstableSubdomainWildcards::Enabled,
+    ));
   let mut worker = MainWorker::bootstrap_from_options(
     &main_module,
     WorkerServiceOptions::<
@@ -65,7 +68,7 @@ async fn main() -> Result<(), AnyError> {
       fs,
     },
     WorkerOptions {
-      extensions: vec![hello_runtime::init_ops_and_esm()],
+      extensions: vec![hello_runtime::init()],
       ..Default::default()
     },
   );

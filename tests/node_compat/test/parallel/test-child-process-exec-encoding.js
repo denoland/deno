@@ -20,8 +20,8 @@ if (process.argv[2] === 'child') {
   const expectedStdout = `${stdoutData}\n`;
   const expectedStderr = `${stderrData}\n`;
   function run(options, callback) {
-    // FIXME(kt3k): needs to add --allow-read permission to child process
-    const cmd = `"${process.execPath}" --allow-read "${__filename}" child`;
+    // FIXME(kt3k): needs to add --allow-read and --allow-env permission to child process
+    const cmd = `"${process.execPath}" --allow-read --allow-env "${__filename}" child`;
 
     cp.exec(cmd, options, common.mustSucceed((stdout, stderr) => {
       callback(stdout, stderr);

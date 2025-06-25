@@ -21,9 +21,11 @@ use deno_io::StdFileResourceInner;
 use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
+use crate::interface::CheckedPath;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
+use crate::GetPath;
 use crate::OpenOptions;
 
 #[derive(Debug, Default, Clone)]
@@ -1079,43 +1081,15 @@ pub fn open_options_with_access_check(
   access_check: Option<AccessCheckCb>,
 ) -> FsResult<(PathBuf, fs::OpenOptions)> {
   if let Some(access_check) = access_check {
-    let path_bytes = path.as_os_str().as_encoded_bytes();
-    let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
-      && !path_bytes.contains(&b':');
-    let path = if is_windows_device_path {
-      // On Windows, normalize_path doesn't work with device-prefix-style
-      // paths. We pass these through.
-      path.to_owned()
-    } else if path.is_absolute() {
-      normalize_path(path)
-    } else {
-      let cwd = current_dir()?;
-      normalize_path(cwd.join(path))
+    let path = Cow::Borrowed(path);
+    let maybe_resolved = (*access_check)(path, &options, &StdGetPath)?;
+
+    let path = maybe_resolved;
+
+    let (_resolved, path) = match path {
+      CheckedPath::Resolved(path) => (true, path),
+      CheckedPath::Unresolved(path) => (false, path),
     };
-    (*access_check)(false, &path, &options)?;
-    // On Linux, /proc may contain magic links that we don't want to resolve
-    let is_linux_special_path = cfg!(target_os = "linux")
-      && (path.starts_with("/proc") || path.starts_with("/dev"));
-    let needs_canonicalization =
-      !is_windows_device_path && !is_linux_special_path;
-    let path = if needs_canonicalization {
-      match path.canonicalize() {
-        Ok(path) => path,
-        Err(_) => {
-          if let (Some(parent), Some(filename)) =
-            (path.parent(), path.file_name())
-          {
-            parent.canonicalize()?.join(filename)
-          } else {
-            return Err(std::io::ErrorKind::NotFound.into());
-          }
-        }
-      }
-    } else {
-      path
-    };
-    (*access_check)(true, &path, &options)?;
 
     let mut opts: fs::OpenOptions = open_options(options);
     #[cfg(windows)]
@@ -1131,12 +1105,12 @@ pub fn open_options_with_access_check(
       // with the exception of /proc/ which is too special, and /dev/std* which might point to
       // proc.
       use std::os::unix::fs::OpenOptionsExt;
-      if needs_canonicalization {
+      if _resolved {
         opts.custom_flags(libc::O_NOFOLLOW);
       }
     }
 
-    Ok((path, opts))
+    Ok((path.into_owned(), opts))
   } else {
     // for unix
     #[allow(unused_mut)]
@@ -1148,5 +1122,50 @@ pub fn open_options_with_access_check(
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
     }
     Ok((path.to_path_buf(), opts))
+  }
+}
+
+struct StdGetPath;
+
+impl GetPath for StdGetPath {
+  fn normalized<'a>(
+    &self,
+    path: Cow<'a, Path>,
+  ) -> FsResult<(bool, Cow<'a, Path>)> {
+    let path_bytes = path.as_os_str().as_encoded_bytes();
+    let is_windows_device_path = cfg!(windows)
+      && path_bytes.starts_with(br"\\.\")
+      && !path_bytes.contains(&b':');
+    let path = if is_windows_device_path {
+      // On Windows, normalize_path doesn't work with device-prefix-style
+      // paths. We pass these through.
+      path
+    } else if path.is_absolute() {
+      Cow::Owned(normalize_path(path))
+    } else {
+      let cwd = current_dir()?;
+      Cow::Owned(normalize_path(cwd.join(path)))
+    };
+    // On Linux, /proc may contain magic links that we don't want to resolve
+    let is_linux_special_path = cfg!(target_os = "linux")
+      && (path.starts_with("/proc") || path.starts_with("/dev"));
+    let needs_canonicalization =
+      !is_windows_device_path && !is_linux_special_path;
+    Ok((needs_canonicalization, path))
+  }
+
+  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError> {
+    match path.canonicalize() {
+      Ok(path) => Ok(path),
+      Err(_) => {
+        if let (Some(parent), Some(filename)) =
+          (path.parent(), path.file_name())
+        {
+          Ok(parent.canonicalize()?.join(filename))
+        } else {
+          Err(std::io::ErrorKind::NotFound.into())
+        }
+      }
+    }
   }
 }

@@ -120,7 +120,11 @@ struct Storage {
   persistent: bool,
 }
 
-impl GarbageCollected for Storage {}
+impl GarbageCollected for Storage {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Storage"
+  }
+}
 
 #[op2]
 impl Storage {

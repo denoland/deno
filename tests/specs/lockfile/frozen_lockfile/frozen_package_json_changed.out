@@ -8,7 +8,7 @@ changes:
 11 | +    },
 12 | +    "@denotest/bin@0.7.0": {
 13 | +      "integrity": "sha512-RAE7sQrdTUuV4KdDAshObhsULXb2QjTjfRg/KbzE9asZV8dUmwbPZy2kfmE2CunPo8+6DvwPklXFJ4PQi0Usuw==",
-14 | +      "hasBin": true,
+14 | +      "bin": true,
 15 | +      "tarball": "http://localhost:4260/@denotest/bin/0.7.0.tgz"
 16 | +    }
 17 | +  },

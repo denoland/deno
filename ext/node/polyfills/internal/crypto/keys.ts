@@ -96,6 +96,13 @@ export const getArrayBufferOrView = hideStackFrames(
       }
       return Buffer.from(buffer, encoding);
     }
+    if (buffer instanceof DataView) {
+      return new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
+    }
     if (!isArrayBufferView(buffer)) {
       throw new ERR_INVALID_ARG_TYPE(
         name,
@@ -781,7 +788,7 @@ class AsymmetricKeyObject extends KeyObject {
   }
 
   get asymmetricKeyDetails() {
-    return op_node_get_asymmetric_key_details(this[kHandle]);
+    return { ...op_node_get_asymmetric_key_details(this[kHandle]) };
   }
 }
 

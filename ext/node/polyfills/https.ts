@@ -170,6 +170,27 @@ export function request(...args: any[]) {
   }
 
   options._defaultAgent = globalAgent;
+  if (options.agent === undefined) {
+    if (options.key !== undefined) {
+      options._defaultAgent.options.key = options.key;
+    }
+    if (options.cert !== undefined) {
+      options._defaultAgent.options.cert = options.cert;
+    }
+    if (options.ca !== undefined) {
+      options._defaultAgent.options.ca = options.ca;
+    }
+  } else {
+    if (options.key !== undefined) {
+      options.agent.options.key = options.key;
+    }
+    if (options.cert !== undefined) {
+      options.agent.options.cert = options.cert;
+    }
+    if (options.ca !== undefined) {
+      options.agent.options.ca = options.ca;
+    }
+  }
   args.unshift(options);
 
   return new HttpsClientRequest(args[0], args[1]);

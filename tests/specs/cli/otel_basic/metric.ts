@@ -81,6 +81,8 @@ upDownCounter.add(-1, attributes);
 gauge.record(1, attributes);
 histogram.record(1, attributes);
 
+counter.add(1, { a: "b", c: "d", e: "f", g: "h" });
+
 const timer = setTimeout(() => {}, 100000);
 
 await Promise.all([

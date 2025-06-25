@@ -171,7 +171,7 @@ impl TestModule {
       self
         .specifier
         .path_segments()
-        .and_then(|s| s.last().map(|s| s.to_string()))
+        .and_then(|mut s| s.next_back().map(|s| s.to_string()))
         .unwrap_or_else(|| "<unknown>".to_string())
     }
   }

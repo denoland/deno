@@ -34,7 +34,11 @@ impl Drop for GPUCommandEncoder {
   }
 }
 
-impl GarbageCollected for GPUCommandEncoder {}
+impl GarbageCollected for GPUCommandEncoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCommandEncoder"
+  }
+}
 
 #[op2]
 impl GPUCommandEncoder {

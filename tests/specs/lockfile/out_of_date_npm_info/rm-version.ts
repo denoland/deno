@@ -9,6 +9,7 @@ if (registryJson["dist-tags"]["latest"] === version) {
   const latestVersion = Object.keys(registryJson.versions).sort()[0];
   registryJson["dist-tags"]["latest"] = latestVersion;
 }
+delete registryJson["_deno.etag"];
 const registryJsonString = JSON.stringify(registryJson, null, 2);
 Deno.writeTextFileSync(registryPath, registryJsonString);
 console.log(registryJsonString);

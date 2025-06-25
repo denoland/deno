@@ -77,6 +77,9 @@ const supportedCiphers = [
   "aes256",
   "aes-128-gcm",
   "aes-256-gcm",
+  "aes-128-ctr",
+  "aes-192-ctr",
+  "aes-256-ctr",
 ];
 
 export function getCiphers(): string[] {
@@ -225,6 +228,10 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
+export function getOpenSSLSecLevel(): number {
+  return 5; // highest sec level, used in tests.
+}
+
 const kAesKeyLengths = [128, 192, 256];
 
 export { kAesKeyLengths, kHandle, kKeyObject };
@@ -235,6 +242,7 @@ export default {
   getCiphers,
   getCipherInfo,
   getCurves,
+  getOpenSSLSecLevel,
   secureHeapUsed,
   setEngine,
   validateByteSource,

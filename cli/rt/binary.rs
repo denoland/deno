@@ -56,11 +56,9 @@ pub struct StandaloneData {
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
-  cli_args: Cow<Vec<OsString>>,
-) -> Result<Option<StandaloneData>, AnyError> {
-  let Some(data) = libsui::find_section("d3n0l4nd") else {
-    return Ok(None);
-  };
+  cli_args: Cow<[OsString]>,
+) -> Result<StandaloneData, AnyError> {
+  let data = find_section()?;
 
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
@@ -80,10 +78,7 @@ pub fn extract_standalone(
     modules_store: remote_modules,
     vfs_root_entries,
     vfs_files_data,
-  } = match deserialize_binary_data_section(&root_url, data)? {
-    Some(data_section) => data_section,
-    None => return Ok(None),
-  };
+  } = deserialize_binary_data_section(&root_url, data)?;
 
   let cli_args = cli_args.into_owned();
   metadata.argv.reserve(cli_args.len() - 1);
@@ -106,7 +101,7 @@ pub fn extract_standalone(
       metadata.vfs_case_sensitivity,
     ))
   };
-  Ok(Some(StandaloneData {
+  Ok(StandaloneData {
     metadata,
     modules: Arc::new(StandaloneModules {
       modules: remote_modules,
@@ -115,7 +110,84 @@ pub fn extract_standalone(
     npm_snapshot,
     root_path,
     vfs,
-  }))
+  })
+}
+
+fn find_section() -> Result<&'static [u8], AnyError> {
+  #[cfg(windows)]
+  if std::env::var_os("DENO_INTERNAL_RT_USE_FILE_FALLBACK").is_some() {
+    return read_from_file_fallback();
+  }
+
+  match libsui::find_section("d3n0l4nd")
+    .context("Failed reading standalone binary section.")
+  {
+    Ok(Some(data)) => Ok(data),
+    Ok(None) => bail!("Could not find standalone binary section."),
+    Err(err) => {
+      #[cfg(windows)]
+      if let Ok(data) = read_from_file_fallback() {
+        return Ok(data);
+      }
+
+      Err(err)
+    }
+  }
+}
+
+/// This is a temporary hacky fallback until we can find
+/// a fix for https://github.com/denoland/deno/issues/28982
+#[cfg(windows)]
+fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
+  use std::sync::OnceLock;
+
+  fn find_in_bytes(bytes: &[u8], needle: &[u8]) -> Option<usize> {
+    bytes.windows(needle.len()).position(|n| n == needle)
+  }
+
+  static FILE: OnceLock<std::fs::File> = OnceLock::new();
+  static MMAP_FILE: OnceLock<memmap2::Mmap> = OnceLock::new();
+
+  // DENOLAND in utf16
+  const RESOURCE_SECTION_HEADER_NAME: &[u8] = &[
+    0x44, 0x00, 0x33, 0x00, 0x4E, 0x00, 0x30, 0x00, 0x4C, 0x00, 0x34, 0x00,
+    0x4E, 0x00, 0x44, 0x00,
+  ];
+  const MAGIC_BYTES: &[u8] = b"d3n0l4nd";
+
+  let file_path = std::env::current_exe()?;
+  let file = FILE.get_or_init(|| std::fs::File::open(file_path).unwrap());
+  let mmap = MMAP_FILE.get_or_init(|| {
+    // SAFETY: memory mapped file creation
+    unsafe { memmap2::Mmap::map(file).unwrap() }
+  });
+
+  // the code in this file will cause this to appear twice in the binary,
+  // so skip over the first one
+  let Some(marker_pos) = find_in_bytes(mmap, RESOURCE_SECTION_HEADER_NAME)
+  else {
+    bail!("Failed to find first section name.");
+  };
+  let next_bytes = &mmap[marker_pos + RESOURCE_SECTION_HEADER_NAME.len()..];
+  let Some(marker_pos) =
+    find_in_bytes(next_bytes, RESOURCE_SECTION_HEADER_NAME)
+  else {
+    bail!("Failed to find second section name.");
+  };
+  let next_bytes =
+    &next_bytes[marker_pos + RESOURCE_SECTION_HEADER_NAME.len()..];
+  let Some(ascii_pos) = find_in_bytes(next_bytes, MAGIC_BYTES) else {
+    bail!("Failed to find first magic bytes.");
+  };
+  let next_bytes = &next_bytes[ascii_pos..];
+  let Some(last_pos) = next_bytes
+    .windows(MAGIC_BYTES.len())
+    .rposition(|w| w == MAGIC_BYTES)
+  else {
+    bail!("Failed to find end magic bytes.")
+  };
+
+  Ok(&next_bytes[..last_pos + MAGIC_BYTES.len()])
 }
 
 pub struct DeserializedDataSection {
@@ -129,7 +201,7 @@ pub struct DeserializedDataSection {
 pub fn deserialize_binary_data_section(
   root_dir_url: &Url,
   data: &'static [u8],
-) -> Result<Option<DeserializedDataSection>, AnyError> {
+) -> Result<DeserializedDataSection, AnyError> {
   fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
     if input.len() < MAGIC_BYTES.len() {
       bail!("Unexpected end of data. Could not find magic bytes.");
@@ -143,7 +215,7 @@ pub fn deserialize_binary_data_section(
 
   let (input, found) = read_magic_bytes(data)?;
   if !found {
-    return Ok(None);
+    bail!("Did not find magic bytes.");
   }
 
   // 1. Metadata
@@ -181,7 +253,7 @@ pub fn deserialize_binary_data_section(
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
   if !found {
-    bail!("Could not find magic bytes at the end of the data.");
+    bail!("Could not find magic bytes at end of data.");
   }
 
   let modules_store = RemoteModulesStore::new(
@@ -190,13 +262,13 @@ pub fn deserialize_binary_data_section(
     remote_modules_store,
   );
 
-  Ok(Some(DeserializedDataSection {
+  Ok(DeserializedDataSection {
     metadata,
     npm_snapshot,
     modules_store,
     vfs_root_entries,
     vfs_files_data,
-  }))
+  })
 }
 
 struct SpecifierStore {

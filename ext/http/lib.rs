@@ -15,6 +15,8 @@ use std::net::SocketAddr;
 use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::ready;
 use std::task::Context;
@@ -80,6 +82,7 @@ use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
@@ -201,6 +204,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    op_http_notify_serving,
     http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
@@ -1515,8 +1519,8 @@ async fn op_http_shutdown(
 #[op2]
 #[string]
 fn op_http_websocket_accept_header(#[string] key: String) -> String {
-  let digest = ring::digest::digest(
-    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+  let digest = aws_lc_rs::digest::digest(
+    &aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   BASE64_STANDARD.encode(digest)
@@ -1680,6 +1684,13 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
+    {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
   let upgraded =
     match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
       Ok(res) => return res,
@@ -1693,14 +1704,18 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 
 #[op2]
 #[serde]
-pub fn op_http_serve_address_override() -> (u8, String, u32) {
+pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   match std::env::var("DENO_SERVE_ADDRESS") {
     Ok(val) => parse_serve_address(&val),
-    Err(_) => (0, String::new(), 0),
+    Err(_) => (0, String::new(), 0, false),
   }
 }
 
-fn parse_serve_address(input: &str) -> (u8, String, u32) {
+fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
+  let (input, duplicate) = match input.strip_prefix("duplicate,") {
+    Some(input) => (input, true),
+    None => (input, false),
+  };
   match input.split_once(':') {
     Some(("tcp", addr)) => {
       // TCP address
@@ -1710,11 +1725,11 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
             SocketAddr::V4(v4) => v4.ip().to_string(),
             SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
           };
-          (1, hostname, addr.port() as u32)
+          (1, hostname, addr.port() as u32, duplicate)
         }
         Err(_) => {
           log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {}", addr);
-          (0, String::new(), 0)
+          (0, String::new(), 0, false)
         }
       }
     }
@@ -1722,9 +1737,9 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
       // Unix socket path
       if addr.is_empty() {
         log::error!("DENO_SERVE_ADDRESS: empty unix socket path");
-        return (0, String::new(), 0);
+        return (0, String::new(), 0, duplicate);
       }
-      (2, addr.to_string(), 0)
+      (2, addr.to_string(), 0, duplicate)
     }
     Some(("vsock", addr)) => {
       // Vsock address
@@ -1737,7 +1752,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
               Ok(cid) => cid.to_string(),
               Err(_) => {
                 log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
-                return (0, String::new(), 0);
+                return (0, String::new(), 0, false);
               }
             }
           };
@@ -1745,18 +1760,32 @@ fn parse_serve_address(input: &str) -> (u8, String, u32) {
             Ok(port) => port,
             Err(_) => {
               log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {}", port);
-              return (0, String::new(), 0);
+              return (0, String::new(), 0, false);
             }
           };
-          (3, cid, port)
+          (3, cid, port, duplicate)
         }
-        None => (0, String::new(), 0),
+        None => (0, String::new(), 0, false),
       }
     }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
-      (0, String::new(), 0)
+      (0, String::new(), 0, false)
     }
+  }
+}
+
+pub static SERVE_NOTIFIER: Notify = Notify::const_new();
+
+#[op2(fast)]
+fn op_http_notify_serving() {
+  static ONCE: AtomicBool = AtomicBool::new(false);
+
+  if ONCE
+    .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+    .is_ok()
+  {
+    SERVE_NOTIFIER.notify_one();
   }
 }
 
@@ -1768,31 +1797,43 @@ mod tests {
   fn test_parse_serve_address() {
     assert_eq!(
       parse_serve_address("tcp:127.0.0.1:8080"),
-      (1, "127.0.0.1".to_string(), 8080)
+      (1, "127.0.0.1".to_string(), 8080, false)
     );
     assert_eq!(
       parse_serve_address("tcp:[::1]:9000"),
-      (1, "[::1]".to_string(), 9000)
+      (1, "[::1]".to_string(), 9000, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000, true)
     );
 
     assert_eq!(
       parse_serve_address("unix:/var/run/socket.sock"),
-      (2, "/var/run/socket.sock".to_string(), 0)
+      (2, "/var/run/socket.sock".to_string(), 0, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0, true)
     );
 
     assert_eq!(
       parse_serve_address("vsock:1234:5678"),
-      (3, "1234".to_string(), 5678)
+      (3, "1234".to_string(), 5678, false)
     );
     assert_eq!(
       parse_serve_address("vsock:-1:5678"),
-      (3, "-1".to_string(), 5678)
+      (3, "-1".to_string(), 5678, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,vsock:-1:5678"),
+      (3, "-1".to_string(), 5678, true)
     );
 
-    assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0));
-    assert_eq!(parse_serve_address("unix:"), (0, String::new(), 0));
-    assert_eq!(parse_serve_address("vsock:"), (0, String::new(), 0));
-    assert_eq!(parse_serve_address("foo:"), (0, String::new(), 0));
-    assert_eq!(parse_serve_address("bar"), (0, String::new(), 0));
+    assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("unix:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("vsock:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("foo:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("bar"), (0, String::new(), 0, false));
   }
 }

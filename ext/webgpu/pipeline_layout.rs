@@ -24,7 +24,11 @@ impl WebIdlInterfaceConverter for GPUPipelineLayout {
   const NAME: &'static str = "GPUPipelineLayout";
 }
 
-impl GarbageCollected for GPUPipelineLayout {}
+impl GarbageCollected for GPUPipelineLayout {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUPipelineLayout"
+  }
+}
 
 #[op2]
 impl GPUPipelineLayout {

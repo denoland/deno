@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const { ObjectDefineProperty } = primordials;
 
 // deno-lint-ignore no-explicit-any
 type GenericFunction = (...args: any[]) => any;
@@ -13,7 +13,7 @@ export function hideStackFrames<T extends GenericFunction = GenericFunction>(
   // We rename the functions that will be hidden to cut off the stacktrace
   // at the outermost one.
   const hidden = "__node_internal_" + fn.name;
-  Object.defineProperty(fn, "name", { value: hidden });
+  ObjectDefineProperty(fn, "name", { __proto__: null, value: hidden });
 
   return fn;
 }

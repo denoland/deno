@@ -33,7 +33,11 @@ impl WebIdlInterfaceConverter for GPURenderPipeline {
   const NAME: &'static str = "GPURenderPipeline";
 }
 
-impl GarbageCollected for GPURenderPipeline {}
+impl GarbageCollected for GPURenderPipeline {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderPipeline"
+  }
+}
 
 #[op2]
 impl GPURenderPipeline {

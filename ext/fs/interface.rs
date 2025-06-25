@@ -84,19 +84,24 @@ pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
 
 pub trait AccessCheckFn:
   for<'a> FnMut(
-  bool,
-  &'a Path,
+  Cow<'a, Path>,
   &'a OpenOptions,
-) -> FsResult<std::borrow::Cow<'a, Path>>
+  &'a dyn crate::GetPath,
+) -> FsResult<CheckedPath<'a>>
 {
 }
 impl<T> AccessCheckFn for T where
   T: for<'a> FnMut(
-    bool,
-    &'a Path,
+    Cow<'a, Path>,
     &'a OpenOptions,
-  ) -> FsResult<std::borrow::Cow<'a, Path>>
+    &'a dyn crate::GetPath,
+  ) -> FsResult<CheckedPath<'a>>
 {
+}
+
+pub enum CheckedPath<'a> {
+  Resolved(Cow<'a, Path>),
+  Unresolved(Cow<'a, Path>),
 }
 
 pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);

@@ -21,8 +21,8 @@ Object.defineProperty(globalThis, "console", {
 });
 ```
 
-Then from rust, provide `deno_console::deno_console::init_ops_and_esm()` in the
-`extensions` field of your `RuntimeOptions`
+Then from rust, provide `deno_console::deno_console::init()` in the `extensions`
+field of your `RuntimeOptions`
 
 ## Provided ops
 

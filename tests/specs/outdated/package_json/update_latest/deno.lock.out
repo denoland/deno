@@ -8,7 +8,7 @@
   "npm": {
     "@denotest/bin@1.0.0": {
       "integrity": "sha512-ZtrWnYYPIzw4a9H1uNeZRZRWuLCpHZZU/SllIyFLqcTLH/3zdRI8UH4Z1Kf+8N++bWGO3fg8Ev4vvS1LoLlidg==",
-      "hasBin": true,
+      "bin": true,
       "tarball": "http://localhost:4260/@denotest/bin/1.0.0.tgz"
     },
     "@denotest/breaking-change-between-versions@2.0.0": {

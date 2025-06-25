@@ -13,7 +13,7 @@
       "dependencies": [
         "js-tokens"
       ],
-      "hasBin": true,
+      "bin": true,
       "tarball": "http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz"
     },
     "react@18.2.0": {

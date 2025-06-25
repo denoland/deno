@@ -20,9 +20,11 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { op_bootstrap_color_depth } from "ext:core/ops";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
@@ -45,6 +47,9 @@ export function createWritableStdioStream(writer, name, warmup = false) {
     destroy(err, cb) {
       cb(err);
       this._undestroy();
+
+      // We need to emit 'close' anyway so that the closing
+      // of the stream is observable.
       if (!this._writableState.emitClose) {
         nextTick(() => this.emit("close"));
       }
@@ -62,7 +67,6 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.fd = fd;
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
-  stream.once("close", () => writer?.close());
 
   // We cannot call `writer?.isTerminal()` eagerly here
   let getIsTTY = () => writer?.isTerminal();
@@ -102,6 +106,13 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       configurable: true,
       value: () =>
         writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
+    },
+    getColorDepth: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: () => op_bootstrap_color_depth(),
     },
   });
 
@@ -221,6 +232,32 @@ export const initStdin = (warmup = false) => {
 
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
+
+  // `stdin` starts out life in a paused state. Explicitly to readStop() it to put it in the
+  // not-reading state.
+  if (stdin._handle?.readStop) {
+    stdin._handle.reading = false;
+    stdin._readableState.reading = false;
+    stdin._handle.readStop();
+  }
+
+  function onpause() {
+    if (!stdin._handle) {
+      return;
+    }
+
+    if (stdin._handle.reading && !stdin.readableFlowing) {
+      stdin._readableState.reading = false;
+      stdin._handle.reading = false;
+      stdin._handle.readStop();
+    }
+  }
+
+  // If the user calls stdin.pause(), then we need to stop reading
+  // once the stream implementation does so (one nextTick later),
+  // so that the process can close down.
+  stdin.on("pause", () => nextTick(onpause));
+
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,

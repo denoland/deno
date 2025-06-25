@@ -148,6 +148,8 @@ pub struct Diagnostic {
   pub reports_unnecessary: Option<bool>,
   #[serde(flatten)]
   pub other: deno_core::serde_json::Map<String, deno_core::serde_json::Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub missing_specifier: Option<String>,
 }
 
 impl Diagnostic {
@@ -180,6 +182,7 @@ impl Diagnostic {
       reports_deprecated: None,
       reports_unnecessary: None,
       other: Default::default(),
+      missing_specifier: Some(specifier.to_string()),
     }
   }
 

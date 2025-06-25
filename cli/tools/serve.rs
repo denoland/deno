@@ -1,14 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::num::NonZeroUsize;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
+use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_runtime::UnconfiguredRuntime;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
+use crate::args::parallelism_count;
 use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
@@ -19,12 +24,18 @@ use crate::worker::CliMainWorkerFactory;
 pub async fn serve(
   flags: Arc<Flags>,
   serve_flags: ServeFlags,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
   if let Some(watch_flags) = serve_flags.watch {
-    return serve_with_watch(flags, watch_flags, serve_flags.worker_count)
-      .await;
+    return serve_with_watch(
+      flags,
+      watch_flags,
+      parallelism_count(serve_flags.parallel),
+    )
+    .await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -44,8 +55,17 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory =
-    Arc::new(factory.create_cli_main_worker_factory().await?);
+  let worker_factory = Arc::new(
+    factory
+      .create_cli_main_worker_factory_with_roots(roots)
+      .await?,
+  );
+
+  if serve_flags.open_site {
+    let url = resolve_serve_url(serve_flags.host, serve_flags.port);
+    let _ = open::that_detached(url);
+  }
+
   let hmr = serve_flags
     .watch
     .map(|watch_flags| watch_flags.hmr)
@@ -53,8 +73,9 @@ pub async fn serve(
   do_serve(
     worker_factory,
     main_module.clone(),
-    serve_flags.worker_count,
+    parallelism_count(serve_flags.parallel),
     hmr,
+    unconfigured_runtime,
   )
   .await
 }
@@ -62,35 +83,33 @@ pub async fn serve(
 async fn do_serve(
   worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
-  worker_count: Option<usize>,
+  parallelism_count: NonZeroUsize,
   hmr: bool,
+  unconfigured_runtime: Option<UnconfiguredRuntime>,
 ) -> Result<i32, AnyError> {
+  let worker_count = parallelism_count.get() - 1;
   let mut worker = worker_factory
-    .create_main_worker(
-      deno_runtime::WorkerExecutionMode::Serve {
-        is_main: true,
-        worker_count,
-      },
+    .create_main_worker_with_unconfigured_runtime(
+      deno_runtime::WorkerExecutionMode::ServeMain { worker_count },
       main_module.clone(),
+      unconfigured_runtime,
     )
     .await?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await.map_err(Into::into),
-    Some(c) => c,
+    0 => return worker.run().await.map_err(Into::into),
+    c => c,
   };
 
   let main = deno_core::unsync::spawn(async move { worker.run().await });
 
-  let extra_workers = worker_count.saturating_sub(1);
-
-  let mut channels = Vec::with_capacity(extra_workers);
-  for i in 0..extra_workers {
+  let mut channels = Vec::with_capacity(worker_count);
+  for i in 0..worker_count {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
     std::thread::Builder::new()
-      .name(format!("serve-worker-{i}"))
+      .name(format!("serve-worker-{}", i + 1))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
           let result = run_worker(i, worker_factory, main_module, hmr).await;
@@ -117,17 +136,14 @@ async fn do_serve(
 }
 
 async fn run_worker(
-  worker_count: usize,
+  worker_index: usize,
   worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
   let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
-      deno_runtime::WorkerExecutionMode::Serve {
-        is_main: false,
-        worker_count: Some(worker_count),
-      },
+      deno_runtime::WorkerExecutionMode::ServeWorker { worker_index },
       main_module,
     )
     .await?;
@@ -142,7 +158,7 @@ async fn run_worker(
 async fn serve_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
-  worker_count: Option<usize>,
+  parallelism_count: NonZeroUsize,
 ) -> Result<i32, AnyError> {
   let hmr = watch_flags.hmr;
   crate::util::file_watcher::watch_recv(
@@ -169,8 +185,14 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(worker_factory, main_module.clone(), worker_count, hmr)
-          .await?;
+        do_serve(
+          worker_factory,
+          main_module.clone(),
+          parallelism_count,
+          hmr,
+          None,
+        )
+        .await?;
 
         Ok(())
       })
@@ -179,4 +201,41 @@ async fn serve_with_watch(
   .boxed_local()
   .await?;
   Ok(0)
+}
+
+fn resolve_serve_url(host: String, port: u16) -> String {
+  let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
+    "127.0.0.1".to_string()
+  } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
+    format!("[{}]", host)
+  } else {
+    host
+  };
+  if port == 80 {
+    format!("http://{host}/")
+  } else {
+    format!("http://{host}:{port}/")
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_resolve_serve_url() {
+    assert_eq!(
+      resolve_serve_url("localhost".to_string(), 80),
+      "http://localhost/"
+    );
+    assert_eq!(
+      resolve_serve_url("0.0.0.0".to_string(), 80),
+      "http://127.0.0.1/"
+    );
+    assert_eq!(resolve_serve_url("::".to_string(), 80), "http://127.0.0.1/");
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 90),
+      "http://127.0.0.1:90/"
+    );
+  }
 }

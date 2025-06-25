@@ -907,12 +907,6 @@ itest!(error_local_static_import_from_remote_js {
   output: "run/error_local_static_import_from_remote.js.out",
 });
 
-itest!(import_meta {
-  args: "run --allow-import --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
-  output: "run/import_meta/main.out",
-  http_server: true,
-});
-
 itest!(no_check_remote {
   args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
   output: "run/no_check_remote.ts.enabled.out",
@@ -1437,6 +1431,19 @@ mod permissions {
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_localhost_subdomain() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --unstable-subdomain-wildcards --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
         None,
         None,
         true,
@@ -3234,6 +3241,17 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
 }
 
 #[test]
+fn node_process_stdin_pause() {
+  util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run/node_process_stdin_pause.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+}
+
+#[test]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
@@ -3264,6 +3282,8 @@ fn node_process_stdin_unref_with_pty() {
 
 #[tokio::test]
 async fn listen_tls_alpn() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -3317,6 +3337,8 @@ async fn listen_tls_alpn() {
 
 #[tokio::test]
 async fn listen_tls_alpn_fail() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")

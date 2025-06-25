@@ -127,7 +127,11 @@ struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 
-impl GarbageCollected for GPU {}
+impl GarbageCollected for GPU {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPU"
+  }
+}
 
 #[op2]
 impl GPU {

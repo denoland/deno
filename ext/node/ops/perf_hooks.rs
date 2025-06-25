@@ -18,7 +18,11 @@ pub struct EldHistogram {
   started: Cell<bool>,
 }
 
-impl GarbageCollected for EldHistogram {}
+impl GarbageCollected for EldHistogram {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"EldHistogram"
+  }
+}
 
 #[op2]
 impl EldHistogram {

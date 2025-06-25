@@ -60,6 +60,22 @@
     "events": {
       "args": "run -A main.ts events.ts",
       "output": "events.out"
+    },
+    "metric_temporality_delta": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_delta.out"
+    },
+    "metric_temporality_cumulative": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_cumulative.out"
     }
   }
 }

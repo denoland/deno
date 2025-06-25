@@ -169,10 +169,9 @@ where
     None => Cow::Borrowed(path.as_ref()),
   };
   let lib = Library::open(real_path.as_ref()).map_err(|e| {
-    dlopen2::Error::OpeningLibraryError(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      format_error(e, &real_path),
-    ))
+    dlopen2::Error::OpeningLibraryError(std::io::Error::other(format_error(
+      e, &real_path,
+    )))
   })?;
   let mut resource = DynamicLibraryResource {
     lib,
@@ -262,7 +261,11 @@ struct FunctionData {
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {}
+impl GarbageCollected for FunctionData {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"FunctionData"
+  }
+}
 
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.

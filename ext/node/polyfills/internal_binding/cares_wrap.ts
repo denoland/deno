@@ -37,6 +37,7 @@ import {
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
+  op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_node_getaddrinfo,
 } from "ext:core/ops";
@@ -45,6 +46,10 @@ interface LookupAddress {
   address: string;
   family: number;
 }
+
+export const DNS_ORDER_VERBATIM = 0;
+export const DNS_ORDER_IPV4_FIRST = 1;
+export const DNS_ORDER_IPV6_FIRST = 2;
 
 export class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
@@ -74,7 +79,7 @@ export function getaddrinfo(
   hostname: string,
   family: number,
   _hints: number,
-  verbatim: boolean,
+  order: 0 | 1 | 2,
 ): number {
   let addresses: string[] = [];
 
@@ -98,9 +103,8 @@ export function getaddrinfo(
       }
     }
 
-    // TODO(cmorten): needs work
-    // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
-    if (!verbatim) {
+    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
+    if (order === DNS_ORDER_IPV4_FIRST) {
       addresses.sort((a: string, b: string): number => {
         if (isIPv4(a)) {
           return -1;
@@ -108,6 +112,15 @@ export function getaddrinfo(
           return 1;
         }
 
+        return 0;
+      });
+    } else if (order === DNS_ORDER_IPV6_FIRST) {
+      addresses.sort((a: string, b: string): number => {
+        if (isIPv6(a)) {
+          return -1;
+        } else if (isIPv6(b)) {
+          return 1;
+        }
         return 0;
       });
     }
@@ -198,9 +211,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     this.#tries = tries;
   }
 
-  async #query(query: string, recordType: Deno.RecordType) {
-    // TODO(@bartlomieju): TTL logic.
-
+  async #query(query: string, recordType: Deno.RecordType, ttl?: boolean) {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
@@ -217,6 +228,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           query,
           recordType,
           resolveOptions,
+          ttl,
         ));
 
         if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
@@ -224,7 +236,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
       }
     } else {
-      ({ code, ret } = await this.#resolve(query, recordType));
+      ({ code, ret } = await this.#resolve(query, recordType, null, ttl));
     }
 
     return { code: code!, ret: ret! };
@@ -234,15 +246,26 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     query: string,
     recordType: Deno.RecordType,
     resolveOptions?: Deno.ResolveDnsOptions,
+    ttl?: boolean,
   ): Promise<{
     code: number;
-    ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
+    // deno-lint-ignore no-explicit-any
+    ret: any[];
   }> {
-    let ret: Awaited<ReturnType<typeof Deno.resolveDns>> = [];
+    let ret = [];
     let code = 0;
 
     try {
-      ret = await Deno.resolveDns(query, recordType, resolveOptions);
+      const res = await op_dns_resolve({
+        query,
+        recordType,
+        options: resolveOptions,
+      });
+      if (ttl) {
+        ret = res;
+      } else {
+        ret = res.map((recordWithTtl) => recordWithTtl.data);
+      }
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
@@ -363,18 +386,34 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryA(req: QueryReqWrap, name: string): number {
-    this.#query(name, "A").then(({ code, ret }) => {
-      req.oncomplete(code, ret);
+    this.#query(name, "A", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: val?.data,
+          ttl: val?.ttl,
+        }));
+      }
+
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
   }
 
   queryAaaa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "AAAA").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => compressIPv6(record));
+    this.#query(name, "AAAA", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: compressIPv6(val?.data as string),
+          ttl: val?.ttl,
+        }));
+      } else {
+        ret = (ret as string[]).map((record) => compressIPv6(record));
+      }
 
-      req.oncomplete(code, records);
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
@@ -549,3 +588,14 @@ export function strerror(code: number) {
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
+
+export default {
+  DNS_ORDER_VERBATIM,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  GetAddrInfoReqWrap,
+  getaddrinfo,
+  QueryReqWrap,
+  ChannelWrap,
+  strerror,
+};

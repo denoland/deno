@@ -213,7 +213,11 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {}
+impl GarbageCollected for EndpointResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"EndpointResource"
+  }
+}
 
 #[op2]
 #[cppgc]
@@ -294,7 +298,11 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {}
+impl GarbageCollected for ListenerResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ListenerResource"
+  }
+}
 
 #[op2]
 #[cppgc]
@@ -345,14 +353,22 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {}
+impl GarbageCollected for ConnectionResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ConnectionResource"
+  }
+}
 
 struct IncomingResource(
   RefCell<Option<quinn::Incoming>>,
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {}
+impl GarbageCollected for IncomingResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"IncomingResource"
+  }
+}
 
 #[op2(async)]
 #[cppgc]
@@ -481,7 +497,11 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {}
+impl GarbageCollected for ConnectingResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ConnectingResource"
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1198,7 +1218,7 @@ pub(crate) mod webtransport {
     pub(crate) fn new(fingerprints: Vec<Vec<u8>>) -> ServerFingerprints {
       Self {
         fingerprints,
-        provider: rustls::crypto::ring::default_provider(),
+        provider: rustls::crypto::aws_lc_rs::default_provider(),
       }
     }
   }

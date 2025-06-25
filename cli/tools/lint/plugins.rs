@@ -164,8 +164,9 @@ async fn create_plugin_runner_inner(
       WorkerExecutionMode::Run,
       main_module.clone(),
       permissions,
-      vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
+      vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),
+      None,
     )
     .await?;
 

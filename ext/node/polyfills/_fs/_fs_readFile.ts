@@ -7,6 +7,7 @@ import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   getEncoding,
+  getSignal,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
@@ -71,6 +72,7 @@ export function readFile(
   }
 
   const encoding = getEncoding(optOrCallback);
+  const signal = getSignal(optOrCallback);
 
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
@@ -80,7 +82,7 @@ export function readFile(
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
-    p = Deno.readFile(path);
+    p = Deno.readFile(path, { signal: signal });
   }
 
   if (cb) {

@@ -344,16 +344,37 @@ where
   .unwrap()
   .into();
 
-  let authority: v8::Local<v8::Value> = match request_properties.authority {
-    Some(authority) => v8::String::new_from_utf8(
+  let scheme: v8::Local<v8::Value> = match request_parts.uri.scheme_str() {
+    Some(scheme) => v8::String::new_from_utf8(
       scope,
-      authority.as_bytes(),
+      scheme.as_bytes(),
       v8::NewStringType::Normal,
     )
     .unwrap()
     .into(),
     None => v8::undefined(scope).into(),
   };
+
+  let authority: v8::Local<v8::Value> =
+    if let Some(authority) = request_parts.uri.authority() {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_str().as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else if let Some(authority) = request_properties.authority {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else {
+      v8::undefined(scope).into()
+    };
 
   // Only extract the path part - we handle authority elsewhere
   let path = match request_parts.uri.path_and_query() {
@@ -376,20 +397,28 @@ where
   .unwrap()
   .into();
 
-  let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
+  let (peer_ip, peer_port) = if let Some(client_addr) = &*http.client_addr() {
+    let addr: std::net::SocketAddr =
+      client_addr.to_str().unwrap().parse().unwrap();
+    (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+  } else {
+    (request_info.peer_address.clone(), request_info.peer_port)
+  };
+
+  let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
-    request_info.peer_address.as_bytes(),
+    peer_ip.as_bytes(),
     v8::NewStringType::Normal,
   )
   .unwrap()
   .into();
 
-  let port: v8::Local<v8::Value> = match request_info.peer_port {
+  let peer_port: v8::Local<v8::Value> = match peer_port {
     Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port];
+  let vec = [method, authority, path, peer_ip, peer_port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
@@ -1025,7 +1054,7 @@ where
     NetworkStream::Unix(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }

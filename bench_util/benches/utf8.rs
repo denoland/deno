@@ -22,7 +22,7 @@ fn setup() -> Vec<Extension> {
     }]
   );
 
-  vec![bench_setup::init_ops_and_esm()]
+  vec![bench_setup::init()]
 }
 
 fn bench_utf8_encode_12_b(b: &mut Bencher) {

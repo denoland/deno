@@ -30,7 +30,11 @@ impl WebIdlInterfaceConverter for GPUComputePipeline {
   const NAME: &'static str = "GPUComputePipeline";
 }
 
-impl GarbageCollected for GPUComputePipeline {}
+impl GarbageCollected for GPUComputePipeline {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUComputePipeline"
+  }
+}
 
 #[op2]
 impl GPUComputePipeline {

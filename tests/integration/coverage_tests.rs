@@ -158,11 +158,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
   );
-
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -212,11 +211,10 @@ fn multifile_coverage() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
   );
-
-  output.assert_exit_code(0);
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
@@ -375,11 +373,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
   );
-
-  output.assert_exit_code(0);
 
   let output = context
     .new_command()
@@ -391,10 +388,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
   );
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -557,8 +554,7 @@ fn test_html_reporter() {
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
-  assert_contains!(bar_ts_html, "<a name='L1'></a>");
-  assert_contains!(bar_ts_html, "<a href='#L1'>1</a>");
+  assert_contains!(bar_ts_html, "<a href='#L1' id='L1'>1</a>");
 
   let baz_index_html = tempdir
     .join("html")
@@ -619,16 +615,13 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "----------------------------------
-File         | Branch % | Line % |
-----------------------------------
- bar.ts      |      0.0 |   57.1 |
- baz/quux.ts |      0.0 |   28.6 |
- baz/qux.ts  |    100.0 |  100.0 |
- foo.ts      |     50.0 |   76.9 |
-----------------------------------
- All files   |     40.0 |   61.0 |
-----------------------------------
+      "| File        | Branch % | Line % |
+| ----------- | -------- | ------ |
+| bar.ts      |      0.0 |   57.1 |
+| baz/quux.ts |      0.0 |   28.6 |
+| baz/qux.ts  |    100.0 |  100.0 |
+| foo.ts      |     50.0 |   76.9 |
+| All files   |     40.0 |   61.0 |
 ",
     );
   }
@@ -646,14 +639,11 @@ File         | Branch % | Line % |
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "---------------------------------
-File        | Branch % | Line % |
----------------------------------
- baz/qux.ts |    100.0 |  100.0 |
- foo.ts     |     50.0 |   76.9 |
----------------------------------
- All files  |     66.7 |   85.0 |
----------------------------------
+      "| File       | Branch % | Line % |
+| ---------- | -------- | ------ |
+| baz/qux.ts |    100.0 |  100.0 |
+| foo.ts     |     50.0 |   76.9 |
+| All files  |     66.7 |   85.0 |
 ",
     );
   }

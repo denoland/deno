@@ -31,7 +31,11 @@ pub enum CompressionError {
 #[derive(Debug)]
 struct CompressionResource(RefCell<Option<Inner>>);
 
-impl deno_core::GarbageCollected for CompressionResource {}
+impl deno_core::GarbageCollected for CompressionResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"CompressionResource"
+  }
+}
 
 /// https://wicg.github.io/compression/#supported-formats
 #[derive(Debug)]

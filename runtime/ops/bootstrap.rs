@@ -21,15 +21,18 @@ deno_core::extension!(
     op_bootstrap_stdout_no_color,
     op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
+    op_bootstrap_is_from_unconfigured_runtime,
     op_snapshot_options,
   ],
   options = {
     snapshot_options: Option<SnapshotOptions>,
+    is_from_unconfigured_runtime: bool,
   },
   state = |state, options| {
     if let Some(snapshot_options) = options.snapshot_options {
       state.put::<SnapshotOptions>(snapshot_options);
     }
+    state.put(IsFromUnconfiguredRuntime(options.is_from_unconfigured_runtime));
   },
 );
 
@@ -40,6 +43,8 @@ pub struct SnapshotOptions {
   pub v8_version: &'static str,
   pub target: String,
 }
+
+struct IsFromUnconfiguredRuntime(bool);
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
@@ -64,7 +69,14 @@ impl Default for SnapshotOptions {
 #[op2]
 #[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
-  state.take::<SnapshotOptions>()
+  #[cfg(feature = "hmr")]
+  {
+    state.try_take::<SnapshotOptions>().unwrap_or_default()
+  }
+  #[cfg(not(feature = "hmr"))]
+  {
+    state.take::<SnapshotOptions>()
+  }
 }
 
 #[op2]
@@ -96,8 +108,10 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   let mut flags = Vec::with_capacity(options.unstable_features.len());
-  for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
-    if options.unstable_features.contains(&granular_flag.id) {
+  for unstable_feature in &options.unstable_features {
+    if let Some(granular_flag) =
+      deno_features::UNSTABLE_FEATURES.get((*unstable_feature) as usize)
+    {
       flags.push(format!("--unstable-{}", granular_flag.name));
     }
   }
@@ -148,4 +162,9 @@ pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
   }
 
   !deno_terminal::is_stderr_tty() || !deno_terminal::colors::use_color()
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_from_unconfigured_runtime(state: &mut OpState) -> bool {
+  state.borrow::<IsFromUnconfiguredRuntime>().0
 }

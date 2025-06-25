@@ -233,7 +233,11 @@ struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GarbageCollected for Zlib {}
+impl deno_core::GarbageCollected for Zlib {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Zlib"
+  }
+}
 
 impl deno_core::Resource for Zlib {
   fn name(&self) -> Cow<str> {
@@ -417,7 +421,6 @@ pub fn op_zlib_close_if_pending(
 }
 
 #[op2(fast)]
-#[smi]
 pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {

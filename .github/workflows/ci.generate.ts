@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 53;
+const cacheVersion = 63;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -88,7 +88,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -105,7 +105,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 clang-${llvmVersion} -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
@@ -318,6 +318,7 @@ const ci = {
   name: "ci",
   permissions: {
     contents: "write",
+    "id-token": "write", // Required for GitHub OIDC with Azure for code signing
   },
   on: {
     push: {
@@ -368,6 +369,12 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
+      // This is required to successfully authenticate with Azure using OIDC for
+      // code signing.
+      environment: {
+        name:
+          "${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'build' || '' }}",
+      },
       "timeout-minutes": 240,
       defaults: {
         run: {
@@ -438,6 +445,7 @@ const ci = {
             job: "test",
             profile: "release",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
@@ -599,6 +607,9 @@ const ci = {
         },
         {
           name: "Install macOS aarch64 lld",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js ld64.lld",
           ].join("\n"),
@@ -606,6 +617,9 @@ const ci = {
         },
         {
           name: "Install rust-codesign",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js rcodesign",
             "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
@@ -632,6 +646,9 @@ const ci = {
         {
           name: "Install benchmark tools",
           if: "matrix.job == 'bench'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             installBenchTools,
           ].join("\n"),
@@ -682,8 +699,11 @@ const ci = {
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run:
-            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
@@ -835,6 +855,69 @@ const ci = {
             .join("\n"),
         },
         {
+          // Note: Azure OIDC credentials are only valid for 5 minutes, so
+          // authentication must be done right before signing.
+          name: "Authenticate with Azure (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/login@v1",
+          with: {
+            "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+            "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+            "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "enable-AzPSSession": true,
+          },
+        },
+        {
+          name: "Code sign deno.exe (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/trusted-signing-action@v0",
+          with: {
+            "endpoint": "https://eus.codesigning.azure.net/",
+            "trusted-signing-account-name": "deno-cli-code-signing",
+            "certificate-profile-name": "deno-cli-code-signing-cert",
+            "files-folder": "target/release",
+            "files-folder-filter": "deno.exe",
+            "file-digest": "SHA256",
+            "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+            "timestamp-digest": "SHA256",
+            "exclude-environment-credential": true,
+            "exclude-workload-identity-credential": true,
+            "exclude-managed-identity-credential": true,
+            "exclude-shared-token-cache-credential": true,
+            "exclude-visual-studio-credential": true,
+            "exclude-visual-studio-code-credential": true,
+            "exclude-azure-cli-credential": false,
+          },
+        },
+        {
+          name: "Verify signature (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          shell: "pwsh",
+          run: [
+            '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+            "$SignToolPath = $SignTool.FullName",
+            "& $SignToolPath verify /pa /v target\\release\\deno.exe",
+          ].join("\n"),
+        },
+        {
           name: "Pre-release (windows)",
           if: [
             "matrix.os == 'windows' &&",
@@ -865,6 +948,7 @@ const ci = {
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "rm canary-latest.txt gha-creds-*.json",
           ].join("\n"),
         },
         {
@@ -917,6 +1001,20 @@ const ci = {
           run: "cargo test --release --locked --features=panic-trace",
         },
         {
+          name: "Ensure no git changes",
+          if: "matrix.job == 'test' && github.event_name == 'pull_request'",
+          run: [
+            'if [[ -n "$(git status --porcelain)" ]]; then',
+            'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+            'echo ""',
+            'echo "📋 Status:"',
+            "git status",
+            'echo ""',
+            "exit 1",
+            "fi",
+          ].join("\n"),
+        },
+        {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
@@ -929,10 +1027,10 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+            "    ./tests/wpt/wpt.ts setup",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+            '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
         {
@@ -942,13 +1040,10 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "         ./tests/wpt/wpt.ts run --quiet --release         \\",
-            '                            --binary="$DENO_BIN"          \\',
-            "                            --json=wpt.json               \\",
-            "                            --wptreport=wptreport.json",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+            "    ./tests/wpt/wpt.ts setup",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+            '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
           ].join("\n"),
         },
         {
@@ -1135,8 +1230,8 @@ const ci = {
         },
       ]),
     },
-    wasm: {
-      name: "build wasm32",
+    libs: {
+      name: "build libs",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1148,10 +1243,26 @@ const ci = {
           name: "Install wasm target",
           run: "rustup target add wasm32-unknown-unknown",
         },
+        // we want these crates to be Wasm compatible
         {
-          name: "Cargo build",
-          // we want this crate to be wasm compatible
-          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          ].join("\n"),
         },
       ]),
     },

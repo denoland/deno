@@ -2,19 +2,22 @@
 
 use std::io::BufReader;
 use std::io::Cursor;
-use std::io::Read;
-use std::io::Seek;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 
+use base64::prelude::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm_installer::process_state::NpmProcessState;
+use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
+use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -22,11 +25,8 @@ use thiserror::Error;
 
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
-) -> String {
-  req_ref
-    .sub_path()
-    .map(|s| s.to_string())
-    .unwrap_or_else(|| req_ref.req().name.to_string())
+) -> &str {
+  req_ref.sub_path().unwrap_or_else(|| &req_ref.req().name)
 }
 
 pub fn has_trace_permissions_enabled() -> bool {
@@ -44,9 +44,18 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub enum CaData {
   /// The string is a file path
   File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
+  /// The string holds the actual certificate
   Bytes(Vec<u8>),
+}
+
+impl CaData {
+  pub fn parse(input: String) -> Option<Self> {
+    if let Some(x) = input.strip_prefix("base64:") {
+      Some(CaData::Bytes(BASE64_STANDARD.decode(x).ok()?))
+    } else {
+      Some(CaData::File(input))
+    }
+  }
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
@@ -116,8 +125,8 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_data =
-    maybe_ca_data.or_else(|| std::env::var("DENO_CERT").ok().map(CaData::File));
+  let ca_data = maybe_ca_data
+    .or_else(|| std::env::var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {
@@ -151,55 +160,35 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
-/// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NpmProcessState {
-  pub kind: NpmProcessStateKind,
-  pub local_node_modules_path: Option<String>,
-}
+pub fn npm_process_state(
+  sys: &impl NpmProcessStateFromEnvVarSys,
+) -> Option<&'static NpmProcessState> {
+  static NPM_PROCESS_STATE: std::sync::OnceLock<Option<NpmProcessState>> =
+    std::sync::OnceLock::new();
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NpmProcessStateKind {
-  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
-  Byonm,
+  NPM_PROCESS_STATE
+    .get_or_init(|| {
+      use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+      let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
+      std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+      if fd_or_path.is_empty() {
+        return None;
+      }
+      NpmProcessState::from_env_var(sys, fd_or_path)
+        .inspect_err(|e| {
+          log::error!("failed to resolve npm process state: {}", e);
+        })
+        .ok()
+    })
+    .as_ref()
 }
-
-pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
-  LazyLock::new(|| {
-    use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-    let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
-    std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
-    let fd = fd.parse::<usize>().ok()?;
-    let mut file = {
-      use deno_runtime::deno_io::FromRawIoHandle;
-      unsafe { std::fs::File::from_raw_io_handle(fd as _) }
-    };
-    let mut buf = Vec::new();
-    // seek to beginning. after the file is written the position will be inherited by this subprocess,
-    // and also this file might have been read before
-    file.seek(std::io::SeekFrom::Start(0)).unwrap();
-    file
-      .read_to_end(&mut buf)
-      .inspect_err(|e| {
-        log::error!("failed to read npm process state from fd {fd}: {e}");
-      })
-      .ok()?;
-    let state: NpmProcessState = serde_json::from_slice(&buf)
-      .inspect_err(|e| {
-        log::error!(
-          "failed to deserialize npm process state: {e} {}",
-          String::from_utf8_lossy(&buf)
-        )
-      })
-      .ok()?;
-    Some(state)
-  });
 
 pub fn resolve_npm_resolution_snapshot(
+  sys: &impl NpmProcessStateFromEnvVarSys,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, PackageIdNotFoundError>
 {
   if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
-    NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    npm_process_state(sys).map(|s| &s.kind)
   {
     // TODO(bartlomieju): remove this clone
     Ok(Some(snapshot.clone().into_valid()?))
@@ -212,10 +201,42 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
+  pub subdomain_wildcards: bool,
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
+}
+
+impl UnstableConfig {
+  pub fn fill_with_env(&mut self) {
+    fn maybe_set(value: &mut bool, var_name: &str) {
+      if !*value && has_flag_env_var(var_name) {
+        *value = true;
+      }
+    }
+
+    maybe_set(
+      &mut self.subdomain_wildcards,
+      UNSTABLE_ENV_VAR_NAMES.subdomain_wildcards,
+    );
+    maybe_set(
+      &mut self.bare_node_builtins,
+      UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
+    );
+    maybe_set(
+      &mut self.lazy_dynamic_imports,
+      UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
+    );
+    maybe_set(
+      &mut self.npm_lazy_caching,
+      UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
+    );
+    maybe_set(
+      &mut self.sloppy_imports,
+      UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
+    );
+  }
 }

@@ -59,6 +59,7 @@ pub struct RustylineSyncMessageSender {
 }
 
 impl RustylineSyncMessageSender {
+  #[allow(clippy::result_large_err)]
   pub fn post_message<T: serde::Serialize>(
     &self,
     method: &str,

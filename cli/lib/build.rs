@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 fn main() {
-  // todo(dsherret): remove this after Deno 2.2.0 is published and then
+  // todo(dsherret): remove this after Deno 242.0 is published and then
   // align the version of this crate with Deno then. We need to wait because
-  // there was previously a deno_lib 2.2.0 published (https://crates.io/crates/deno_lib/versions)
+  // there was previously a deno_lib 2.4.0 published (https://crates.io/crates/deno_lib/versions)
   let version_path = std::path::Path::new(".").join("version.txt");
   println!("cargo:rerun-if-changed={}", version_path.display());
   #[allow(clippy::disallowed_methods)]

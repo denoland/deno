@@ -8,6 +8,8 @@ export interface AstContext {
   nodes: Map<number, Deno.lint.Node>;
   spansOffset: number;
   propsOffset: number;
+  commentsOffset: number;
+  comments: Array<Deno.lint.LineComment | Deno.lint.BlockComment>;
   strByType: number[];
   strByProp: number[];
   typeByStr: Map<string, number>;

@@ -44,10 +44,28 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read<'a>(
     &mut self,
-    _resolved: bool,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_write<'a>(
+    &mut self,
+    _p: Cow<'a, Path>,
+    _api_name: &str,
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net_vsock(
+    &mut self,
+    _cid: u32,
+    _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }
@@ -89,7 +107,7 @@ impl deno_node::NodePermissions for Permissions {
   }
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -146,7 +164,7 @@ impl deno_net::NetPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -165,12 +183,12 @@ impl deno_net::NetPermissions for Permissions {
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
     &mut self,
-    _resolved: bool,
     _read: bool,
     _write: bool,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
 
@@ -232,7 +250,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -240,7 +258,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -258,7 +276,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 
   fn check_write<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -271,62 +289,62 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   // and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   vec![
-    deno_telemetry::deno_telemetry::init_ops(),
-    deno_webidl::deno_webidl::init_ops(),
-    deno_console::deno_console::init_ops(),
-    deno_url::deno_url::init_ops(),
-    deno_web::deno_web::init_ops::<Permissions>(
+    deno_telemetry::deno_telemetry::init(),
+    deno_webidl::deno_webidl::init(),
+    deno_console::deno_console::init(),
+    deno_url::deno_url::init(),
+    deno_web::deno_web::init::<Permissions>(
       Default::default(),
       Default::default(),
     ),
-    deno_webgpu::deno_webgpu::init_ops(),
-    deno_canvas::deno_canvas::init_ops(),
-    deno_fetch::deno_fetch::init_ops::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init_ops(None),
-    deno_websocket::deno_websocket::init_ops::<Permissions>(
+    deno_webgpu::deno_webgpu::init(),
+    deno_canvas::deno_canvas::init(),
+    deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
+    deno_cache::deno_cache::init(None),
+    deno_websocket::deno_websocket::init::<Permissions>(
       "".to_owned(),
       None,
       None,
     ),
-    deno_webstorage::deno_webstorage::init_ops(None),
-    deno_crypto::deno_crypto::init_ops(None),
-    deno_broadcast_channel::deno_broadcast_channel::init_ops(
+    deno_webstorage::deno_webstorage::init(None),
+    deno_crypto::deno_crypto::init(None),
+    deno_broadcast_channel::deno_broadcast_channel::init(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
     #[cfg(feature = "ffi")]
-    deno_ffi::deno_ffi::init_ops::<Permissions>(None),
+    deno_ffi::deno_ffi::init::<Permissions>(None),
     #[cfg(not(feature = "ffi"))]
-    crate::shared::deno_ffi::init_ops(),
-    deno_net::deno_net::init_ops::<Permissions>(None, None),
-    deno_tls::deno_tls::init_ops(),
-    deno_kv::deno_kv::init_ops(
+    crate::shared::deno_ffi::init(),
+    deno_net::deno_net::init::<Permissions>(None, None),
+    deno_tls::deno_tls::init(),
+    deno_kv::deno_kv::init(
       deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None, None),
       deno_kv::KvConfig::builder().build(),
     ),
-    deno_cron::deno_cron::init_ops(deno_cron::local::LocalCronHandler::new()),
-    deno_napi::deno_napi::init_ops::<Permissions>(None),
-    deno_http::deno_http::init_ops(deno_http::Options::default()),
-    deno_io::deno_io::init_ops(Some(Default::default())),
-    deno_fs::deno_fs::init_ops::<Permissions>(fs.clone()),
-    deno_os::deno_os::init_ops(Default::default()),
-    deno_process::deno_process::init_ops(Default::default()),
-    deno_node::deno_node::init_ops::<
+    deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
+    deno_napi::deno_napi::init::<Permissions>(None),
+    deno_http::deno_http::init(deno_http::Options::default()),
+    deno_io::deno_io::init(Some(Default::default())),
+    deno_fs::deno_fs::init::<Permissions>(fs.clone()),
+    deno_os::deno_os::init(Default::default()),
+    deno_process::deno_process::init(Default::default()),
+    deno_node::deno_node::init::<
       Permissions,
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     >(None, fs.clone()),
-    runtime::init_ops(),
-    ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
-    ops::worker_host::deno_worker_host::init_ops(
+    ops::runtime::deno_runtime::init("deno:runtime".parse().unwrap()),
+    ops::worker_host::deno_worker_host::init(
       Arc::new(|_| unreachable!("not used in snapshot.")),
       None,
     ),
-    ops::fs_events::deno_fs_events::init_ops(),
-    ops::permissions::deno_permissions::init_ops(),
-    ops::tty::deno_tty::init_ops(),
-    ops::http::deno_http_runtime::init_ops(),
-    ops::bootstrap::deno_bootstrap::init_ops(None),
-    ops::web_worker::deno_web_worker::init_ops(),
+    ops::fs_events::deno_fs_events::init(),
+    ops::permissions::deno_permissions::init(),
+    ops::tty::deno_tty::init(),
+    ops::http::deno_http_runtime::init(),
+    ops::bootstrap::deno_bootstrap::init(None, false),
+    runtime::init(),
+    ops::web_worker::deno_web_worker::init(),
   ]
 }

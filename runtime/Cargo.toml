@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.210.0"
+version = "0.216.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -55,6 +55,7 @@ deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_fetch.workspace = true
 deno_ffi = { workspace = true, optional = true }
 deno_fs = { workspace = true, features = ["sync_fs"] }

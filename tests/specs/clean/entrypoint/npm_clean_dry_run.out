@@ -1,0 +1,7 @@
+would remove:
+[UNORDERED_START]
+ [WILDLINE]denodir[WILDCHAR]npm[WILDCHAR]localhost_4260[WILDCHAR]chalk[WILDCHAR]5.0.1
+ [WILDLINE]denodir[WILDCHAR]remote[WILDCHAR]http
+ [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]chalk@5.0.1
+ [WILDLINE]node_modules[WILDCHAR]chalk
+[UNORDERED_END]

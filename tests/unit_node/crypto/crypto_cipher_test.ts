@@ -62,6 +62,19 @@ Deno.test({
 });
 
 Deno.test({
+  name: "encrypt decrypt with KeyObject",
+  fn() {
+    const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 512 });
+    const secret = Buffer.from("secret");
+    const encrypted = crypto.publicEncrypt(pair.publicKey, secret);
+    assert(Buffer.isBuffer(encrypted));
+    const decrypted = crypto.privateDecrypt(pair.privateKey, encrypted);
+    assert(Buffer.isBuffer(decrypted));
+    assertEquals(decrypted, secret);
+  },
+});
+
+Deno.test({
   name: "rsa public decrypt fail",
   fn() {
     const encrypted = crypto.publicEncrypt(rsaPublicKey, input);
@@ -384,6 +397,7 @@ Deno.test({
   name: "getCiphers",
   fn() {
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
+    assertEquals(crypto.getCiphers().includes("aes-256-ctr"), true);
 
     const getZeroKey = (cipher: string) => zeros(+cipher.match(/\d+/)![0] / 8);
     const getZeroIv = (cipher: string) => {
@@ -470,7 +484,7 @@ Deno.test({
         decipher.final();
       },
       RangeError,
-      "Wrong final block length",
+      "wrong final block length",
     );
   },
 });

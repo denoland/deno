@@ -35,7 +35,11 @@ impl WebIdlInterfaceConverter for GPUBindGroup {
   const NAME: &'static str = "GPUBindGroup";
 }
 
-impl GarbageCollected for GPUBindGroup {}
+impl GarbageCollected for GPUBindGroup {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUBindGroup"
+  }
+}
 
 #[op2]
 impl GPUBindGroup {

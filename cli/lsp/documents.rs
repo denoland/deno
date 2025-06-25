@@ -35,7 +35,6 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
@@ -60,6 +59,7 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
+use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
@@ -503,15 +503,16 @@ impl Documents {
     text: Arc<str>,
     notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
+    let uri = normalize_uri(&uri);
     self.server.remove(&uri);
     let doc = Arc::new(OpenDocument::new(
-      uri.clone(),
+      uri.as_ref().clone(),
       version,
       language_id,
       text,
       notebook_uri,
     ));
-    self.open.insert(uri, doc.clone());
+    self.open.insert(uri.into_owned(), doc.clone());
     if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
@@ -527,7 +528,8 @@ impl Documents {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
-    let Some((uri, doc)) = self.open.shift_remove_entry(uri) else {
+    let uri = normalize_uri(uri);
+    let Some((uri, doc)) = self.open.shift_remove_entry(uri.as_ref()) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -545,8 +547,11 @@ impl Documents {
   }
 
   fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
-    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != uri);
-    let doc = self.open.shift_remove(uri).ok_or_else(|| {
+    let uri = normalize_uri(uri);
+    self
+      .file_like_uris_by_url
+      .retain(|_, u| u.as_ref() != uri.as_ref());
+    let doc = self.open.shift_remove(uri.as_ref()).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -563,7 +568,7 @@ impl Documents {
     uri: Uri,
     cells: Vec<lsp::TextDocumentItem>,
   ) -> Vec<Arc<OpenDocument>> {
-    let uri = Arc::new(uri);
+    let uri = Arc::new(normalize_uri(&uri).into_owned());
     let mut documents = Vec::with_capacity(cells.len());
     for cell in cells {
       let language_id = cell.language_id.parse().unwrap_or_else(|err| {
@@ -598,7 +603,7 @@ impl Documents {
     structure: Option<lsp::NotebookDocumentCellChangeStructure>,
     content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
   ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
-    let uri = Arc::new(uri.clone());
+    let uri = Arc::new(normalize_uri(uri).into_owned());
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
       if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
@@ -610,7 +615,7 @@ impl Documents {
             .cells
             .into_iter()
             .flatten()
-            .map(|c| Arc::new(c.document)),
+            .map(|c| Arc::new(normalize_uri(&c.document).into_owned())),
         );
       }
       for closed in structure.did_close.into_iter().flatten() {
@@ -663,7 +668,9 @@ impl Documents {
   }
 
   pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
-    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri) else {
+    let uri = normalize_uri(uri);
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri.as_ref())
+    else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
         uri.as_str(),
@@ -685,33 +692,35 @@ impl Documents {
   }
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
-    if let Some(doc) = self.open.get(uri) {
+    let uri = normalize_uri(uri);
+    if let Some(doc) = self.open.get(uri.as_ref()) {
       return Some(Document::Open(doc.clone()));
     }
-    if let Some(doc) = ASSET_DOCUMENTS.get(uri) {
+    if let Some(doc) = ASSET_DOCUMENTS.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    if let Some(doc) = self.server.get(uri) {
+    if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(uri) {
+    let doc = if let Some(doc) = ServerDocument::load(&uri) {
       doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(uri) {
-      ServerDocument::data_url(uri, data_url.value().clone())?
+    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
+      ServerDocument::data_url(&uri, data_url.value().clone())?
     } else {
       return None;
     };
     let doc = Arc::new(doc);
-    self.server.insert(uri.clone(), doc.clone());
+    self.server.insert(uri.into_owned(), doc.clone());
     Some(Document::Server(doc))
   }
 
   /// This will not create any server entries, only retrieve existing entries.
   pub fn inspect(&self, uri: &Uri) -> Option<Document> {
-    if let Some(doc) = self.open.get(uri) {
+    let uri = normalize_uri(uri);
+    if let Some(doc) = self.open.get(uri.as_ref()) {
       return Some(Document::Open(doc.clone()));
     }
-    if let Some(doc) = self.server.get(uri) {
+    if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
     None
@@ -1193,6 +1202,7 @@ impl DocumentModules {
       &self.config,
       &self.cache,
     ));
+    self.resolver.did_create_module(&module);
     modules.insert(document, module.clone());
     Some(module)
   }
@@ -1344,6 +1354,7 @@ impl DocumentModules {
 
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
+  // TODO(nayeemrmn): Support notebook scopes here.
   pub fn inspect_or_temp_modules_by_scope(
     &self,
     document: &Document,
@@ -1395,11 +1406,18 @@ impl DocumentModules {
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1454,14 +1472,6 @@ impl DocumentModules {
             if dep.scheme() == "node" {
               dep_info.has_node_specifier = true;
             }
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
-          }
-          if let Some(dep) = type_specifier {
-            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
-            }
           }
           if dependency.maybe_deno_types_specifier.is_some() {
             if let (Some(code_specifier), Some(type_specifier)) =
@@ -1473,15 +1483,6 @@ impl DocumentModules {
                   .insert(type_specifier.clone(), code_specifier.clone());
               }
             }
-          }
-        }
-        if let Some(dep) = module
-          .types_dependency
-          .as_ref()
-          .and_then(|d| d.dependency.maybe_specifier())
-        {
-          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            dep_info.npm_reqs.insert(reference.into_inner().req);
           }
         }
       };
@@ -1525,22 +1526,6 @@ impl DocumentModules {
             .insert(type_specifier, code_specifier);
           Some(())
         })();
-        // fill the reqs from the lockfile
-        if let Some(lockfile) = config_data.lockfile.as_ref() {
-          let lockfile = lockfile.lock();
-          for dep_req in lockfile.content.packages.specifiers.keys() {
-            if dep_req.kind == deno_semver::package::PackageKind::Npm {
-              dep_info.npm_reqs.insert(dep_req.req.clone());
-            }
-          }
-        }
-      }
-      if dep_info.has_node_specifier
-        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
-      {
-        dep_info
-          .npm_reqs
-          .insert(PackageReq::from_str("@types/node").unwrap());
       }
       (scope.cloned(), Arc::new(dep_info))
     };
@@ -1656,8 +1641,12 @@ impl DocumentModules {
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
       let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-      let (s, mt) =
-        scoped_resolver.npm_to_file_url(&npm_ref, referrer, resolution_mode)?;
+      let (s, mt) = scoped_resolver.npm_to_file_url(
+        &npm_ref,
+        referrer,
+        NodeResolutionKind::Types,
+        resolution_mode,
+      )?;
       specifier = s;
       media_type = Some(mt);
     }
@@ -1895,6 +1884,7 @@ impl OpenDocumentsGraphLoader<'_> {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
             content: Arc::from(doc.text.as_bytes().to_owned()),
+            mtime: None,
             specifier: doc.specifier.as_ref().clone(),
             maybe_headers: None,
           })))
@@ -1916,21 +1906,6 @@ impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
       Some(fut) => fut,
       None => self.inner_loader.load(specifier, options),
     }
-  }
-
-  fn cache_module_info(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    self.inner_loader.cache_module_info(
-      specifier,
-      media_type,
-      source,
-      module_info,
-    )
   }
 }
 
@@ -1961,6 +1936,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -1986,7 +1962,6 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => {
       let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
-      let npm_resolver = scoped_resolver.as_graph_npm_resolver();
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let config_data = scoped_resolver.as_config_data();
@@ -2009,21 +1984,25 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
             file_system: &deno_graph::source::NullFileSystem,
             jsr_url_provider: &CliJsrUrlProvider,
             maybe_resolver: Some(&resolver),
-            maybe_npm_resolver: Some(npm_resolver.as_ref()),
           },
         )),
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleError::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+        },
       )),
       ResolutionMode::Import,
     ),
@@ -2059,26 +2038,6 @@ mod tests {
 
   use super::*;
   use crate::lsp::cache::LspCache;
-
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
 
   async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -2227,7 +2186,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 
@@ -2270,7 +2228,6 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          &default_registry(),
         )
         .await;
 

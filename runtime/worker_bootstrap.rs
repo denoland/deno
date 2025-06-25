@@ -28,9 +28,11 @@ pub enum WorkerExecutionMode {
   /// `deno bench`
   Bench,
   /// `deno serve`
-  Serve {
-    is_main: bool,
-    worker_count: Option<usize>,
+  ServeMain {
+    worker_count: usize,
+  },
+  ServeWorker {
+    worker_index: usize,
   },
   /// `deno jupyter`
   Jupyter,
@@ -46,17 +48,9 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::Eval => 4,
       WorkerExecutionMode::Test => 5,
       WorkerExecutionMode::Bench => 6,
-      WorkerExecutionMode::Serve { .. } => 7,
+      WorkerExecutionMode::ServeMain { .. }
+      | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
-    }
-  }
-  pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
-    match *self {
-      WorkerExecutionMode::Serve {
-        is_main,
-        worker_count,
-      } => (Some(is_main), worker_count),
-      _ => (None, None),
     }
   }
 }
@@ -118,6 +112,7 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub auto_serve: bool,
   pub otel_config: OtelConfig,
   pub close_on_idle: bool,
 }
@@ -147,6 +142,7 @@ impl Default for BootstrapOptions {
       inspect: false,
       args: Default::default(),
       is_standalone: false,
+      auto_serve: false,
       has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
@@ -195,7 +191,7 @@ struct BootstrapV8<'a>(
   // serve host
   Option<&'a str>,
   // serve is main
-  Option<bool>,
+  bool,
   // serve worker count
   Option<usize>,
   // OTEL config
@@ -203,6 +199,8 @@ struct BootstrapV8<'a>(
   // close on idle
   bool,
   // is_standalone
+  bool,
+  // auto serve
   bool,
 );
 
@@ -215,7 +213,6 @@ impl BootstrapOptions {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
-    let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
       &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
@@ -228,11 +225,16 @@ impl BootstrapOptions {
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
-      serve_is_main,
-      serve_worker_count,
+      matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
+      match self.mode {
+        WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
+        WorkerExecutionMode::ServeWorker { worker_index } => Some(worker_index),
+        _ => None,
+      },
       self.otel_config.as_v8(),
       self.close_on_idle,
       self.is_standalone,
+      self.auto_serve,
     );
 
     bootstrap.serialize(ser).unwrap()

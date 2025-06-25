@@ -22,10 +22,10 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
+use crate::args::CliTsConfigResolver;
+use crate::args::CompilerOptions;
 use crate::args::DenoSubcommand;
-use crate::args::TsConfig;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
@@ -37,7 +37,6 @@ use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
-use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -83,7 +82,7 @@ pub enum CheckError {
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
-/// emit or not is determined by the `ts_config` settings.
+/// emit or not is determined by the `compiler_options` settings.
 pub struct CheckOptions {
   /// Whether to build the fast check type graph if necessary.
   ///
@@ -104,11 +103,10 @@ pub struct TypeChecker {
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  tsconfig_resolver: Arc<CliTsConfigResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
@@ -120,10 +118,9 @@ impl TypeChecker {
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
-    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    tsconfig_resolver: Arc<CliTsConfigResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
     Self {
@@ -132,7 +129,6 @@ impl TypeChecker {
       cli_options,
       module_graph_builder,
       node_resolver,
-      npm_installer,
       npm_resolver,
       sys,
       tsconfig_resolver,
@@ -144,12 +140,13 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check(
+  #[allow(clippy::result_large_err)]
+  pub fn check(
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options).await?;
+    let mut diagnostics = self.check_diagnostics(graph, options)?;
     let mut failed = false;
     for result in diagnostics.by_ref() {
       let mut diagnostics = result?;
@@ -178,7 +175,8 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  pub async fn check_diagnostics(
+  #[allow(clippy::result_large_err)]
+  pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
@@ -210,15 +208,6 @@ impl TypeChecker {
       return Ok(DiagnosticsByFolderIterator(
         DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
       ));
-    }
-
-    // node built-in specifiers use the @types/node package to determine
-    // types, so inject that now (the caller should do this after the lockfile
-    // has been written)
-    if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
     }
 
     log::debug!("Type checking");
@@ -261,7 +250,8 @@ impl TypeChecker {
   }
 
   /// Groups the roots based on the compiler options, which includes the
-  /// resolved TsConfig and resolved compilerOptions.types
+  /// resolved CompilerOptions and resolved compilerOptions.types
+  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -287,9 +277,9 @@ impl TypeChecker {
             value
           }
         };
-      let tsconfig = folder.lib_tsconfig(lib)?;
+      let compiler_options = folder.lib_compiler_options(lib)?;
       let key = CheckGroupKey {
-        ts_config: tsconfig,
+        compiler_options,
         imports,
       };
       let entry = roots_by_config.entry(key);
@@ -355,7 +345,7 @@ fn resolve_graph_imports_for_workspace_dir(
 /// Key to use to group roots together by config.
 #[derive(Debug, Hash, PartialEq, Eq)]
 struct CheckGroupKey<'a> {
-  ts_config: &'a Arc<TsConfig>,
+  compiler_options: &'a Arc<CompilerOptions>,
   imports: Rc<Vec<Url>>,
 }
 
@@ -388,6 +378,7 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -399,7 +390,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
-  tsconfig_resolver: &'a TsConfigResolver,
+  tsconfig_resolver: &'a CliTsConfigResolver,
   type_check_cache: TypeCheckCache,
   grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
   log_level: Option<log::Level>,
@@ -437,8 +428,27 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
+/// Converts the list of ambient module names to regex string
+pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
+  let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
+  regex_string.push('(');
+  let last = ambient_modules.len() - 1;
+  for (idx, part) in ambient_modules.iter().enumerate() {
+    let trimmed = part.trim_matches('"');
+    let escaped = regex::escape(trimmed);
+    let regex = escaped.replace("\\*", ".*");
+    regex_string.push_str(&regex);
+    if idx != last {
+      regex_string.push('|');
+    }
+  }
+  regex_string.push(')');
+  regex_string
+}
+
 impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     group_key: &'a CheckGroupKey<'a>,
@@ -455,7 +465,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     // walk the graph
-    let ts_config = group_key.ts_config;
+    let compiler_options = group_key.compiler_options;
     let mut graph_walker = GraphWalker::new(
       &self.graph,
       self.sys,
@@ -463,7 +473,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       self.npm_resolver,
       self.tsconfig_resolver,
       self.npm_check_state_hash,
-      ts_config.as_ref(),
+      compiler_options.as_ref(),
       self.options.type_check_mode,
     );
     let mut provided_roots = group_info.roots;
@@ -521,8 +531,8 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write_hashable(ts_config)
+    let compiler_options_hash_data = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(compiler_options)
       .finish();
     let code_cache = self.code_cache.as_ref().map(|c| {
       let c: Arc<dyn deno_runtime::code_cache::CodeCache> = c.clone();
@@ -530,10 +540,10 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     });
     let response = tsc::exec(
       tsc::Request {
-        config: ts_config.clone(),
+        config: compiler_options.clone(),
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
-        hash_data: tsconfig_hash_data,
+        hash_data: compiler_options_hash_data,
         maybe_npm: Some(tsc::RequestNpmState {
           cjs_tracker: self.cjs_tracker.clone(),
           node_resolver: self.node_resolver.clone(),
@@ -546,11 +556,31 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       code_cache,
     )?;
 
+    let ambient_modules = response.ambient_modules;
+    log::debug!("Ambient Modules: {:?}", ambient_modules);
+
+    let ambient_modules_regex = if ambient_modules.is_empty() {
+      None
+    } else {
+      regex::Regex::new(&ambient_modules_to_regex_string(&ambient_modules))
+        .inspect_err(|e| {
+          log::warn!("Failed to create regex for ambient modules: {}", e);
+        })
+        .ok()
+    };
+
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
-    let mut diagnostics = missing_diagnostics;
+    let mut diagnostics = missing_diagnostics.filter(|d| {
+      if let Some(ambient_modules_regex) = &ambient_modules_regex {
+        if let Some(missing_specifier) = &d.missing_specifier {
+          return !ambient_modules_regex.is_match(missing_specifier);
+        }
+      }
+      true
+    });
     diagnostics.extend(response_diagnostics);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
@@ -611,7 +641,7 @@ struct GraphWalker<'a> {
   sys: &'a CliSys,
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
-  tsconfig_resolver: &'a TsConfigResolver,
+  tsconfig_resolver: &'a CliTsConfigResolver,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
@@ -627,9 +657,9 @@ impl<'a> GraphWalker<'a> {
     sys: &'a CliSys,
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
-    tsconfig_resolver: &'a TsConfigResolver,
+    tsconfig_resolver: &'a CliTsConfigResolver,
     npm_cache_state_hash: Option<u64>,
-    ts_config: &TsConfig,
+    compiler_options: &CompilerOptions,
     type_check_mode: TypeCheckMode,
   ) -> Self {
     let maybe_hasher = npm_cache_state_hash.map(|npm_cache_state_hash| {
@@ -641,7 +671,7 @@ impl<'a> GraphWalker<'a> {
         TypeCheckMode::None => 2,
       });
       hasher.write_hashable(graph.has_node_specifier);
-      hasher.write_hashable(ts_config);
+      hasher.write_hashable(compiler_options);
       hasher
     });
     Self {
@@ -1018,6 +1048,7 @@ fn get_leading_comments(file_text: &str) -> Vec<String> {
 mod test {
   use deno_ast::MediaType;
 
+  use super::ambient_modules_to_regex_string;
   use super::get_leading_comments;
   use super::has_ts_check;
 
@@ -1062,5 +1093,15 @@ mod test {
       MediaType::JavaScript,
       "// ts-check\nconsole.log(5);"
     ));
+  }
+
+  #[test]
+  fn ambient_modules_to_regex_string_test() {
+    let result = ambient_modules_to_regex_string(&[
+      "foo".to_string(),
+      "*.css".to_string(),
+      "$virtual/module".to_string(),
+    ]);
+    assert_eq!(result, r"(foo|.*\.css|\$virtual/module)");
   }
 }

@@ -8,6 +8,8 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::PackageCaching;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::Version;
@@ -15,8 +17,8 @@ use deno_semver::Version;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::CreateGraphOptions;
-use crate::npm::installer::PackageCaching;
+use crate::graph_util::BuildGraphRequest;
+use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
@@ -93,6 +95,24 @@ pub async fn cache_top_level_deps(
               continue;
             }
             let resolved_req = graph.packages.mappings().get(req.req());
+            let resolved_req = resolved_req.and_then(|nv| {
+              // the version might end up being upgraded to a newer version that's already in
+              // the graph (due to a reverted change), in which case our exports could end up
+              // being wrong. to avoid that, see if there's a newer version that matches the version
+              // req.
+              let versions =
+                graph.packages.versions_by_name(&req.req().name)?;
+              let mut best = nv;
+              for version in versions {
+                if version.version > best.version
+                  && req.req().version_req.matches(&version.version)
+                {
+                  best = version;
+                }
+              }
+              Some(best)
+            });
+
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
               let nv = if let Some(req) = resolved_req {
@@ -160,16 +180,16 @@ pub async fn cache_top_level_deps(
     graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        CreateGraphOptions {
+        BuildGraphWithNpmOptions {
+          request: BuildGraphRequest::Roots(roots.clone()),
           loader: None,
-          graph_kind: graph.graph_kind(),
           is_dynamic: false,
-          roots: roots.clone(),
-          npm_caching: crate::graph_util::NpmCachingStrategy::Manual,
+          npm_caching: NpmCachingStrategy::Manual,
         },
       )
       .await?;
-    maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots, true);
+    maybe_graph_error =
+      graph_builder.graph_roots_valid(graph, &roots, true, true);
   }
 
   npm_installer.cache_packages(PackageCaching::All).await?;

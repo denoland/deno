@@ -1153,8 +1153,9 @@ Deno.test({
       assertEquals(stdout.toString(), expected);
     }
     {
+      const b = Buffer.from(text);
       const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
-        input: new DataView(Buffer.from(text).buffer),
+        input: new DataView(b.buffer, b.byteOffset, b.byteLength),
       });
       assertEquals(stdout.toString(), expected);
     }

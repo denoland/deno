@@ -948,7 +948,7 @@ function createUrlTest(
   name: string,
   methodAndPath: string,
   host: string | null,
-  expected: string,
+  expected: string | number,
 ) {
   Deno.test(`httpServerUrl${name}`, async () => {
     const listeningDeferred = Promise.withResolvers<number>();
@@ -978,11 +978,19 @@ function createUrlTest(
     assertEquals(body.length, writeResult);
 
     try {
-      const expectedResult = expected.replace("HOST", "localhost").replace(
-        "PORT",
-        `${port}`,
-      );
-      assertEquals(await urlDeferred.promise, expectedResult);
+      if (typeof expected === "number") {
+        const buf = new Uint8Array(128);
+        const n = await conn.read(buf);
+        assert(n != null);
+        const response = new TextDecoder().decode(buf.subarray(0, n));
+        assert(response.startsWith(`HTTP/1.1 ${expected}`));
+      } else {
+        const expectedResult = expected.replace("HOST", "localhost").replace(
+          "PORT",
+          `${port}`,
+        );
+        assertEquals(await urlDeferred.promise, expectedResult);
+      }
     } finally {
       ac.abort();
       await server.finished;
@@ -1029,22 +1037,27 @@ createUrlTest(
   "http://localhost:1234/path",
 );
 
-createUrlTest("WithAsterisk", "OPTIONS *", null, "*");
+createUrlTest("WithAsterisk", "OPTIONS *", null, "http://localhost:PORT/*");
 createUrlTest(
   "WithAuthorityForm",
   "CONNECT deno.land:80",
   null,
-  "deno.land:80",
+  "http://deno.land:80",
 );
 
-// TODO(mmastrac): These should probably be 400 errors
-createUrlTest("WithInvalidAsterisk", "GET *", null, "*");
-createUrlTest("WithInvalidNakedPath", "GET path", null, "path");
+createUrlTest("WithInvalidAsterisk", "GET *", null, 400);
+createUrlTest("WithInvalidNakedPath", "GET path", null, 400);
 createUrlTest(
   "WithInvalidNakedAuthority",
   "GET deno.land:1234",
   null,
-  "deno.land:1234",
+  400,
+);
+createUrlTest(
+  "WithInvalidConnectAuthority",
+  "CONNECT /path",
+  null,
+  400,
 );
 
 Deno.test(
@@ -4415,3 +4428,72 @@ Deno.test({
     "Cannot read request body as underlying resource unavailable",
   );
 });
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockWebSocketUpgrade() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const serverWebSocketClosed = Promise.withResolvers<void>();
+
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8001,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (request) => {
+        const { socket, response } = Deno.upgradeWebSocket(request);
+
+        socket.onmessage = (event) => {
+          // Echo the message back to the client
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
+
+        socket.onclose = () => {
+          serverWebSocketClosed.resolve();
+        };
+
+        return response;
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8001);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8001,
+    });
+
+    // Send HTTP upgrade request
+    await conn.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: test\r\n\r\n",
+      ),
+    );
+
+    // Read upgrade response
+    const responseData = new Uint8Array(512);
+    const responseRead = await conn.read(responseData);
+    const responseText = new TextDecoder().decode(
+      responseData.subarray(0, responseRead!),
+    );
+    assert(responseText.includes("101 Switching Protocols"));
+
+    await conn.close();
+    await serverWebSocketClosed.promise;
+    ac.abort();
+    await server.finished;
+  },
+);

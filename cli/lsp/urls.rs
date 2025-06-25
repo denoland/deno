@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -78,6 +79,17 @@ const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
 
 pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
   url_to_uri(&Url::parse(s)?)
+}
+
+pub fn normalize_uri(uri: &Uri) -> Cow<'_, Uri> {
+  if !uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    return Cow::Borrowed(uri);
+  }
+  let url = normalize_url(Url::parse(uri.as_str()).unwrap());
+  let Ok(normalized_uri) = url_to_uri(&url) else {
+    return Cow::Borrowed(uri);
+  };
+  Cow::Owned(normalized_uri)
 }
 
 pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
