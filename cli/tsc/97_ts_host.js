@@ -23,15 +23,6 @@ function spanned(name, f) {
   }
 }
 
-// The map from the normalized specifier to the original.
-// TypeScript normalizes the specifier in its internal processing,
-// but the original specifier is needed when looking up the source from the runtime.
-// This map stores that relationship, and the original can be restored by the
-// normalized specifier.
-// See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
-/** @type {Map<string, string>} */
-const normalizedToOriginalMap = new Map();
-
 /** @type {ReadonlySet<string>} */
 const unstableDenoProps = new Set([
   "AtomicOperation",
@@ -88,7 +79,7 @@ export function setLogDebug(debug, source) {
 }
 
 /** @param msg {string} */
-function printStderr(msg) {
+export function printStderr(msg) {
   core.print(msg, true);
 }
 
@@ -470,9 +461,6 @@ const hostImpl = {
         })`,
       );
     }
-
-    // Needs the original specifier
-    specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
     let sourceFile = SOURCE_FILE_CACHE.get(specifier);
     if (sourceFile) {

@@ -15,16 +15,16 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
 
-use super::installer::infer_name_from_url;
+use super::installer::BinNameResolver;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
-use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::is_standalone_binary;
 use crate::standalone::binary::WriteBinOptions;
 
@@ -36,10 +36,10 @@ pub async fn compile(
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let binary_writer = factory.create_compile_binary_writer().await?;
-  let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
+  let bin_name_resolver = factory.bin_name_resolver()?;
   let output_path = resolve_compile_executable_output_path(
-    http_client,
+    &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
   )
@@ -64,7 +64,7 @@ pub async fn compile(
       .create_graph(
         GraphKind::CodeOnly,
         module_roots,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?
   } else {
@@ -164,10 +164,10 @@ pub async fn compile_eszip(
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
   let tsconfig_resolver = factory.tsconfig_resolver()?;
-  let http_client = factory.http_client_provider();
+  let bin_name_resolver = factory.bin_name_resolver()?;
   let entrypoint = cli_options.resolve_main_module()?;
   let mut output_path = resolve_compile_executable_output_path(
-    http_client,
+    &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
   )
@@ -196,7 +196,7 @@ pub async fn compile_eszip(
       .create_graph(
         GraphKind::CodeOnly,
         module_roots,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?
   } else {
@@ -419,7 +419,7 @@ fn get_module_roots_and_include_paths(
 }
 
 async fn resolve_compile_executable_output_path(
-  http_client_provider: &HttpClientProvider,
+  bin_name_resolver: &BinNameResolver<'_>,
   compile_flags: &CompileFlags,
   current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
@@ -430,10 +430,10 @@ async fn resolve_compile_executable_output_path(
   let mut output_path = if let Some(out) = output_flag.as_ref() {
     let mut out_path = PathBuf::from(out);
     if out.ends_with('/') || out.ends_with('\\') {
-      if let Some(infer_file_name) =
-        infer_name_from_url(http_client_provider, &module_specifier)
-          .await
-          .map(PathBuf::from)
+      if let Some(infer_file_name) = bin_name_resolver
+        .infer_name_from_url(&module_specifier)
+        .await
+        .map(PathBuf::from)
       {
         out_path = out_path.join(infer_file_name);
       }
@@ -446,7 +446,8 @@ async fn resolve_compile_executable_output_path(
   };
 
   if output_flag.is_none() {
-    output_path = infer_name_from_url(http_client_provider, &module_specifier)
+    output_path = bin_name_resolver
+      .infer_name_from_url(&module_specifier)
       .await
       .map(PathBuf::from)
   }
@@ -480,13 +481,18 @@ fn get_os_specific_filepath(
 
 #[cfg(test)]
 mod test {
+  use deno_npm::registry::TestNpmRegistryApi;
+
   pub use super::*;
+  use crate::http_util::HttpClientProvider;
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
+    let npm_api = TestNpmRegistryApi::default();
+    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
     let path = resolve_compile_executable_output_path(
-      &http_client,
+      &bin_name_resolver,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),
@@ -512,8 +518,10 @@ mod test {
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_windows() {
     let http_client = HttpClientProvider::new(None, None);
+    let npm_api = TestNpmRegistryApi::default();
+    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
     let path = resolve_compile_executable_output_path(
-      &http_client,
+      &bin_name_resolver,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),

@@ -770,7 +770,85 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
+  setup_signal_handlers();
   Ok(())
+}
+
+#[cfg(unix)]
+fn setup_signal_handlers() {
+  use tokio::signal::unix::SignalKind;
+
+  let signals_to_handle = [
+    SignalKind::hangup(),
+    SignalKind::interrupt(),
+    SignalKind::terminate(),
+  ];
+
+  for signal_kind in signals_to_handle {
+    tokio::spawn(async move {
+      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
+        return;
+      };
+
+      loop {
+        signal_fut.recv().await;
+        flush();
+      }
+    });
+  }
+}
+
+#[cfg(windows)]
+fn setup_signal_handlers() {
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_break() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_c() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_close() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_logoff() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_shutdown() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
 }
 
 /// This function is called by the runtime whenever it is about to call
@@ -804,7 +882,9 @@ pub fn handle_log(record: &log::Record) {
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_severity_number(match record.level() {
     Level::Error => Severity::Error,
     Level::Warn => Severity::Warn,
@@ -1046,7 +1126,9 @@ fn op_otel_log<'s>(
   };
 
   let mut log_record = LogRecord::default();
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   let Ok(message) = message.try_cast() else {
     return;
   };
@@ -1110,7 +1192,9 @@ fn op_otel_log_foreign(
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_body(message.into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
@@ -1121,6 +1205,27 @@ fn op_otel_log_foreign(
       Some(TraceFlags::new(trace_flags)),
     );
   }
+
+  log_processor.emit(&mut log_record, builtin_instrumentation_scope);
+}
+
+pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
+  let Some(OtelGlobals {
+    log_processor,
+    builtin_instrumentation_scope,
+    ..
+  }) = OTEL_GLOBALS.get()
+  else {
+    return;
+  };
+
+  let mut log_record = LogRecord::default();
+
+  log_record.set_observed_timestamp(SystemTime::now());
+  log_record.set_event_name(name);
+  log_record.set_severity_number(Severity::Trace);
+  log_record.set_severity_text(Severity::Trace.name());
+  log_record.set_body(format!("{data}").into());
 
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }

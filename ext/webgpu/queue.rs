@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::cppgc::Ptr;
+use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -77,10 +78,16 @@ impl GPUQueue {
   }
 
   #[async_method]
-  async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::generic(
-      "This operation is currently not supported",
-    ))
+  async fn on_submitted_work_done(&self) {
+    let (sender, receiver) = oneshot::channel::<()>();
+    let callback = Box::new(move || {
+      // the promise may be dropped, so `send` may fail.
+      let _ = sender.send(());
+    });
+    self
+      .instance
+      .queue_on_submitted_work_done(self.id, callback);
+    receiver.await.unwrap();
   }
 
   #[required(3)]

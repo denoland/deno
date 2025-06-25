@@ -1,0 +1,4 @@
+[WILDCARD]import foo from "[WILDCARD]foo.ts";
+[WILDCARD]import bar from "[WILDCARD]ext/bar.ts";
+import * as fs from "jsr:@std/fs";
+[WILDCARD]console.log(fs.CRLF);[WILDCARD]

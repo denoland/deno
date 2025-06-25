@@ -165,15 +165,17 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => None,
-      #[cfg(unix)]
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => Rc::from("unix"),
-      #[cfg(unix)]
-      NetworkStreamAddress::Vsock(addr) => Rc::from(addr.cid().to_string()),
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      NetworkStreamAddress::Vsock(addr) => {
+        Rc::from(format!("vsock:{}", addr.cid()))
+      }
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -212,7 +214,7 @@ fn listener_properties(
     NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
     #[cfg(unix)]
     NetworkStreamAddress::Unix(_) => None,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
   };
   Ok(HttpListenProperties {
@@ -258,7 +260,7 @@ fn req_host_from_addr(
       percent_encoding::NON_ALPHANUMERIC,
     )
     .to_string(),
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStreamAddress::Vsock(vsock) => {
       format!("{}:{}", vsock.cid(), vsock.port())
     }
@@ -271,7 +273,7 @@ fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
     NetworkStreamType::Tls => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStreamType::Vsock => "http+vsock://",
   }
 }
@@ -297,7 +299,7 @@ fn req_host<'a>(
       }
       #[cfg(unix)]
       NetworkStreamType::Unix => {}
-      #[cfg(unix)]
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       NetworkStreamType::Vsock => {}
     }
     return Some(Cow::Borrowed(auth.as_str()));

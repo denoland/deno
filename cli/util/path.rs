@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -67,7 +66,7 @@ pub fn mapped_specifier_for_tsc(
       && specifier
         .path()
         .split('/')
-        .last()
+        .next_back()
         .map(|last| last.contains(".d."))
         .unwrap_or(false)
     {
@@ -126,11 +125,6 @@ pub fn relative_specifier(
     format!("./{text}")
   };
   Some(to_percent_decoded_str(&text))
-}
-
-#[cfg_attr(windows, allow(dead_code))]
-pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
 }
 
 /// Slightly different behaviour than the default matching

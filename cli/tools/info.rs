@@ -24,6 +24,8 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_resolver::display::DisplayTreeNode;
 use deno_resolver::DenoResolveErrorKind;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -36,7 +38,6 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliManagedNpmResolver;
-use crate::util::display::DisplayTreeNode;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -100,6 +101,13 @@ pub async fn info(
                 .into(),
             );
           }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            );
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
@@ -136,14 +144,15 @@ pub async fn info(
       None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
     };
 
-    let mut loader = module_graph_builder.create_graph_loader();
+    let mut loader =
+      module_graph_builder.create_graph_loader_with_root_permissions();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
       .create_graph_with_loader(
         GraphKind::All,
         vec![specifier],
         &mut loader,
-        crate::graph_util::NpmCachingStrategy::Eager,
+        NpmCachingStrategy::Eager,
       )
       .await?;
 
@@ -177,7 +186,7 @@ pub async fn info(
       let mut output = String::new();
       GraphDisplayContext::write(
         &graph,
-        maybe_npm_info.as_ref().map(|(r, s)| (*r, s)),
+        maybe_npm_info.as_ref().map(|(r, s)| (r.as_ref(), s)),
         &mut output,
       )?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
@@ -541,7 +550,7 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleError::Missing(_, _) = *err {
+        if let ModuleError::Missing { .. } = *err {
           bail!("module could not be found");
         } else {
           bail!("{:#}", err);
@@ -695,7 +704,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import attribute)")
       }
-      ModuleError::LoadingErr(_, _, err) => {
+      ModuleError::Load { err, .. } => {
         use deno_graph::ModuleLoadError::*;
         let message = match err {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
@@ -713,7 +722,7 @@ impl<'a> GraphDisplayContext<'a> {
         };
         self.build_error_msg(specifier, message.as_ref())
       }
-      ModuleError::ParseErr(_, _) | ModuleError::WasmParseErr(_, _) => {
+      ModuleError::Parse { .. } | ModuleError::WasmParse { .. } => {
         self.build_error_msg(specifier, "(parsing error)")
       }
       ModuleError::UnsupportedImportAttributeType { .. } => {
@@ -722,7 +731,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+      ModuleError::Missing { .. } | ModuleError::MissingDynamic { .. } => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

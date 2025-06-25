@@ -1,0 +1,4 @@
+[WILDCARD]
+error: Requires import access to "localhost:4545", run again with the --allow-import flag
+    at file://[WILDCARD]main.ts:1:21
+error: bundling failed

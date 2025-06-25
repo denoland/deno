@@ -13,13 +13,16 @@ const server = Deno.serve(
     port: 0,
     onListen({ port }) {
       const command = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
+        args: [
+          "run",
+          "--env-file=env_file",
+          "-A",
+          "-q",
+          Deno.args[0],
+        ],
         env: {
-          OTEL_DENO: "true",
-          DENO_UNSTABLE_OTEL_DETERMINISTIC: "0",
-          OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
+          // rest of env is in env_file
           OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
-          OTEL_EXPORTER_OTLP_CERTIFICATE: "../../../testdata/tls/RootCA.crt",
         },
         stdout: "null",
       });

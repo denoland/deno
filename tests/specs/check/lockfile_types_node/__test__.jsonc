@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check": {
+      "steps": [{
+        "args": "check --frozen=true",
+        "output": "[WILDCARD]The lockfile is out of date.[WILDCARD]",
+        "exitCode": 1
+      }, {
+        "args": "check --frozen=false",
+        "output": "[WILDCARD]",
+        "exitCode": 0
+      }, {
+        "args": "check --frozen=true",
+        "output": "[WILDCARD]",
+        "exitCode": 0
+      }]
+    },
+    "install": {
+      "steps": [{
+        "args": "install --frozen=false --entrypoint main.ts",
+        "output": "[WILDCARD]",
+        "exitCode": 0
+      }, {
+        "args": "check --frozen=true",
+        "output": "[WILDCARD]",
+        "exitCode": 0
+      }]
+    }
+  }
+}

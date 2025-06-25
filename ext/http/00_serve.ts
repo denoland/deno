@@ -44,6 +44,8 @@ const {
   SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -331,23 +333,23 @@ class InnerRequest {
   }
 
   get remoteAddr() {
-    const transport = this.#context.listener?.addr.transport;
-    if (transport === "unix" || transport === "unixpacket") {
-      return {
-        transport,
-        path: this.#context.listener.addr.path,
-      };
-    }
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
-    if (transport === "vsock") {
+    const transport = this.#context.listener?.addr.transport;
+    if (this.#methodAndUri[3] === "unix") {
       return {
         transport,
-        cid: Number(this.#methodAndUri[3]),
+        path: this.#context.listener.addr.path,
+      };
+    }
+    if (StringPrototypeStartsWith(this.#methodAndUri[3], "vsock:")) {
+      return {
+        transport,
+        cid: Number(StringPrototypeSlice(this.#methodAndUri[3], 6)),
         port: this.#methodAndUri[4],
       };
     }
@@ -1107,30 +1109,48 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
-  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+  if (
+    exports.onListen !== undefined && typeof exports.onListen !== "function"
+  ) {
+    throw new TypeError("Invalid type for onListen: must be a function");
+  }
+
+  return ({
+    servePort,
+    serveHost,
+    workerCountWhenMain,
+  }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-        serveWorkerCount !== null,
-      onListen: ({ transport, port, hostname, path, cid }) => {
-        if (serveIsMain) {
-          const nThreads = serveWorkerCount > 1
-            ? ` with ${serveWorkerCount} threads`
-            : "";
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
+      onListen: (localAddr) => {
+        if (workerCountWhenMain != null) {
+          if (exports.onListen) {
+            exports.onListen(localAddr);
+            return;
+          }
 
           let target;
-          switch (transport) {
+          switch (localAddr.transport) {
             case "tcp":
-              target = `http://${formatHostName(hostname)}:${port}/`;
+              target = `http://${
+                formatHostName(localAddr.hostname)
+              }:${localAddr.port}/`;
               break;
             case "unix":
-              target = path;
+              target = localAddr.path;
               break;
             case "vsock":
-              target = `vsock:${cid}:${port}`;
+              target = `vsock:${localAddr.cid}:${localAddr.port}`;
               break;
           }
+
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
+            : "";
 
           import.meta.log(
             "info",

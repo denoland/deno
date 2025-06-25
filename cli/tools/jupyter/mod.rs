@@ -17,8 +17,8 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-use jupyter_runtime::jupyter::ConnectionInfo;
-use jupyter_runtime::messaging::StreamContent;
+use jupyter_protocol::messaging::StreamContent;
+use jupyter_runtime::ConnectionInfo;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
@@ -49,20 +49,22 @@ pub async fn kernel(
   );
 
   if !jupyter_flags.install && !jupyter_flags.kernel {
-    install::status()?;
+    install::status(jupyter_flags.name.as_deref())?;
     return Ok(());
   }
 
   if jupyter_flags.install {
-    install::install()?;
+    install::install(
+      jupyter_flags.name.as_deref(),
+      jupyter_flags.display.as_deref(),
+      jupyter_flags.force,
+    )?;
     return Ok(());
   }
 
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   let factory = CliFactory::from_flags(flags);
-  let registry_provider =
-    Arc::new(factory.lockfile_npm_package_info_provider()?);
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
@@ -126,7 +128,6 @@ pub async fn kernel(
     worker,
     main_module,
     test_event_receiver,
-    registry_provider,
   )
   .await?;
   struct TestWriter(UnboundedSender<StreamContent>);

@@ -31,6 +31,7 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { startTlsInternal } from "ext:deno_net/02_tls.js";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -85,7 +86,8 @@ export class TLSSocket extends net.Socket {
   constructor(socket: any, opts: any = kEmptyObject) {
     const tlsOptions = { ...opts };
 
-    const hostname = opts.servername ?? opts.host ?? socket._host;
+    const hostname = opts.servername ?? opts.host ?? socket?._host ??
+      "localhost";
     tlsOptions.hostname = hostname;
 
     const _cert = tlsOptions?.secureContext?.cert;
@@ -98,6 +100,7 @@ export class TLSSocket extends net.Socket {
     }
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
+    tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -162,7 +165,10 @@ export class TLSSocket extends net.Socket {
         }
 
         try {
-          const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          const conn = await startTlsInternal(
+            handle[kStreamBaseField],
+            options,
+          );
           try {
             const hs = await conn.handshake();
             if (hs.alpnProtocol) {
@@ -275,10 +281,25 @@ export function Server(options: any, listener: any) {
 export class ServerImpl extends EventEmitter {
   listener?: Deno.TlsListener;
   #closed = false;
+  #unrefed = false;
   constructor(public options: any, listener: any) {
     super();
     if (listener) {
       this.on("secureConnection", listener);
+    }
+  }
+
+  unref() {
+    this.#unrefed = true;
+    if (this.listener) {
+      this.listener.unref();
+    }
+  }
+
+  ref() {
+    this.#unrefed = false;
+    if (this.listener) {
+      this.listener.ref();
     }
   }
 
@@ -296,6 +317,11 @@ export class ServerImpl extends EventEmitter {
   }
 
   async #listen(listener: Deno.TlsListener) {
+    if (this.#unrefed) {
+      listener.unref();
+      return;
+    }
+
     while (!this.#closed) {
       try {
         // Creates TCP handle and socket directly from Deno.TlsConn.

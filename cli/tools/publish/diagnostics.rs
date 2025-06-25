@@ -22,7 +22,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_graph::FastCheckDiagnostic;
+use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_semver::Version;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;

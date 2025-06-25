@@ -161,7 +161,7 @@
   ],
   "logs": [
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
@@ -175,7 +175,7 @@
       "spanId": "0000000000000004"
     },
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",

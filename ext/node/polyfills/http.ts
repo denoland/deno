@@ -515,14 +515,19 @@ class ClientRequest extends OutgoingMessage {
           span.setAttribute("url.query", parsedUrl.search.slice(1));
         }
 
-        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        let baseConnRid;
+        try {
+          baseConnRid = handle[kStreamBaseField][internalRidSymbol];
+        } catch (err) {
+          throw (this.socket.errored || err);
+        }
         if (this._encrypted) {
-          const hasCaCerts = this.agent?.options?.ca !== undefined;
+          const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
             : [];
-          const hasTlsKey = this.agent?.options?.key !== undefined &&
-            this.agent?.options?.cert !== undefined;
+          const hasTlsKey = !!this.agent?.options?.key &&
+            !!this.agent?.options?.cert;
           const keyPair = hasTlsKey
             ? op_tls_key_static(this.agent.options.cert, this.agent.options.key)
             : op_tls_key_null();
@@ -1392,6 +1397,7 @@ function onError(self, error, cb) {
 }
 
 export type ServerResponse = {
+  req: IncomingMessageForServer;
   statusCode: number;
   statusMessage?: string;
 
@@ -1456,9 +1462,11 @@ type ServerResponseStatic = {
 
 export const ServerResponse = function (
   this: ServerResponse,
+  req: IncomingMessageForServer,
   resolve: (value: Response | PromiseLike<Response>) => void,
   socket: FakeSocket,
 ) {
+  this.req = req;
   this.statusCode = 200;
   this.statusMessage = undefined;
   this._headers = { __proto__: null };
@@ -1996,7 +2004,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve, socket);
+          const res = new ServerResponse(req, resolve, socket);
 
           if (request.headers.has("expect")) {
             if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {

@@ -205,6 +205,7 @@ pub enum LintError {
 
 #[op2]
 #[buffer]
+#[allow(clippy::result_large_err)]
 fn op_lint_create_serialized_ast(
   #[string] file_name: &str,
   #[string] source: String,

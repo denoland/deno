@@ -24,6 +24,7 @@ use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
+use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
@@ -38,8 +39,7 @@ use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
-use crate::npm::installer::NpmInstaller;
-use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -231,7 +231,7 @@ struct RunSingleOptions<'a> {
 
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
-  npm_installer: Option<&'a NpmInstaller>,
+  npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<OsString, OsString>,
@@ -929,12 +929,7 @@ fn match_tasks(
 
   // Match tasks in deno.json
   for name in tasks_config.task_names() {
-    let matches_filter = match &task_name_filter {
-      TaskNameFilter::Exact(n) => *n == name,
-      TaskNameFilter::Regex(re) => re.is_match(name),
-    };
-
-    if matches_filter && !visited.contains(name) {
+    if task_name_filter.matches(name) && !visited.contains(name) {
       matched.insert(name.to_string());
       visit_task_and_dependencies(tasks_config, &mut visited, name);
     }
@@ -957,6 +952,7 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
 
   let mut regex_str = regex::escape(input);
   regex_str = regex_str.replace("\\*", ".*");
+  regex_str = format!("^{}", regex_str);
   let re = Regex::new(&regex_str)?;
   Ok(TaskNameFilter::Regex(re))
 }
@@ -965,6 +961,15 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
 enum TaskNameFilter<'s> {
   Exact(&'s str),
   Regex(regex::Regex),
+}
+
+impl TaskNameFilter<'_> {
+  fn matches(&self, name: &str) -> bool {
+    match self {
+      Self::Exact(n) => *n == name,
+      Self::Regex(re) => re.is_match(name),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -985,5 +990,10 @@ mod tests {
       arg_to_task_name_filter("test*").unwrap(),
       TaskNameFilter::Regex(_)
     ));
+
+    let filter = arg_to_task_name_filter("test:*").unwrap();
+    assert!(filter.matches("test:deno"));
+    assert!(filter.matches("test:dprint"));
+    assert!(!filter.matches("update:latest:deno"));
   }
 }

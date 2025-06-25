@@ -26,6 +26,10 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -38,7 +42,7 @@ jobs:
         with:
           project_id: denoland
       - name: Run tests
-        run: deno -A --config tests/config/deno.json tests/node_compat/run_all_test_unmodified.ts
+        run: deno -A tools/node_compat_tests.js
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
@@ -55,6 +59,10 @@ jobs:
           submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:

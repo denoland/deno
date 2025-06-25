@@ -86,3 +86,7 @@ Deno.test("[perf_hooks]: monitorEventLoopDelay", async () => {
 
   e.disable();
 });
+
+Deno.test("[perf_hooks]: markResourceTiming", () => {
+  assert(typeof performance.markResourceTiming === "function");
+});

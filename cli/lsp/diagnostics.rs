@@ -25,6 +25,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -40,6 +41,7 @@ use import_map::ImportMap;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
+use node_resolver::NodeResolutionKind;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::Duration;
@@ -68,6 +70,7 @@ use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
+use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
 pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
@@ -455,19 +458,8 @@ impl DeferredDiagnostics {
           ambient.regex = None;
           continue;
         }
-        let mut regex_string = String::with_capacity(value.len() * 8);
-        regex_string.push('(');
-        let last = value.len() - 1;
-        for (idx, part) in value.into_iter().enumerate() {
-          let trimmed = part.trim_matches('"');
-          let escaped = regex::escape(trimmed);
-          let regex = escaped.replace("\\*", ".*");
-          regex_string.push_str(&regex);
-          if idx != last {
-            regex_string.push('|');
-          }
-        }
-        regex_string.push_str(")$");
+        let mut regex_string = ambient_modules_to_regex_string(&value);
+        regex_string.push('$');
         if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
         }) {
@@ -1098,13 +1090,7 @@ async fn generate_ts_diagnostics(
   let mut enabled_modules_with_diagnostics = Vec::new();
   for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(
-        snapshot.clone(),
-        enabled_modules.iter().map(|m| m.specifier.as_ref()),
-        scope.as_ref(),
-        notebook_uri.as_ref(),
-        &token,
-      )
+      .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
@@ -1577,10 +1563,12 @@ fn maybe_ambient_specifier_resolution_err(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
   resolution: &Resolution,
+  resolution_kind: ResolutionKind,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
@@ -1647,6 +1635,7 @@ fn diagnose_resolution(
             .npm_to_file_url(
               &pkg_ref,
               &referrer_module.specifier,
+              NodeResolutionKind::from_deno_graph(resolution_kind),
               referrer_module.resolution_mode,
             )
             .is_none()
@@ -1774,22 +1763,27 @@ fn diagnose_dependency(
         .includes(i.specifier_range.range.start)
         .is_some()
     });
-
+  let resolution;
+  let resolution_kind;
+  if dependency.maybe_code.is_none()
+  // If not @ts-types, diagnose the types if the code errored because
+  // it's likely resolving into the node_modules folder, which might be
+  // erroring correctly due to resolution only being for bundlers. Let this
+  // fail at runtime if necessary, but don't bother erroring in the editor
+  || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+    && matches!(dependency.maybe_code, Resolution::Err(_))
+  {
+    resolution = &dependency.maybe_type;
+    resolution_kind = ResolutionKind::Types;
+  } else {
+    resolution = &dependency.maybe_code;
+    resolution_kind = ResolutionKind::Execution;
+  };
   let (resolution_diagnostics, deferred) = diagnose_resolution(
     snapshot,
     dependency_key,
-    if dependency.maybe_code.is_none()
-        // If not @ts-types, diagnose the types if the code errored because
-        // it's likely resolving into the node_modules folder, which might be
-        // erroring correctly due to resolution only being for bundlers. Let this
-        // fail at runtime if necessary, but don't bother erroring in the editor
-        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
-          && matches!(dependency.maybe_code, Resolution::Err(_))
-    {
-      &dependency.maybe_type
-    } else {
-      &dependency.maybe_code
-    },
+    resolution,
+    resolution_kind,
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
@@ -1825,6 +1819,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       &dependency.maybe_type,
+      ResolutionKind::Types,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,
@@ -1912,7 +1907,6 @@ mod tests {
 
   use deno_config::deno_json::ConfigFile;
   use deno_core::resolve_url;
-  use deno_semver::package::PackageNv;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -1951,26 +1945,6 @@ mod tests {
     }
   }
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   async fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
@@ -1982,10 +1956,7 @@ mod tests {
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_url.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
-      config
-        .tree
-        .inject_config_file(config_file, &default_registry())
-        .await;
+      config.tree.inject_config_file(config_file).await;
     }
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);

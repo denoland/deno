@@ -1,18 +1,23 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
 
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+
+const {
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 export function truncate(
   path: string | URL,
   lenOrCallback: number | CallbackWithError,
   maybeCallback?: CallbackWithError,
 ) {
-  path = path instanceof URL ? pathFromURL(path) : path;
+  path = ObjectPrototypeIsPrototypeOf(URL, path) ? pathFromURL(path) : path;
   const len: number | undefined = typeof lenOrCallback === "number"
     ? lenOrCallback
     : undefined;
@@ -22,7 +27,11 @@ export function truncate(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.truncate(path, len).then(() => callback(null), callback);
+  PromisePrototypeThen(
+    Deno.truncate(path, len),
+    () => callback(null),
+    callback,
+  );
 }
 
 export const truncatePromise = promisify(truncate) as (
@@ -31,7 +40,7 @@ export const truncatePromise = promisify(truncate) as (
 ) => Promise<void>;
 
 export function truncateSync(path: string | URL, len?: number) {
-  path = path instanceof URL ? pathFromURL(path) : path;
+  path = ObjectPrototypeIsPrototypeOf(URL, path) ? pathFromURL(path) : path;
 
   Deno.truncateSync(path, len);
 }

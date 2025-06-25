@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -58,17 +60,37 @@ use crate::FeatureChecker;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
-pub fn import_meta_resolve_callback(
-  loader: &dyn ModuleLoader,
-  specifier: String,
-  referrer: String,
-) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
-  loader.resolve(
-    &specifier,
-    &referrer,
-    deno_core::ResolutionKind::DynamicImport,
-  )
-}
+#[cfg(target_os = "linux")]
+pub(crate) static MEMORY_TRIM_HANDLER_ENABLED: LazyLock<bool> =
+  LazyLock::new(|| std::env::var_os("DENO_USR2_MEMORY_TRIM").is_some());
+
+#[cfg(target_os = "linux")]
+pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
+  LazyLock::new(|| {
+    let (tx, rx) = tokio::sync::watch::channel(());
+
+    tokio::spawn(async move {
+      let mut sigusr2 = tokio::signal::unix::signal(
+        tokio::signal::unix::SignalKind::user_defined2(),
+      )
+      .unwrap();
+
+      loop {
+        sigusr2.recv().await;
+
+        // SAFETY: calling into libc, nothing relevant on the Rust side.
+        unsafe {
+          libc::malloc_trim(0);
+        }
+
+        if tx.send(()).is_err() {
+          break;
+        }
+      }
+    });
+
+    rx
+  });
 
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
@@ -125,6 +147,15 @@ pub struct MainWorker {
   dispatch_unload_event_fn_global: v8::Global<v8::Function>,
   dispatch_process_beforeexit_event_fn_global: v8::Global<v8::Function>,
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for MainWorker {
+  fn drop(&mut self) {
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
+  }
 }
 
 pub struct WorkerServiceOptions<
@@ -682,6 +713,7 @@ impl MainWorker {
       dispatch_unload_event_fn_global,
       dispatch_process_beforeexit_event_fn_global,
       dispatch_process_exit_event_fn_global,
+      memory_trim_handle: None,
     };
     (worker, options.bootstrap)
   }
@@ -710,7 +742,51 @@ impl MainWorker {
     }
   }
 
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
+  }
+
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
@@ -844,6 +920,7 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -861,6 +938,7 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -876,6 +954,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("exit") event for node compat.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -893,6 +972,7 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -910,6 +990,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1029,18 +1110,30 @@ fn common_runtime(
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
     ),
-    import_meta_resolve_callback: Some(Box::new(import_meta_resolve_callback)),
     validate_import_attributes_cb: Some(Box::new(
       validate_import_attributes_callback,
     )),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops.then(|| {
-      Box::new(|stack| {
-        deno_permissions::prompter::set_current_stacktrace(stack)
-      }) as _
-    }),
+    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops
+      .then(create_permissions_stack_trace_callback),
     ..Default::default()
   })
+}
+
+pub fn create_permissions_stack_trace_callback(
+) -> deno_core::OpStackTraceCallback {
+  Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+      stack
+        .into_iter()
+        .map(|frame| {
+          deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
+            &frame,
+          )
+        })
+        .collect()
+    }))
+  }) as _
 }
 
 pub struct UnconfiguredRuntime {

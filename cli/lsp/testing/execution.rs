@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -30,6 +29,7 @@ use super::definitions::TestModule;
 use super::lsp_custom;
 use super::server::TestServerTests;
 use crate::args::flags_from_vec;
+use crate::args::parallelism_count;
 use crate::args::DenoSubcommand;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
@@ -42,6 +42,7 @@ use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 
 /// Logic to convert a test request into a set of test modules to be tested and
@@ -102,24 +103,32 @@ fn as_queue_and_filters(
   (queue, filters)
 }
 
-fn as_test_messages<S: AsRef<str>>(
-  message: S,
-  is_markdown: bool,
-) -> Vec<lsp_custom::TestMessage> {
+fn failure_to_test_message(failure: &TestFailure) -> lsp_custom::TestMessage {
   let message = lsp::MarkupContent {
-    kind: if is_markdown {
-      lsp::MarkupKind::Markdown
-    } else {
-      lsp::MarkupKind::PlainText
-    },
-    value: message.as_ref().to_string(),
+    kind: lsp::MarkupKind::PlainText,
+    value: failure
+      .format(&TestFailureFormatOptions::default())
+      .to_string(),
   };
-  vec![lsp_custom::TestMessage {
+  let location = failure.error_location().and_then(|v| {
+    let pos = lsp::Position {
+      line: v.line_number,
+      character: v.column_number,
+    };
+    // Does not have to match the test URI
+    // since one can write `Deno.test(importedFunction)`
+    let uri = uri_parse_unencoded(&v.file_name).ok()?;
+    Some(lsp::Location {
+      uri,
+      range: lsp::Range::new(pos, pos),
+    })
+  });
+  lsp_custom::TestMessage {
     message,
     expected_output: None,
     actual_output: None,
-    location: None,
-  }]
+    location,
+  }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -244,10 +253,7 @@ impl TestRun {
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
         (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
+          parallelism_count(test_flags.parallel).into(),
           test_flags.fail_fast,
         )
       } else {
@@ -672,10 +678,7 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -697,7 +700,15 @@ impl LspTestReporter {
       origin,
       test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
-    let messages = as_test_messages(err_string, false);
+    let messages = vec![lsp_custom::TestMessage {
+      message: lsp::MarkupContent {
+        kind: lsp::MarkupKind::PlainText,
+        value: err_string,
+      },
+      expected_output: None,
+      actual_output: None,
+      location: None,
+    }];
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
@@ -772,10 +783,7 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.63.0"
+version = "0.67.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,18 +15,29 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
-deno_core.workspace = true
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
+deno_unsync.workspace = true
 fqdn.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
+parking_lot.workspace = true
 percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
+serde_json.workspace = true
+sys_traits.workspace = true
+temp_deno_which.workspace = true
 thiserror.workspace = true
-which.workspace = true
+url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["fs"] }
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["real"] }

@@ -3401,14 +3401,14 @@ class Console {
     if (label.length > 0) {
       this.log(...new SafeArrayIterator(label));
     }
-    this.indentLevel += 2;
+    this.indentLevel++;
   };
 
   groupCollapsed = this.group;
 
   groupEnd = () => {
     if (this.indentLevel > 0) {
-      this.indentLevel -= 2;
+      this.indentLevel--;
     }
   };
 

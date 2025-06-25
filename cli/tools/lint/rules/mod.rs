@@ -279,7 +279,7 @@ mod test {
       .resolve_lint_rules(Default::default(), None)
       .rules
       .into_iter()
-      .filter(|r| r.tags().iter().any(|t| *t == tags::RECOMMENDED))
+      .filter(|r| r.tags().contains(&tags::RECOMMENDED))
       .map(|r| r.code().to_string())
       .filter(|n| n != "no-debugger")
       .collect::<Vec<_>>();

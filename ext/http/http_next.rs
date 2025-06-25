@@ -397,20 +397,28 @@ where
   .unwrap()
   .into();
 
-  let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
+  let (peer_ip, peer_port) = if let Some(client_addr) = &*http.client_addr() {
+    let addr: std::net::SocketAddr =
+      client_addr.to_str().unwrap().parse().unwrap();
+    (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+  } else {
+    (request_info.peer_address.clone(), request_info.peer_port)
+  };
+
+  let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
-    request_info.peer_address.as_bytes(),
+    peer_ip.as_bytes(),
     v8::NewStringType::Normal,
   )
   .unwrap()
   .into();
 
-  let port: v8::Local<v8::Value> = match request_info.peer_port {
+  let peer_port: v8::Local<v8::Value> = match peer_port {
     Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port, scheme];
+  let vec = [method, authority, path, peer_ip, peer_port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
@@ -1046,7 +1054,7 @@ where
     NetworkStream::Unix(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStream::Vsock(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }

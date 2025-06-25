@@ -129,6 +129,6 @@ pub fn get_tls_config(
 
       Ok(Arc::new(config))
     }
-    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
+    None => Err(io::Error::other("Cannot find key")),
   }
 }

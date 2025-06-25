@@ -22,6 +22,13 @@ test("sync fail todo", (t) => {
   throw new Error("thrown from sync fail todo");
 });
 
+test("todo thrown sub test", async (t) => {
+  t.todo("this is a todo test and is not treated as a failure");
+  await t.test("test", () => {
+    throw new Error("this does not fail the test");
+  });
+});
+
 test("sync fail todo with message", (t) => {
   t.todo("this is a failing todo");
   throw new Error("thrown from sync fail todo with message");
@@ -33,6 +40,13 @@ test("sync skip pass", (t) => {
 
 test("sync skip pass with message", (t) => {
   t.skip("this is skipped");
+});
+
+test("skip thrown sub test", async (t) => {
+  t.skip("this is a skip test and is not treated as a failure");
+  await t.test("test", () => {
+    throw new Error("this does not fail the test");
+  });
 });
 
 test("sync pass", (t) => {

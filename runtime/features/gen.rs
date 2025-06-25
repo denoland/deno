@@ -13,7 +13,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 0,
     kind: UnstableFeatureKind::Cli,
-    env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
     config_file_option: "bare-node-builtins",
   },
   UnstableFeatureDefinition {
@@ -23,7 +22,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 1,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "broadcast-channel",
   },
   UnstableFeatureDefinition {
@@ -33,7 +31,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 2,
     kind: UnstableFeatureKind::Cli,
-    env_var: None,
     config_file_option: "byonm",
   },
   UnstableFeatureDefinition {
@@ -43,7 +40,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 3,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "cron",
   },
   UnstableFeatureDefinition {
@@ -53,7 +49,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 4,
     kind: UnstableFeatureKind::Cli,
-    env_var: None,
     config_file_option: "detect-cjs",
   },
   UnstableFeatureDefinition {
@@ -63,7 +58,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 5,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "ffi",
   },
   UnstableFeatureDefinition {
@@ -73,7 +67,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 6,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "fs",
   },
   UnstableFeatureDefinition {
@@ -83,7 +76,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 7,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "http",
   },
   UnstableFeatureDefinition {
@@ -93,7 +85,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 8,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "kv",
   },
   UnstableFeatureDefinition {
@@ -103,7 +94,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 9,
     kind: UnstableFeatureKind::Cli,
-    env_var: Some("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS"),
     config_file_option: "lazy-dynamic-imports",
   },
   UnstableFeatureDefinition {
@@ -113,7 +103,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 10,
     kind: UnstableFeatureKind::Cli,
-    env_var: Some("DENO_UNSTABLE_LOCKFILE_V5"),
     config_file_option: "lockfile-v5",
   },
   UnstableFeatureDefinition {
@@ -123,7 +112,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 11,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "net",
   },
   UnstableFeatureDefinition {
@@ -133,7 +121,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 12,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "no-legacy-abort",
   },
   UnstableFeatureDefinition {
@@ -143,7 +130,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 13,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "node-globals",
   },
   UnstableFeatureDefinition {
@@ -153,7 +139,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 14,
     kind: UnstableFeatureKind::Cli,
-    env_var: Some("DENO_UNSTABLE_NPM_LAZY_CACHING"),
     config_file_option: "npm-lazy-caching",
   },
   UnstableFeatureDefinition {
@@ -163,7 +148,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 15,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "otel",
   },
   UnstableFeatureDefinition {
@@ -173,7 +157,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: false,
     id: 16,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "process",
   },
   UnstableFeatureDefinition {
@@ -183,17 +166,24 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     show_in_help: true,
     id: 17,
     kind: UnstableFeatureKind::Cli,
-    env_var: Some("DENO_UNSTABLE_SLOPPY_IMPORTS"),
     config_file_option: "sloppy-imports",
+  },
+  UnstableFeatureDefinition {
+    name: "subdomain-wildcards",
+    flag_name: "unstable-subdomain-wildcards",
+    help_text: "Enable subdomain wildcards support for the `--allow-net` flag",
+    show_in_help: true,
+    id: 18,
+    kind: UnstableFeatureKind::Cli,
+    config_file_option: "subdomain-wildcards",
   },
   UnstableFeatureDefinition {
     name: "temporal",
     flag_name: "unstable-temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: true,
-    id: 18,
+    id: 19,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "temporal",
   },
   UnstableFeatureDefinition {
@@ -201,9 +191,8 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     flag_name: "unstable-unsafe-proto",
     help_text: "Enable unsafe __proto__ support. This is a security risk.",
     show_in_help: true,
-    id: 19,
+    id: 20,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "unsafe-proto",
   },
   UnstableFeatureDefinition {
@@ -211,9 +200,8 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     flag_name: "unstable-vsock",
     help_text: "Enable unstable VSOCK APIs",
     show_in_help: false,
-    id: 20,
+    id: 21,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "vsock",
   },
   UnstableFeatureDefinition {
@@ -221,9 +209,8 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    id: 21,
+    id: 22,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "webgpu",
   },
   UnstableFeatureDefinition {
@@ -231,9 +218,24 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 22,
+    id: 23,
     kind: UnstableFeatureKind::Runtime,
-    env_var: None,
     config_file_option: "worker-options",
   },
 ];
+pub struct UnstableEnvVarNames {
+  pub bare_node_builtins: &'static str,
+  pub lazy_dynamic_imports: &'static str,
+  pub lockfile_v5: &'static str,
+  pub npm_lazy_caching: &'static str,
+  pub sloppy_imports: &'static str,
+  pub subdomain_wildcards: &'static str,
+}
+pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {
+  bare_node_builtins: "DENO_UNSTABLE_BARE_NODE_BUILTINS",
+  lazy_dynamic_imports: "DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS",
+  lockfile_v5: "DENO_UNSTABLE_LOCKFILE_V5",
+  npm_lazy_caching: "DENO_UNSTABLE_NPM_LAZY_CACHING",
+  sloppy_imports: "DENO_UNSTABLE_SLOPPY_IMPORTS",
+  subdomain_wildcards: "DENO_UNSTABLE_SUBDOMAIN_WILDCARDS",
+};

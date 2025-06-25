@@ -42,7 +42,7 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::npm::installer::NpmInstaller;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
@@ -302,7 +302,7 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req.clone(),
+      Ok(req) => req.req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
@@ -351,7 +351,8 @@ fn add_deps_from_package_json(
         }
       };
       match v {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::JsrReq(_) => {
           // ignore
         }
         deno_package_json::PackageJsonDepValue::Req(req) => {
@@ -461,7 +462,7 @@ pub struct DepManager {
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
   npm_resolver: CliNpmResolver,
-  npm_installer: Arc<NpmInstaller>,
+  npm_installer: Arc<CliNpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -471,7 +472,7 @@ pub struct DepManagerArgs {
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
-  pub npm_installer: Arc<NpmInstaller>,
+  pub npm_installer: Arc<CliNpmInstaller>,
   pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -583,20 +584,40 @@ impl DepManager {
           DepKind::Npm => roots.push(
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
-          DepKind::Jsr => info_futures.push(async {
-            if let Some(nv) = self.jsr_fetch_resolver.req_to_nv(&dep.req).await
-            {
+          DepKind::Jsr => {
+            let resolved_nv = graph.packages.mappings().get(&dep.req);
+            let resolved_nv = resolved_nv
+              .and_then(|nv| {
+                let versions =
+                  graph.packages.versions_by_name(&dep.req.name)?;
+                let mut best = nv;
+                for version in versions {
+                  if version.version > best.version
+                    && dep.req.version_req.matches(&version.version)
+                  {
+                    best = version;
+                  }
+                }
+                Some(best)
+              })
+              .cloned();
+            info_futures.push(async {
+              let nv = if let Some(nv) = resolved_nv {
+                nv
+              } else {
+                self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
+              };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
               {
                 let specifier =
-                  ModuleSpecifier::parse(&format!("jsr:/{}/", dep.req))
+                  ModuleSpecifier::parse(&format!("jsr:/{}/", &dep.req))
                     .unwrap();
                 return Some((specifier, info));
               }
-            }
-            None
-          }),
+              None
+            });
+          }
         }
       }
     }
@@ -623,6 +644,7 @@ impl DepManager {
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;

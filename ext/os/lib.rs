@@ -55,6 +55,7 @@ deno_core::extension!(
     op_exit,
     op_delete_env,
     op_get_env,
+    op_get_env_no_permission_check,
     op_gid,
     op_hostname,
     op_loadavg,
@@ -112,13 +113,10 @@ pub enum OsError {
   Io(#[from] std::io::Error),
 }
 
-#[op2(stack_trace)]
+#[op2]
 #[string]
-fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
+fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // normalize path so it doesn't include '.' or '..' components
   let path = normalize_path(current_exe);
 
@@ -182,21 +180,20 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
-  Ok(env::vars().collect())
+
+  Ok(
+    env::vars_os()
+      .filter_map(|(key_os, value_os)| {
+        key_os
+          .into_string()
+          .ok()
+          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      })
+      .collect(),
+  )
 }
 
-#[op2(stack_trace)]
-#[string]
-fn op_get_env(
-  state: &mut OpState,
-  #[string] key: String,
-) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key.as_str());
-
-  if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
-  }
-
+fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -210,6 +207,29 @@ fn op_get_env(
     v => Some(v?),
   };
   Ok(r)
+}
+
+#[op2]
+#[string]
+fn op_get_env_no_permission_check(
+  #[string] key: &str,
+) -> Result<Option<String>, OsError> {
+  get_env_var(key)
+}
+
+#[op2(stack_trace)]
+#[string]
+fn op_get_env(
+  state: &mut OpState,
+  #[string] key: &str,
+) -> Result<Option<String>, OsError> {
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
+
+  if !skip_permission_check {
+    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  }
+
+  get_env_var(key)
 }
 
 #[op2(fast, stack_trace)]
@@ -388,11 +408,12 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
   Ok(None)
 }
 
-#[op2]
-#[serde]
-fn op_runtime_cpu_usage() -> (usize, usize) {
+#[op2(fast)]
+fn op_runtime_cpu_usage(#[buffer] out: &mut [f64]) {
   let (sys, user) = get_cpu_usage();
-  (sys.as_micros() as usize, user.as_micros() as usize)
+
+  out[0] = sys.as_micros() as f64;
+  out[1] = user.as_micros() as f64;
 }
 
 #[cfg(unix)]
@@ -493,32 +514,35 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   Default::default()
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 fn op_runtime_memory_usage(
   scope: &mut v8::HandleScope,
-) -> (usize, usize, usize, usize) {
+  #[buffer] out: &mut [f64],
+) {
   let s = scope.get_heap_statistics();
 
   let (rss, heap_total, heap_used, external) = (
     rss(),
-    s.total_heap_size(),
-    s.used_heap_size(),
-    s.external_memory(),
+    s.total_heap_size() as u64,
+    s.used_heap_size() as u64,
+    s.external_memory() as u64,
   );
 
-  (rss, heap_total, heap_used, external)
+  out[0] = rss as f64;
+  out[1] = heap_total as f64;
+  out[2] = heap_used as f64;
+  out[3] = external as f64;
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-fn rss() -> usize {
+fn rss() -> u64 {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 
   // Extracts a positive integer from a string that
   // may contain leading spaces and trailing chars.
   // Returns the extracted number and the index of
   // the next character in the string.
-  fn scan_int(string: &str) -> (usize, usize) {
+  fn scan_int(string: &str) -> (u64, usize) {
     let mut out = 0;
     let mut idx = 0;
     let mut chars = string.chars().peekable();
@@ -529,7 +553,7 @@ fn rss() -> usize {
       idx += 1;
       if n.is_ascii_digit() {
         out *= 10;
-        out += n as usize - '0' as usize;
+        out += n as u64 - '0' as u64;
       } else {
         break;
       }
@@ -558,11 +582,11 @@ fn rss() -> usize {
   let (_total_size_pages, idx) = scan_int(&statm_content);
   let (total_rss_pages, _) = scan_int(&statm_content[idx..]);
 
-  total_rss_pages * page_size as usize
+  total_rss_pages * page_size as u64
 }
 
 #[cfg(target_os = "macos")]
-fn rss() -> usize {
+fn rss() -> u64 {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/darwin.rs
 
   let mut task_info =
@@ -584,11 +608,11 @@ fn rss() -> usize {
   assert_eq!(r, libc::KERN_SUCCESS);
   // SAFETY: we just asserted that it was success
   let task_info = unsafe { task_info.assume_init() };
-  task_info.resident_size as usize
+  task_info.resident_size
 }
 
 #[cfg(target_os = "openbsd")]
-fn rss() -> usize {
+fn rss() -> u64 {
   // Uses OpenBSD's KERN_PROC_PID sysctl(2)
   // to retrieve information about the current
   // process, part of which is the RSS (p_vm_rssize)
@@ -596,7 +620,7 @@ fn rss() -> usize {
   // SAFETY: libc call (get PID of own process)
   let pid = unsafe { libc::getpid() };
   // SAFETY: libc call (get system page size)
-  let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+  let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
   // KERN_PROC_PID returns a struct libc::kinfo_proc
   let mut kinfoproc = std::mem::MaybeUninit::<libc::kinfo_proc>::uninit();
   let mut size = std::mem::size_of_val(&kinfoproc) as libc::size_t;
@@ -628,14 +652,14 @@ fn rss() -> usize {
     // SAFETY: sysctl returns 0 on success and kinfoproc is initialized
     // p_vm_rssize contains size in pages -> multiply with pagesize to
     // get size in bytes.
-    pagesize * unsafe { (*kinfoproc.as_mut_ptr()).p_vm_rssize as usize }
+    pagesize * unsafe { (*kinfoproc.as_mut_ptr()).p_vm_rssize as u64 }
   } else {
     0
   }
 }
 
 #[cfg(windows)]
-fn rss() -> usize {
+fn rss() -> u64 {
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::um::processthreadsapi::GetCurrentProcess;
@@ -654,7 +678,7 @@ fn rss() -> usize {
       std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
     ) != FALSE
     {
-      pmc.WorkingSetSize
+      pmc.WorkingSetSize as u64
     } else {
       0
     }

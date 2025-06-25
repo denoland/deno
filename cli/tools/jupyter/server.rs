@@ -19,7 +19,7 @@ use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_lib::version::DENO_VERSION_INFO;
-use jupyter_runtime::messaging;
+use jupyter_protocol::messaging;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
@@ -36,7 +36,6 @@ use uuid::Uuid;
 
 use super::JupyterReplProxy;
 use crate::cdp;
-use crate::tools::repl;
 
 pub struct JupyterServer {
   execution_count: ExecutionCount,
@@ -66,19 +65,28 @@ impl JupyterServer {
     let session_id = Uuid::new_v4().to_string();
 
     let mut heartbeat =
-      connection_info.create_kernel_heartbeat_connection().await?;
-    let shell_connection = connection_info
-      .create_kernel_shell_connection(&session_id)
-      .await?;
-    let control_connection = connection_info
-      .create_kernel_control_connection(&session_id)
-      .await?;
-    let mut stdin_connection = connection_info
-      .create_kernel_stdin_connection(&session_id)
-      .await?;
-    let iopub_connection = connection_info
-      .create_kernel_iopub_connection(&session_id)
-      .await?;
+      jupyter_runtime::create_kernel_heartbeat_connection(&connection_info)
+        .await?;
+    let shell_connection = jupyter_runtime::create_kernel_shell_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let control_connection = jupyter_runtime::create_kernel_control_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let mut stdin_connection = jupyter_runtime::create_kernel_stdin_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let iopub_connection = jupyter_runtime::create_kernel_iopub_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));
@@ -322,11 +330,7 @@ impl JupyterServer {
             )
             .await
             .into_iter()
-            .filter(|n| {
-              !n.starts_with("Symbol(")
-                && n.starts_with(prop_name)
-                && n != &*repl::REPL_INTERNALS_NAME
-            })
+            .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
             .collect();
 
             if prop_name.len() > cursor_pos {
@@ -347,7 +351,7 @@ impl JupyterServer {
               get_global_lexical_scope_names(&mut self.repl_session_proxy)
                 .await,
             )
-            .filter(|n| n.starts_with(expr) && n != &*repl::REPL_INTERNALS_NAME)
+            .filter(|n| n.starts_with(expr))
             .collect::<Vec<_>>();
 
             // sort and remove duplicates

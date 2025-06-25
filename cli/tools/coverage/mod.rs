@@ -576,8 +576,10 @@ fn filter_coverages(
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
+        || e.url.starts_with("data:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
+        || e.url.ends_with("$deno$stdin.mts")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())
@@ -738,6 +740,12 @@ pub fn cover_files(
     if !coverage_report.found_lines.is_empty() {
       file_reports.push((coverage_report, original_source.to_string()));
     }
+  }
+
+  // All covered files, might have had ignore directive and we can end up
+  // with no reports at this point.
+  if file_reports.is_empty() {
+    return Err(anyhow!("No covered files included in the report"));
   }
 
   for reporter in reporters {

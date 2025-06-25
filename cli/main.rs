@@ -51,7 +51,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_FEATURES;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -59,6 +58,7 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
+use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::get_default_v8_flags;
@@ -127,7 +127,18 @@ async fn run_subcommand(
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
-    DenoSubcommand::Bundle => exit_with_message("⚠️ `deno bundle` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
+    DenoSubcommand::Bundle(bundle_flags) => {
+      spawn_subcommand(async {
+        log::warn!(
+          "⚠️ {} is experimental and subject to changes",
+          colors::cyan("deno bundle")
+        );
+        tools::bundle::bundle(flags, bundle_flags).await
+      })
+    },
+    DenoSubcommand::Deploy => {
+      spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
+    }
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
@@ -198,8 +209,7 @@ async fn run_subcommand(
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      let factory = CliFactory::from_flags(flags.clone());
-      lsp::start(Arc::new(factory.lockfile_npm_package_info_provider()?)).await
+      lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -309,7 +319,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
           env::set_var(
-            "DENO_UNSTABLE_COVERAGE_DIR",
+            "DENO_COVERAGE_DIR",
             PathBuf::from(coverage_dir).canonicalize()?,
           );
         }
@@ -457,11 +467,18 @@ pub fn main() {
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
+  {
+    deno_subprocess_windows::disable_stdio_inheritance();
+    colors::enable_ansi(); // For Windows 10
+  }
   deno_runtime::deno_permissions::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
 
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
@@ -513,7 +530,7 @@ pub fn main() {
 fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
-  let flags = match flags_from_vec(args) {
+  let mut flags = match flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
@@ -528,6 +545,17 @@ fn resolve_flags_and_init(
       exit_for_error(AnyError::from(err))
     }
   };
+
+  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  flags.unstable_config.fill_with_env();
+  if flags.node_conditions.is_empty() {
+    if let Ok(conditions) = std::env::var("DENO_NODE_CONDITIONS") {
+      flags.node_conditions = conditions
+        .split(",")
+        .map(|c| c.trim().to_string())
+        .collect();
+    }
+  }
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
@@ -623,7 +651,9 @@ fn wait_for_start(
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockAddr;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
@@ -634,7 +664,9 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(
       startup_snapshot,
-      deno_lib::worker::create_isolate_create_params(),
+      deno_lib::worker::create_isolate_create_params(
+        &crate::sys::CliSys::default(),
+      ),
       Some(roots.shared_array_buffer_store.clone()),
       Some(roots.compiled_wasm_module_store.clone()),
       vec![],
@@ -658,6 +690,7 @@ fn wait_for_start(
         let (rx, tx) = stream.into_split();
         (Box::new(rx), Box::new(tx))
       }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");

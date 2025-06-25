@@ -31,4 +31,4 @@ jobs:
       - name: Upload version file to dl.deno.land
         run: |
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          (deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt

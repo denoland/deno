@@ -2222,3 +2222,109 @@ Deno.test("fetch string object", async () => {
   const res = new Response(Object("hello"));
   assertEquals(await res.text(), "hello");
 });
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchUnixSocket() {
+    const tempDir = await Deno.makeTempDir();
+    const socketPath = `${tempDir}/unix.sock`;
+
+    await using _server = Deno.serve({
+      path: socketPath,
+      transport: "unix",
+      onListen: () => {},
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    // Canonicalize the path, because permission checks are done so that
+    // the symlink doesn't change in between the calls.
+    const resolvedPath = await Deno.realPath(socketPath);
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "unix",
+        path: resolvedPath,
+      },
+    });
+
+    const resp1 = await fetch("http://localhost/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "http+unix://localhost/ping");
+
+    const resp2 = await fetch("http://localhost/not-found", { client });
+    assertEquals(resp2.status, 404);
+    assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientThrowsWhenProxyTransportMismatch() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "socks5", // Mismatch with "http://" URL
+            url: "http://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "http", // Mismatch with "https://" URL
+            url: "https://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "https", // Mismatch with "socks5://" URL
+            url: "socks5://localhost:1080",
+          },
+        });
+      },
+      TypeError,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientWithVsockProxy() {
+    // Test that creating an HttpClient with vsock proxy succeeds
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "vsock",
+        cid: 2,
+        port: 80,
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);

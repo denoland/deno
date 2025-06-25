@@ -24,13 +24,20 @@ import { getOptions } from "ext:deno_node/internal_binding/node_options.ts";
 import { primordials } from "ext:core/mod.js";
 const {
   MapPrototypeGet,
+  SafeMap,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
 } = primordials;
 
 let optionsMap: Map<string, { value: string }>;
+const dummyOptions = new SafeMap<string, { value: string }>();
 
 function getOptionsFromBinding() {
+  // If Deno.build is not defined, this is in warmup phase.
+  if (!Deno.build) {
+    return dummyOptions;
+  }
+
   if (!optionsMap) {
     ({ options: optionsMap } = getOptions());
   }

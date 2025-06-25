@@ -50,6 +50,24 @@ impl deno_fetch::FetchPermissions for Permissions {
   ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_write<'a>(
+    &mut self,
+    _p: Cow<'a, Path>,
+    _api_name: &str,
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net_vsock(
+    &mut self,
+    _cid: u32,
+    _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_ffi::FfiPermissions for Permissions {

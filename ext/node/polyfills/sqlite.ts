@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { DatabaseSync } from "ext:core/ops";
+import { DatabaseSync, StatementSync } from "ext:core/ops";
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
@@ -14,9 +14,10 @@ export const constants = {
   SQLITE_CHANGESET_FOREIGN_KEY: 5,
 };
 
-export { DatabaseSync };
+export { DatabaseSync, StatementSync };
 
 export default {
   constants,
   DatabaseSync,
+  StatementSync,
 };

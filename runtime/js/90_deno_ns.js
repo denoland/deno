@@ -34,10 +34,13 @@ import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
-const { ObjectDefineProperties } = primordials;
+const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+
+// the out buffer for `cpuUsage` and `memoryUsage`
+const usageBuffer = new Float64Array(4);
 
 const denoNs = {
   Process: process.Process,
@@ -63,13 +66,27 @@ const denoNs = {
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
   cpuUsage: () => {
-    const { 0: system, 1: user } = op_runtime_cpu_usage();
-    return { system, user };
+    op_runtime_cpu_usage(usageBuffer);
+    const { 0: system, 1: user } = usageBuffer;
+    return {
+      system,
+      user,
+    };
   },
   memoryUsage: () => {
-    const { 0: rss, 1: heapTotal, 2: heapUsed, 3: external } =
-      op_runtime_memory_usage();
-    return { rss, heapTotal, heapUsed, external };
+    op_runtime_memory_usage(usageBuffer);
+    const {
+      0: rss,
+      1: heapTotal,
+      2: heapUsed,
+      3: external,
+    } = usageBuffer;
+    return {
+      rss,
+      heapTotal,
+      heapUsed,
+      external,
+    };
   },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
@@ -149,6 +166,7 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
+  telemetry: telemetry.telemetry,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -211,9 +229,5 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
 });
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
-
-denoNsUnstableById[unstableIds.otel] = {
-  telemetry: telemetry.telemetry,
-};
 
 export { denoNs, denoNsUnstableById, unstableIds };

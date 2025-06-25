@@ -32,6 +32,8 @@ pub struct Configuration {
   pub device: Ptr<GPUDevice>,
   pub usage: u32,
   pub format: GPUTextureFormat,
+  pub surface_config:
+    wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 }
 
 pub struct GPUCanvasContext {
@@ -97,6 +99,7 @@ impl GPUCanvasContext {
       device,
       usage: configuration.usage,
       format: configuration.format,
+      surface_config: conf,
     });
 
     Ok(())
@@ -174,6 +177,27 @@ impl GPUCanvasContext {
     *self.texture.borrow_mut() = None;
 
     Ok(())
+  }
+
+  pub fn resize_configure(&self, width: u32, height: u32) {
+    self.width.replace(width);
+    self.height.replace(height);
+
+    let mut config = self.config.borrow_mut();
+    let Some(config) = &mut *config else {
+      return;
+    };
+
+    config.surface_config.width = width;
+    config.surface_config.height = height;
+
+    let err = config.device.instance.surface_configure(
+      self.surface_id,
+      config.device.id,
+      &config.surface_config,
+    );
+
+    config.device.error_handler.push_error(err);
   }
 }
 

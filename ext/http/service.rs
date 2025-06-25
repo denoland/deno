@@ -9,6 +9,7 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::OnceLock;
 use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
@@ -297,6 +298,7 @@ struct HttpRecordInner {
   needs_close_after_finish: bool,
   legacy_abort: bool,
   otel_info: Option<OtelInfo>,
+  client_addr: Option<http::HeaderValue>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -312,6 +314,21 @@ impl Drop for HttpRecord {
   }
 }
 
+fn trust_proxy_headers() -> bool {
+  static TRUST_PROXY_HEADERS: OnceLock<bool> = OnceLock::new();
+
+  static VAR_NAME: &str = "DENO_TRUST_PROXY_HEADERS";
+
+  *TRUST_PROXY_HEADERS.get_or_init(|| {
+    if let Some(v) = std::env::var_os(VAR_NAME) {
+      std::env::remove_var(VAR_NAME);
+      v == "1"
+    } else {
+      false
+    }
+  })
+}
+
 impl HttpRecord {
   fn new(
     request: Request,
@@ -320,7 +337,12 @@ impl HttpRecord {
     otel_info: Option<OtelInfo>,
     legacy_abort: bool,
   ) -> Rc<Self> {
-    let (request_parts, request_body) = request.into_parts();
+    let (mut request_parts, request_body) = request.into_parts();
+    let client_addr = if trust_proxy_headers() {
+      request_parts.headers.remove("x-deno-client-address")
+    } else {
+      None
+    };
     let request_body = Some(request_body.into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record =
@@ -357,6 +379,7 @@ impl HttpRecord {
       legacy_abort,
       needs_close_after_finish: false,
       otel_info,
+      client_addr,
     });
     record
   }
@@ -615,6 +638,10 @@ impl HttpRecord {
       info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
     }
+  }
+
+  pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {
+    Ref::map(self.self_ref(), |inner| &inner.client_addr)
   }
 }
 

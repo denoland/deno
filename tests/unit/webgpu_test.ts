@@ -632,6 +632,23 @@ Deno.test({
   device.destroy();
 });
 
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function testOnSubmittedWorkDone() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const encoder = device.createCommandEncoder();
+  const fut = device.queue.onSubmittedWorkDone();
+  device.queue.submit([encoder.finish()]);
+  await fut;
+
+  device.destroy();
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
