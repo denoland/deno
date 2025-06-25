@@ -1029,6 +1029,7 @@
       "test-stream-auto-destroy.js",
       "test-stream-await-drain-writers-in-synchronously-recursion-write.js",
       "test-stream-backpressure.js",
+      "test-stream-base-prototype-accessors-enumerability.js",
       "test-stream-big-packet.js",
       "test-stream-big-push.js",
       "test-stream-catch-rejections.js",
