@@ -1036,6 +1036,7 @@
       "test-stream-compose-operator.js",
       "test-stream-compose.js",
       "test-stream-construct.js",
+      "test-stream-consumers.js",
       "test-stream-decoder-objectmode.js",
       "test-stream-destroy-event-order.js",
       "test-stream-drop-take.js",
