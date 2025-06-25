@@ -11,6 +11,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import process from "node:process";
 
 import {
   readdirPromise as readdir,
@@ -57,6 +58,7 @@ interface GlobOptionsBase {
   /**
    * Function to filter out files/directories. Return true to exclude the item, false to include it.
    */
+  // deno-lint-ignore no-explicit-any
   exclude?: ((fileName: any) => boolean) | undefined;
 }
 export interface GlobOptionsWithFileTypes extends GlobOptionsBase {
@@ -91,7 +93,6 @@ const {
   ArrayPrototypePop,
   ArrayPrototypePush,
   ArrayPrototypeSome,
-  Promise,
   PromisePrototype,
   PromisePrototypeThen,
   SafeMap,
@@ -111,7 +112,7 @@ async function getDirent(path) {
   let stat;
   try {
     stat = await lstat(path);
-  } catch (err) {
+  } catch {
     return null;
   }
   return new DirentFromStats(basename(path), stat, dirname(path));
@@ -195,7 +196,7 @@ class Cache {
   addToStatCache(path, val) {
     this.#statsCache.set(path, val);
   }
-  async readdir(path) {
+  readdir(path) {
     const cached = this.#readdirCache.get(path);
     if (cached) {
       return cached;
@@ -304,7 +305,7 @@ class Pattern {
 class ResultSet extends SafeSet {
   #root = ".";
   #isExcluded = () => false;
-  constructor(i = undefined) {
+  constructor(i) {
     super(i);
   } // eslint-disable-line no-useless-constructor
 
