@@ -107,6 +107,7 @@ use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -450,6 +451,14 @@ impl CliFactory {
 
   pub fn blob_store(&self) -> &Arc<BlobStore> {
     self.services.blob_store.get_or_init(Default::default)
+  }
+
+  pub fn bin_name_resolver<'a>(
+    &'a self,
+  ) -> Result<BinNameResolver<'a>, AnyError> {
+    let http_client = self.http_client_provider();
+    let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
+    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {

@@ -31,6 +31,8 @@ use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_task_shell::KillSignal;
 
 use crate::file_fetcher::CliFileFetcher;
@@ -179,18 +181,8 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      if let Some(dist_tag) = req.version_req.tag() {
-        let version = package_info.dist_tags.get(dist_tag)?.clone();
-        return Some(PackageNv { name, version });
-      }
-      // Find the first matching version of the package.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
-      let version = versions
-        .into_iter()
-        .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
+      let version =
+        version_from_package_info(&package_info, &req.version_req)?.clone();
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
@@ -231,6 +223,22 @@ impl NpmFetchResolver {
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
+}
+
+pub fn version_from_package_info<'a>(
+  package_info: &'a NpmPackageInfo,
+  version_req: &VersionReq,
+) -> Option<&'a Version> {
+  if let Some(dist_tag) = version_req.tag() {
+    return package_info.dist_tags.get(dist_tag);
+  }
+  // Find the first matching version of the package.
+  let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+  versions.sort();
+  return versions
+    .into_iter()
+    .rev()
+    .find(|v| version_req.tag().is_none() && version_req.matches(v));
 }
 
 pub static NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
