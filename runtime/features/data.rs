@@ -162,7 +162,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   },
   UnstableFeatureDescription {
     name: "raw-imports",
-    help_text: "Enable unstable 'text' and 'bytes' imports.",
+    help_text: "Enable unstable 'bytes' and 'text' imports.",
     show_in_help: true,
     kind: UnstableFeatureKind::Cli,
     config_option: ConfigFileOption::SameAsFlagName,
