@@ -1024,6 +1024,7 @@
       "test-stdout-stderr-reading.js",
       "test-stdout-stderr-write.js",
       "test-stream-add-abort-signal.js",
+      "test-stream-aliases-legacy.js",
       "test-stream-auto-destroy.js",
       "test-stream-await-drain-writers-in-synchronously-recursion-write.js",
       "test-stream-backpressure.js",
