@@ -607,6 +607,16 @@ const hostImpl = {
     const specifiers = moduleLiterals.map((literal) => {
       const rawKind = getModuleLiteralImportKind(literal);
       if (rawKind != null) {
+        // hack to get the specifier keyed differently until
+        // https://github.com/microsoft/TypeScript/issues/61941 is resolved
+        if (!literal.text.includes("?")) {
+          literal.text += `?${rawKind}`;
+        } else if (
+          !literal.text.includes(`?${rawKind}`) &&
+          !literal.text.includes(`&${rawKind}`)
+        ) {
+          literal.text += `&${rawKind}`;
+        }
         return [
           false,
           rawKind === "text"

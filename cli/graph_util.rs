@@ -381,6 +381,7 @@ pub fn enhance_graph_error(
     ModuleGraphError::ModuleError(error) => {
       enhanced_integrity_error_message(error)
         .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
+        .or_else(|| enhanced_unsupported_import_attribute(error))
         .unwrap_or_else(|| format_deno_graph_error(error))
     }
   };
@@ -1155,6 +1156,22 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
         checksum_err.actual,
         checksum_err.expected,
       ))
+    }
+    _ => None,
+  }
+}
+
+fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
+  match err.as_kind() {
+    ModuleErrorKind::UnsupportedImportAttributeType { kind, .. }
+      if matches!(kind.as_str(), "bytes" | "text") =>
+    {
+      let mut text = format_deno_graph_error(err);
+      text.push_str(&format!(
+        "\n  {} run with --unstable-raw-imports",
+        deno_runtime::colors::cyan("hint:")
+      ));
+      Some(text)
     }
     _ => None,
   }
