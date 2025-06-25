@@ -235,10 +235,10 @@ pub fn version_from_package_info<'a>(
   // Find the first matching version of the package.
   let mut versions = package_info.versions.keys().collect::<Vec<_>>();
   versions.sort();
-  return versions
+  versions
     .into_iter()
     .rev()
-    .find(|v| version_req.tag().is_none() && version_req.matches(v));
+    .find(|v| version_req.tag().is_none() && version_req.matches(v))
 }
 
 pub static NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";

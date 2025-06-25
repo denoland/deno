@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#[cfg(windows)]
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
@@ -158,7 +157,7 @@ mod test {
     let registry_api = TestNpmRegistryApi::default();
     registry_api.with_version_info(("@google/gemini-cli", "1.0.0"), |info| {
       info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
-        HashMap::from([(("gemini".to_string(), "./bin.js".to_string()))]),
+        HashMap::from([("gemini".to_string(), "./bin.js".to_string())]),
       ))
     });
     let resolver = BinNameResolver::new(&http_client, &registry_api);

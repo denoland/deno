@@ -453,9 +453,7 @@ impl CliFactory {
     self.services.blob_store.get_or_init(Default::default)
   }
 
-  pub fn bin_name_resolver<'a>(
-    &'a self,
-  ) -> Result<BinNameResolver<'a>, AnyError> {
+  pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
     let http_client = self.http_client_provider();
     let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
     Ok(BinNameResolver::new(http_client, npm_api.as_ref()))

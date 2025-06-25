@@ -451,10 +451,10 @@ async fn resolve_shim_data(
   install_flags_global: &InstallFlagsGlobal,
 ) -> Result<ShimData, AnyError> {
   let installation_dir =
-    get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
+    get_installer_bin_dir(cwd, install_flags_global.root.as_deref())?;
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags_global.module_url, &cwd)?;
+  let module_url = resolve_url_or_path(&install_flags_global.module_url, cwd)?;
 
   let name = if install_flags_global.name.is_some() {
     install_flags_global.name.clone()
@@ -554,7 +554,7 @@ async fn resolve_shim_data(
   }
 
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path(import_map_path, &cwd)?;
+    let import_map_url = resolve_url_or_path(import_map_path, cwd)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }
