@@ -343,26 +343,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         )),
         FixSuggestion::hint(cstr!("Use <u>import.meta.dirname</> instead.")),
       ];
-    } else if msg.contains("clearImmediate is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>clearImmediate</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(&[
-          cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
-      ];
-    } else if msg.contains("setImmediate is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>setImmediate</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(
-          &[cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
-      ];
     } else if msg.contains("openKv is not a function") {
       return vec![
         FixSuggestion::info("Deno.openKv() is an unstable API."),
