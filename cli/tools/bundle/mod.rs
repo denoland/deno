@@ -2,6 +2,7 @@
 
 mod esbuild;
 mod externals;
+mod transform;
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -10,6 +11,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use deno_ast::EmitOptions;
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::TsTypeLib;
 use deno_core::error::AnyError;
@@ -617,6 +620,15 @@ pub enum BundleLoadError {
   #[class(generic)]
   #[error("Wasm modules are not implemented in deno bundle.")]
   WasmUnsupported,
+  #[class(generic)]
+  #[error("UTF-8 conversion error")]
+  Utf8(#[from] std::str::Utf8Error),
+  #[class(generic)]
+  #[error("Parse error")]
+  Parse(#[from] deno_ast::ParseDiagnostic),
+  #[class(generic)]
+  #[error("Emit error")]
+  Emit(#[from] deno_ast::EmitError),
 }
 
 impl BundleLoadError {
@@ -776,59 +788,130 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
-    let (specifier, loader) = if let Some((specifier, loader)) =
-      self.specifier_and_type_from_graph(&specifier)?
-    {
-      (specifier, loader)
-    } else {
-      log::debug!(
-        "{}: no specifier and type from graph for {}",
-        deno_terminal::colors::yellow("warn"),
-        specifier
-      );
-
-      if specifier.scheme() == "data" {
-        return Ok(Some((
-          specifier.to_string().as_bytes().to_vec(),
-          esbuild_client::BuiltinLoader::DataUrl,
-        )));
-      }
-
-      let (media_type, _) =
-        deno_media_type::resolve_media_type_and_charset_from_content_type(
-          &specifier, None,
+    let (specifier, media_type, loader) =
+      if let Some((specifier, media_type, loader)) =
+        self.specifier_and_type_from_graph(&specifier)?
+      {
+        (specifier, media_type, loader)
+      } else {
+        log::debug!(
+          "{}: no specifier and type from graph for {}",
+          deno_terminal::colors::yellow("warn"),
+          specifier
         );
-      if media_type == deno_media_type::MediaType::Unknown {
-        return Ok(None);
-      }
-      (specifier, media_type_to_loader(media_type))
-    };
+
+        if specifier.scheme() == "data" {
+          return Ok(Some((
+            specifier.to_string().as_bytes().to_vec(),
+            esbuild_client::BuiltinLoader::DataUrl,
+          )));
+        }
+
+        let (media_type, _) =
+          deno_media_type::resolve_media_type_and_charset_from_content_type(
+            &specifier, None,
+          );
+        if media_type == deno_media_type::MediaType::Unknown {
+          return Ok(None);
+        }
+        (specifier, media_type, media_type_to_loader(media_type))
+      };
     let loaded = self
       .module_loader
       .load_module_source(&specifier, None, requested_type)
       .await?;
 
-    Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
+    if matches!(
+      media_type,
+      MediaType::JavaScript
+        | MediaType::TypeScript
+        | MediaType::Mjs
+        | MediaType::Mts
+        | MediaType::Cjs
+        | MediaType::Cts
+        | MediaType::Jsx
+        | MediaType::Tsx
+    ) && !self
+      .module_graph_container
+      .graph()
+      .roots
+      .contains(&specifier)
+    {
+      let code = self.apply_transform(
+        &specifier,
+        media_type,
+        std::str::from_utf8(loaded.code.as_bytes())?,
+      )?;
+      Ok(Some((code.into_bytes(), loader)))
+    } else {
+      Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
+    }
+  }
+
+  fn apply_transform(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: deno_ast::MediaType,
+    code: &str,
+  ) -> Result<String, BundleLoadError> {
+    let mut transform = transform::BundleImportMetaMainTransform::new(
+      self
+        .module_graph_container
+        .graph()
+        .roots
+        .contains(specifier),
+    );
+    let parsed_source = deno_ast::parse_program_with_post_process(
+      deno_ast::ParseParams {
+        specifier: specifier.clone(),
+        text: code.into(),
+        media_type,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+      },
+      |mut program, _| {
+        use deno_ast::swc::ecma_visit::VisitMut;
+        transform.visit_mut_program(&mut program);
+        program
+      },
+    )?;
+    let code = deno_ast::emit(
+      parsed_source.program_ref(),
+      &parsed_source.comments().as_single_threaded(),
+      &deno_ast::SourceMap::default(),
+      &EmitOptions {
+        source_map: deno_ast::SourceMapOption::None,
+        ..Default::default()
+      },
+    )?;
+    Ok(code.text)
   }
 
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<
-    Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>,
+    Option<(
+      ModuleSpecifier,
+      deno_ast::MediaType,
+      esbuild_client::BuiltinLoader,
+    )>,
     BundleLoadError,
   > {
     let graph = self.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
       return Ok(None);
     };
-    let (specifier, loader) = match module {
+    let (specifier, media_type, loader) = match module {
       deno_graph::Module::Js(js_module) => (
         js_module.specifier.clone(),
+        js_module.media_type,
         media_type_to_loader(js_module.media_type),
       ),
       deno_graph::Module::Json(json_module) => (
         json_module.specifier.clone(),
+        deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => {
@@ -845,7 +928,7 @@ impl DenoPluginHandler {
           deno_media_type::resolve_media_type_and_charset_from_content_type(
             &url, None,
           );
-        (url, media_type_to_loader(media_type))
+        (url, media_type, media_type_to_loader(media_type))
       }
       deno_graph::Module::Node(_) => {
         return Ok(None);
@@ -854,7 +937,7 @@ impl DenoPluginHandler {
         return Ok(None);
       }
     };
-    Ok(Some((specifier, loader)))
+    Ok(Some((specifier, media_type, loader)))
   }
 }
 
