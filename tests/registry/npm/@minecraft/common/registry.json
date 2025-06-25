@@ -12,7 +12,7 @@
       "_id": "@minecraft/common@1.2.0",
       "dist": {
         "shasum": "a00d4130dcd5084dfd30e85e108c6d58eae8358b",
-        "tarball": "https://registry.npmjs.org/@minecraft/common/-/common-1.2.0.tgz",
+        "tarball": "http://localhost:4260/@minecraft/common/common-1.2.0.tgz",
         "fileCount": 5,
         "integrity": "sha512-JdmEq4P3Z/FtoBzhLijFgMSVFnFRrUoLwY8DHHrgtFo0mfLTOLTB1RErYjLMsA6b7BGVNxkX/pfFRiH7QZ0XwQ==",
         "signatures": [
