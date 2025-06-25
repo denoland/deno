@@ -410,7 +410,7 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
       .map(|(k, v)| {
-        let doc = Arc::new(ServerDocument::asset(k, v.as_str()));
+        let doc = Arc::new(ServerDocument::asset(k, v.source.as_str()));
         let uri = doc.uri.clone();
         (uri, doc)
       })
