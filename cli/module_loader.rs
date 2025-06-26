@@ -1005,7 +1005,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
     };
 
-    ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
+    // only verify this for an import and not import.meta.resolve
+    if !is_import_meta {
+      ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
+    }
+
     Ok(specifier)
   }
 

@@ -944,7 +944,7 @@ impl CliFactory {
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
       for feature in deno_runtime::UNSTABLE_FEATURES {
-        if unstable_features.contains(&feature.name.to_string()) {
+        if unstable_features.contains(&feature.name) {
           checker.enable_feature(feature.name);
         }
       }
@@ -1132,6 +1132,7 @@ impl CliFactory {
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
       is_standalone: false,
+      auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
