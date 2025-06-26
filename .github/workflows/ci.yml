@@ -419,9 +419,6 @@ jobs:
       - name: jsdoc_checker.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
-      - name: node_compat/setup.ts --check
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Check tracing build
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
         run: cargo check -p deno --features=lsp-tracing

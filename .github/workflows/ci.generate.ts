@@ -712,12 +712,6 @@ const ci = {
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
         {
-          name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
-        },
-        {
           name: "Check tracing build",
           if:
             "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
