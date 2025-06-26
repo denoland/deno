@@ -201,7 +201,6 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub subdomain_wildcards: bool,
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
@@ -218,10 +217,6 @@ impl UnstableConfig {
       }
     }
 
-    maybe_set(
-      &mut self.subdomain_wildcards,
-      UNSTABLE_ENV_VAR_NAMES.subdomain_wildcards,
-    );
     maybe_set(
       &mut self.bare_node_builtins,
       UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,

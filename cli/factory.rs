@@ -44,7 +44,6 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -933,14 +932,7 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      Ok(Arc::new(RuntimePermissionDescriptorParser::new(
-        self.sys(),
-        if self.cli_options()?.unstable_subdomain_wildcards() {
-          UnstableSubdomainWildcards::Enabled
-        } else {
-          UnstableSubdomainWildcards::Disabled
-        },
-      )))
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(self.sys())))
     })
   }
 

@@ -66,7 +66,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -933,14 +932,8 @@ pub async fn run(
       }
     }
 
-    let desc_parser = Arc::new(RuntimePermissionDescriptorParser::new(
-      sys.clone(),
-      if metadata.unstable_config.subdomain_wildcards {
-        UnstableSubdomainWildcards::Enabled
-      } else {
-        UnstableSubdomainWildcards::Disabled
-      },
-    ));
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)

@@ -1254,7 +1254,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
   <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
   <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
-  <g>DENO_COMPAT</>            Enable Node.js compatibility mode - extensionless imports, built-in 
+  <g>DENO_COMPAT</>            Enable Node.js compatibility mode - extensionless imports, built-in
                                Node.js modules, CommonJS detection and more.
   <g>DENO_DIR</>               Set the cache directory
   <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
@@ -6422,8 +6422,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.subdomain_wildcards =
-    matches.get_flag("unstable-subdomain-wildcards");
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
