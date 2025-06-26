@@ -2716,6 +2716,7 @@ dependencies = [
 name = "deno_runtime"
 version = "0.216.0"
 dependencies = [
+ "async-trait",
  "color-print",
  "deno_ast",
  "deno_broadcast_channel",

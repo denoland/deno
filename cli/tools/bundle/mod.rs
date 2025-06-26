@@ -835,7 +835,7 @@ impl DenoPluginHandler {
       };
     let loaded = self
       .module_loader
-      .load_module_source(&specifier, None, requested_type)
+      .load_module_source(&specifier, None, requested_type, false)
       .await?;
 
     if matches!(
