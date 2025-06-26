@@ -2993,7 +2993,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 5] {
+fn update_and_outdated_args() -> [Arg; 4] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3008,12 +3008,6 @@ fn update_and_outdated_args() -> [Arg; 5] {
         "Consider the latest version, regardless of semver constraints",
       )
       .conflicts_with("compatible"),
-    Arg::new("interactive")
-      .long("interactive")
-      .short('i')
-      .action(ArgAction::SetTrue)
-      .requires("update")
-      .help("Interactively select which dependencies to update"),
     Arg::new("compatible")
       .long("compatible")
       .action(ArgAction::SetTrue)
@@ -3056,6 +3050,13 @@ Specific version requirements to update to can be specified:
   .defer(|cmd| {
     cmd
       .args(update_and_outdated_args())
+      .arg(
+        Arg::new("interactive")
+          .long("interactive")
+          .short('i')
+          .action(ArgAction::SetTrue)
+          .help("Interactively select which dependencies to update")
+      )
       .args(lock_args())
   })
 }
@@ -3093,6 +3094,14 @@ Specific version requirements to update to can be specified:
   .defer(|cmd| {
     cmd
       .args(update_and_outdated_args())
+      .arg(
+        Arg::new("interactive")
+          .long("interactive")
+          .short('i')
+          .requires("update")
+          .action(ArgAction::SetTrue)
+          .help("Interactively select which dependencies to update"),
+      )
       .args(lock_args())
       .arg(
         Arg::new("update")
