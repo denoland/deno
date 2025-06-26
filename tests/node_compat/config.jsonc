@@ -1089,6 +1089,7 @@
       "test-stream-pipeline-queued-end-in-destroy.js",
       "test-stream-pipeline-uncaught.js",
       "test-stream-pipeline-with-empty-string.js",
+      "test-stream-preprocess.js",
       "test-stream-promises.js",
       "test-stream-push-order.js",
       "test-stream-push-strings.js",
