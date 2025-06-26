@@ -169,6 +169,14 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: Some("DENO_UNSTABLE_SLOPPY_IMPORTS"),
   },
   UnstableFeatureDescription {
+    name: "subdomain-wildcards",
+    help_text: "Enable subdomain wildcards support for the `--allow-net` flag",
+    show_in_help: false,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_SUBDOMAIN_WILDCARDS"),
+  },
+  UnstableFeatureDescription {
     name: "temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: true,
