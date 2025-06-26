@@ -18,6 +18,7 @@ export const unstableIds = {
   nodeGlobals: 13,
   otel: 15,
   process: 16,
+  rawImports: 17,
   temporal: 20,
   unsafeProto: 21,
   vsock: 22,

@@ -105,7 +105,6 @@ pub fn create_validate_import_attributes_callback(
           || matches!(kind, "json")
       };
       for (key, value) in attributes {
-        // todo(THIS PR): make bytes/text conditional
         let msg = if key != "type" {
           Some(format!("\"{key}\" attribute is not supported."))
         } else if !valid_attribute(value.as_str())
