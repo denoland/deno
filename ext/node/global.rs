@@ -50,24 +50,20 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // The Deno and Node specific globals are stored in a struct in a context slot.
 //
 // These are the globals that are handled:
-// - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
-// - setImmediate (node only)
 // - setInterval (both, but different implementation)
 // - setTimeout (both, but different implementation)
 // - window (deno only)
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 8] = [
-  &str_to_utf16::<14>("clearImmediate"),
+const MANAGED_GLOBALS: [&[u16]; 6] = [
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
   &str_to_utf16::<7>("process"),
-  &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
   &str_to_utf16::<6>("window"),

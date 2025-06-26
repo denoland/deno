@@ -13,6 +13,7 @@ import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
 import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
 import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
 import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
 import * as types from "ext:deno_node/internal_binding/types.ts";
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
@@ -58,7 +59,7 @@ const modules = {
   timers: {},
   "tls_wrap": {},
   "trace_events": {},
-  "tty_wrap": {},
+  "tty_wrap": ttyWrap,
   types,
   "udp_wrap": udpWrap,
   url: {},
