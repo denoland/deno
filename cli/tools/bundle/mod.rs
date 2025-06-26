@@ -1217,9 +1217,10 @@ fn print_finished_message(
 ) -> Result<(), AnyError> {
   let mut output = String::new();
   output.push_str(&format!(
-    "{} {} modules in {}",
+    "{} {} module{} in {}",
     deno_terminal::colors::green("Bundled"),
     metafile.inputs.len(),
+    if metafile.inputs.len() == 1 { "" } else { "s" },
     crate::display::human_elapsed(duration.as_millis()),
   ));
 

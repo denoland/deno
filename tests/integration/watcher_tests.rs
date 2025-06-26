@@ -2037,7 +2037,7 @@ async fn bundle_watch() {
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
-  wait_contains("bundled in", &mut stderr_lines).await;
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello\");");
 
@@ -2049,7 +2049,7 @@ async fn bundle_watch() {
 "#,
   );
   wait_contains("File change detected", &mut stderr_lines).await;
-  wait_contains("bundled in", &mut stderr_lines).await;
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello world\");");
 
