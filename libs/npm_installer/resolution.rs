@@ -136,10 +136,9 @@ impl<
       /* this string is used in tests */
       "Running npm resolution."
     );
-    let npm_registry_api = self.registry_info_provider.as_npm_registry_api();
     let result = snapshot
       .add_pkg_reqs(
-        &npm_registry_api,
+        self.registry_info_provider.as_ref(),
         AddPkgReqsOptions {
           package_reqs,
           types_node_version_req: Some(get_types_node_version()),
@@ -149,7 +148,7 @@ impl<
       .await;
     let result = match &result.dep_graph_result {
       Err(NpmResolutionError::Resolution(err))
-        if npm_registry_api.mark_force_reload() =>
+        if self.registry_info_provider.mark_force_reload() =>
       {
         log::debug!("{err:#}");
         log::debug!("npm resolution failed. Trying again...");
@@ -158,7 +157,7 @@ impl<
         let snapshot = self.resolution.snapshot();
         snapshot
           .add_pkg_reqs(
-            &npm_registry_api,
+            self.registry_info_provider.as_ref(),
             AddPkgReqsOptions {
               package_reqs,
               types_node_version_req: Some(get_types_node_version()),

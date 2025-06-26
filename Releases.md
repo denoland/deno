@@ -6,6 +6,60 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.3.7 / 2025.06.23
+
+- feat(unstable): add `--platform` flag to deno bundle (#29697)
+- feat(unstable): add `--sourcemap` flag to deno bundle (#29735)
+- feat(unstable): add watch mode to deno bundle (#29795)
+- feat: allow base64 ca cert in args (#29814)
+- fix(bundle): enable sloppy imports by default when bundling (#29731)
+- fix(bundle): improve error handling and reporting (#29744)
+- fix(bundle): parse the allow-import flag, fix example in help text (#29733)
+- fix(bundle): transform import.meta.main (#29830)
+- fix(ext/napi): ensure the finalizer callback will be called (#29710)
+- fix(ext/node): DiffieHellman constructor behaviors (#29718)
+- fix(ext/node): Fix `crypto.pbkdf2` compat (#29738)
+- fix(ext/node): Module.wrap cleanup for npm:v8-code-cache (#29725)
+- fix(ext/node): add `fchmod` and `fchmodSync` (#29791)
+- fix(ext/node): add key length validation in
+  `DiffieHellman.prototype.computeSecret` (#29757)
+- fix(ext/node): add validation to Cipheriv methods (#29800)
+- fix(ext/node): crypto.timingSafeEqual (#29758)
+- fix(ext/node): deprecate Hash and Hmac constructors (#29774)
+- fix(ext/node): fix assertion error message of assert.ok (#29803)
+- fix(ext/node): fix error type in DiffieHellman constructor (#29721)
+- fix(ext/node): fix events.once (#29716)
+- fix(ext/node): fix input validation of crypto hkdf (#29775)
+- fix(ext/node): fix oneshot hash validation (#29661)
+- fix(ext/node): implement Certificate API (#29828)
+- fix(ext/node): improve assert.ifError (#29846)
+- fix(ext/node): improve comparison of faked objects in `deepStrictEqual`
+  (#29819)
+- fix(ext/node): improve scrypt support (#29773)
+- fix(ext/node): support KeyObject in publicEncrypt/privateDecrypt (#29798)
+- fix(ext/node): throw invalid state from `getAuthTag` (#29752)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal/event_target.mjs` (#29772)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/fs/utils.mjs`
+  (#29708)
+- fix(ext/node): validate auth tag for GCM mode cipher (#29739)
+- fix(fmt): fix handling of indent inside template language (#29616)
+- fix(fmt): handle TS as syntax in Svelte each block (#29789)
+- fix(install): ignore unknown JSR export errors on top level install (#29807)
+- fix(install): infer name from @scope/cli pattern (#29694)
+- fix(install,outdated): try to avoid building graph with incorrect exports
+  (#29713)
+- fix(jsr): allow using `import.meta.resolve` to resolve non-jsr remote urls
+  (#29831)
+- fix(lsp): respect media type for tsx jupyter cells (#29712)
+- fix(npm): support resolving npm specifiers not in graph with
+  `import.meta.resolve` for resolved packages (#29732)
+- fix: `import.meta.resolve` - do not error for non-existent files in npm
+  packages (#29741)
+- fix: do not panic when logging from outside a tokio runtime (#29728)
+- fix: move win32job under windows dependencies in tests/util/server (#29745)
+- fix: remove `self` from global middleware (#29734)
+
 ### 2.3.6 / 2025.06.12
 
 - feat(bundle, unstable): bundling backed by esbuild (#29470)

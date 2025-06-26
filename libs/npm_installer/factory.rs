@@ -132,7 +132,7 @@ impl<
   ) -> Result<&LockfileNpmPackageInfoApiAdapter, anyhow::Error> {
     self.lockfile_npm_package_info_provider.get_or_try_init(|| {
       Ok(LockfileNpmPackageInfoApiAdapter::new(
-        Arc::new(self.registry_info_provider()?.as_npm_registry_api()),
+        self.registry_info_provider()?.clone(),
         self
           .workspace_factory()
           .workspace_npm_link_packages()?
@@ -261,8 +261,6 @@ impl<
           let workspace_factory = self.workspace_factory();
           let npm_cache = self.npm_cache()?;
           let registry_info_provider = self.registry_info_provider()?;
-          let registry_info_provider =
-            Arc::new(registry_info_provider.as_npm_registry_api());
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
           Ok(Arc::new(NpmInstaller::new(
@@ -271,7 +269,7 @@ impl<
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
             )),
-            registry_info_provider,
+            registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
             self.npm_resolution_initializer().await?.clone(),
             self.npm_resolution_installer().await?.clone(),
