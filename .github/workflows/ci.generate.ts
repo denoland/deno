@@ -479,7 +479,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tests/node_compat/runner/suite"),
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
+          if: "matrix.job == 'test'",
         },
         {
           ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),

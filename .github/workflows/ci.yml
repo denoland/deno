@@ -163,7 +163,7 @@ jobs:
         if: '!(matrix.skip) && (matrix.wpt)'
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
