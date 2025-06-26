@@ -37,6 +37,8 @@ import {
   copyFile,
   cp,
   FileHandle,
+  lchown,
+  lutimes,
   open,
   stat,
   writeFile,
@@ -406,4 +408,37 @@ Deno.test("[node/fs] fchmodSync works", {
   assert(newFileMode === 33279 && newFileMode > originalFileMode);
   closeSync(fd);
   Deno.removeSync(tempFile);
+});
+
+Deno.test("[node/fs/promises] lchown works", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const tempFile = Deno.makeTempFileSync();
+  const symlinkPath = tempFile + "-link";
+  Deno.symlinkSync(tempFile, symlinkPath);
+  const uid = await execCmd("id -u");
+  const gid = await execCmd("id -g");
+
+  await lchown(symlinkPath, +uid, +gid);
+
+  Deno.removeSync(tempFile);
+  Deno.removeSync(symlinkPath);
+});
+
+Deno.test("[node/fs/promises] lutimes works", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const tempFile = Deno.makeTempFileSync();
+  const symlinkPath = tempFile + "-link";
+  Deno.symlinkSync(tempFile, symlinkPath);
+
+  const date = new Date("1970-01-01T00:00:00Z");
+  await lutimes(symlinkPath, date, date);
+
+  const stats = Deno.lstatSync(symlinkPath);
+  assertEquals((stats.atime as Date).getTime(), date.getTime());
+  assertEquals((stats.mtime as Date).getTime(), date.getTime());
+
+  Deno.removeSync(tempFile);
+  Deno.removeSync(symlinkPath);
 });

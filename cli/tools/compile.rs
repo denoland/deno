@@ -163,7 +163,7 @@ pub async fn compile_eszip(
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let bin_name_resolver = factory.bin_name_resolver()?;
   let entrypoint = cli_options.resolve_main_module()?;
   let mut output_path = resolve_compile_executable_output_path(
@@ -203,8 +203,9 @@ pub async fn compile_eszip(
     graph
   };
 
-  let transpile_and_emit_options = tsconfig_resolver
-    .transpile_and_emit_options(cli_options.workspace().root_dir())?;
+  let transpile_and_emit_options = compiler_options_resolver
+    .for_specifier(cli_options.workspace().root_dir())
+    .transpile_options()?;
   let transpile_options = transpile_and_emit_options.transpile.clone();
   let emit_options = transpile_and_emit_options.emit.clone();
 

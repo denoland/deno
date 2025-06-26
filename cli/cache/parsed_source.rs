@@ -62,7 +62,7 @@ impl ParsedSourceCache {
     // this will conditionally parse because it's using a CapturingEsParser
     parser.parse_program(ParseOptions {
       specifier: &module.specifier,
-      source: module.source.clone(),
+      source: module.source.text.clone(),
       media_type: module.media_type,
       scope_analysis: false,
     })
