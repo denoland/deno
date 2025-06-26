@@ -1249,7 +1249,7 @@ fn print_finished_message(
     ));
   }
   output.push('\n');
-  crate::display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
+  log::info!("{}", output);
 
   Ok(())
 }
