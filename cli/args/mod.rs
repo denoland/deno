@@ -24,8 +24,8 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
@@ -59,8 +59,6 @@ use thiserror::Error;
 use crate::sys::CliSys;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
-pub type CliTsConfigResolver =
-  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));

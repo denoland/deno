@@ -32,11 +32,13 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
+use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -61,7 +63,6 @@ use crate::args::BundleFlags;
 use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -693,7 +694,7 @@ impl CliFactory {
         self.cjs_tracker()?.clone(),
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
-        self.tsconfig_resolver()?.clone(),
+        self.compiler_options_resolver()?.clone(),
       )))
     })
   }
@@ -780,10 +781,10 @@ impl CliFactory {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
-  pub fn tsconfig_resolver(
+  pub fn compiler_options_resolver(
     &self,
-  ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
-    Ok(self.workspace_factory()?.tsconfig_resolver()?)
+  ) -> Result<&Arc<CompilerOptionsResolver>, AnyError> {
+    self.resolver_factory()?.compiler_options_resolver()
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -804,7 +805,8 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.sys(),
-            self.tsconfig_resolver()?.clone(),
+            self.workspace_directory_provider()?.clone(),
+            self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
             } else {
@@ -843,7 +845,7 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
-            self.tsconfig_resolver()?.clone(),
+            self.compiler_options_resolver()?.clone(),
           )))
         }
         .boxed_local(),
@@ -983,6 +985,12 @@ impl CliFactory {
         )?;
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
+  }
+
+  fn workspace_directory_provider(
+    &self,
+  ) -> Result<&Arc<WorkspaceDirectoryProvider>, AnyError> {
+    Ok(self.workspace_factory()?.workspace_directory_provider()?)
   }
 
   fn workspace_external_import_map_loader(

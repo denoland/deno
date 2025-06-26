@@ -34,20 +34,21 @@ use deno_graph::WorkspaceFastCheckOption;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
-use deno_resolver::workspace::ScopedJsxImportSourceConfig;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::SmallStackString;
+use indexmap::IndexMap;
 use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::DenoSubcommand;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -689,7 +690,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
-  tsconfig_resolver: Arc<CliTsConfigResolver>,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -711,7 +712,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
-    tsconfig_resolver: Arc<CliTsConfigResolver>,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
   ) -> Self {
     Self {
       caches,
@@ -730,7 +731,7 @@ impl ModuleGraphBuilder {
       resolver,
       root_permissions_container,
       sys,
-      tsconfig_resolver,
+      compiler_options_resolver,
     }
   }
 
@@ -760,12 +761,14 @@ impl ModuleGraphBuilder {
         MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
       }
     };
-    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
-      &self.cli_options.start_dir,
-    )?;
-    let graph_resolver = self
-      .resolver
-      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
+    let jsx_import_source_config_resolver =
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &self.compiler_options_resolver,
+      )?;
+    let graph_resolver = self.resolver.as_graph_resolver(
+      self.cjs_tracker.as_ref(),
+      &jsx_import_source_config_resolver,
+    );
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -854,19 +857,39 @@ impl ModuleGraphBuilder {
           return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
         }
         let imports = if graph.graph_kind().include_types() {
-          // Resolve all the imports from every deno.json. We'll separate
+          // Resolve all the imports from every config file. We'll separate
           // them later based on the folder we're type checking.
-          let mut imports = Vec::new();
-          for deno_json in self.cli_options.workspace().deno_jsons() {
-            let maybe_imports = deno_json.to_compiler_option_types()?;
-            imports.extend(maybe_imports.into_iter().map(
-              |(referrer, imports)| deno_graph::ReferrerImports {
-                referrer,
-                imports,
-              },
-            ));
+          let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
+            self.compiler_options_resolver.size(),
+          );
+          for (referrer, files) in self
+            .compiler_options_resolver
+            .ts_configs()
+            .iter()
+            .filter_map(|t| t.files())
+          {
+            imports_by_referrer
+              .entry(referrer)
+              .or_default()
+              .extend(files.iter().map(|f| f.relative_specifier.clone()));
           }
-          imports
+          for (referrer, types) in self
+            .compiler_options_resolver
+            .all()
+            .flat_map(|d| d.compiler_options_types().as_ref())
+          {
+            imports_by_referrer
+              .entry(referrer)
+              .or_default()
+              .extend(types.clone());
+          }
+          imports_by_referrer
+            .into_iter()
+            .map(|(referrer, imports)| deno_graph::ReferrerImports {
+              referrer: referrer.clone(),
+              imports,
+            })
+            .collect()
         } else {
           Vec::new()
         };
@@ -938,12 +961,14 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let scoped_jsx_config = ScopedJsxImportSourceConfig::from_workspace_dir(
-      &self.cli_options.start_dir,
-    )?;
-    let graph_resolver = self
-      .resolver
-      .as_graph_resolver(self.cjs_tracker.as_ref(), &scoped_jsx_config);
+    let jsx_import_source_config_resolver =
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &self.compiler_options_resolver,
+      )?;
+    let graph_resolver = self.resolver.as_graph_resolver(
+      self.cjs_tracker.as_ref(),
+      &jsx_import_source_config_resolver,
+    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -1012,7 +1037,9 @@ impl ModuleGraphBuilder {
         } else {
           GraphKind::CodeOnly
         },
-        check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
+        check_js: CheckJsOption::Custom(
+          self.compiler_options_resolver.as_ref(),
+        ),
         exit_integrity_errors: true,
         allow_unknown_media_types,
         ignore_graph_errors: matches!(

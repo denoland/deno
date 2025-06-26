@@ -2698,6 +2698,7 @@ dependencies = [
  "http 1.1.0",
  "import_map",
  "indexmap 2.9.0",
+ "jsonc-parser",
  "log",
  "node_resolver",
  "once_cell",

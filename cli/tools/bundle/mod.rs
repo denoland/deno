@@ -16,7 +16,7 @@ use std::time::Duration;
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json::TsTypeLib;
+use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
