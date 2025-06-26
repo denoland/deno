@@ -698,6 +698,7 @@
           "http",
           "kv",
           "net",
+          "raw-imports",
           "sloppy-imports",
           "temporal",
           "unsafe-proto",

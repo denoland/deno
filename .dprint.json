@@ -69,6 +69,7 @@
     "tests/wpt/runner/manifest.json",
     "tests/wpt/suite",
     "third_party",
+    "tests/specs/run/bytes_and_text_imports",
     "tests/specs/run/shebang_with_json_imports_tsc",
     "tests/specs/run/shebang_with_json_imports_swc",
     "tests/specs/run/ext_flag_takes_precedence_over_extension",

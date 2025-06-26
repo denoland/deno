@@ -17,7 +17,6 @@ use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
-use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
@@ -411,10 +410,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             code_source.code.as_bytes(),
           );
           Ok(deno_core::ModuleSource::new_with_redirect(
-            match code_source.media_type {
-              MediaType::Json => ModuleType::Json,
-              _ => ModuleType::JavaScript,
-            },
+            code_source.module_type,
             code_source.code,
             &original_specifier,
             &code_source.found_url,
@@ -977,6 +973,7 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    enable_raw_imports: metadata.unstable_config.raw_imports,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
