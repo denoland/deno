@@ -131,7 +131,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "node-globals",
     help_text: "Expose Node globals everywhere",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,

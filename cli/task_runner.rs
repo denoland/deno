@@ -290,7 +290,6 @@ impl ShellCommand for NodeCommand {
       "-A".into(),
       "--unstable-bare-node-builtins".into(),
       "--unstable-detect-cjs".into(),
-      "--unstable-node-globals".into(),
       "--unstable-sloppy-imports".into(),
       "--unstable-unsafe-proto".into(),
     ]);

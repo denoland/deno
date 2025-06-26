@@ -132,11 +132,8 @@ pub struct LoadPackageInfoError {
 #[error("{0}")]
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
-/// Downloads packuments from the npm registry.
-///
-/// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct RegistryInfoProvider<
+struct RegistryInfoProviderInner<
   THttpClient: NpmCacheHttpClient,
   TSys: NpmCacheSys,
 > {
@@ -149,80 +146,23 @@ pub struct RegistryInfoProvider<
 }
 
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
-  RegistryInfoProvider<THttpClient, TSys>
+  RegistryInfoProviderInner<THttpClient, TSys>
 {
-  pub fn new(
-    cache: Arc<NpmCache<TSys>>,
-    http_client: Arc<THttpClient>,
-    npmrc: Arc<ResolvedNpmRc>,
-  ) -> Self {
-    Self {
-      cache,
-      http_client,
-      npmrc,
-      force_reload_flag: AtomicFlag::lowered(),
-      memory_cache: Default::default(),
-      previously_loaded_packages: Default::default(),
-    }
-  }
-
-  /// Clears the internal memory cache.
-  pub fn clear_memory_cache(&self) {
-    self.memory_cache.lock().clear();
-  }
-
-  fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading
-    // is disabled or if we're already reloading
-    if matches!(
-      self.cache.cache_setting(),
-      NpmCacheSetting::Only | NpmCacheSetting::ReloadAll
-    ) {
-      return false;
-    }
-    if self.force_reload_flag.raise() {
-      self.memory_cache.lock().clear_all();
-      true
-    } else {
-      false
-    }
-  }
-
-  pub fn as_npm_registry_api(
-    self: &Arc<Self>,
-  ) -> NpmRegistryApiAdapter<THttpClient, TSys> {
-    NpmRegistryApiAdapter(self.clone())
-  }
-
-  pub async fn package_info(
-    self: &Arc<Self>,
-    name: &str,
-  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-    match self.maybe_package_info(name).await {
-      Ok(Some(info)) => Ok(info),
-      Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
-        package_name: name.to_string(),
-      }),
-      Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-        JsErrorBox::from_err(err),
-      ))),
-    }
-  }
-
-  pub async fn maybe_package_info(
+  async fn maybe_package_info(
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoError> {
-    self.load_package_info_inner(name).await.map_err(|err| {
-      LoadPackageInfoError {
+    self
+      .load_package_info(name)
+      .await
+      .map_err(|err| LoadPackageInfoError {
         url: get_package_url(&self.npmrc, name),
         name: name.to_string(),
         inner: err,
-      }
-    })
+      })
   }
 
-  async fn load_package_info_inner(
+  async fn load_package_info(
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoInnerError> {
@@ -378,22 +318,82 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     .map(|r| r.map_err(Arc::new))
     .boxed_local()
   }
+
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.cache.cache_setting(),
+      NpmCacheSetting::Only | NpmCacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.force_reload_flag.raise() {
+      self.memory_cache.lock().clear_all();
+      true
+    } else {
+      false
+    }
+  }
 }
 
-pub struct NpmRegistryApiAdapter<
+/// Downloads packuments from the npm registry.
+///
+/// This is shared amongst all the workers.
+#[derive(Debug)]
+pub struct RegistryInfoProvider<
   THttpClient: NpmCacheHttpClient,
   TSys: NpmCacheSys,
->(Arc<RegistryInfoProvider<THttpClient, TSys>>);
+>(Arc<RegistryInfoProviderInner<THttpClient, TSys>>);
+
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  RegistryInfoProvider<THttpClient, TSys>
+{
+  pub fn new(
+    cache: Arc<NpmCache<TSys>>,
+    http_client: Arc<THttpClient>,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Self {
+    Self(Arc::new(RegistryInfoProviderInner {
+      cache,
+      http_client,
+      npmrc,
+      force_reload_flag: AtomicFlag::lowered(),
+      memory_cache: Default::default(),
+      previously_loaded_packages: Default::default(),
+    }))
+  }
+
+  /// Clears the internal memory cache.
+  pub fn clear_memory_cache(&self) {
+    self.0.memory_cache.lock().clear();
+  }
+
+  pub async fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoError> {
+    self.0.maybe_package_info(name).await
+  }
+}
 
 #[async_trait(?Send)]
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
-  for NpmRegistryApiAdapter<THttpClient, TSys>
+  for RegistryInfoProvider<THttpClient, TSys>
 {
   async fn package_info(
     &self,
     name: &str,
   ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-    self.0.package_info(name).await
+    match self.maybe_package_info(name).await {
+      Ok(Some(info)) => Ok(info),
+      Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
+        package_name: name.to_string(),
+      }),
+      Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
+        JsErrorBox::from_err(err),
+      ))),
+    }
   }
 
   fn mark_force_reload(&self) -> bool {
