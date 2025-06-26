@@ -78,6 +78,9 @@ function createHttpClient(options) {
         case "unix": {
           break;
         }
+        case "vsock": {
+          break;
+        }
         default: {
           throw new TypeError(
             `Invalid value for 'proxy.transport' option: ${

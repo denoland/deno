@@ -118,12 +118,12 @@ function _expectWarning(name, expected, code) {
     expected = [[expected, code]];
   } else if (!Array.isArray(expected)) {
     expected = Object.entries(expected).map(([a, b]) => [b, a]);
-  } else if (!(Array.isArray(expected[0]))) {
+  } else if (expected.length !== 0 && !Array.isArray(expected[0])) {
     expected = [[expected[0], expected[1]]];
   }
   // Deprecation codes are mandatory, everything else is not.
   if (name === 'DeprecationWarning') {
-    expected.forEach(([_, code]) => assert(code, expected));
+    expected.forEach(([_, code]) => assert(code, `Missing deprecation code: ${expected}`));
   }
   return mustCall((warning) => {
     const [ message, code ] = expected.shift();
@@ -380,7 +380,13 @@ const isSunOS = process.platform === 'sunos';
 const isFreeBSD = process.platform === 'freebsd';
 const isOpenBSD = process.platform === 'openbsd';
 const isLinux = process.platform === 'linux';
-const isOSX = process.platform === 'darwin';
+const isMacOS = process.platform === 'darwin';
+/**
+ * Tests from older versions of Node.js still use `isOSX` to check for macOS.
+ * Let's keep it for compatibility until all tests are updated.
+ * @deprecated Use `isMacOS` instead.
+ */
+const isOSX = isMacOS;
 
 const isDumbTerminal = process.env.TERM === 'dumb';
 
@@ -502,6 +508,7 @@ module.exports = {
   isFreeBSD,
   isOpenBSD,
   isLinux,
+  isMacOS,
   isOSX,
   isMainThread: true, // TODO(f3n67u): replace with `worker_thread.isMainThread` when `worker_thread` implemented
   skip,

@@ -10,7 +10,15 @@
       "output": "no_condition.out"
     },
     {
-      "args": "run --node-conditions react-server -A main.js",
+      "args": "run --conditions react-server -A main.js",
+      "output": "condition.out",
+      "exitCode": 1
+    },
+    {
+      "args": "run -A main.js",
+      "envs": {
+        "DENO_CONDITIONS": "react-server"
+      },
       "output": "condition.out",
       "exitCode": 1
     }

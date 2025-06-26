@@ -222,7 +222,7 @@ const documentRegistry = {
 };
 
 /** @param {Record<string, unknown>} config */
-function normalizeConfig(config) {
+function normalizeCompilerOptions(config) {
   // the typescript compiler doesn't know about the precompile
   // transform at the moment, so just tell it we're using react-jsx
   if (config.jsx === "precompile") {
@@ -235,8 +235,8 @@ function normalizeConfig(config) {
 }
 
 /** @param {Record<string, unknown>} config */
-function lspTsConfigToCompilerOptions(config) {
-  const normalizedConfig = normalizeConfig(config);
+function lspToTsCompilerOptions(config) {
+  const normalizedConfig = normalizeCompilerOptions(config);
   const { options, errors } = ts
     .convertCompilerOptionsFromJson(normalizedConfig, "");
   Object.assign(options, {
@@ -329,7 +329,7 @@ export async function serverMainLoop(enableDebugLogging) {
   hasStarted = true;
   LANGUAGE_SERVICE_ENTRIES.unscoped = {
     ls: createLs(),
-    compilerOptions: lspTsConfigToCompilerOptions({
+    compilerOptions: lspToTsCompilerOptions({
       "allowJs": true,
       "esModuleInterop": true,
       "experimentalDecorators": false,
@@ -423,19 +423,19 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
     const newProjectVersion = maybeChange[1];
-    const newConfigsByScope = maybeChange[2];
+    const newCompilerOptionsByScope = maybeChange[2];
     const newNotebookScopes = maybeChange[3];
-    if (newConfigsByScope) {
+    if (newCompilerOptionsByScope) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
       ASSET_SCOPES.clear();
       /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
       const newByScope = new Map();
-      for (const [scope, config] of newConfigsByScope) {
+      for (const [scope, config] of newCompilerOptionsByScope) {
         LAST_REQUEST_SCOPE.set(scope);
         LAST_REQUEST_NOTEBOOK_URI.set(null);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions = lspTsConfigToCompilerOptions(config);
+        const compilerOptions = lspToTsCompilerOptions(config);
         newByScope.set(scope, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
       }
@@ -480,7 +480,7 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
       SCRIPT_SNAPSHOT_CACHE.delete(script);
     }
 
-    if (newConfigsByScope || newNotebookScopes || opened || closed) {
+    if (newCompilerOptionsByScope || newNotebookScopes || opened || closed) {
       clearScriptNamesCache();
     }
   }

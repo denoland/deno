@@ -712,7 +712,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         subdomain_wildcards: self.cli_options.unstable_subdomain_wildcards(),
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
-        features: self.cli_options.unstable_features(),
+        features: self
+          .cli_options
+          .unstable_features()
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
@@ -794,11 +799,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let mut entries = fs::read_dir(&pending_dir)
-            .with_context(|| {
-              format!("Failed reading: {}", pending_dir.display())
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+          let Ok(entries) = fs::read_dir(&pending_dir) else {
+            // Don't bother surfacing this error as it might be an error
+            // like "access denied". In this case, just skip over it.
+            continue;
+          };
+          let mut entries = entries.filter_map(|e| e.ok()).collect::<Vec<_>>();
           entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
             let path = entry.path();

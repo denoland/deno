@@ -49,6 +49,7 @@ pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
+rustls.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 semver.workspace = true
@@ -60,10 +61,10 @@ tempfile.workspace = true
 termcolor.workspace = true
 tokio.workspace = true
 url.workspace = true
-win32job.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+win32job.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "term", "signal"] }

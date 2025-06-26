@@ -119,7 +119,10 @@ pub fn op_node_call_is_from_dependency<
     let name = script.to_rust_string_lossy(scope);
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
-    } else if name.starts_with("https:") || name.contains("/node_modules/") {
+    } else if name.starts_with("https:")
+      || name.contains("/node_modules/")
+      || name.contains(r"\node_modules\")
+    {
       return true;
     } else {
       let Ok(specifier) = url::Url::parse(&name) else {

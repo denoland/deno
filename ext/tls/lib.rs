@@ -169,6 +169,10 @@ pub enum Proxy {
   Unix {
     path: String,
   },
+  Vsock {
+    cid: u32,
+    port: u32,
+  },
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

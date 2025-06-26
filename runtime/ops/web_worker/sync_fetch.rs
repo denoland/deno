@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use crate::web_worker::WorkerThreadType;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
@@ -91,7 +91,7 @@ pub fn op_worker_sync_fetch(
   loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, SyncFetchError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  assert_eq!(handle.worker_type, WebWorkerType::Classic);
+  assert_eq!(handle.worker_type, WorkerThreadType::Classic);
 
   // it's not safe to share a client across tokio runtimes, so create a fresh one
   // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
