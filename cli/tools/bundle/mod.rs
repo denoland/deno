@@ -1165,13 +1165,13 @@ fn process_result(
   let output_files = response
     .output_files
     .as_ref()
-    .map(|v| Cow::Borrowed(v))
+    .map(Cow::Borrowed)
     .unwrap_or_default();
   let mut output_infos = Vec::new();
   for file in output_files.iter() {
     let path = Path::new(&file.path);
     let relative_path =
-      pathdiff::diff_paths(&path, cwd).unwrap_or_else(|| path.to_path_buf());
+      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
     let is_js = is_js(path);
     let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
