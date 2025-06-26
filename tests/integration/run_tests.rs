@@ -1443,7 +1443,7 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --unstable-subdomain-wildcards --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        "run --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
         None,
         None,
         true,
