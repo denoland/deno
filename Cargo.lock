@@ -3432,9 +3432,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.7"
+version = "0.95.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6761cbedde994ff3be4a5f7ad4ca822f10edf2c978725177f529789cb249c3c4"
+checksum = "a1107e3e0e59a4a5f8a07fef0427822a570295bf1f4971d70a22c23bb16a11f4"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -5535,9 +5535,9 @@ dependencies = [
 
 [[package]]
 name = "malva"
-version = "0.11.2"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a952f521471c6c8302a17fc0c64a512221a9d4ff268af4d43a02bc2be48c712"
+checksum = "aa8f6005fe3f2348f1fc59d647ee6945d5832fd080178e6d034bab1bf7976348"
 dependencies = [
  "aho-corasick",
  "itertools 0.14.0",
@@ -5548,9 +5548,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e59dd52b196245d3575b2af66ef15b0e20362de18b453dfbf264c258e8eefbf5"
+checksum = "2cc6a5130d40b34be77fbd52645323c199d2db25f90922d5cef1da2a9eca96b0"
 dependencies = [
  "aho-corasick",
  "css_dataset",

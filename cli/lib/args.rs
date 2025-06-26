@@ -239,4 +239,10 @@ impl UnstableConfig {
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
   }
+
+  pub fn enable_node_compat(&mut self) {
+    self.bare_node_builtins = true;
+    self.sloppy_imports = true;
+    self.detect_cjs = true;
+  }
 }

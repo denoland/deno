@@ -127,7 +127,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeature
     name: "node-globals",
     flag_name: "unstable-node-globals",
     help_text: "Expose Node globals everywhere",
-    show_in_help: true,
+    show_in_help: false,
     id: 13,
     kind: UnstableFeatureKind::Runtime,
     config_file_option: "node-globals",
