@@ -57,8 +57,7 @@ use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 
-pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
-  NonZeroUsize::new(65536);
+pub const TLS_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(65536);
 
 pub struct TlsListener {
   pub(crate) tcp_listener: TcpListener,
@@ -67,7 +66,9 @@ pub struct TlsListener {
 }
 
 impl TlsListener {
-  pub async fn accept(&self) -> std::io::Result<(TlsStream, SocketAddr)> {
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(TlsStream<TcpStream>, SocketAddr)> {
     let (tcp, addr) = self.tcp_listener.accept().await?;
     let tls = if let Some(provider) = &self.server_config_provider {
       TlsStream::new_server_side_acceptor(
@@ -91,15 +92,17 @@ impl TlsListener {
 
 #[derive(Debug)]
 pub struct TlsStreamResource {
-  rd: AsyncRefCell<TlsStreamRead>,
-  wr: AsyncRefCell<TlsStreamWrite>,
+  rd: AsyncRefCell<TlsStreamRead<TcpStream>>,
+  wr: AsyncRefCell<TlsStreamWrite<TcpStream>>,
   // `None` when a TLS handshake hasn't been done.
   handshake_info: RefCell<Option<TlsHandshakeInfo>>,
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
 impl TlsStreamResource {
-  pub fn new((rd, wr): (TlsStreamRead, TlsStreamWrite)) -> Self {
+  pub fn new(
+    (rd, wr): (TlsStreamRead<TcpStream>, TlsStreamWrite<TcpStream>),
+  ) -> Self {
     Self {
       rd: rd.into(),
       wr: wr.into(),
@@ -108,7 +111,9 @@ impl TlsStreamResource {
     }
   }
 
-  pub fn into_inner(self) -> (TlsStreamRead, TlsStreamWrite) {
+  pub fn into_inner(
+    self,
+  ) -> (TlsStreamRead<TcpStream>, TlsStreamWrite<TcpStream>) {
     (self.rd.into_inner(), self.wr.into_inner())
   }
 

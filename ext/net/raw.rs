@@ -270,7 +270,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
