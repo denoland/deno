@@ -37,6 +37,7 @@ const {
   Symbol,
   TypedArrayPrototypeSlice,
   Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
@@ -201,7 +202,7 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   writeBuffer(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array): number {
-    if (!(data instanceof Uint8Array)) {
+    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)) {
       throw new NodeTypeError(
         "ERR_INVALID_ARG_TYPE",
         "Second argument must be a buffer",
