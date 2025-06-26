@@ -826,8 +826,6 @@ pub enum SubdomainWildcards {
   Disabled,
 }
 
-pub type UnstableSubdomainWildcards = SubdomainWildcards;
-
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
   Fqdn(FQDN),
@@ -1036,9 +1034,8 @@ impl NetDescriptor {
 
   pub fn parse_for_list(
     hostname: &str,
-    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(hostname, unstable_subdomain_wildcards)
+    Self::parse_inner(hostname, SubdomainWildcards::Enabled)
   }
 
   fn parse_inner(
@@ -1228,12 +1225,8 @@ impl QueryDescriptor for ImportDescriptor {
 impl ImportDescriptor {
   pub fn parse_for_list(
     specifier: &str,
-    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
-    Ok(ImportDescriptor(NetDescriptor::parse_for_list(
-      specifier,
-      unstable_subdomain_wildcards,
-    )?))
+    Ok(ImportDescriptor(NetDescriptor::parse_for_list(specifier)?))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -3913,17 +3906,14 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse_for_list(text, UnstableSubdomainWildcards::Enabled)
+      NetDescriptor::parse_for_list(text)
     }
 
     fn parse_import_descriptor(
       &self,
       text: &str,
     ) -> Result<ImportDescriptor, NetDescriptorParseError> {
-      ImportDescriptor::parse_for_list(
-        text,
-        UnstableSubdomainWildcards::Enabled,
-      )
+      ImportDescriptor::parse_for_list(text)
     }
 
     fn parse_env_descriptor(
@@ -5200,11 +5190,9 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([NetDescriptor::parse_for_list(
-            "foo",
-            UnstableSubdomainWildcards::Enabled
-          )
-          .unwrap()])),
+          Some(HashSet::from([
+            NetDescriptor::parse_for_list("foo").unwrap()
+          ])),
           None,
           false
         ),
@@ -5527,11 +5515,7 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(
-        NetDescriptor::parse_for_list(
-          input,
-          UnstableSubdomainWildcards::Enabled
-        )
-        .ok(),
+        NetDescriptor::parse_for_list(input).ok(),
         *expected,
         "'{input}'"
       );
