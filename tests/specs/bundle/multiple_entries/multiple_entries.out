@@ -1,4 +1,4 @@
 [WILDCARD]
 Bundled [WILDCARD] modules in [WILDCARD]s
-  out/foo/main.js [WILDCARD]
-  out/bar/main.js [WILDCARD]
+  out[WILDCHAR]foo[WILDCHAR]main.js [WILDCARD]
+  out[WILDCHAR]bar[WILDCHAR]main.js [WILDCARD]
