@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "bundle --output=out.js main.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "import_meta_main.out"
         },
         {
           "args": "run out.js",
