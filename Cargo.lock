@@ -2624,6 +2624,7 @@ dependencies = [
  "deno_terminal 0.2.2",
  "deno_unsync",
  "fqdn",
+ "ipnetwork",
  "libc",
  "log",
  "nix 0.27.1",

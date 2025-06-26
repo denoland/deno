@@ -115,7 +115,7 @@ fn print_suggestion(compatible: bool) {
   log::info!(
     "{}",
     color_print::cformat!(
-      "<p(245)>Run</> <u>deno outdated --update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
+      "<p(245)>Run</> <u>deno update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
       cmd,
       txt,
     )
