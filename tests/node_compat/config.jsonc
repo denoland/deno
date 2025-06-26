@@ -569,6 +569,7 @@
       "test-fs-fchmod.js",
       "test-fs-fchown.js",
       "test-fs-fmap.js",
+      "test-fs-lchmod.js",
       "test-fs-lchown.js",
       "test-fs-long-path.js",
       "test-fs-mkdir.js",
