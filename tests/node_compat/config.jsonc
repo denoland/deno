@@ -1031,6 +1031,7 @@
       "test-stream-await-drain-writers-in-synchronously-recursion-write.js",
       "test-stream-backpressure.js",
       "test-stream-base-prototype-accessors-enumerability.js",
+      "test-stream-base-typechecking.js",
       "test-stream-big-packet.js",
       "test-stream-big-push.js",
       "test-stream-catch-rejections.js",
