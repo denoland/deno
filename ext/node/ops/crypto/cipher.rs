@@ -11,6 +11,7 @@ use aes::cipher::KeyIvInit;
 use aes::cipher::KeySizeUser;
 use aes::cipher::StreamCipher;
 use deno_core::Resource;
+use deno_error::JsErrorClass;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
 
@@ -433,7 +434,7 @@ impl Cipher {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[property("library" = "Provider routines")]
-#[property("reason" = self.get_message().to_string())]
+#[property("reason" = self.reason())]
 #[property("code" = self.code())]
 pub enum DecipherError {
   #[class(type)]
@@ -446,7 +447,7 @@ pub enum DecipherError {
   #[error("Invalid authentication tag length: {0}")]
   InvalidAuthTag(usize),
   #[class(range)]
-  #[error("Wrong final block length")]
+  #[error("error:1C80006B:Provider routines::wrong final block length")]
   InvalidFinalBlockLength,
   #[class(type)]
   #[error("Invalid initialization vector")]
@@ -480,7 +481,19 @@ impl DecipherError {
       Self::InvalidAuthTag(_) => {
         deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_AUTH_TAG".into())
       }
+      Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
+        "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
+      ),
       _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
+    }
+  }
+
+  fn reason(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidFinalBlockLength => {
+        deno_error::PropertyValue::String("wrong final block length".into())
+      }
+      _ => deno_error::PropertyValue::String(self.get_message()),
     }
   }
 }
@@ -677,7 +690,16 @@ impl Decipher {
   ) -> Result<(), DecipherError> {
     use Decipher::*;
 
-    if input.is_empty() && !matches!(self, Aes128Gcm(..) | Aes256Gcm(..)) {
+    if input.is_empty()
+      && !matches!(
+        self,
+        Aes128Ecb(..)
+          | Aes192Ecb(..)
+          | Aes256Ecb(..)
+          | Aes128Gcm(..)
+          | Aes256Gcm(..)
+      )
+    {
       return Ok(());
     }
 

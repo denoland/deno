@@ -16,6 +16,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
@@ -23,7 +24,6 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsConfig;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
@@ -762,6 +762,11 @@ impl CliOptions {
         .as_ref()
         .map(ToOwned::to_owned)
         .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+      DenoSubcommand::Run(flags) => flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -1030,19 +1035,20 @@ impl CliOptions {
       || self.workspace().has_unstable("sloppy-imports")
   }
 
-  pub fn unstable_features(&self) -> Vec<String> {
+  pub fn unstable_features(&self) -> Vec<&str> {
     let from_config_file = self.workspace().unstable_features();
     let unstable_features = from_config_file
       .iter()
+      .map(|s| s.as_str())
       .chain(
         self
           .flags
           .unstable_config
           .features
           .iter()
-          .filter(|f| !from_config_file.contains(f)),
+          .filter(|f| !from_config_file.contains(f))
+          .map(|s| s.as_str()),
       )
-      .map(|f| f.to_owned())
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
@@ -1055,9 +1061,7 @@ impl CliOptions {
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
       for unstable_value_from_config_file in &unstable_features {
-        if !all_valid_unstable_flags
-          .contains(&unstable_value_from_config_file.as_str())
-        {
+        if !all_valid_unstable_flags.contains(unstable_value_from_config_file) {
           log::warn!(
             "{} '{}' isn't a valid unstable feature",
             colors::yellow("Warning"),

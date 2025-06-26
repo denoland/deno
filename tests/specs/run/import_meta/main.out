@@ -11,6 +11,8 @@ Resolving object from import map https://example.com/PASS-object
 Resolving npm:cowsay npm:cowsay
 Resolving npm:cowsay@1 npm:cowsay@1
 Resolving npm:preact from import map https://example.com/preact
-Resolving existing npm:@denotest/add@1.0 specifier file:///[WILDLINE]/npm/localhost_4260/@denotest/add/1.0.0/index.js
-Resolving compatible npm:@denotest/add@1 specifier file:///[WILDLINE]/npm/localhost_4260/@denotest/add/1.0.0/index.js
-Resolving compatible npm:@denotest/add@1.0.0 specifier file:///[WILDLINE]/npm/localhost_4260/@denotest/add/1.0.0/index.js
+Resolving existing npm:@denotest/add@1.0 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving compatible npm:@denotest/add@1 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving compatible npm:@denotest/add@1.0.0 specifier file:///[WILDLINE]/@denotest/add/1.0.0/index.js
+Resolving non-existent export npm:@denotest/add@1.0.0/non-existent.js file:///[WILDLINE]/@denotest/add/1.0.0/non-existent.js
+Resolving node:non-existent node:non-existent

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.6"
+version = "2.3.7"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -99,6 +99,7 @@ node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
 async-trait.workspace = true
+aws-lc-rs.workspace = true
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
@@ -120,7 +121,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_client = { version = "0.2.0" }
+esbuild_client = { version = "0.5.0", features = ["serde"] }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -132,7 +133,8 @@ http-body-util.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
+jupyter-protocol = "0.8.0"
+jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -156,8 +158,8 @@ pretty_yaml.workspace = true
 quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-ring.workspace = true
 rustc-hash.workspace = true
+rustls.workspace = true
 rustyline.workspace = true
 rustyline-derive.workspace = true
 serde.workspace = true
@@ -199,6 +201,9 @@ tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+# unsafe_use_unprotected_platform is a workaround for a segfault that may occur
+# when running multiple v8 tests on different threads
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

@@ -28,6 +28,7 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
+  ArrayPrototypeFilter,
   ObjectDefineProperty,
   ObjectEntries,
   SafeMap,
@@ -57,7 +58,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import { eventTargetData } from "ext:deno_web/02_event.js";
+import {
+  eventTargetData,
+  kResistStopImmediatePropagation,
+} from "ext:deno_web/02_event.js";
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 
@@ -67,11 +71,6 @@ const kMaxEventTargetListeners = Symbol("events.maxEventTargetListeners");
 const kMaxEventTargetListenersWarned = Symbol(
   "events.maxEventTargetListenersWarned",
 );
-
-let process;
-export function setProcess(p) {
-  process = p;
-}
 
 /**
  * Creates a new `EventEmitter` instance.
@@ -874,12 +873,22 @@ export function getEventListeners(emitterOrTarget, type) {
  * @returns {Promise}
  */
 // deno-lint-ignore require-await
-export async function once(emitter, name, options = {}) {
+export async function once(emitter, name, options = kEmptyObject) {
+  validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
   if (signal?.aborted) {
     throw new AbortError();
   }
+
+  if (signal) {
+    // Patches [kEvents] field of AbortSignal to simulate Node.js EventTarget
+    // This is necessary to pass `paralle/test-events-once.js` test
+    // TODO(kt3k): This can be removed if events.getEventListeners() is used
+    // instead of `signal[kEvents]` in upstream.
+    ObjectDefineProperty(signal, kEvents, kEventsGetter);
+  }
+
   return new Promise((resolve, reject) => {
     const errorListener = (err) => {
       emitter.removeListener(name, resolver);
@@ -911,7 +920,7 @@ export async function once(emitter, name, options = {}) {
         signal,
         "abort",
         abortListener,
-        { once: true },
+        { once: true, [kResistStopImmediatePropagation]: true },
       );
     }
   });
@@ -958,9 +967,13 @@ const kEventsGetter = {
       return new SafeMap();
     }
     return new SafeMap(
-      ArrayPrototypeMap(ObjectEntries(data.listeners), (
-        [key, listeners],
-      ) => [key, new SafeSet(listeners)]),
+      ArrayPrototypeMap(
+        ArrayPrototypeFilter(
+          ObjectEntries(data.listeners),
+          ([_, listeners]) => listeners.length > 0,
+        ),
+        ([key, listeners]) => [key, new SafeSet(listeners)],
+      ),
     );
   },
 };

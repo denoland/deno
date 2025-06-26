@@ -42,6 +42,7 @@ import type {
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getArrayBufferOrView,
   getKeyObjectHandle,
   kConsumePrivate,
   kConsumePublic,
@@ -116,7 +117,10 @@ export class DiffieHellmanImpl {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
       if (this.#primeLength < 2) {
-        throw new NodeError("ERR_OSSL_BN_BITS_TOO_SMALL", "bits too small");
+        throw new NodeError(
+          "ERR_OSSL_DH_MODULUS_TOO_SMALL",
+          "modulus too small",
+        );
       }
 
       this.#prime = Buffer.from(
@@ -194,11 +198,12 @@ export class DiffieHellmanImpl {
     inputEncoding?: BinaryToTextEncoding,
     outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let buf;
-    if (inputEncoding != undefined && inputEncoding != "buffer") {
-      buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
-    } else {
-      buf = Buffer.from(otherPublicKey.buffer);
+    const buf = getArrayBufferOrView(otherPublicKey, "key", inputEncoding);
+    if (buf.length === 0) {
+      throw new NodeError(
+        "ERR_CRYPTO_INVALID_KEYLEN",
+        "Unspecified validation error",
+      );
     }
 
     const sharedSecret = op_node_dh_compute_secret(

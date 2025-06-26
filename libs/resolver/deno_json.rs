@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_config::deno_json::CompilerOptions;
 use deno_config::deno_json::CompilerOptionsParseError;
-use deno_config::deno_json::TsConfig;
-use deno_config::deno_json::TsConfigType;
-use deno_config::deno_json::TsConfigWithIgnoredOptions;
+use deno_config::deno_json::CompilerOptionsType;
+use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_terminal::colors;
@@ -24,7 +24,7 @@ pub type TsConfigResolverRc<TSys> =
   crate::sync::MaybeArc<TsConfigResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
-type TsConfigRc = crate::sync::MaybeArc<TsConfig>;
+type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
 #[cfg(feature = "deno_ast")]
@@ -49,9 +49,9 @@ struct LoggedWarnings {
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
-  deno_window_check_tsconfig: OnceCell<TsConfigRc>,
-  deno_worker_check_tsconfig: OnceCell<TsConfigRc>,
-  emit_tsconfig: OnceCell<TsConfigRc>,
+  deno_window_check_compiler_options: OnceCell<CompilerOptionsRc>,
+  deno_worker_check_compiler_options: OnceCell<CompilerOptionsRc>,
+  emit_compiler_options: OnceCell<CompilerOptionsRc>,
   #[cfg(feature = "deno_ast")]
   transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
 }
@@ -65,33 +65,44 @@ pub struct TsConfigFolderInfo<TSys: FsRead> {
 }
 
 impl<TSys: FsRead> TsConfigFolderInfo<TSys> {
-  pub fn lib_tsconfig(
+  pub fn lib_compiler_options(
     &self,
     lib: TsTypeLib,
-  ) -> Result<&TsConfigRc, CompilerOptionsParseError> {
+  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
     let cell = match lib {
-      TsTypeLib::DenoWindow => &self.memoized.deno_window_check_tsconfig,
-      TsTypeLib::DenoWorker => &self.memoized.deno_worker_check_tsconfig,
+      TsTypeLib::DenoWindow => {
+        &self.memoized.deno_window_check_compiler_options
+      }
+      TsTypeLib::DenoWorker => {
+        &self.memoized.deno_worker_check_compiler_options
+      }
     };
 
     cell.get_or_try_init(|| {
-      let tsconfig_result = self
-        .dir
-        .to_resolved_ts_config(&self.sys, TsConfigType::Check { lib })?;
-      check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
-      Ok(new_rc(tsconfig_result.ts_config))
+      let compiler_options_result = self.dir.to_resolved_compiler_options(
+        &self.sys,
+        CompilerOptionsType::Check { lib },
+      )?;
+      check_warn_compiler_options(
+        &compiler_options_result,
+        &self.logged_warnings,
+      );
+      Ok(new_rc(compiler_options_result.compiler_options))
     })
   }
 
-  pub fn emit_tsconfig(
+  pub fn emit_compiler_options(
     &self,
-  ) -> Result<&TsConfigRc, CompilerOptionsParseError> {
-    self.memoized.emit_tsconfig.get_or_try_init(|| {
-      let tsconfig_result = self
+  ) -> Result<&CompilerOptionsRc, CompilerOptionsParseError> {
+    self.memoized.emit_compiler_options.get_or_try_init(|| {
+      let compiler_options_result = self
         .dir
-        .to_resolved_ts_config(&self.sys, TsConfigType::Emit)?;
-      check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
-      Ok(new_rc(tsconfig_result.ts_config))
+        .to_resolved_compiler_options(&self.sys, CompilerOptionsType::Emit)?;
+      check_warn_compiler_options(
+        &compiler_options_result,
+        &self.logged_warnings,
+      );
+      Ok(new_rc(compiler_options_result.compiler_options))
     })
   }
 
@@ -100,22 +111,24 @@ impl<TSys: FsRead> TsConfigFolderInfo<TSys> {
     &self,
   ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
     self.memoized.transpile_options.get_or_try_init(|| {
-      let ts_config = self.emit_tsconfig()?;
-      ts_config_to_transpile_and_emit_options(ts_config.as_ref().clone())
-        .map(new_rc)
-        .map_err(|source| CompilerOptionsParseError {
-          specifier: self
-            .dir
-            .maybe_deno_json()
-            .map(|d| d.specifier.clone())
-            .unwrap_or_else(|| {
-              // will never happen because each dir should have a
-              // deno.json if we got here
-              debug_assert!(false);
-              self.dir.dir_url().as_ref().clone()
-            }),
-          source,
-        })
+      let compiler_options = self.emit_compiler_options()?;
+      compiler_options_to_transpile_and_emit_options(
+        compiler_options.as_ref().clone(),
+      )
+      .map(new_rc)
+      .map_err(|source| CompilerOptionsParseError {
+        specifier: self
+          .dir
+          .maybe_deno_json()
+          .map(|d| d.specifier.clone())
+          .unwrap_or_else(|| {
+            // will never happen because each dir should have a
+            // deno.json if we got here
+            debug_assert!(false);
+            self.dir.dir_url().as_ref().clone()
+          }),
+        source,
+      })
     })
   }
 }
@@ -127,7 +140,7 @@ pub struct TsConfigResolver<TSys: FsRead> {
 
 impl<TSys: FsRead + Clone> TsConfigResolver<TSys> {
   pub fn from_workspace(sys: &TSys, workspace: &WorkspaceRc) -> Self {
-    // separate the workspace into directories that have a tsconfig
+    // separate the workspace into directories that have compiler options
     let root_dir = workspace.resolve_member_dir(workspace.root_dir());
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut map = FolderScopedMap::new(TsConfigFolderInfo {
@@ -202,8 +215,8 @@ impl<TSys: FsRead + std::fmt::Debug> deno_graph::CheckJsResolver
 }
 
 #[cfg(feature = "deno_ast")]
-fn ts_config_to_transpile_and_emit_options(
-  config: deno_config::deno_json::TsConfig,
+fn compiler_options_to_transpile_and_emit_options(
+  config: deno_config::deno_json::CompilerOptions,
 ) -> Result<TranspileAndEmitOptions, serde_json::Error> {
   let options: deno_config::deno_json::EmitConfigOptions =
     serde_json::from_value(config.0)?;
@@ -268,11 +281,11 @@ fn ts_config_to_transpile_and_emit_options(
   })
 }
 
-fn check_warn_tsconfig(
-  ts_config: &TsConfigWithIgnoredOptions,
+fn check_warn_compiler_options(
+  compiler_options: &CompilerOptionsWithIgnoredOptions,
   logged_warnings: &LoggedWarnings,
 ) {
-  for ignored_options in &ts_config.ignored_options {
+  for ignored_options in &compiler_options.ignored_options {
     if ignored_options
       .maybe_specifier
       .as_ref()
@@ -282,7 +295,8 @@ fn check_warn_tsconfig(
       log::warn!("{}", ignored_options);
     }
   }
-  let serde_json::Value::Object(obj) = &ts_config.ts_config.0 else {
+  let serde_json::Value::Object(obj) = &compiler_options.compiler_options.0
+  else {
     return;
   };
   if obj.get("experimentalDecorators") == Some(&serde_json::Value::Bool(true))

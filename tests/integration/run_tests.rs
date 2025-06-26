@@ -3282,6 +3282,8 @@ fn node_process_stdin_unref_with_pty() {
 
 #[tokio::test]
 async fn listen_tls_alpn() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -3335,6 +3337,8 @@ async fn listen_tls_alpn() {
 
 #[tokio::test]
 async fn listen_tls_alpn_fail() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")

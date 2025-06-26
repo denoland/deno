@@ -107,6 +107,7 @@ use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -450,6 +451,12 @@ impl CliFactory {
 
   pub fn blob_store(&self) -> &Arc<BlobStore> {
     self.services.blob_store.get_or_init(Default::default)
+  }
+
+  pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
+    let http_client = self.http_client_provider();
+    let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
+    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
@@ -944,7 +951,7 @@ impl CliFactory {
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       let unstable_features = cli_options.unstable_features();
       for feature in deno_runtime::UNSTABLE_FEATURES {
-        if unstable_features.contains(&feature.name.to_string()) {
+        if unstable_features.contains(&feature.name) {
           checker.enable_feature(feature.name);
         }
       }
@@ -1132,6 +1139,7 @@ impl CliFactory {
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
       is_standalone: false,
+      auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
@@ -1316,6 +1324,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Clean(_)
+        | DenoSubcommand::Bundle(_)
     ),
     no_lock: flags.no_lock
       || matches!(

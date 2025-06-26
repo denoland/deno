@@ -93,6 +93,15 @@ impl NodeJsErrorCoded for InvalidModuleSpecifierError {
 #[derive(Debug, Boxed, JsError)]
 pub struct LegacyResolveError(pub Box<LegacyResolveErrorKind>);
 
+impl LegacyResolveError {
+  pub fn specifier(&self) -> &UrlOrPath {
+    match self.as_kind() {
+      LegacyResolveErrorKind::TypesNotFound(err) => &err.0.code_specifier,
+      LegacyResolveErrorKind::ModuleNotFound(err) => &err.specifier,
+    }
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 pub enum LegacyResolveErrorKind {
   #[class(inherit)]
@@ -205,6 +214,9 @@ pub enum PackageFolderResolveErrorKind {
   PathToUrl(#[from] deno_path_util::PathToUrlError),
 }
 
+#[derive(Debug, Boxed, JsError)]
+pub struct PackageSubpathResolveError(pub Box<PackageSubpathResolveErrorKind>);
+
 impl NodeJsErrorCoded for PackageSubpathResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
@@ -220,10 +232,20 @@ impl PackageSubpathResolveError {
   pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
     self.as_kind().as_types_not_found()
   }
-}
 
-#[derive(Debug, Boxed, JsError)]
-pub struct PackageSubpathResolveError(pub Box<PackageSubpathResolveErrorKind>);
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageSubpathResolveErrorKind::PkgJsonLoad(_) => None,
+      PackageSubpathResolveErrorKind::Exports(err) => err.maybe_specifier(),
+      PackageSubpathResolveErrorKind::LegacyResolve(err) => {
+        Some(Cow::Borrowed(err.specifier()))
+      }
+      PackageSubpathResolveErrorKind::FinalizeResolution(err) => {
+        err.maybe_specifier().map(Cow::Borrowed)
+      }
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum PackageSubpathResolveErrorKind {
@@ -296,6 +318,7 @@ impl PackageSubpathResolveErrorKind {
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
+  pub maybe_resolved: Option<UrlOrPath>,
   pub maybe_referrer: Option<UrlOrPath>,
   pub resolution_mode: ResolutionMode,
   pub resolution_kind: NodeResolutionKind,
@@ -325,6 +348,30 @@ impl NodeJsErrorCoded for PackageTargetResolveErrorKind {
 
 #[derive(Debug, Boxed, JsError)]
 pub struct PackageTargetResolveError(pub Box<PackageTargetResolveErrorKind>);
+
+impl PackageTargetResolveError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageTargetResolveErrorKind::NotFound(err) => {
+        err.maybe_resolved.as_ref().map(Cow::Borrowed)
+      }
+      PackageTargetResolveErrorKind::PackageResolve(err) => {
+        err.maybe_specifier()
+      }
+      PackageTargetResolveErrorKind::TypesNotFound(err) => {
+        Some(Cow::Borrowed(&err.0.code_specifier))
+      }
+      PackageTargetResolveErrorKind::UnknownBuiltInNodeModule(err) => {
+        err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
+      }
+      PackageTargetResolveErrorKind::UrlToFilePath(e) => {
+        Some(Cow::Owned(UrlOrPath::Url(e.0.clone())))
+      }
+      PackageTargetResolveErrorKind::InvalidPackageTarget(_)
+      | PackageTargetResolveErrorKind::InvalidModuleSpecifier(_) => None,
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum PackageTargetResolveErrorKind {
@@ -372,6 +419,17 @@ impl NodeJsErrorCoded for PackageExportsResolveErrorKind {
 
 #[derive(Debug, Boxed, JsError)]
 pub struct PackageExportsResolveError(pub Box<PackageExportsResolveErrorKind>);
+
+impl PackageExportsResolveError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageExportsResolveErrorKind::PackagePathNotExported(_) => None,
+      PackageExportsResolveErrorKind::PackageTargetResolve(err) => {
+        err.maybe_specifier()
+      }
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum PackageExportsResolveErrorKind {
@@ -465,6 +523,17 @@ impl NodeJsErrorCoded for PackageImportNotDefinedError {
 #[derive(Debug, Boxed, JsError)]
 pub struct PackageImportsResolveError(pub Box<PackageImportsResolveErrorKind>);
 
+impl PackageImportsResolveError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageImportsResolveErrorKind::Target(err) => err.maybe_specifier(),
+      PackageImportsResolveErrorKind::ClosestPkgJson(_)
+      | PackageImportsResolveErrorKind::InvalidModuleSpecifier(_)
+      | PackageImportsResolveErrorKind::NotDefined(_) => None,
+    }
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 pub enum PackageImportsResolveErrorKind {
   #[class(inherit)]
@@ -518,6 +587,21 @@ impl NodeJsErrorCoded for PackageResolveErrorKind {
 
 #[derive(Debug, Boxed, JsError)]
 pub struct PackageResolveError(pub Box<PackageResolveErrorKind>);
+
+impl PackageResolveError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageResolveErrorKind::ExportsResolve(err) => err.maybe_specifier(),
+      PackageResolveErrorKind::SubpathResolve(err) => err.maybe_specifier(),
+      PackageResolveErrorKind::UrlToFilePath(err) => {
+        Some(Cow::Owned(UrlOrPath::Url(err.0.clone())))
+      }
+      PackageResolveErrorKind::ClosestPkgJson(_)
+      | PackageResolveErrorKind::InvalidModuleSpecifier(_)
+      | PackageResolveErrorKind::PackageFolderResolve(_) => None,
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum PackageResolveErrorKind {
@@ -576,6 +660,33 @@ pub struct DataUrlReferrerError {
 #[derive(Debug, Boxed, JsError)]
 pub struct NodeResolveError(pub Box<NodeResolveErrorKind>);
 
+impl NodeResolveError {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      NodeResolveErrorKind::PathToUrl(err) => {
+        Some(Cow::Owned(UrlOrPath::Path(err.0.clone())))
+      }
+      NodeResolveErrorKind::UrlToFilePath(err) => {
+        Some(Cow::Owned(UrlOrPath::Url(err.0.clone())))
+      }
+      NodeResolveErrorKind::PackageImportsResolve(err) => err.maybe_specifier(),
+      NodeResolveErrorKind::PackageResolve(err) => err.maybe_specifier(),
+      NodeResolveErrorKind::TypesNotFound(err) => {
+        Some(Cow::Borrowed(&err.0.code_specifier))
+      }
+      NodeResolveErrorKind::UnknownBuiltInNodeModule(err) => {
+        err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
+      }
+      NodeResolveErrorKind::FinalizeResolution(err) => {
+        err.maybe_specifier().map(Cow::Borrowed)
+      }
+      NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
+      | NodeResolveErrorKind::DataUrlReferrer(_)
+      | NodeResolveErrorKind::RelativeJoin(_) => None,
+    }
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 pub enum NodeResolveErrorKind {
   #[class(inherit)]
@@ -633,6 +744,22 @@ impl NodeResolveErrorKind {
 
 #[derive(Debug, Boxed, JsError)]
 pub struct FinalizeResolutionError(pub Box<FinalizeResolutionErrorKind>);
+
+impl FinalizeResolutionError {
+  pub fn maybe_specifier(&self) -> Option<&UrlOrPath> {
+    match self.as_kind() {
+      FinalizeResolutionErrorKind::ModuleNotFound(err) => Some(&err.specifier),
+      FinalizeResolutionErrorKind::TypesNotFound(err) => {
+        Some(&err.0.code_specifier)
+      }
+      FinalizeResolutionErrorKind::UnsupportedDirImport(err) => {
+        Some(&err.dir_url)
+      }
+      FinalizeResolutionErrorKind::InvalidModuleSpecifierError(_)
+      | FinalizeResolutionErrorKind::UrlToFilePath(_) => None,
+    }
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 pub enum FinalizeResolutionErrorKind {
@@ -871,6 +998,12 @@ pub enum ResolveBinaryCommandsError {
 pub struct UnknownBuiltInNodeModuleError {
   /// Name of the invalid module.
   pub module_name: String,
+}
+
+impl UnknownBuiltInNodeModuleError {
+  pub fn maybe_specifier(&self) -> Option<Url> {
+    Url::parse(&format!("node:{}", self.module_name)).ok()
+  }
 }
 
 impl NodeJsErrorCoded for UnknownBuiltInNodeModuleError {

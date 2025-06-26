@@ -11797,8 +11797,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 466, "character": 12 },
-                    "end": { "line": 466, "character": 16 },
+                    "start": { "line": 598, "character": 12 },
+                    "end": { "line": 598, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -15901,7 +15901,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_deno_json_scopes_ts_config() {
+fn lsp_deno_json_scopes_compiler_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());

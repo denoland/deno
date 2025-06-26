@@ -355,6 +355,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           ignore_graph_errors: true,
+          allow_unknown_jsr_exports: false,
         },
       )?;
 
@@ -3764,7 +3765,7 @@ impl Inner {
           .tree
           .data_by_scope()
           .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
           .collect()
       }),
       matches!(
