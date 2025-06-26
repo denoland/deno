@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1216 tests out of 3993 have been ported from Node 23.9.0 (30.45% ported, 70.17% remaining).
+1218 tests out of 3993 have been ported from Node 23.9.0 (30.50% ported, 70.12% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 

@@ -1062,6 +1062,7 @@
       "test-stream-forEach.js",
       "test-stream-inheritance.js",
       "test-stream-ispaused.js",
+      "test-stream-iterator-helpers-test262-tests.mjs",
       "test-stream-map.js",
       "test-stream-objectmode-undefined.js",
       "test-stream-once-readable-pipe.js",

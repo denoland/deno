@@ -65,6 +65,7 @@ import Transform from "node:_stream_transform";
 import PassThrough from "node:_stream_passthrough";
 import duplexPair from "ext:deno_node/internal/streams/duplexpair.js";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+import { ERR_ILLEGAL_CONSTRUCTOR } from "ext:deno_node/internal/errors.ts";
 
 Stream.isDestroyed = utils.isDestroyed;
 Stream.isDisturbed = utils.isDisturbed;
