@@ -755,7 +755,6 @@
 "parallel/test-net-isipv4.js" = {}
 "parallel/test-net-isipv6.js" = {}
 "parallel/test-net-keepalive.js" = {}
-"parallel/test-net-large-string.js" = {}
 "parallel/test-net-listen-after-destroying-stdin.js" = {}
 "parallel/test-net-listen-close-server-callback-is-not-function.js" = {}
 "parallel/test-net-listen-close-server.js" = {}
