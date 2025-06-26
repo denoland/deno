@@ -435,6 +435,7 @@
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
 "parallel/test-fs-constants.js" = {}
@@ -576,7 +577,6 @@
 "parallel/test-http-pause-resume-one-end.js" = {}
 "parallel/test-http-pause.js" = {}
 "parallel/test-http-pipe-fs.js" = {}
-"parallel/test-http-pipeline-requests-connection-leak.js" = {}
 "parallel/test-http-proxy.js" = {}
 "parallel/test-http-readable-data-event.js" = {}
 "parallel/test-http-request-arguments.js" = {}
@@ -947,6 +947,7 @@
 "parallel/test-stream-auto-destroy.js" = {}
 "parallel/test-stream-await-drain-writers-in-synchronously-recursion-write.js" = {}
 "parallel/test-stream-backpressure.js" = {}
+"parallel/test-stream-base-prototype-accessors-enumerability.js" = {}
 "parallel/test-stream-big-packet.js" = {}
 "parallel/test-stream-big-push.js" = {}
 "parallel/test-stream-catch-rejections.js" = {}

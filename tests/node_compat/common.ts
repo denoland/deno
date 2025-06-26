@@ -28,18 +28,6 @@ interface Config {
   darwinIgnore: TestSuites;
 }
 
-export const config: Config = JSONC.parse(
-  await Deno.readTextFile(new URL("./config.jsonc", import.meta.url)),
-) as unknown as Config;
-
-export const ignoreList = Object.entries(config.ignore).reduce(
-  (total: RegExp[], [suite, paths]) => {
-    paths.forEach((path) => total.push(new RegExp(join(suite, path))));
-    return total;
-  },
-  [],
-);
-
 export function getPathsFromTestSuites(suites: TestSuites): string[] {
   const testPaths: string[] = [];
   for (const [dir, paths] of Object.entries(suites)) {
