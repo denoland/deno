@@ -19,6 +19,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
+use ipnetwork::IpNetwork;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::de;
@@ -831,6 +832,7 @@ pub enum Host {
   FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
+  IpSubnet(IpNetwork),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -879,6 +881,8 @@ impl Host {
         ));
       }
       Ok(Host::Ip(ip))
+    } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
+      Ok(Host::IpSubnet(ip_subnet))
     } else {
       let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
         Cow::Borrowed(s)
@@ -969,6 +973,7 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
       _ => false,
     }
   }
@@ -1148,6 +1153,7 @@ impl fmt::Display for NetDescriptor {
     match &self.0 {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
       Host::FqdnWithSubdomainWildcard(fqdn) => write!(f, "*.{fqdn}"),
+      Host::IpSubnet(ip_subnet) => write!(f, "{ip_subnet}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
@@ -4985,6 +4991,31 @@ mod tests {
       ("1.1.1.1", true),
       ("denied.domain.", false),
       ("2.2.2.2", false),
+    ];
+
+    for (host, is_ok) in cases {
+      assert_eq!(perms.check_net(&(host, None), "api").is_ok(), is_ok);
+    }
+  }
+
+  #[test]
+  fn test_net_ip_subnet() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["10.0.0.0/24"]),
+        deny_net: Some(svec!["192.168.1.0/24", "172.16.0.0/12"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let cases = [
+      ("10.0.0.1", true),
+      ("192.168.1.1", false),
+      ("172.16.0.1", false),
     ];
 
     for (host, is_ok) in cases {

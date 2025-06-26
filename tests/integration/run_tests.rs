@@ -1439,6 +1439,28 @@ mod permissions {
   }
 
   #[test]
+  fn net_fetch_deny_cidr() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://192.168.1.128:4545/",
+        None,
+        None,
+        false,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://127.0.0.1:4545/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
   fn net_fetch_localhost_subdomain() {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
