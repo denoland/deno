@@ -131,7 +131,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "node-globals",
     help_text: "Expose Node globals everywhere",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
@@ -159,6 +159,14 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
+  },
+  UnstableFeatureDescription {
+    name: "raw-imports",
+    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_RAW_IMPORTS"),
   },
   UnstableFeatureDescription {
     name: "sloppy-imports",

@@ -107,6 +107,7 @@ use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -450,6 +451,12 @@ impl CliFactory {
 
   pub fn blob_store(&self) -> &Arc<BlobStore> {
     self.services.blob_store.get_or_init(Default::default)
+  }
+
+  pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
+    let http_client = self.http_client_provider();
+    let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
+    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
@@ -1041,6 +1048,7 @@ impl CliFactory {
         None
       },
       self.emitter()?.clone(),
+      self.file_fetcher()?.clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
@@ -1152,6 +1160,7 @@ impl CliFactory {
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+      enable_raw_imports: cli_options.unstable_raw_imports(),
     })
   }
 
@@ -1257,8 +1266,8 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
-          bare_node_builtins: self.flags.unstable_config.bare_node_builtins,
-          unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          bare_node_builtins: options.unstable_bare_node_builtins(),
+          unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,
           )),

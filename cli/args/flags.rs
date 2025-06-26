@@ -1254,6 +1254,8 @@ static ENV_VARIABLES_HELP: &str = cstr!(
                           <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
   <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
   <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
+  <g>DENO_COMPAT</>            Enable Node.js compatibility mode - extensionless imports, built-in 
+                               Node.js modules, CommonJS detection and more.
   <g>DENO_DIR</>               Set the cache directory
   <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
                           <p(245)>(defaults to $HOME/.deno/bin)</>
@@ -4593,9 +4595,9 @@ fn lock_args() -> [Arg; 3] {
 }
 
 fn node_conditions_arg() -> Arg {
-  Arg::new("unstable-node-conditions")
-    .long("unstable-node-conditions")
-    .help("Use this argument to specify custom conditions for npm package exports. You can also use DENO_NODE_CONDITIONS env var.")
+  Arg::new("unstable-conditions")
+    .long("unstable-conditions")
+    .help("Use this argument to specify custom conditions for npm package exports. You can also use DENO_CONDITIONS env var.")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
 }
@@ -6286,8 +6288,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn node_conditions_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(conditions) =
-    matches.remove_many::<String>("unstable-node-conditions")
+  if let Some(conditions) = matches.remove_many::<String>("unstable-conditions")
   {
     flags.node_conditions = conditions.collect();
   }
@@ -6428,6 +6429,7 @@ fn unstable_args_parse(
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
+  flags.unstable_config.raw_imports = matches.get_flag("unstable-raw-imports");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
@@ -12501,7 +12503,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--unstable-conditions",
       "development",
       "main.ts"
     ])
@@ -12522,7 +12524,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--unstable-conditions",
       "development,production",
       "main.ts"
     ])
@@ -12543,9 +12545,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-node-conditions",
+      "--unstable-conditions",
       "development",
-      "--unstable-node-conditions",
+      "--unstable-conditions",
       "production",
       "main.ts"
     ])

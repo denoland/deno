@@ -764,7 +764,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-filehandle.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-filehandle.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-fsync.js)
 - [parallel/test-fs-internal-assertencoding.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-internal-assertencoding.js)
-- [parallel/test-fs-lchmod.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-lchmod.js)
 - [parallel/test-fs-link.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-link.js)
 - [parallel/test-fs-make-callback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-make-callback.js)
 - [parallel/test-fs-makeStatsCallback.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-fs-makeStatsCallback.js)

@@ -323,6 +323,7 @@ pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
+  pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
@@ -504,6 +505,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         strace_ops: shared.options.strace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
@@ -687,6 +689,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
+      enable_raw_imports: shared.options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       unconfigured_runtime,
     };
