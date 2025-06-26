@@ -1,4 +1,4 @@
 {
-  "args": "run --unstable-node-conditions some-condition main.cjs",
+  "args": "run --unstable-conditions some-condition main.cjs",
   "output": "good\n"
 }
