@@ -1023,6 +1023,11 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_raw_imports(&self) -> bool {
+    self.flags.unstable_config.raw_imports
+      || self.workspace().has_unstable("raw-imports")
+  }
+
   pub fn unstable_lazy_dynamic_imports(&self) -> bool {
     self.flags.unstable_config.lazy_dynamic_imports
       || self.workspace().has_unstable("lazy-dynamic-imports")

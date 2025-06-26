@@ -162,7 +162,7 @@ impl GraphDiagnosticsCollector {
         if let Some(resolved) = dep.maybe_code.ok() {
           collect_if_invalid(
             &mut skip_specifiers,
-            &module.source,
+            &module.source.text,
             specifier_text,
             resolved,
           );
@@ -170,7 +170,7 @@ impl GraphDiagnosticsCollector {
         if let Some(resolved) = dep.maybe_type.ok() {
           collect_if_invalid(
             &mut skip_specifiers,
-            &module.source,
+            &module.source.text,
             specifier_text,
             resolved,
           );
