@@ -55,6 +55,7 @@ use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 use super::fly_accept_encoding;
 use crate::compressible::is_content_compressible;
@@ -945,7 +946,7 @@ async fn serve_http2_autodetect(
 }
 
 fn serve_https(
-  mut io: TlsStream,
+  mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,

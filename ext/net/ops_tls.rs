@@ -67,7 +67,9 @@ pub struct TlsListener {
 }
 
 impl TlsListener {
-  pub async fn accept(&self) -> std::io::Result<(TlsStream, SocketAddr)> {
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(TlsStream<TcpStream>, SocketAddr)> {
     let (tcp, addr) = self.tcp_listener.accept().await?;
     let tls = if let Some(provider) = &self.server_config_provider {
       TlsStream::new_server_side_acceptor(
@@ -90,33 +92,54 @@ impl TlsListener {
 }
 
 #[derive(Debug)]
+enum TlsStreamInner {
+  Tcp {
+    rd: AsyncRefCell<TlsStreamRead<TcpStream>>,
+    wr: AsyncRefCell<TlsStreamWrite<TcpStream>>,
+  },
+}
+
+#[derive(Debug)]
 pub struct TlsStreamResource {
-  rd: AsyncRefCell<TlsStreamRead>,
-  wr: AsyncRefCell<TlsStreamWrite>,
+  inner: TlsStreamInner,
   // `None` when a TLS handshake hasn't been done.
   handshake_info: RefCell<Option<TlsHandshakeInfo>>,
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
 impl TlsStreamResource {
-  pub fn new((rd, wr): (TlsStreamRead, TlsStreamWrite)) -> Self {
+  pub fn new_tcp(
+    (rd, wr): (TlsStreamRead<TcpStream>, TlsStreamWrite<TcpStream>),
+  ) -> Self {
     Self {
-      rd: rd.into(),
-      wr: wr.into(),
+      inner: TlsStreamInner::Tcp {
+        rd: AsyncRefCell::new(rd),
+        wr: AsyncRefCell::new(wr),
+      },
       handshake_info: RefCell::new(None),
       cancel_handle: Default::default(),
     }
   }
 
-  pub fn into_inner(self) -> (TlsStreamRead, TlsStreamWrite) {
-    (self.rd.into_inner(), self.wr.into_inner())
+  pub fn into_tls_stream(self) -> TlsStream<TcpStream> {
+    match self.inner {
+      TlsStreamInner::Tcp { rd, wr } => {
+        let read_half = rd.into_inner();
+        let write_half = wr.into_inner();
+        read_half.unsplit(write_half)
+      }
+    }
   }
 
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+    let mut rd = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref rd, .. } => rd,
+    })
+    .borrow_mut()
+    .await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
     rd.read(data).try_or_cancel(cancel_handle).await
   }
@@ -125,14 +148,22 @@ impl TlsStreamResource {
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     wr.shutdown().await?;
     Ok(())
   }
@@ -144,7 +175,11 @@ impl TlsStreamResource {
       return Ok(tls_info.clone());
     }
 
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
     let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
@@ -338,7 +373,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
@@ -434,7 +469,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
@@ -545,7 +580,7 @@ pub async fn op_net_accept_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
