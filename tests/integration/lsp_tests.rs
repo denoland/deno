@@ -6579,6 +6579,36 @@ fn lsp_npm_managed_no_export_diagnostic() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/29548.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_type_only_export_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:@minecraft/common\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/29177.
 #[test]
 #[timeout(300_000)]
