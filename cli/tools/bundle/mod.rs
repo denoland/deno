@@ -447,6 +447,8 @@ fn requested_type_from_map(
   let type_ = map.get("type").map(|s| s.as_str());
   match type_ {
     Some("json") => RequestedModuleType::Json,
+    Some("bytes") => RequestedModuleType::Bytes,
+    Some("text") => RequestedModuleType::Text,
     Some(other) => RequestedModuleType::Other(other.to_string().into()),
     None => RequestedModuleType::None,
   }
@@ -792,7 +794,19 @@ impl DenoPluginHandler {
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
     let (specifier, media_type, loader) =
-      if let Some((specifier, media_type, loader)) =
+      if let RequestedModuleType::Bytes = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Binary,
+        )
+      } else if let RequestedModuleType::Text = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Text,
+        )
+      } else if let Some((specifier, media_type, loader)) =
         self.specifier_and_type_from_graph(&specifier)?
       {
         (specifier, media_type, loader)
