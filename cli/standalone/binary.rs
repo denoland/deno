@@ -420,7 +420,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let (maybe_original_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
           let specifier = &m.specifier;
-          let original_bytes = m.source.as_bytes();
+          let original_bytes = m.source.text.as_bytes();
           if self.cjs_tracker.is_maybe_cjs(specifier, m.media_type)? {
             if self.cjs_tracker.is_cjs_with_known_is_script(
               specifier,
@@ -431,7 +431,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 .cjs_module_export_analyzer
                 .analyze_all_exports(
                   module.specifier(),
-                  Some(Cow::Borrowed(m.source.as_ref())),
+                  Some(Cow::Borrowed(m.source.text.as_ref())),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
@@ -456,9 +456,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 &m.specifier,
                 m.media_type,
                 module_kind,
-                &m.source,
+                &m.source.text,
               )?;
-            if source != m.source.as_ref() {
+            if source != m.source.text.as_ref() {
               maybe_source_map = Some(source_map.into_bytes());
               maybe_transpiled = Some(source.into_bytes());
             }
@@ -466,7 +466,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           (Some(original_bytes), m.media_type)
         }
         deno_graph::Module::Json(m) => {
-          (Some(m.source.as_bytes()), m.media_type)
+          (Some(m.source.text.as_bytes()), m.media_type)
         }
         deno_graph::Module::Wasm(m) => {
           (Some(m.source.as_ref()), MediaType::Wasm)
@@ -720,6 +720,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .collect(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
+        raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
       },
       otel_config: self.cli_options.otel_config(),
