@@ -34,7 +34,9 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
     Ok(())
   }
 
-  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
+  async fn serve_tls(
+    socket: TlsStream<TcpStream>,
+  ) -> Result<(), anyhow::Error> {
     let mut connection = h2::server::handshake(socket).await?;
 
     while let Some(result) = connection.accept().await {
