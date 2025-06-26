@@ -171,7 +171,6 @@
 "parallel/test-child-process-no-deprecation.js" = {}
 "parallel/test-child-process-send-after-close.js" = {}
 "parallel/test-child-process-send-cb.js" = {}
-"parallel/test-child-process-send-utf8.js" = {}
 "parallel/test-child-process-set-blocking.js" = {}
 "parallel/test-child-process-silent.js" = {}
 "parallel/test-child-process-spawn-args.js" = {}
