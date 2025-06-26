@@ -22,7 +22,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
-use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
@@ -51,7 +51,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
-use crate::module_loader::EnhancedGraphError;
 use crate::module_loader::LoadCodeSourceError;
 use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::LoadPreparedModuleError;
@@ -536,7 +535,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     let result = self
-      .bundle_load(&args.path, requested_type_from_map(&args.with))
+      .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
     let result = match result {
       Ok(r) => r,
@@ -641,11 +640,8 @@ impl BundleLoadError {
         LoadCodeSourceErrorKind::LoadPreparedModule(
           LoadPreparedModuleError::Graph(ref e),
         ) => matches!(
-          &**e,
-          EnhancedGraphError {
-            error: ModuleError::UnsupportedMediaType { .. },
-            ..
-          }
+          e.error.as_kind(),
+          ModuleErrorKind::UnsupportedMediaType { .. },
         ),
         _ => false,
       },
@@ -778,7 +774,7 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    requested_type: RequestedModuleType,
+    requested_type: &RequestedModuleType,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
   {
     log::debug!(

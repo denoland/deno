@@ -1003,11 +1003,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable_subdomain_wildcards(&self) -> bool {
-    self.flags.unstable_config.subdomain_wildcards
-      || self.workspace().has_unstable("subdomain-wildcards")
-  }
-
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")
@@ -1023,6 +1018,11 @@ impl CliOptions {
     // perf penalty for non-npm Deno projects of searching for the closest
     // package.json beside each module
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
+  }
+
+  pub fn unstable_raw_imports(&self) -> bool {
+    self.flags.unstable_config.raw_imports
+      || self.workspace().has_unstable("raw-imports")
   }
 
   pub fn unstable_lazy_dynamic_imports(&self) -> bool {

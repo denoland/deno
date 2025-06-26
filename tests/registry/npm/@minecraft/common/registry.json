@@ -1,0 +1,39 @@
+{
+  "name": "@minecraft/common",
+  "description": "See full documentation for this module here:",
+  "dist-tags": {
+    "latest": "1.2.0"
+  },
+  "versions": {
+    "1.2.0": {
+      "name": "@minecraft/common",
+      "version": "1.2.0",
+      "license": "MIT",
+      "_id": "@minecraft/common@1.2.0",
+      "dist": {
+        "shasum": "a00d4130dcd5084dfd30e85e108c6d58eae8358b",
+        "tarball": "http://localhost:4260/@minecraft/common/common-1.2.0.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-JdmEq4P3Z/FtoBzhLijFgMSVFnFRrUoLwY8DHHrgtFo0mfLTOLTB1RErYjLMsA6b7BGVNxkX/pfFRiH7QZ0XwQ==",
+        "signatures": [
+          {
+            "sig": "MEYCIQCajw5bMsAwRHAZ5idQRHb+vxluFUKU5G/avR3YuwZ70QIhAK3AWB8eGTFL0wKLkHjtTc5A9qwrs1/5isK5MI2eDXp/",
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
+          }
+        ],
+        "unpackedSize": 3752
+      },
+      "types": "./index.d.ts",
+      "_npmVersion": "10.2.3",
+      "description": "See full documentation for this module here:",
+      "directories": {},
+      "_nodeVersion": "18.19.0",
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/common_1.2.0_1710267246154_0.9556939208397457",
+        "host": "s3://npm-registry-packages"
+      }
+    }
+  },
+  "license": "MIT"
+}
