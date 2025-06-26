@@ -1140,3 +1140,46 @@ pub fn op_node_verify_ed25519(
 
   Ok(verified)
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SpkacError {
+  #[error("spkac is too large")]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  #[class(range)]
+  BufferOutOfRange,
+}
+
+#[op2(fast)]
+pub fn op_node_verify_spkac(
+  #[buffer] spkac: &[u8],
+) -> Result<bool, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::verify_spkac(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_public_key(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_public_key(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_challenge(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_challenge(spkac))
+}

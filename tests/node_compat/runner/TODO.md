@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1212 tests out of 3993 have been ported from Node 23.9.0 (30.35% ported, 70.27% remaining).
+1216 tests out of 3993 have been ported from Node 23.9.0 (30.45% ported, 70.17% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -227,9 +227,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-assert-deep-with-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep-with-error.js)
 - [parallel/test-assert-deep.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-deep.js)
 - [parallel/test-assert-esm-cjs-message-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-esm-cjs-message-verify.js)
-- [parallel/test-assert-fail-deprecation.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-fail-deprecation.js)
 - [parallel/test-assert-first-line.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-first-line.js)
-- [parallel/test-assert-if-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-if-error.js)
 - [parallel/test-assert-objects.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-objects.js)
 - [parallel/test-assert-typedarray-deepequal.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-assert-typedarray-deepequal.js)
 - [parallel/test-async-hooks-async-await.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-async-hooks-async-await.js)
@@ -488,7 +486,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-async-sign-verify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-async-sign-verify.js)
 - [parallel/test-crypto-authenticated-stream.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated-stream.js)
 - [parallel/test-crypto-authenticated.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-authenticated.js)
-- [parallel/test-crypto-certificate.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-certificate.js)
 - [parallel/test-crypto-cipheriv-decipheriv.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-cipheriv-decipheriv.js)
 - [parallel/test-crypto-classes.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-classes.js)
 - [parallel/test-crypto-des3-wrap.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-crypto-des3-wrap.js)
@@ -2039,10 +2036,7 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-stdout-close-unref.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-close-unref.js)
 - [parallel/test-stdout-to-file.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-to-file.js)
 - [parallel/test-strace-openat-openssl.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-strace-openat-openssl.js)
-- [parallel/test-stream-aliases-legacy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-aliases-legacy.js)
-- [parallel/test-stream-base-prototype-accessors-enumerability.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-prototype-accessors-enumerability.js)
 - [parallel/test-stream-base-typechecking.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-typechecking.js)
-- [parallel/test-stream-consumers.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-consumers.js)
 - [parallel/test-stream-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-destroy.js)
 - [parallel/test-stream-pipe-deadlock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipe-deadlock.js)
 - [parallel/test-stream-pipeline-http2.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline-http2.js)
