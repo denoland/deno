@@ -29,6 +29,11 @@ import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
 import {
+  lchmod,
+  lchmodPromise,
+  lchmodSync,
+} from "ext:deno_node/_fs/_fs_lchmod.ts";
+import {
   lchown,
   lchownPromise,
   lchownSync,
@@ -184,7 +189,7 @@ const promises = {
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
-  // lchmod: promisify(lchmod),
+  lchmod: lchmodPromise,
   lchown: lchownPromise,
   chown: chownPromise,
   utimes: utimesPromise,
@@ -236,6 +241,8 @@ export default {
   futimesSync,
   glob,
   globSync,
+  lchmod,
+  lchmodSync,
   lchown,
   lchownSync,
   link,
@@ -355,8 +362,13 @@ export {
   ftruncateSync,
   futimes,
   futimesSync,
+<<<<<<< main
   glob,
   globSync,
+=======
+  lchmod,
+  lchmodSync,
+>>>>>>> main
   link,
   linkSync,
   lstat,
