@@ -1,0 +1,6 @@
+TS2584 [ERROR]: Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.
+document.body.innerHTML = "<div>Hello</div>";
+~~~~~~~~
+    at file:///[WILDLINE]main.ts:1:1
+
+error: Type checking failed.

@@ -40,6 +40,7 @@ use sys_traits::FsRead;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
+use crate::factory::ConfigDiscoveryOption;
 use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolver;
@@ -646,12 +647,29 @@ pub struct CompilerOptionsResolver {
   ts_configs: Vec<TsConfigData>,
 }
 
+impl Default for CompilerOptionsResolver {
+  fn default() -> Self {
+    Self {
+      workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
+        Vec::new(),
+        CompilerOptionsSourceKind::DenoJson,
+        Default::default(),
+      )),
+      ts_configs: Vec::new(),
+    }
+  }
+}
+
 impl CompilerOptionsResolver {
   pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
     workspace_directory_provider: &WorkspaceDirectoryProvider,
     node_resolver: &TsConfigNodeResolver<NSys>,
+    config_discover: &ConfigDiscoveryOption,
   ) -> Self {
+    if matches!(config_discover, ConfigDiscoveryOption::Disabled) {
+      return Self::default();
+    }
     let logged_warnings = new_rc(LoggedWarnings::default());
     let root_dir = workspace_directory_provider.root();
     let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
@@ -662,7 +680,9 @@ impl CompilerOptionsResolver {
     let mut ts_config_collector =
       TsConfigCollector::new(sys, node_resolver, &logged_warnings);
     for (dir_url, dir) in workspace_directory_provider.entries() {
-      ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
+      if dir.has_deno_or_pkg_json() {
+        ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
+      }
       if let Some(dir_url) = dir_url {
         workspace_configs.insert(
           dir_url.clone(),

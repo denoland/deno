@@ -793,6 +793,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         &self.sys,
         self.workspace_factory.workspace_directory_provider()?,
         self.node_resolver()?,
+        &self.workspace_factory.options.config_discovery,
       )))
     })
   }
