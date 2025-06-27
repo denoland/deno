@@ -61,7 +61,7 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.48.0", features = ["transpiling"] }
 deno_core = { version = "0.352.0" }
 
-deno_cache_dir = "=0.22.2"
+deno_cache_dir = "=0.22.3"
 deno_doc = "=0.179.0"
 deno_error = "=0.6.1"
 deno_graph = { version = "=0.96.0", default-features = false }
@@ -529,3 +529,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_cache_dir = { path = "../deno_cache_dir/rs_lib" }

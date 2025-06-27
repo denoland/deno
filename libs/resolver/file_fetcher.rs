@@ -8,6 +8,7 @@ use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::BlobStore;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::CachedOrRedirect;
 use deno_cache_dir::file_fetcher::FetchCachedError;
 use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::file_fetcher::FileFetcherSys;
@@ -21,6 +22,7 @@ use deno_cache_dir::HttpCacheRc;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_graph::source::CacheInfo;
+use deno_graph::source::CacheSetting as LoaderCacheSetting;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
@@ -119,6 +121,22 @@ pub struct FetchNoFollowOptions<'a> {
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
   pub maybe_checksum: Option<&'a LoaderChecksum>,
+}
+
+impl<'a> FetchNoFollowOptions<'a> {
+  fn into_deno_cache_dir_options(
+    self,
+  ) -> deno_cache_dir::file_fetcher::FetchNoFollowOptions<'a> {
+    deno_cache_dir::file_fetcher::FetchNoFollowOptions {
+      local: self.local,
+      maybe_auth: self.maybe_auth,
+      maybe_checksum: self
+        .maybe_checksum
+        .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
+      maybe_accept: self.maybe_accept,
+      maybe_cache_setting: self.maybe_cache_setting,
+    }
+  }
 }
 
 #[sys_traits::auto_impl]
@@ -298,6 +316,21 @@ impl<
     Err(TooManyRedirectsError(specifier.into_owned()).into())
   }
 
+  /// Ensures the module is cached without following redirects.
+  pub async fn ensure_cached_no_follow(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<CachedOrRedirect, FetchNoFollowError> {
+    self.validate_fetch(specifier, permissions);
+    self
+      .file_fetcher
+      .ensure_cached_no_follow(specifier, options.into_deno_cache_dir_options())
+      .await
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+  }
+
   /// Fetches without following redirects.
   pub async fn fetch_no_follow(
     &self,
@@ -305,6 +338,19 @@ impl<
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    self.validate_fetch(specifier, permissions);
+    self
+      .file_fetcher
+      .fetch_no_follow(specifier, options.into_deno_cache_dir_options())
+      .await
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+  }
+
+  fn validate_fetch(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+  ) -> Result<(), FetchNoFollowError> {
     validate_scheme(specifier).map_err(|err| {
       FetchNoFollowErrorKind::FetchNoFollow(err.into()).into_box()
     })?;
@@ -316,22 +362,7 @@ impl<
         permissions.check_specifier(specifier, kind)?;
       }
     }
-    self
-      .file_fetcher
-      .fetch_no_follow(
-        specifier,
-        deno_cache_dir::file_fetcher::FetchNoFollowOptions {
-          local: options.local,
-          maybe_auth: options.maybe_auth,
-          maybe_checksum: options
-            .maybe_checksum
-            .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
-          maybe_accept: options.maybe_accept,
-          maybe_cache_setting: options.maybe_cache_setting,
-        },
-      )
-      .await
-      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+    Ok(())
   }
 
   /// A synchronous way to retrieve a source file, where if the file has already
@@ -473,8 +504,6 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    use deno_graph::source::CacheSetting as LoaderCacheSetting;
-
     if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
@@ -500,50 +529,35 @@ impl<
     let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
-      let maybe_cache_setting = match options.cache_setting {
-        LoaderCacheSetting::Use => None,
-        LoaderCacheSetting::Reload => {
-          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(load_error(JsErrorBox::generic(
-              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            )));
-          }
-          Some(CacheSetting::ReloadAll)
-        }
-        LoaderCacheSetting::Only => Some(CacheSetting::Only),
-      };
+      let maybe_cache_setting = resolve_cache_setting(
+        options.cache_setting,
+        file_fetcher.cache_setting(),
+      )?;
       file_fetcher
         .fetch_no_follow(
           &specifier,
           match &permissions {
-            Some(permissions) => {
-              FetchPermissionsOptionRef::Restricted(permissions,
+            Some(permissions) => FetchPermissionsOptionRef::Restricted(
+              permissions,
               if is_statically_analyzable {
                 CheckSpecifierKind::Static
               } else {
                 CheckSpecifierKind::Dynamic
-              })
-            },
+              },
+            ),
             None => FetchPermissionsOptionRef::AllowAll,
           },
-          FetchNoFollowOptions {
-            local: FetchLocalOptions {
-              // only include the mtime in dynamic branches because we only
-              // need to know about it then in order to tell whether to reload
-              // or not
-              include_mtime: options.in_dynamic_branch,
-            },
-            maybe_auth: None,
-            maybe_accept: None,
-            maybe_cache_setting: maybe_cache_setting.as_ref(),
-            maybe_checksum: options.maybe_checksum.as_ref(),
-          })
+          resolve_fetch_no_follow_options(
+            &options,
+            maybe_cache_setting.as_ref(),
+          ),
+        )
         .await
-        .map(|file_or_redirect| {
-          match file_or_redirect {
-            FileOrRedirect::File(file) => {
-              let maybe_headers =
-              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+        .map(|file_or_redirect| match file_or_redirect {
+          FileOrRedirect::File(file) => {
+            let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier))
+              {
                 (Some(headers), Some(overrides)) => {
                   Some(headers.into_iter().chain(overrides.clone()).collect())
                 }
@@ -557,59 +571,104 @@ impl<
               mtime: file.mtime,
               content: file.source,
             }))
-            },
-            FileOrRedirect::Redirect(redirect_specifier) => {
-              Ok(Some(LoadResponse::Redirect {
-                specifier: redirect_specifier,
-              }))
-            },
+          }
+          FileOrRedirect::Redirect(redirect_specifier) => {
+            Ok(Some(LoadResponse::Redirect {
+              specifier: redirect_specifier,
+            }))
           }
         })
         .unwrap_or_else(|err| {
-          let err = err.into_kind();
-          match err {
-            FetchNoFollowErrorKind::FetchNoFollow(err) => {
-              use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::*;
-              let err = err.into_kind();
-              match err {
-                NotFound(_) => Ok(None),
-                UrlToFilePath { .. } |
-                ReadingBlobUrl { .. } |
-                ReadingFile { .. } |
-                FetchingRemote { .. } |
-                ClientError { .. } |
-                NoRemote { .. } |
-                DataUrlDecode { .. } |
-                RedirectResolution { .. } |
-                CacheRead { .. } |
-                CacheSave  { .. } |
-                UnsupportedScheme  { .. } |
-                RedirectHeaderParse { .. } |
-                InvalidHeader { .. } => Err(load_error(JsErrorBox::from_err(err))),
-                NotCached { .. } => {
-                  if options.cache_setting == LoaderCacheSetting::Only {
-                    Ok(None)
-                  } else {
-                    Err(load_error(JsErrorBox::from_err(err)))
-                  }
-                },
-                ChecksumIntegrity(err) => {
-                  // convert to the equivalent deno_graph error so that it
-                  // enhances it if this is passed to deno_graph
-                  Err(
-                    deno_graph::source::LoadError::ChecksumIntegrity(deno_graph::source::ChecksumIntegrityError {
-                      actual: err.actual,
-                      expected: err.expected,
-                    }),
-                  )
-                }
-              }
-            },
-            FetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(load_error(JsErrorBox::from_err(permission_check_error))),
-          }
+          handle_load_error(err, options.cache_setting).map(|()| None)
         })
     }
     .boxed_local()
+  }
+}
+
+fn resolve_fetch_no_follow_options<'a>(
+  options: &'a deno_graph::source::LoadOptions,
+  maybe_cache_setting: Option<&'a CacheSetting>,
+) -> FetchNoFollowOptions<'a> {
+  FetchNoFollowOptions {
+    local: FetchLocalOptions {
+      // only include the mtime in dynamic branches because we only
+      // need to know about it then in order to tell whether to reload
+      // or not
+      include_mtime: options.in_dynamic_branch,
+    },
+    maybe_auth: None,
+    maybe_accept: None,
+    maybe_cache_setting,
+    maybe_checksum: options.maybe_checksum.as_ref(),
+  }
+}
+
+fn resolve_cache_setting(
+  cache_setting: LoaderCacheSetting,
+  file_fetcher_cache_setting: &CacheSetting,
+) -> Result<Option<CacheSetting>, deno_graph::source::LoadError> {
+  match cache_setting {
+    LoaderCacheSetting::Use => Ok(None),
+    LoaderCacheSetting::Reload => {
+      if matches!(file_fetcher_cache_setting, CacheSetting::Only) {
+        Err(load_error(JsErrorBox::generic(
+          "Could not resolve version constraint using only cached data. Try running again without --cached-only"
+        )))
+      } else {
+        Ok(Some(CacheSetting::ReloadAll))
+      }
+    }
+    LoaderCacheSetting::Only => Ok(Some(CacheSetting::Only)),
+  }
+}
+
+fn handle_load_error(
+  err: FetchNoFollowError,
+  cache_setting: LoaderCacheSetting,
+) -> Result<(), deno_graph::source::LoadError> {
+  let err = err.into_kind();
+  match err {
+    FetchNoFollowErrorKind::FetchNoFollow(err) => {
+      use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::*;
+      let err = err.into_kind();
+      match err {
+        NotFound(_) => Ok(()),
+        UrlToFilePath { .. }
+        | ReadingBlobUrl { .. }
+        | ReadingFile { .. }
+        | FetchingRemote { .. }
+        | ClientError { .. }
+        | NoRemote { .. }
+        | DataUrlDecode { .. }
+        | RedirectResolution { .. }
+        | CacheRead { .. }
+        | CacheSave { .. }
+        | UnsupportedScheme { .. }
+        | RedirectHeaderParse { .. }
+        | InvalidHeader { .. } => Err(load_error(JsErrorBox::from_err(err))),
+        NotCached { .. } => {
+          if cache_setting == LoaderCacheSetting::Only {
+            Ok(())
+          } else {
+            Err(load_error(JsErrorBox::from_err(err)))
+          }
+        }
+        ChecksumIntegrity(err) => {
+          // convert to the equivalent deno_graph error so that it
+          // enhances it if this is passed to deno_graph
+          Err(deno_graph::source::LoadError::ChecksumIntegrity(
+            deno_graph::source::ChecksumIntegrityError {
+              actual: err.actual,
+              expected: err.expected,
+            },
+          ))
+        }
+      }
+    }
+    FetchNoFollowErrorKind::PermissionCheck(permission_check_error) => {
+      Err(load_error(JsErrorBox::from_err(permission_check_error)))
+    }
   }
 }
 
