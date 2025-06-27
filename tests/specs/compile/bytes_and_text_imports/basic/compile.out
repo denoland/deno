@@ -1,10 +1,10 @@
 Download http://localhost:4545/run/invalid_utf8.ts
 Check file:///[WILDLINE]/main.ts
-Compile file:///[WILDLINE]/main.ts to bin.exe
+Compile file:///[WILDLINE]/main.ts to [WILDLINE]
 
 Embedded Files
 
-bin.exe
+[WILDLINE]
 ├── add_bom.ts ([WILDLINE])
 ├── hello_bom.txt ([WILDLINE])
 ├── lossy.ts ([WILDLINE])

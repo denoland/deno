@@ -4,7 +4,7 @@ Compile file:///[WILDLINE]
 
 Embedded Files
 
-bin.exe
+[WILDLINE]
 ├── branch.ts ([WILDLINE])
 └── main.ts ([WILDLINE])
 
