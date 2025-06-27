@@ -950,7 +950,7 @@ impl<'a> ResolverFactory<'a> {
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
-        Arc::new(registry_info_provider.as_npm_registry_api()),
+        registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,

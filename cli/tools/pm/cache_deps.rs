@@ -188,7 +188,8 @@ pub async fn cache_top_level_deps(
         },
       )
       .await?;
-    maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots, true);
+    maybe_graph_error =
+      graph_builder.graph_roots_valid(graph, &roots, true, true);
   }
 
   npm_installer.cache_packages(PackageCaching::All).await?;

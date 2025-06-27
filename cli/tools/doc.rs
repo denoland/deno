@@ -85,6 +85,8 @@ async fn generate_doc_nodes_for_builtin_types(
         npm_resolver: None,
         reporter: None,
         resolver: None,
+        unstable_bytes_imports: false,
+        unstable_text_imports: false,
       },
     )
     .await;
@@ -156,6 +158,7 @@ pub async fn doc(
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
           ignore_graph_errors: true,
+          allow_unknown_jsr_exports: false,
         },
       );
       for error in errors {

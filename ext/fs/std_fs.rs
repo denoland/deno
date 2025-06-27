@@ -212,6 +212,14 @@ impl FileSystem for RealFs {
       .map_err(Into::into)
   }
 
+  fn lchmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+    lchmod(path, mode)
+  }
+
+  async fn lchmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+    spawn_blocking(move || lchmod(&path, mode)).await?
+  }
+
   fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     fs::hard_link(oldpath, newpath).map_err(Into::into)
   }
@@ -457,6 +465,26 @@ fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
 // TODO: implement chown for Windows
 #[cfg(not(unix))]
 fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+  Err(FsError::NotSupported)
+}
+
+#[cfg(target_os = "macos")]
+fn lchmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::unix::fs::OpenOptionsExt;
+  use std::os::unix::fs::PermissionsExt;
+
+  use libc::O_SYMLINK;
+
+  let file = fs::OpenOptions::new()
+    .write(true)
+    .custom_flags(O_SYMLINK)
+    .open(path)?;
+  file.set_permissions(fs::Permissions::from_mode(mode))?;
+  Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lchmod(_path: &Path, _mode: u32) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 

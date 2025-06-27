@@ -323,6 +323,7 @@ pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
+  pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
@@ -331,6 +332,8 @@ pub struct LibMainWorkerOptions {
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
+  // If the runtime should try to use `export default { fetch }`
+  pub auto_serve: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -474,6 +477,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
           is_standalone: shared.options.is_standalone,
+          auto_serve: shared.options.auto_serve,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -501,6 +505,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         strace_ops: shared.options.strace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
@@ -654,6 +659,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         is_standalone: shared.options.is_standalone,
+        auto_serve: shared.options.auto_serve,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
@@ -683,6 +689,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
+      enable_raw_imports: shared.options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       unconfigured_runtime,
     };

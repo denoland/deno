@@ -84,7 +84,6 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-import { setProcess } from "ext:deno_node/_events.mjs";
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
@@ -1051,7 +1050,5 @@ internals.__bootstrapNodeProcess = function (
     );
   }
 };
-
-setProcess(process);
 
 export default process;

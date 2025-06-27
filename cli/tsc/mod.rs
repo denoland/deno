@@ -88,6 +88,7 @@ pub fn get_types_declaration_file_text() -> String {
       LAZILY_LOADED_STATIC_ASSETS
         .get(lib_name.as_str())
         .unwrap()
+        .source
         .as_str()
     })
     .collect::<Vec<_>>()
@@ -128,7 +129,13 @@ macro_rules! maybe_compressed_source {
 
 macro_rules! maybe_compressed_lib {
   ($name: expr, $file: expr) => {
-    ($name, maybe_compressed_source!(concat!("tsc/dts/", $file)))
+    (
+      $name,
+      StaticAsset {
+        is_lib: true,
+        source: maybe_compressed_source!(concat!("tsc/dts/", $file)),
+      },
+    )
   };
   ($e: expr) => {
     maybe_compressed_lib!($e, $e)
@@ -160,12 +167,17 @@ impl StaticAssetSource {
   }
 }
 
+pub struct StaticAsset {
+  pub is_lib: bool,
+  pub source: StaticAssetSource,
+}
+
 /// Contains static assets that are not preloaded in the compiler snapshot.
 ///
 /// We lazily load these because putting them in the compiler snapshot will
 /// increase memory usage when not used (last time checked by about 0.5MB).
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
-  IndexMap<&'static str, StaticAssetSource>,
+  IndexMap<&'static str, StaticAsset>,
 > = Lazy::new(|| {
   IndexMap::from([
     // compressed in build.rs
@@ -294,9 +306,30 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
       "node_types.d.ts",
-      StaticAssetSource::Uncompressed(
-        "/// <reference types=\"npm:@types/node\" />\n",
-      ),
+      StaticAsset {
+        is_lib: false,
+        source: StaticAssetSource::Uncompressed(
+          "/// <reference types=\"npm:@types/node\" />\n",
+        ),
+      },
+    ),
+    (
+      "text_import.d.ts",
+      StaticAsset {
+        is_lib: false,
+        source: StaticAssetSource::Uncompressed(
+          "export const data: string;\nexport default data;\n",
+        ),
+      },
+    ),
+    (
+      "bytes_import.d.ts",
+      StaticAsset {
+        is_lib: false,
+        source: StaticAssetSource::Uncompressed(
+          "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n",
+        ),
+      },
     ),
   ])
 });
@@ -337,7 +370,9 @@ impl fmt::Display for Stats {
 
 /// Retrieve a static asset that are included in the binary.
 fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
-  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.as_str())
+  LAZILY_LOADED_STATIC_ASSETS
+    .get(asset)
+    .map(|s| s.source.as_str())
 }
 
 fn get_maybe_hash(
@@ -719,9 +754,10 @@ fn op_load_inner(
     };
     let maybe_module = match graph.try_get(specifier) {
       Ok(maybe_module) => maybe_module,
-      Err(err) => match err {
-        deno_graph::ModuleError::UnsupportedMediaType {
-          media_type, ..
+      Err(err) => match err.as_kind() {
+        deno_graph::ModuleErrorKind::UnsupportedMediaType {
+          media_type,
+          ..
         } => {
           return Ok(Some(LoadResponse {
             data: FastString::from_static(""),
@@ -748,12 +784,12 @@ fn op_load_inner(
             module
               .fast_check_module()
               .map(|m| FastString::from(m.source.clone()))
-              .unwrap_or(module.source.clone().into()),
+              .unwrap_or(module.source.text.clone().into()),
           )
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
-          Some(FastString::from(module.source.clone()))
+          Some(FastString::from(module.source.text.clone()))
         }
         Module::Wasm(module) => {
           media_type = MediaType::Dts;
@@ -857,7 +893,10 @@ fn op_remap_specifier(
 #[serde]
 fn op_libs() -> Vec<String> {
   let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for key in LAZILY_LOADED_STATIC_ASSETS.keys() {
+  for (key, value) in LAZILY_LOADED_STATIC_ASSETS.iter() {
+    if !value.is_lib {
+      continue;
+    }
     let lib = key
       .replace("lib.", "")
       .replace(".d.ts", "")
@@ -1012,8 +1051,8 @@ fn resolve_graph_specifier_types(
   let maybe_module = match graph.try_get(specifier) {
     Ok(Some(module)) => Some(module),
     Ok(None) => None,
-    Err(err) => match err {
-      deno_graph::ModuleError::UnsupportedMediaType {
+    Err(err) => match err.as_kind() {
+      deno_graph::ModuleErrorKind::UnsupportedMediaType {
         specifier,
         media_type,
         ..

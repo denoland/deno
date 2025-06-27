@@ -640,7 +640,7 @@ impl DepManager {
         &roots,
         crate::module_loader::PrepareModuleLoadOptions {
           is_dynamic: false,
-          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          lib: deno_config::workspace::TsTypeLib::DenoWindow,
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
