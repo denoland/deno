@@ -1,3 +1,4 @@
+Download http://localhost:4545/run/invalid_utf8.ts
 Check file:///[WILDLINE]/main.ts
 Compile file:///[WILDLINE]/main.ts to bin.exe
 

@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "steps": [{
-    "args": "compile --unstable-raw-imports --output bin main.ts",
+    "args": "compile --unstable-raw-imports --allow-import --output bin main.ts",
     "output": "compile.out"
   }, {
     "commandName": "./bin",
