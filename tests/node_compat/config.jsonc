@@ -151,8 +151,7 @@
       "test-zlib-unzip-one-byte-chunks.js",
       "test-zlib-write-after-end.js",
       "test-zlib-write-after-flush.js",
-      "test-zlib-zero-byte.js",
-      "test-zlib-zero-windowBits.js"
+      "test-zlib-zero-byte.js"
     ],
     "pummel": [
       "test-crypto-dh-hash.js",
