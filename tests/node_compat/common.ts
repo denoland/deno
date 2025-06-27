@@ -10,7 +10,6 @@ export const RUN_ARGS = [
   "--quiet",
   "--unstable-unsafe-proto",
   "--unstable-bare-node-builtins",
-  "--unstable-node-globals",
 ];
 
 export const TEST_ARGS = [

@@ -19,12 +19,10 @@ use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
-use serde::Serializer;
 use serde_json::json;
 use serde_json::Value;
 use sys_traits::FsRead;
 use thiserror::Error;
-use ts::parse_compiler_options;
 use url::Url;
 
 use crate::glob::FilePatterns;
@@ -34,6 +32,7 @@ use crate::UrlToFilePathError;
 
 mod ts;
 
+pub use ts::parse_compiler_options;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::IgnoredCompilerOptions;
@@ -1887,121 +1886,10 @@ impl ConfigFile {
   }
 }
 
-/// Represents the "default" type library that should be used when type
-/// checking the code in the module graph.  Note that a user provided config
-/// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-pub enum TsTypeLib {
-  DenoWindow,
-  DenoWorker,
-}
-
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
-}
-
-impl Serialize for TsTypeLib {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let value = match self {
-      Self::DenoWindow => {
-        vec!["deno.window".to_string(), "deno.unstable".to_string()]
-      }
-      Self::DenoWorker => {
-        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
-      }
-    };
-    Serialize::serialize(&value, serializer)
-  }
-}
-
-/// An enum that represents the base tsc configuration to return.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CompilerOptionsType {
-  /// Return a configuration for bundling, using swc to emit the bundle. This is
-  /// independent of type checking.
-  Bundle,
-  /// Return a configuration to use tsc to type check. This
-  /// is independent of either bundling or emitting via swc.
-  Check { lib: TsTypeLib },
-  /// Return a configuration to use swc to emit single module files.
-  Emit,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerOptionsWithIgnoredOptions {
   pub compiler_options: CompilerOptions,
   pub ignored_options: Vec<IgnoredCompilerOptions>,
-}
-
-/// For a given configuration type get the starting point CompilerOptions
-/// used that can then be merged with user specified options.
-pub fn get_base_compiler_options_for_emit(
-  config_type: CompilerOptionsType,
-) -> CompilerOptions {
-  match config_type {
-    CompilerOptionsType::Bundle => CompilerOptions::new(json!({
-      "allowImportingTsExtensions": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": true,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
-      "inlineSources": false,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-    })),
-    CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
-      "allowJs": true,
-      "allowImportingTsExtensions": true,
-      "allowSyntheticDefaultImports": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": false,
-      "incremental": true,
-      "jsx": "react",
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "isolatedModules": true,
-      "lib": lib,
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "sourceMap": false,
-      "strict": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "internal:///.tsbuildinfo",
-      "useDefineForClassFields": true,
-    })),
-    CompilerOptionsType::Emit => CompilerOptions::new(json!({
-      "allowImportingTsExtensions": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": false,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "resolveJsonModule": true,
-    })),
-  }
 }
 
 #[cfg(test)]

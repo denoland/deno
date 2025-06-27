@@ -661,3 +661,13 @@ Deno.test({
     strictEqual(a.buffer, b.buffer);
   },
 });
+
+Deno.test({
+  name: "[node/buffer] toString('utf8') keeps BOM",
+  fn() {
+    assertEquals(
+      Buffer.from([239, 187, 191, 97, 98]).toString("utf8"),
+      "\uFEFFab",
+    );
+  },
+});
