@@ -2,7 +2,10 @@
 
 mod esbuild;
 mod externals;
+mod provider;
 mod transform;
+
+pub use provider::CliBundleProvider;
 
 use std::borrow::Cow;
 use std::cell::RefCell;

@@ -14,15 +14,26 @@ deno_core::extension!(
     op_bundle,
   ],
   options = {
-    bundle_provider: Arc<dyn BundleProvider>,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   },
   state = |state, options| {
-    state.put(options.bundle_provider);
+    if let Some(bundle_provider) = options.bundle_provider {
+      state.put(bundle_provider);
+    } else {
+      state.put::<Arc<dyn BundleProvider>>(Arc::new(()));
+    }
   },
 );
 
-#[async_trait(?Send)]
-pub trait BundleProvider {
+#[async_trait]
+impl BundleProvider for () {
+  async fn bundle(&self, options: BundleOptions) -> Result<(), AnyError> {
+    todo!()
+  }
+}
+
+#[async_trait]
+pub trait BundleProvider: Send + Sync {
   async fn bundle(&self, options: BundleOptions) -> Result<(), AnyError>;
 }
 

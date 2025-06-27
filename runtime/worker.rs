@@ -213,6 +213,8 @@ pub struct WorkerServiceOptions<
 
   /// V8 code cache for module and script source code.
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
+
+  pub bundle_provider: Option<Arc<dyn crate::ops::bundle::BundleProvider>>,
 }
 
 pub struct WorkerOptions {
@@ -595,6 +597,9 @@ impl MainWorker {
         ops::worker_host::deno_worker_host::args(
           options.create_web_worker_cb.clone(),
           options.format_js_error_fn.clone(),
+        ),
+        ops::bundle::deno_bundle_runtime::args(
+          services.bundle_provider.clone(),
         ),
       ])
       .unwrap();
@@ -1078,6 +1083,7 @@ fn common_extensions<
     ops::permissions::deno_permissions::init(),
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
+    ops::bundle::deno_bundle_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,
