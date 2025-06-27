@@ -98,18 +98,22 @@ pub(crate) fn from_env() -> Proxies {
     Some(proxy) => {
       intercepts.push(proxy);
     }
-    _ => if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
-      intercepts.push(proxy);
-    },
+    _ => {
+      if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
+        intercepts.push(proxy);
+      }
+    }
   }
 
   match parse_env_var("HTTPS_PROXY", Filter::Https) {
     Some(proxy) => {
       intercepts.push(proxy);
     }
-    _ => if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
-      intercepts.push(proxy);
-    },
+    _ => {
+      if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
+        intercepts.push(proxy);
+      }
+    }
   }
 
   // In a CGI context, headers become environment variables. So, "Proxy:" becomes HTTP_PROXY.
@@ -119,9 +123,11 @@ pub(crate) fn from_env() -> Proxies {
       Some(proxy) => {
         intercepts.push(proxy);
       }
-      _ => if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
-        intercepts.push(proxy);
-      },
+      _ => {
+        if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
+          intercepts.push(proxy);
+        }
+      }
     }
   }
 

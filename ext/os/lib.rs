@@ -171,7 +171,9 @@ fn op_set_env(
 
   // TODO: Audit that the environment access only happens in single-threaded code.
   #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe { env::set_var(key, value) };
+  unsafe {
+    env::set_var(key, value)
+  };
   dt_change_notif(scope, key);
   Ok(())
 }
@@ -245,7 +247,9 @@ fn op_delete_env(
   }
   // TODO: Audit that the environment access only happens in single-threaded code.
   #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe { env::remove_var(key) };
+  unsafe {
+    env::remove_var(key)
+  };
   Ok(())
 }
 

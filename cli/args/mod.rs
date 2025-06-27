@@ -472,7 +472,9 @@ impl CliOptions {
       // Remove so that child processes don't inherit this environment variable.
       // TODO: Audit that the environment access only happens in single-threaded code.
       #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe { std::env::remove_var("NODE_CHANNEL_FD") };
+      unsafe {
+        std::env::remove_var("NODE_CHANNEL_FD")
+      };
       node_channel_fd.parse::<i64>().ok()
     } else {
       None
@@ -985,7 +987,9 @@ impl CliOptions {
             // remove the env var so that child sub processes won't pick this up
             // TODO: Audit that the environment access only happens in single-threaded code.
             #[allow(clippy::undocumented_unsafe_blocks)]
-            unsafe { std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME) };
+            unsafe {
+              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
+            };
             Some(var)
           }
           Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
