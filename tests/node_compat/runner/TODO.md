@@ -2036,7 +2036,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-stdout-close-unref.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-close-unref.js)
 - [parallel/test-stdout-to-file.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stdout-to-file.js)
 - [parallel/test-strace-openat-openssl.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-strace-openat-openssl.js)
-- [parallel/test-stream-base-typechecking.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-base-typechecking.js)
 - [parallel/test-stream-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-destroy.js)
 - [parallel/test-stream-pipe-deadlock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipe-deadlock.js)
 - [parallel/test-stream-pipeline-http2.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-stream-pipeline-http2.js)

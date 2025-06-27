@@ -18,9 +18,9 @@ use node_resolver::UrlOrPath;
 use url::Url;
 
 use crate::cjs::CjsTracker;
+use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
 use crate::workspace::MappedResolutionDiagnostic;
-use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveError;
 use crate::DenoResolverSys;
 use crate::RawDenoResolverRc;
@@ -405,7 +405,7 @@ impl<
   pub fn as_graph_resolver<'a>(
     &'a self,
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
-    scoped_jsx_import_source_config: &'a ScopedJsxImportSourceConfig,
+    jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -416,7 +416,7 @@ impl<
     DenoGraphResolverAdapter {
       cjs_tracker,
       resolver: self,
-      scoped_jsx_import_source_config,
+      jsx_import_source_config_resolver,
     }
   }
 }
@@ -435,7 +435,7 @@ pub struct DenoGraphResolverAdapter<
     TNpmPackageFolderResolver,
     TSys,
   >,
-  scoped_jsx_import_source_config: &'a ScopedJsxImportSourceConfig,
+  jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
 }
 
 impl<
@@ -473,22 +473,22 @@ impl<
 {
   fn default_jsx_import_source(&self, referrer: &Url) -> Option<String> {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn default_jsx_import_source_types(&self, referrer: &Url) -> Option<String> {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn jsx_import_source_module(&self, referrer: &Url) -> &str {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }

@@ -604,14 +604,35 @@ const hostImpl = {
     containingSourceFile,
     _reusedNames,
   ) {
-    const specifiers = moduleLiterals.map((literal) => [
-      ts.getModeForUsageLocation(
-        containingSourceFile,
-        literal,
-        compilerOptions,
-      ) === ts.ModuleKind.CommonJS,
-      literal.text,
-    ]);
+    const specifiers = moduleLiterals.map((literal) => {
+      const rawKind = getModuleLiteralImportKind(literal);
+      if (rawKind != null) {
+        // hack to get the specifier keyed differently until
+        // https://github.com/microsoft/TypeScript/issues/61941 is resolved
+        if (!literal.text.includes("?")) {
+          literal.text += `?${rawKind}`;
+        } else if (
+          !literal.text.includes(`?${rawKind}`) &&
+          !literal.text.includes(`&${rawKind}`)
+        ) {
+          literal.text += `&${rawKind}`;
+        }
+        return [
+          false,
+          rawKind === "text"
+            ? "asset:///text_import.d.ts"
+            : "asset:///bytes_import.d.ts",
+        ];
+      }
+      return [
+        ts.getModeForUsageLocation(
+          containingSourceFile,
+          literal,
+          compilerOptions,
+        ) === ts.ModuleKind.CommonJS,
+        literal.text,
+      ];
+    });
     if (logDebug) {
       debug(`host.resolveModuleNames()`);
       debug(`  base: ${base}`);
@@ -912,3 +933,94 @@ const setTypesNodeIgnorableNames = new Set([
   "WritableStreamDefaultWriter",
 ]);
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
+
+/**
+ * @param {ts.StringLiteralLike} node
+ * @returns {"text" | "bytes" | undefined}
+ */
+function getModuleLiteralImportKind(node) {
+  const parent = node.parent;
+  if (!parent) {
+    return undefined;
+  }
+  if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) {
+    const elements = parent.attributes?.elements;
+    if (!elements) {
+      return undefined;
+    }
+    for (const element of elements) {
+      const value = getRawImportAttributeValue(element);
+      if (value) {
+        return value;
+      }
+    }
+    return undefined;
+  } else if (ts.isCallExpression(parent)) {
+    if (
+      parent.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+      parent.arguments.length <= 1 ||
+      parent.arguments[0].kind !== ts.SyntaxKind.StringLiteral ||
+      parent.arguments[1].kind !== ts.SyntaxKind.ObjectLiteralExpression
+    ) {
+      return undefined;
+    }
+    const ole = /** @type {ts.ObjectLiteralExpression} */ (parent.arguments[1]);
+    const withExpr = ole.properties.find((p) =>
+      ts.isPropertyAssignment(p) && isStrOrIdentWithText(p.name, "with")
+    );
+    if (!withExpr) {
+      return undefined;
+    }
+    const withInitializer =
+      (/** @type {ts.PropertyAssignment} */ (withExpr)).initializer;
+    if (!ts.isObjectLiteralExpression(withInitializer)) {
+      return undefined;
+    }
+    const typeProp = withInitializer.properties.find((p) =>
+      ts.isPropertyAssignment(p) && isStrOrIdentWithText(p.name, "type")
+    );
+    if (!typeProp) {
+      return undefined;
+    }
+    const typeInitializer =
+      (/** @type {ts.PropertyAssignment} */ (typeProp)).initializer;
+    return getRawTypeValue(typeInitializer);
+  } else {
+    return undefined;
+  }
+}
+
+/** @param {ts.ImportAttribute} node */
+function getRawImportAttributeValue(node) {
+  if (!isStrOrIdentWithText(node.name, "type")) {
+    return undefined;
+  }
+
+  return getRawTypeValue(node.value);
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {"bytes" | "text" | undefined}
+ */
+function getRawTypeValue(node) {
+  return ts.isStringLiteral(node) &&
+      (node.text === "bytes" || node.text === "text")
+    ? node.text
+    : undefined;
+}
+
+/**
+ * @param {ts.Node} node
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isStrOrIdentWithText(node, text) {
+  if (ts.isStringLiteral(node)) {
+    return node.text === text;
+  } else if (ts.isIdentifier(node)) {
+    return node.escapedText === text;
+  } else {
+    return false;
+  }
+}

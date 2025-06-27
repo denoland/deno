@@ -24,8 +24,8 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
@@ -59,8 +59,6 @@ use thiserror::Error;
 use crate::sys::CliSys;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
-pub type CliTsConfigResolver =
-  deno_resolver::deno_json::TsConfigResolver<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
@@ -1003,11 +1001,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable_subdomain_wildcards(&self) -> bool {
-    self.flags.unstable_config.subdomain_wildcards
-      || self.workspace().has_unstable("subdomain-wildcards")
-  }
-
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")
@@ -1023,6 +1016,11 @@ impl CliOptions {
     // perf penalty for non-npm Deno projects of searching for the closest
     // package.json beside each module
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
+  }
+
+  pub fn unstable_raw_imports(&self) -> bool {
+    self.flags.unstable_config.raw_imports
+      || self.workspace().has_unstable("raw-imports")
   }
 
   pub fn unstable_lazy_dynamic_imports(&self) -> bool {
