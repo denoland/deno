@@ -29,13 +29,27 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ArrayPrototypeUnshift,
+  Error,
+  ErrorCaptureStackTrace,
+  FunctionPrototypeCall,
+  FunctionPrototypeApply,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectEntries,
+  ObjectGetPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectOwnKeys,
   SafeMap,
   SafeSet,
+  Symbol,
+  SymbolFor,
+  SymbolAsyncIterator,
 } = primordials;
 
-const kRejection = Symbol.for("nodejs.rejection");
+const kRejection = SymbolFor("nodejs.rejection");
 export const kEvents = Symbol("kEvents");
 
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
@@ -78,7 +92,7 @@ const kMaxEventTargetListenersWarned = Symbol(
  * @returns {EventEmitter}
  */
 export function EventEmitter(opts) {
-  EventEmitter.init.call(this, opts);
+  FunctionPrototypeCall(EventEmitter.init, this, opts);
 }
 export default EventEmitter;
 EventEmitter.on = on;
@@ -95,7 +109,7 @@ EventEmitter.captureRejectionSymbol = kRejection;
 export const captureRejectionSymbol = EventEmitter.captureRejectionSymbol;
 export const errorMonitor = EventEmitter.errorMonitor;
 
-Object.defineProperty(EventEmitter, "captureRejections", {
+ObjectDefineProperty(EventEmitter, "captureRejections", {
   get() {
     return EventEmitter.prototype[kCapture];
   },
@@ -110,7 +124,7 @@ Object.defineProperty(EventEmitter, "captureRejections", {
 EventEmitter.errorMonitor = kErrorMonitor;
 
 // The default for captureRejections is false
-Object.defineProperty(EventEmitter.prototype, kCapture, {
+ObjectDefineProperty(EventEmitter.prototype, kCapture, {
   value: false,
   writable: true,
   enumerable: false,
@@ -128,7 +142,7 @@ function checkListener(listener) {
   validateFunction(listener, "listener");
 }
 
-Object.defineProperty(EventEmitter, "defaultMaxListeners", {
+ObjectDefineProperty(EventEmitter, "defaultMaxListeners", {
   enumerable: true,
   get: function () {
     return defaultMaxListeners;
@@ -189,9 +203,9 @@ export function setMaxListeners(
 EventEmitter.init = function (opts) {
   if (
     this._events === undefined ||
-    this._events === Object.getPrototypeOf(this)._events
+    this._events === ObjectGetPrototypeOf(this)._events
   ) {
-    this._events = Object.create(null);
+    this._events = ObjectCreate(null);
     this._eventsCount = 0;
   }
 
@@ -218,7 +232,7 @@ function addCatch(that, promise, type, args) {
     const then = promise.then;
 
     if (typeof then === "function") {
-      then.call(promise, undefined, function (err) {
+      FunctionPrototypeCall(then, promise, undefined, function (err) {
         // The callback is called with nextTick to avoid a follow-up
         // rejection from this promise.
         nextTick(emitUnhandledRejectionOrErr, that, err, type, args);
@@ -385,8 +399,8 @@ EventEmitter.prototype.emit = function emit(type, ...args) {
     if (er instanceof Error) {
       try {
         const capture = {};
-        Error.captureStackTrace(capture, EventEmitter.prototype.emit);
-        // Object.defineProperty(er, kEnhanceStackBeforeInspector, {
+        ErrorCaptureStackTrace(capture, EventEmitter.prototype.emit);
+        // ObjectDefineProperty(er, kEnhanceStackBeforeInspector, {
         //   value: enhanceStackTrace.bind(this, er, capture),
         //   configurable: true
         // });
@@ -419,7 +433,7 @@ EventEmitter.prototype.emit = function emit(type, ...args) {
   }
 
   if (typeof handler === "function") {
-    const result = handler.apply(this, args);
+    const result = FunctionPrototypeApply(handler, this, args);
 
     // We check if result is undefined first because that
     // is the most common case so we do not pay any perf
@@ -431,7 +445,7 @@ EventEmitter.prototype.emit = function emit(type, ...args) {
     const len = handler.length;
     const listeners = arrayClone(handler);
     for (let i = 0; i < len; ++i) {
-      const result = listeners[i].apply(this, args);
+      const result = FunctionPrototypeApply(listeners[i], this, args);
 
       // We check if result is undefined first because that
       // is the most common case so we do not pay any perf
@@ -456,7 +470,7 @@ function _addListener(target, type, listener, prepend) {
 
   events = target._events;
   if (events === undefined) {
-    events = target._events = Object.create(null);
+    events = target._events = ObjectCreate(null);
     target._eventsCount = 0;
   } else {
     // To avoid recursion in the case that type === "newListener"! Before
@@ -483,9 +497,9 @@ function _addListener(target, type, listener, prepend) {
         : [existing, listener];
       // If we've already got an array, just append.
     } else if (prepend) {
-      existing.unshift(listener);
+      ArrayPrototypeShift(existing,  listener);
     } else {
-      existing.push(listener);
+      ArrayPrototypePush(existing, listener);
     }
 
     // Check for listener leak
@@ -542,9 +556,9 @@ function onceWrapper() {
     this.target.removeListener(this.type, this.wrapFn);
     this.fired = true;
     if (arguments.length === 0) {
-      return this.listener.call(this.target);
+      return FunctionPrototypeCall(this.listener, this.target);
     }
-    return this.listener.apply(this.target, arguments);
+    return FunctionPrototypeApply(this.listener, this.target, arguments);
   }
 }
 
@@ -610,7 +624,7 @@ EventEmitter.prototype.removeListener = function removeListener(
 
   if (list === listener || list.listener === listener) {
     if (--this._eventsCount === 0) {
-      this._events = Object.create(null);
+      this._events = ObjectCreate(null);
     } else {
       delete events[type];
       if (events.removeListener) {
@@ -632,7 +646,7 @@ EventEmitter.prototype.removeListener = function removeListener(
     }
 
     if (position === 0) {
-      list.shift();
+      ArrayPrototypeShift(list) ;
     } else {
       spliceOne(list, position);
     }
@@ -667,11 +681,11 @@ EventEmitter.prototype.removeAllListeners = function removeAllListeners(type) {
   // Not listening for removeListener, no need to emit
   if (events.removeListener === undefined) {
     if (arguments.length === 0) {
-      this._events = Object.create(null);
+      this._events = ObjectCreate(null);
       this._eventsCount = 0;
     } else if (events[type] !== undefined) {
       if (--this._eventsCount === 0) {
-        this._events = Object.create(null);
+        this._events = ObjectCreate(null);
       } else {
         delete events[type];
       }
@@ -681,12 +695,12 @@ EventEmitter.prototype.removeAllListeners = function removeAllListeners(type) {
 
   // Emit removeListener for all listeners on all events
   if (arguments.length === 0) {
-    for (const key of Reflect.ownKeys(events)) {
+    for (const key of ReflectOwnKeys(events)) {
       if (key === "removeListener") continue;
       this.removeAllListeners(key);
     }
     this.removeAllListeners("removeListener");
-    this._events = Object.create(null);
+    this._events = ObjectCreate(null);
     this._eventsCount = 0;
     return this;
   }
@@ -799,7 +813,7 @@ export function listenerCount(emitter, type) {
   if (typeof emitter.listenerCount === "function") {
     return emitter.listenerCount(type);
   }
-  return _listenerCount.call(emitter, type);
+  return FunctionPrototypeCall(_listenerCount, emitter, type);
 }
 
 /**
@@ -808,7 +822,7 @@ export function listenerCount(emitter, type) {
  * @returns {any[]}
  */
 EventEmitter.prototype.eventNames = function eventNames() {
-  return this._eventsCount > 0 ? Reflect.ownKeys(this._events) : [];
+  return this._eventsCount > 0 ? ReflectOwnKeys(this._events) : [];
 };
 
 function arrayClone(arr) {
@@ -926,8 +940,8 @@ export async function once(emitter, name, options = kEmptyObject) {
   });
 }
 
-const AsyncIteratorPrototype = Object.getPrototypeOf(
-  Object.getPrototypeOf(async function* () {}).prototype,
+const AsyncIteratorPrototype = ObjectGetPrototypeOf(
+  ObjectGetPrototypeOf(async function* () {}).prototype,
 );
 
 function createIterResult(value, done) {
@@ -1006,10 +1020,10 @@ export function on(emitter, event, options = kEmptyObject) {
   let error = null;
   let finished = false;
 
-  const iterator = Object.setPrototypeOf({
+  const iterator = ObjectSetPrototypeOf({
     next() {
       // First, we consume all unread events
-      const value = unconsumedEvents.shift();
+      const value = ArrayPrototypeShift(unconsumedEvents) ;
       if (value) {
         return Promise.resolve(createIterResult(value, false));
       }
@@ -1031,7 +1045,7 @@ export function on(emitter, event, options = kEmptyObject) {
 
       // Wait until an event happens
       return new Promise(function (resolve, reject) {
-        unconsumedPromises.push({ resolve, reject });
+        ArrayPrototypePush(unconsumedPromises, { resolve, reject });
       });
     },
 
@@ -1077,7 +1091,7 @@ export function on(emitter, event, options = kEmptyObject) {
       }
     },
 
-    [Symbol.asyncIterator]() {
+    [SymbolAsyncIterator]() {
       return this;
     },
   }, AsyncIteratorPrototype);
@@ -1103,18 +1117,18 @@ export function on(emitter, event, options = kEmptyObject) {
   }
 
   function eventHandler(...args) {
-    const promise = unconsumedPromises.shift();
+    const promise = ArrayPrototypeShift(unconsumedPromises) ;
     if (promise) {
       promise.resolve(createIterResult(args, false));
     } else {
-      unconsumedEvents.push(args);
+      ArrayPrototypePush(unconsumedEvents, args);
     }
   }
 
   function errorHandler(err) {
     finished = true;
 
-    const toError = unconsumedPromises.shift();
+    const toError = ArrayPrototypeShift(unconsumedPromises) ;
 
     if (toError) {
       toError.reject(err);
@@ -1193,8 +1207,8 @@ export class EventEmitterAsyncResource extends EventEmitter {
       throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
     }
     const { asyncResource } = this;
-    args.unshift(super.emit, this, event);
-    return asyncResource.runInAsyncScope.apply(asyncResource, args);
+    ArrayPrototypeShift(args,  super.emit, this, event);
+    return FunctionPrototypeApply(asyncResource.runInAsyncScope, asyncResource, args);
   }
 
   /**
