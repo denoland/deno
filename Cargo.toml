@@ -64,7 +64,7 @@ deno_core = { version = "0.352.0" }
 deno_cache_dir = "=0.22.2"
 deno_doc = "=0.179.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.96.1", default-features = false }
+deno_graph = { version = "=0.96.2", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.30.1"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
