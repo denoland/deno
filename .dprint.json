@@ -43,6 +43,7 @@
     "tests/node_compat/test",
     "tests/registry/",
     "tests/specs/bench/default_ts",
+    "tests/specs/compile/bytes_and_text_imports",
     "tests/specs/fmt",
     "tests/specs/lint/bom",
     "tests/specs/lint/default_ts",

@@ -1,0 +1,12 @@
+Check file:///[WILDLINE]/main.ts
+Compile file:///[WILDLINE]/main.ts to bin.exe
+
+Embedded Files
+
+bin.exe
+├── add_bom.ts ([WILDLINE])
+├── hello_bom.txt ([WILDLINE])
+├── lossy.ts ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+[WILDCARD]
