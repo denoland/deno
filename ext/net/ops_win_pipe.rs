@@ -74,7 +74,7 @@ where
   let path = {
     let path = if args.inbound {
       permissions
-        .check_read(&*args.path, &api_call_expr)
+        .check_read(&args.path, &api_call_expr)
         .map_err(NetError::Permission)?
     } else {
       PathBuf::from(args.path)
