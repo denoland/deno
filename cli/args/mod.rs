@@ -35,20 +35,20 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::npm_process_state;
-use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::LifecycleScriptsConfig;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
@@ -471,6 +471,7 @@ impl CliOptions {
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
       // TODO: Audit that the environment access only happens in single-threaded code.
+      #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe { std::env::remove_var("NODE_CHANNEL_FD") };
       node_channel_fd.parse::<i64>().ok()
     } else {
@@ -983,6 +984,7 @@ impl CliOptions {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
             // TODO: Audit that the environment access only happens in single-threaded code.
+            #[allow(clippy::undocumented_unsafe_blocks)]
             unsafe { std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME) };
             Some(var)
           }
@@ -1257,10 +1259,28 @@ pub fn load_env_variables_from_env_file(
           .unwrap_or(true)
         {
           match error {
-            dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
-            dotenvy::Error::Io(_)=> eprintln!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
-            dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-            _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+            dotenvy::Error::LineParse(line, index) => eprintln!(
+              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
+              colors::yellow("Warning"),
+              env_file_name,
+              index,
+              line
+            ),
+            dotenvy::Error::Io(_) => eprintln!(
+              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            dotenvy::Error::EnvVar(_) => eprintln!(
+              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            _ => eprintln!(
+              "{} Unknown failure occurred with the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
           }
         }
       }

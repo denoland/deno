@@ -10,6 +10,11 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use deno_ast::MediaType;
+use deno_core::FastString;
+use deno_core::JsRuntime;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::RuntimeOptions;
 use deno_core::anyhow::Context;
 use deno_core::located_script_name;
 use deno_core::op2;
@@ -20,11 +25,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::FastString;
-use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::RuntimeOptions;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -32,16 +32,16 @@ use deno_graph::ResolutionResolved;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
-use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::resolve_specifier_into_node_modules;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -96,9 +96,7 @@ pub fn get_types_declaration_file_text() -> String {
 }
 
 macro_rules! maybe_compressed_source {
-  ($file: expr_2021) => {{
-    maybe_compressed_source!(compressed = $file, uncompressed = $file)
-  }};
+  ($file: expr_2021) => {{ maybe_compressed_source!(compressed = $file, uncompressed = $file) }};
   (compressed = $comp: expr_2021, uncompressed = $uncomp: expr_2021) => {{
     #[cfg(feature = "hmr")]
     {
@@ -661,9 +659,7 @@ pub enum LoadError {
   #[error("{0}")]
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
-  #[error(
-    "Error converting a string module specifier for \"op_resolve\": {0}"
-  )]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
@@ -709,7 +705,7 @@ fn op_load_inner(
         return Err(LoadError::LoadFromNodeModule {
           path: file_path.display().to_string(),
           error: err,
-        })
+        });
       }
     };
     let code: Arc<str> = code.into();
@@ -764,7 +760,7 @@ fn op_load_inner(
             version: Some("1".to_string()),
             script_kind: as_ts_script_kind(*media_type),
             is_cjs: false,
-          }))
+          }));
         }
         _ => None,
       },
@@ -845,9 +841,7 @@ fn op_load_inner(
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ResolveError {
   #[class(inherit)]
-  #[error(
-    "Error converting a string module specifier for \"op_resolve\": {0}"
-  )]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error(transparent)]
@@ -1204,35 +1198,40 @@ fn resolve_non_graph_specifier_types(
         .and_then(|res| res.into_url())
         .ok(),
     )))
-  } else { match NpmPackageReqReference::from_str(raw_specifier)
-  { Ok(npm_req_ref) => {
-    debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-    // todo(dsherret): add support for injecting this in the graph so
-    // we don't need this special code here.
-    // This could occur when resolving npm:@types/node when it is
-    // injected and not part of the graph
-    let package_folder = npm
-      .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
-    let res_result = node_resolver.resolve_package_subpath_from_deno_module(
-      &package_folder,
-      npm_req_ref.sub_path(),
-      Some(referrer),
-      resolution_mode,
-      NodeResolutionKind::Types,
-    );
-    let maybe_url = match res_result {
-      Ok(url_or_path) => Some(url_or_path.into_url()?),
-      Err(err) => match err.code() {
-        NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-        | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
-        _ => return Err(err.into()),
-      },
-    };
-    Ok(Some(into_specifier_and_media_type(maybe_url)))
-  } _ => {
-    Ok(None)
-  }}}
+  } else {
+    match NpmPackageReqReference::from_str(raw_specifier) {
+      Ok(npm_req_ref) => {
+        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
+        // todo(dsherret): add support for injecting this in the graph so
+        // we don't need this special code here.
+        // This could occur when resolving npm:@types/node when it is
+        // injected and not part of the graph
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            npm_req_ref.req(),
+            referrer,
+          )?;
+        let res_result = node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            npm_req_ref.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            NodeResolutionKind::Types,
+          );
+        let maybe_url = match res_result {
+          Ok(url_or_path) => Some(url_or_path.into_url()?),
+          Err(err) => match err.code() {
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            _ => return Err(err.into()),
+          },
+        };
+        Ok(Some(into_specifier_and_media_type(maybe_url)))
+      }
+      _ => Ok(None),
+    }
+  }
 }
 
 #[op2(fast)]
@@ -1511,10 +1510,10 @@ pub fn exec(
 
 #[cfg(test)]
 mod tests {
+  use deno_core::OpState;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
   use deno_core::serde_json;
-  use deno_core::OpState;
   use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
@@ -1655,7 +1654,10 @@ mod tests {
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_url(&specifier, MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(
+      hash_url(&specifier, MediaType::JavaScript),
+      "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js"
+    );
   }
 
   #[tokio::test]

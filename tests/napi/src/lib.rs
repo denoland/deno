@@ -35,15 +35,21 @@ pub mod uv;
 
 #[macro_export]
 macro_rules! cstr {
-  ($s: literal) => {{
-    std::ffi::CString::new($s).unwrap().into_raw()
-  }};
+  ($s: literal) => {{ std::ffi::CString::new($s).unwrap().into_raw() }};
 }
 
 #[macro_export]
 macro_rules! assert_napi_ok {
   ($call: expr_2021) => {{
-    assert_eq!(unsafe { $call }, napi_sys::Status::napi_ok);
+    assert_eq!(
+      {
+        #[allow(unused_unsafe)]
+        unsafe {
+          $call
+        }
+      },
+      napi_sys::Status::napi_ok
+    );
   }};
 }
 

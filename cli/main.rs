@@ -47,10 +47,10 @@ use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -60,10 +60,10 @@ const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
-use crate::args::flags_from_vec;
-use crate::args::get_default_v8_flags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::flags_from_vec;
+use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -117,25 +117,25 @@ async fn run_subcommand(
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
     }),
-    DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
-      tools::pm::remove(flags, remove_flags).await
-    }),
+    DenoSubcommand::Remove(remove_flags) => {
+      spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
+    }
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).boxed_local().await
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags)
+          .boxed_local()
+          .await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
-    DenoSubcommand::Bundle(bundle_flags) => {
-      spawn_subcommand(async {
-        log::warn!(
-          "⚠️ {} is experimental and subject to changes",
-          colors::cyan("deno bundle")
-        );
-        tools::bundle::bundle(flags, bundle_flags).await
-      })
-    },
+    DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
+      log::warn!(
+        "⚠️ {} is experimental and subject to changes",
+        colors::cyan("deno bundle")
+      );
+      tools::bundle::bundle(flags, bundle_flags).await
+    }),
     DenoSubcommand::Deploy => {
       spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
     }
@@ -146,23 +146,31 @@ async fn run_subcommand(
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
+      tools::installer::install_from_entrypoints(flags, &cache_flags.files)
+        .await
     }),
-    DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      tools::check::check(flags, check_flags).await
-    }),
-    DenoSubcommand::Clean(clean_flags) => spawn_subcommand(async move {
-      tools::clean::clean(flags, clean_flags).await
-    }),
+    DenoSubcommand::Check(check_flags) => {
+      spawn_subcommand(
+        async move { tools::check::check(flags, check_flags).await },
+      )
+    }
+    DenoSubcommand::Clean(clean_flags) => {
+      spawn_subcommand(
+        async move { tools::clean::clean(flags, clean_flags).await },
+      )
+    }
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
-        tools::compile::compile_eszip(flags, compile_flags).boxed_local().await
+        tools::compile::compile_eszip(flags, compile_flags)
+          .boxed_local()
+          .await
       } else {
         tools::compile::compile(flags, compile_flags).await
       }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
-      let reporter = crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
+      let reporter =
+        crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
       tools::coverage::cover_files(
         flags,
         coverage_flags.files.include,
@@ -170,7 +178,7 @@ async fn run_subcommand(
         coverage_flags.include,
         coverage_flags.exclude,
         coverage_flags.output,
-        &[&*reporter]
+        &[&*reporter],
       )
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
@@ -179,9 +187,7 @@ async fn run_subcommand(
       )
     }
     DenoSubcommand::Init(init_flags) => {
-      spawn_subcommand(async {
-        tools::init::init_project(init_flags).await
-      })
+      spawn_subcommand(async { tools::init::init_project(init_flags).await })
     }
     DenoSubcommand::Info(info_flags) => {
       spawn_subcommand(async { tools::info::info(flags, info_flags).await })
@@ -189,9 +195,13 @@ async fn run_subcommand(
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
     }),
-    DenoSubcommand::JSONReference(json_reference) => spawn_subcommand(async move {
-      display::write_to_stdout_ignore_sigpipe(&deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap())
-    }),
+    DenoSubcommand::JSONReference(json_reference) => {
+      spawn_subcommand(async move {
+        display::write_to_stdout_ignore_sigpipe(
+          &deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap(),
+        )
+      })
+    }
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
@@ -223,9 +233,9 @@ async fn run_subcommand(
       }
     }),
     DenoSubcommand::Outdated(update_flags) => {
-      spawn_subcommand(async move {
-        tools::pm::outdated(flags, update_flags).await
-      })
+      spawn_subcommand(
+        async move { tools::pm::outdated(flags, update_flags).await },
+      )
     }
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
@@ -233,38 +243,77 @@ async fn run_subcommand(
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
-        tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots).boxed_local().await
+        tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
+          .boxed_local()
+          .await
       } else if flags.eszip {
-        tools::run::run_eszip(flags, run_flags, unconfigured_runtime, roots).boxed_local().await
+        tools::run::run_eszip(flags, run_flags, unconfigured_runtime, roots)
+          .boxed_local()
+          .await
       } else {
-        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch, unconfigured_runtime, roots.clone()).await;
+        let result = tools::run::run_script(
+          WorkerExecutionMode::Run,
+          flags.clone(),
+          run_flags.watch,
+          unconfigured_runtime,
+          roots.clone(),
+        )
+        .await;
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(worker::CreateCustomWorkerError::ResolvePkgFolderFromDenoReq(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)))) = any_and_jserrorbox_downcast_ref::<worker::CreateCustomWorkerError>(&script_err) {
+            if let Some(
+              worker::CreateCustomWorkerError::ResolvePkgFolderFromDenoReq(
+                ResolvePkgFolderFromDenoReqError::Byonm(
+                  ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_),
+                ),
+              ),
+            ) = any_and_jserrorbox_downcast_ref::<
+              worker::CreateCustomWorkerError,
+            >(&script_err)
+            {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
                   DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
                   _ => unreachable!(),
                 };
-                flags.node_modules_dir = Some(deno_config::deno_json::NodeModulesDirMode::None);
+                flags.node_modules_dir =
+                  Some(deno_config::deno_json::NodeModulesDirMode::None);
                 // use the current lockfile, but don't write it out
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch, None, roots).boxed_local().await;
+                return tools::run::run_script(
+                  WorkerExecutionMode::Run,
+                  Arc::new(flags),
+                  watch,
+                  None,
+                  roots,
+                )
+                .boxed_local()
+                .await;
               }
             }
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
+            if script_err_msg.starts_with(MODULE_NOT_FOUND)
+              || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
+            {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
-                let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
-                let suggestions = args::did_you_mean(&run_flags.script, command_names);
+                let command_names = cmd
+                  .get_subcommands()
+                  .map(|command| command.get_name())
+                  .collect::<Vec<_>>();
+                let suggestions =
+                  args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() && !run_flags.script.contains('.') {
-                  let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
+                  let mut error =
+                    clap::error::Error::<clap::error::DefaultFormatter>::new(
+                      clap::error::ErrorKind::InvalidSubcommand,
+                    )
+                    .with_cmd(&cmd);
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
                     clap::error::ContextValue::Strings(suggestions),
@@ -285,7 +334,11 @@ async fn run_subcommand(
                   eval: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
+                let result = tools::task::execute_script(
+                  Arc::new(new_flags),
+                  task_flags.clone(),
+                )
+                .await;
                 match result {
                   Ok(v) => Ok(v),
                   Err(_) => {
@@ -319,10 +372,13 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
           // TODO: Audit that the environment access only happens in single-threaded code.
-          unsafe { env::set_var(
-            "DENO_COVERAGE_DIR",
-            PathBuf::from(coverage_dir).canonicalize()?,
-          ) };
+          #[allow(clippy::undocumented_unsafe_blocks)]
+          unsafe {
+            env::set_var(
+              "DENO_COVERAGE_DIR",
+              PathBuf::from(coverage_dir).canonicalize()?,
+            )
+          };
         }
 
         if test_flags.watch.is_some() {
@@ -350,18 +406,24 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
-    DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
+    DenoSubcommand::Vendor => exit_with_message(
+      "⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      1,
+    ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::publish::publish(flags, publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
 
-      let mut stream = anstream::AutoStream::new(std::io::stdout(), if colors::use_color() {
-        anstream::ColorChoice::Auto
-      } else {
-        anstream::ColorChoice::Never
-      });
+      let mut stream = anstream::AutoStream::new(
+        std::io::stdout(),
+        if colors::use_color() {
+          anstream::ColorChoice::Auto
+        } else {
+          anstream::ColorChoice::Never
+        },
+      );
 
       match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
         Ok(()) => Ok(()),
@@ -644,7 +706,10 @@ fn wait_for_start(
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
   // TODO: Audit that the environment access only happens in single-threaded code.
-  unsafe { std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK") };
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
+  };
 
   let argv0 = args[0].clone();
 
@@ -745,7 +810,10 @@ fn wait_for_start(
 
     for (k, v) in cmd.env {
       // TODO: Audit that the environment access only happens in single-threaded code.
-      unsafe { std::env::set_var(k, v) };
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::set_var(k, v)
+      };
     }
 
     let args = [argv0]

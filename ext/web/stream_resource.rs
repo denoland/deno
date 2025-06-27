@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::ffi::c_void;
-use std::future::poll_fn;
 use std::future::Future;
+use std::future::poll_fn;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -14,10 +14,6 @@ use std::task::Poll;
 use std::task::Waker;
 
 use bytes::BytesMut;
-use deno_core::external;
-use deno_core::op2;
-use deno_core::serde_v8::V8Slice;
-use deno_core::unsync::TaskQueue;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::CancelFuture;
@@ -29,6 +25,10 @@ use deno_core::RcLike;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::external;
+use deno_core::op2;
+use deno_core::serde_v8::V8Slice;
+use deno_core::unsync::TaskQueue;
 use futures::TryFutureExt;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -119,24 +119,30 @@ impl BoundedBufferChannelInner {
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
-  unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> { unsafe {
-    self
-      .buffers
-      .get_unchecked_mut(self.ring_consumer as usize)
-      .assume_init_mut()
-  }}
+  unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> {
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      self
+        .buffers
+        .get_unchecked_mut(self.ring_consumer as usize)
+        .assume_init_mut()
+    }
+  }
 
   /// # Safety
   ///
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
-  unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> { unsafe {
-    let res = std::ptr::read(self.next_unsafe());
-    self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
+  unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> {
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      let res = std::ptr::read(self.next_unsafe());
+      self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
 
-    res
-  }}
+      res
+    }
+  }
 
   fn drain(&mut self, mut f: impl FnMut(V8Slice<u8>)) {
     while self.ring_producer != self.ring_consumer {
@@ -614,8 +620,8 @@ impl Drop for ReadableStreamResourceData {
 #[cfg(test)]
 mod tests {
   use std::cell::OnceCell;
-  use std::sync::atomic::AtomicUsize;
   use std::sync::OnceLock;
+  use std::sync::atomic::AtomicUsize;
   use std::time::Duration;
 
   use deno_core::v8;

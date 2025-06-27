@@ -8,9 +8,6 @@ use std::rc::Rc;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::ResourceError;
-use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::BufView;
 use deno_core::ByteString;
@@ -21,18 +18,21 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_net::raw::take_network_stream_resource;
+use deno_core::error::ResourceError;
+use deno_core::op2;
+use deno_core::serde::Serialize;
 use deno_net::raw::NetworkStream;
+use deno_net::raw::take_network_stream_resource;
 use h2;
 use h2::Reason;
 use h2::RecvStream;
 use http;
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::request::Parts;
 use http::HeaderMap;
 use http::Response;
 use http::StatusCode;
+use http::header::HeaderName;
+use http::header::HeaderValue;
+use http::request::Parts;
 use url::Url;
 
 pub struct Http2Client {
@@ -201,57 +201,62 @@ pub async fn op_http2_accept(
     .resource_table
     .get::<Http2ServerConnection>(rid)?;
   let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
-  match conn.accept().await { Some(res) => {
-    let (req, resp) = res?;
-    let (parts, body) = req.into_parts();
-    let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
-    let stm = state
-      .borrow_mut()
-      .resource_table
-      .add(Http2ClientResponseBody {
-        body: AsyncRefCell::new(body),
-        trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
-        trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
-      });
+  match conn.accept().await {
+    Some(res) => {
+      let (req, resp) = res?;
+      let (parts, body) = req.into_parts();
+      let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
+      let stm =
+        state
+          .borrow_mut()
+          .resource_table
+          .add(Http2ClientResponseBody {
+            body: AsyncRefCell::new(body),
+            trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
+            trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
+          });
 
-    let Parts {
-      uri,
-      method,
-      headers,
-      ..
-    } = parts;
-    let mut req_headers = Vec::with_capacity(headers.len() + 4);
-    req_headers.push((
-      ByteString::from(":method"),
-      ByteString::from(method.as_str()),
-    ));
-    req_headers.push((
-      ByteString::from(":scheme"),
-      ByteString::from(uri.scheme().map(|s| s.as_str()).unwrap_or("http")),
-    ));
-    req_headers.push((
-      ByteString::from(":path"),
-      ByteString::from(uri.path_and_query().map(|p| p.as_str()).unwrap_or("")),
-    ));
-    req_headers.push((
-      ByteString::from(":authority"),
-      ByteString::from(uri.authority().map(|a| a.as_str()).unwrap_or("")),
-    ));
-    for (key, val) in headers.iter() {
-      req_headers.push((key.as_str().into(), val.as_bytes().into()));
+      let Parts {
+        uri,
+        method,
+        headers,
+        ..
+      } = parts;
+      let mut req_headers = Vec::with_capacity(headers.len() + 4);
+      req_headers.push((
+        ByteString::from(":method"),
+        ByteString::from(method.as_str()),
+      ));
+      req_headers.push((
+        ByteString::from(":scheme"),
+        ByteString::from(uri.scheme().map(|s| s.as_str()).unwrap_or("http")),
+      ));
+      req_headers.push((
+        ByteString::from(":path"),
+        ByteString::from(
+          uri.path_and_query().map(|p| p.as_str()).unwrap_or(""),
+        ),
+      ));
+      req_headers.push((
+        ByteString::from(":authority"),
+        ByteString::from(uri.authority().map(|a| a.as_str()).unwrap_or("")),
+      ));
+      for (key, val) in headers.iter() {
+        req_headers.push((key.as_str().into(), val.as_bytes().into()));
+      }
+
+      let resp =
+        state
+          .borrow_mut()
+          .resource_table
+          .add(Http2ServerSendResponse {
+            send_response: AsyncRefCell::new(resp),
+          });
+
+      Ok(Some((req_headers, stm, resp)))
     }
-
-    let resp = state
-      .borrow_mut()
-      .resource_table
-      .add(Http2ServerSendResponse {
-        send_response: AsyncRefCell::new(resp),
-      });
-
-    Ok(Some((req_headers, stm, resp)))
-  } _ => {
-    Ok(None)
-  }}
+    _ => Ok(None),
+  }
 }
 
 #[op2(async)]
@@ -485,11 +490,14 @@ fn poll_data_or_trailers(
   body: &mut RecvStream,
 ) -> Poll<Result<DataOrTrailers, h2::Error>> {
   if let Poll::Ready(trailers) = body.poll_trailers(cx) {
-    match trailers? { Some(trailers) => {
-      return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
-    } _ => {
-      return Poll::Ready(Ok(DataOrTrailers::Eof));
-    }}
+    match trailers? {
+      Some(trailers) => {
+        return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
+      }
+      _ => {
+        return Poll::Ready(Ok(DataOrTrailers::Eof));
+      }
+    }
   }
   if let Poll::Ready(Some(data)) = body.poll_data(cx) {
     let data = data?;
@@ -563,18 +571,19 @@ pub async fn op_http2_client_get_response_trailers(
     .await
     .take();
   if let Some(trailers) = trailers {
-    match trailers.await { Ok(Some(trailers)) => {
-      let mut v = Vec::with_capacity(trailers.len());
-      for (key, value) in trailers.iter() {
-        v.push((
-          ByteString::from(key.as_str()),
-          ByteString::from(value.as_bytes()),
-        ));
+    match trailers.await {
+      Ok(Some(trailers)) => {
+        let mut v = Vec::with_capacity(trailers.len());
+        for (key, value) in trailers.iter() {
+          v.push((
+            ByteString::from(key.as_str()),
+            ByteString::from(value.as_bytes()),
+          ));
+        }
+        Ok(Some(v))
       }
-      Ok(Some(v))
-    } _ => {
-      Ok(None)
-    }}
+      _ => Ok(None),
+    }
   } else {
     Ok(None)
   }

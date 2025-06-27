@@ -290,15 +290,15 @@ mod test {
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_resolver::npm::NpmResolverCreateOptions;
   use deno_resolver::workspace::WorkspaceResolver;
-  use node_resolver::cache::NodeResolutionSys;
   use node_resolver::DenoIsBuiltInNodeModuleChecker;
   use node_resolver::NodeResolver;
   use node_resolver::NodeResolverOptions;
   use node_resolver::PackageJsonResolver;
+  use node_resolver::cache::NodeResolutionSys;
   use pretty_assertions::assert_eq;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
   use crate::npm::CliNpmResolver;
@@ -325,22 +325,30 @@ mod test {
     }"#,
         None,
       ),
-      ("/package-b/deno.json", r#"{
+      (
+        "/package-b/deno.json",
+        r#"{
         "compilerOptions": { "jsx": "react-jsx" },
         "imports": {
           "react": "npm:react"
           "@types/react": "npm:@types/react"
         }
-      }"#, None),
+      }"#,
+        None,
+      ),
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+        ),
       ),
       (
         "/package-b/main.tsx",
         "export const componentB = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;",
+        ),
       ),
       (
         "/package-a/other.tsx",
@@ -351,13 +359,13 @@ mod test {
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
         Some(
-        "/** @jsxImportSource npm:preact */
+          "/** @jsxImportSource npm:preact */
         /** @jsxFragmentFactory h1 */
         /** @jsxImportSourceTypes npm:@types/example */
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
-        )
+        ),
       ),
     ]);
   }

@@ -4,20 +4,20 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use base64::prelude::Engine;
 use base64::prelude::BASE64_STANDARD;
+use base64::prelude::Engine;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
 use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
-use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -171,7 +171,10 @@ pub fn npm_process_state(
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
       let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
       // TODO: Audit that the environment access only happens in single-threaded code.
-      unsafe { std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME) };
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)
+      };
       if fd_or_path.is_empty() {
         return None;
       }

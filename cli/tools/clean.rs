@@ -9,12 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_graph::packages::PackageSpecifiers;
 use deno_graph::ModuleGraph;
+use deno_graph::packages::PackageSpecifiers;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
@@ -527,7 +527,7 @@ fn clean_node_modules(
           "failed to clean node_modules directory at {}",
           dir.display()
         )
-      })
+      });
     }
   };
 
@@ -648,21 +648,22 @@ fn remove_file(
   state.update_progress();
   match std::fs::remove_file(path)
     .with_context(|| format!("Failed to remove file: {}", path.display()))
-  { Err(e) => {
-    if cfg!(windows) {
-      if let Ok(meta) = path.symlink_metadata() {
-        if meta.is_symlink() {
-          std::fs::remove_dir(path).with_context(|| {
-            format!("Failed to remove symlink: {}", path.display())
-          })?;
-          return Ok(());
+  {
+    Err(e) => {
+      if cfg!(windows) {
+        if let Ok(meta) = path.symlink_metadata() {
+          if meta.is_symlink() {
+            std::fs::remove_dir(path).with_context(|| {
+              format!("Failed to remove symlink: {}", path.display())
+            })?;
+            return Ok(());
+          }
         }
       }
+      Err(e)
     }
-    Err(e)
-  } _ => {
-    Ok(())
-  }}
+    _ => Ok(()),
+  }
 }
 
 #[cfg(test)]

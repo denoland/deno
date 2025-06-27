@@ -22,10 +22,12 @@ pub extern "C" fn print_something() {
 /// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) { unsafe {
-  let buf = std::slice::from_raw_parts(ptr, len);
-  println!("{buf:?}");
-}}
+pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
+  unsafe {
+    let buf = std::slice::from_raw_parts(ptr, len);
+    println!("{buf:?}");
+  }
+}
 
 /// # Safety
 ///
@@ -37,11 +39,13 @@ pub unsafe extern "C" fn print_buffer2(
   len1: usize,
   ptr2: *const u8,
   len2: usize,
-) { unsafe {
-  let buf1 = std::slice::from_raw_parts(ptr1, len1);
-  let buf2 = std::slice::from_raw_parts(ptr2, len2);
-  println!("{buf1:?} {buf2:?}");
-}}
+) {
+  unsafe {
+    let buf1 = std::slice::from_raw_parts(ptr1, len1);
+    let buf2 = std::slice::from_raw_parts(ptr2, len2);
+    println!("{buf1:?} {buf2:?}");
+  }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn return_buffer() -> *const u8 {
@@ -104,14 +108,16 @@ pub extern "C" fn and(a: bool, b: bool) -> bool {
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 { unsafe {
-  let buf = std::slice::from_raw_parts(ptr, length as usize);
-  let mut hash: u32 = 0;
-  for byte in buf {
-    hash = hash.wrapping_mul(0x10001000).wrapping_add(*byte as u32);
+unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 {
+  unsafe {
+    let buf = std::slice::from_raw_parts(ptr, length as usize);
+    let mut hash: u32 = 0;
+    for byte in buf {
+      hash = hash.wrapping_mul(0x10001000).wrapping_add(*byte as u32);
+    }
+    hash
   }
-  hash
-}}
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn sleep_blocking(ms: u64) {
@@ -124,22 +130,26 @@ pub extern "C" fn sleep_blocking(ms: u64) {
 /// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) { unsafe {
-  let buf = std::slice::from_raw_parts_mut(buf, len);
-  for itm in buf.iter_mut() {
-    *itm = value;
+pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
+  unsafe {
+    let buf = std::slice::from_raw_parts_mut(buf, len);
+    for itm in buf.iter_mut() {
+      *itm = value;
+    }
   }
-}}
+}
 
 /// # Safety
 ///
 /// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) { unsafe {
-  let buf = std::slice::from_raw_parts(ptr, len);
-  assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-}}
+pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
+  unsafe {
+    let buf = std::slice::from_raw_parts(ptr, len);
+    assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn get_add_u32_ptr() -> *const c_void {
@@ -289,7 +299,9 @@ pub extern "C" fn log_many_parameters(
   r: f32,
   s: f64,
 ) {
-  println!("{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}");
+  println!(
+    "{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}"
+  );
 }
 
 #[unsafe(no_mangle)]
@@ -535,18 +547,20 @@ pub unsafe extern "C" fn create_mixed(
   rect: Rect,
   usize: usize,
   array: *const [u32; 2],
-) -> Mixed { unsafe {
-  let array = *array
-    .as_ref()
-    .expect("Array parameter should contain value");
-  Mixed {
-    u8,
-    f32,
-    rect,
-    usize,
-    array,
+) -> Mixed {
+  unsafe {
+    let array = *array
+      .as_ref()
+      .expect("Array parameter should contain value");
+    Mixed {
+      u8,
+      f32,
+      rect,
+      usize,
+      array,
+    }
   }
-}}
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn print_mixed(mixed: Mixed) {

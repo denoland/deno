@@ -10,26 +10,14 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context as _;
-use deno_core::error::AnyError;
-use deno_core::error::ModuleLoaderError;
-use deno_core::futures::future::FutureExt;
-use deno_core::futures::io::BufReader;
-use deno_core::futures::stream::FuturesOrdered;
-use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -38,6 +26,18 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::anyhow::Context as _;
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_core::error::ModuleLoaderError;
+use deno_core::futures::StreamExt;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::io::BufReader;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url;
+use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
@@ -46,10 +46,10 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
 use deno_graph::WasmModule;
-use deno_lib::loader::module_type_from_media_type;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::loader::StrippingTypesNodeModulesError;
+use deno_lib::loader::module_type_from_media_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -61,28 +61,28 @@ use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
-use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::ClosestPkgJsonError;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
+use crate::args::jsr_url;
 use crate::cache::CodeCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
@@ -90,11 +90,11 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::enhance_graph_error;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
+use crate::graph_util::enhance_graph_error;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
@@ -643,7 +643,9 @@ pub enum CliModuleLoaderError {
   #[error(transparent)]
   LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
   #[class(generic)]
-  #[error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.")]
+  #[error(
+    "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
+  )]
   MissingJsonAttribute,
   #[class(inherit)]
   #[error(transparent)]
@@ -784,37 +786,38 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(code) => Ok(code),
       None => {
         let specifier = match NpmPackageReqReference::from_specifier(specifier)
-        { Ok(reference) => {
-          let referrer = match maybe_referrer {
-            // if we're here, it means it was importing from a dynamic import
-            // and so there will be a referrer
-            Some(r) => Cow::Borrowed(r),
-            // but the repl may also end up here and it won't have
-            // a referrer so create a referrer for it here
-            None => Cow::Owned(
+        {
+          Ok(reference) => {
+            let referrer = match maybe_referrer {
+              // if we're here, it means it was importing from a dynamic import
+              // and so there will be a referrer
+              Some(r) => Cow::Borrowed(r),
+              // but the repl may also end up here and it won't have
+              // a referrer so create a referrer for it here
+              None => Cow::Owned(
+                self
+                  .resolve_referrer("")
+                  .map_err(LoadCodeSourceError::from_err)?,
+              ),
+            };
+            Cow::Owned(
               self
-                .resolve_referrer("")
+                .shared
+                .resolver
+                .resolve_non_workspace_npm_req_ref_to_file(
+                  &reference,
+                  &referrer,
+                  ResolutionMode::Import,
+                  NodeResolutionKind::Execution,
+                )
+                .map_err(LoadCodeSourceError::from_err)?
+                .unwrap()
+                .into_url()
                 .map_err(LoadCodeSourceError::from_err)?,
-            ),
-          };
-          Cow::Owned(
-            self
-              .shared
-              .resolver
-              .resolve_non_workspace_npm_req_ref_to_file(
-                &reference,
-                &referrer,
-                ResolutionMode::Import,
-                NodeResolutionKind::Execution,
-              )
-              .map_err(LoadCodeSourceError::from_err)?
-              .unwrap()
-              .into_url()
-              .map_err(LoadCodeSourceError::from_err)?,
-          )
-        } _ => {
-          Cow::Borrowed(specifier)
-        }};
+            )
+          }
+          _ => Cow::Borrowed(specifier),
+        };
         if self.shared.in_npm_pkg_checker.in_npm_package(&specifier) {
           return self
             .shared
@@ -1031,7 +1034,10 @@ impl<TGraphContainer: ModuleGraphContainer>
         && !specifier.as_str().starts_with(jsr_url().as_str())
         && matches!(specifier.scheme(), "http" | "https")
       {
-        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
+        return Err(JsErrorBox::generic(format!(
+          "Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.",
+          specifier
+        )));
       }
       Ok(())
     }
@@ -1668,7 +1674,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if line_number >= lines.len() {
       Some(format!(
         "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"), line_number + 1,
+        crate::colors::yellow("Warning"),
+        line_number + 1,
       ))
     } else {
       Some(lines[line_number].to_string())

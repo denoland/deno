@@ -13,31 +13,31 @@ use deno_path_util::url_to_file_path;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
 use jsonc_parser::ParseResult;
-use serde::de;
-use serde::de::Unexpected;
-use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
-use serde_json::json;
+use serde::de;
+use serde::de::Unexpected;
+use serde::de::Visitor;
 use serde_json::Value;
+use serde_json::json;
 use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
+use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
 use crate::util::is_skippable_io_error;
-use crate::UrlToFilePathError;
 
 mod ts;
 
-pub use ts::parse_compiler_options;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::IgnoredCompilerOptions;
 pub use ts::ParsedCompilerOptions;
 pub use ts::RawJsxCompilerOptions;
+pub use ts::parse_compiler_options;
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -133,7 +133,9 @@ impl SerializedLintConfig {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
     if !self.deprecated_files.is_null() {
-      log::warn!( "Warning: \"files\" configuration in \"lint\" was removed in Deno 2, use \"include\" and \"exclude\" instead.");
+      log::warn!(
+        "Warning: \"files\" configuration in \"lint\" was removed in Deno 2, use \"include\" and \"exclude\" instead."
+      );
     }
     Ok(LintConfig {
       options: LintOptionsConfig {
@@ -440,7 +442,9 @@ impl SerializedFmtConfig {
       space_surrounding_properties: self.space_surrounding_properties,
     };
     if !self.deprecated_files.is_null() {
-      log::warn!( "Warning: \"files\" configuration in \"fmt\" was removed in Deno 2, use \"include\" and \"exclude\" instead.");
+      log::warn!(
+        "Warning: \"files\" configuration in \"fmt\" was removed in Deno 2, use \"include\" and \"exclude\" instead."
+      );
     }
     Ok(FmtConfig {
       options: choose_fmt_options(options, self.deprecated_options),
@@ -510,7 +514,9 @@ impl SerializedTestConfig {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
     if !self.deprecated_files.is_null() {
-      log::warn!( "Warning: \"files\" configuration in \"test\" was removed in Deno 2, use \"include\" and \"exclude\" instead.");
+      log::warn!(
+        "Warning: \"files\" configuration in \"test\" was removed in Deno 2, use \"include\" and \"exclude\" instead."
+      );
     }
     Ok(TestConfig {
       files: files.into_resolved(config_file_specifier)?,
@@ -588,7 +594,9 @@ impl SerializedBenchConfig {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
     if !self.deprecated_files.is_null() {
-      log::warn!( "Warning: \"files\" configuration in \"bench\" was removed in Deno 2, use \"include\" and \"exclude\" instead.");
+      log::warn!(
+        "Warning: \"files\" configuration in \"bench\" was removed in Deno 2, use \"include\" and \"exclude\" instead."
+      );
     }
     Ok(BenchConfig {
       files: files.into_resolved(config_file_specifier)?,
@@ -708,7 +716,7 @@ impl TaskDefinition {
               serde_json::from_value(value).map_err(serde::de::Error::custom)?
             }
             _ => {
-              return Err(serde::de::Error::custom("invalid task definition"))
+              return Err(serde::de::Error::custom("invalid task definition"));
             }
           };
           map.insert(key, task_def);
@@ -906,7 +914,9 @@ pub enum ConfigFileError {
   #[error(transparent)]
   CompilerOptionsParseError(CompilerOptionsParseError),
   #[class(type)]
-  #[error("Only file: specifiers are supported for security reasons in import maps stored in a deno.json. To use a remote import map, use the --import-map flag and \"deno.importMap\" in the language server config")]
+  #[error(
+    "Only file: specifiers are supported for security reasons in import maps stored in a deno.json. To use a remote import map, use the --import-map flag and \"deno.importMap\" in the language server config"
+  )]
   OnlyFileSpecifiersSupported,
   #[class(inherit)]
   #[error(transparent)]
@@ -943,36 +953,48 @@ pub enum ConfigFileExportsError {
     suggestion: String,
   },
   #[class(type)]
-  #[error("The {0} must only contain alphanumeric characters, underscores (_), dashes (-), dots (.), and slashes (/).")]
+  #[error(
+    "The {0} must only contain alphanumeric characters, underscores (_), dashes (-), dots (.), and slashes (/)."
+  )]
   KeyInvalidCharacter(Cow<'static, str>),
   #[class(type)]
-  #[error("The {0} must not contain double slashes (//), or parts consisting entirely of dots (.).")]
+  #[error(
+    "The {0} must not contain double slashes (//), or parts consisting entirely of dots (.)."
+  )]
   KeyTooManySlashesOrDots(Cow<'static, str>),
   #[class(type)]
   #[error("The path for the {0} must not be empty.")]
   ValueMustNotBeEmpty(Cow<'static, str>),
   #[class(type)]
-  #[error("The path '{value}' at the {key} could not be resolved as a relative path from the config file. Did you mean '{suggestion}'?")]
+  #[error(
+    "The path '{value}' at the {key} could not be resolved as a relative path from the config file. Did you mean '{suggestion}'?"
+  )]
   ValueCouldNotBeResolved {
     value: String,
     key: Cow<'static, str>,
     suggestion: String,
   },
   #[class(type)]
-  #[error("The path '{value}' at the {key} must not end with '/'. Did you mean '{suggestion}'?")]
+  #[error(
+    "The path '{value}' at the {key} must not end with '/'. Did you mean '{suggestion}'?"
+  )]
   ValueMustNotEndWithSlash {
     value: String,
     key: Cow<'static, str>,
     suggestion: String,
   },
   #[class(type)]
-  #[error("The path '{value}' at the {key} is missing a file extension. Add a file extension such as '.js' or '.ts'.")]
+  #[error(
+    "The path '{value}' at the {key} is missing a file extension. Add a file extension such as '.js' or '.ts'."
+  )]
   ValueMissingFileExtension {
     value: String,
     key: Cow<'static, str>,
   },
   #[class(type)]
-  #[error("The path of the {key} must be a string, found invalid value '{value}'. Exports in deno.json do not support conditional exports.")]
+  #[error(
+    "The path of the {key} must be a string, found invalid value '{value}'. Exports in deno.json do not support conditional exports."
+  )]
   InvalidValueConditionalExports {
     key: Cow<'static, str>,
     value: Value,
@@ -1017,9 +1039,13 @@ pub enum ToInvalidConfigError {
 pub enum ResolveTaskConfigError {
   #[error("Configuration file task names cannot be empty")]
   TaskNameEmpty,
-  #[error("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {0}")]
+  #[error(
+    "Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {0}"
+  )]
   TaskNameInvalidCharacter(String),
-  #[error("Configuration file task names must start with an alphabetic character. Task: {0}")]
+  #[error(
+    "Configuration file task names must start with an alphabetic character. Task: {0}"
+  )]
   TaskNameInvalidStartingCharacter(String),
   #[class(inherit)]
   #[error(transparent)]
@@ -1534,17 +1560,15 @@ impl ConfigFile {
   fn resolve_exclude_patterns(
     &self,
   ) -> Result<Vec<String>, ToInvalidConfigError> {
-    let mut exclude: Vec<String> =
-      match self.json.exclude.clone() { Some(exclude) => {
-        serde_json::from_value(exclude).map_err(|error| {
-          ToInvalidConfigError::Parse {
-            config: "exclude",
-            source: error,
-          }
-        })?
-      } _ => {
-        Vec::new()
-      }};
+    let mut exclude: Vec<String> = match self.json.exclude.clone() {
+      Some(exclude) => serde_json::from_value(exclude).map_err(|error| {
+        ToInvalidConfigError::Parse {
+          config: "exclude",
+          source: error,
+        }
+      })?,
+      _ => Vec::new(),
+    };
 
     if self.json.vendor == Some(true) {
       exclude.push("vendor".to_string());
@@ -1765,18 +1789,19 @@ impl ConfigFile {
     &self,
   ) -> Result<Option<IndexMap<String, TaskDefinition>>, ToInvalidConfigError>
   {
-    match self.json.tasks.clone() { Some(config) => {
-      let tasks_config: IndexMap<String, TaskDefinition> =
-        TaskDefinition::deserialize_tasks(config).map_err(|error| {
-          ToInvalidConfigError::Parse {
-            config: "tasks",
-            source: error,
-          }
-        })?;
-      Ok(Some(tasks_config))
-    } _ => {
-      Ok(None)
-    }}
+    match self.json.tasks.clone() {
+      Some(config) => {
+        let tasks_config: IndexMap<String, TaskDefinition> =
+          TaskDefinition::deserialize_tasks(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "tasks",
+              source: error,
+            }
+          })?;
+        Ok(Some(tasks_config))
+      }
+      _ => Ok(None),
+    }
   }
 
   pub fn to_compiler_option_types(
@@ -1848,26 +1873,27 @@ impl ConfigFile {
   pub fn to_lock_config(
     &self,
   ) -> Result<Option<LockConfig>, ToLockConfigError> {
-    match self.json.lock.clone() { Some(config) => {
-      let mut lock_config: LockConfig = serde_json::from_value(config)
-        .map_err(|error| ToInvalidConfigError::Parse {
-          config: "lock",
-          source: error,
-        })?;
-      if let LockConfig::PathBuf(path)
-      | LockConfig::Object {
-        path: Some(path), ..
-      } = &mut lock_config
-      {
-        *path = url_to_file_path(&self.specifier)?
-          .parent()
-          .unwrap()
-          .join(&path);
+    match self.json.lock.clone() {
+      Some(config) => {
+        let mut lock_config: LockConfig = serde_json::from_value(config)
+          .map_err(|error| ToInvalidConfigError::Parse {
+            config: "lock",
+            source: error,
+          })?;
+        if let LockConfig::PathBuf(path)
+        | LockConfig::Object {
+          path: Some(path), ..
+        } = &mut lock_config
+        {
+          *path = url_to_file_path(&self.specifier)?
+            .parent()
+            .unwrap()
+            .join(&path);
+        }
+        Ok(Some(lock_config))
       }
-      Ok(Some(lock_config))
-    } _ => {
-      Ok(None)
-    }}
+      _ => Ok(None),
+    }
   }
 
   pub fn resolve_lockfile_path(
@@ -2303,17 +2329,17 @@ mod tests {
   #[test]
   fn task_name_invalid_chars() {
     run_task_error_test(
-            r#"{
+      r#"{
         "tasks": {
           "build": "deno test",
           "some%test": "deno bundle mod.ts"
         }
       }"#,
-            concat!(
-                "Configuration file task names must only contain alpha-numeric ",
-                "characters, colons (:), underscores (_), or dashes (-). Task: some%test",
-            ),
-        );
+      concat!(
+        "Configuration file task names must only contain alpha-numeric ",
+        "characters, colons (:), underscores (_), or dashes (-). Task: some%test",
+      ),
+    );
   }
 
   #[test]
@@ -2358,8 +2384,10 @@ mod tests {
 
   #[test]
   fn files_pattern_matches_remote() {
-    assert!(FilePatterns::new_with_base(PathBuf::from("/"))
-      .matches_specifier(&Url::parse("https://example.com/mod.ts").unwrap()));
+    assert!(
+      FilePatterns::new_with_base(PathBuf::from("/"))
+        .matches_specifier(&Url::parse("https://example.com/mod.ts").unwrap())
+    );
   }
 
   #[test]

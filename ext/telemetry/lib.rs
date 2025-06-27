@@ -11,9 +11,9 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
@@ -21,22 +21,27 @@ use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::InstrumentationScope;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
@@ -57,32 +62,27 @@ use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
-use opentelemetry::InstrumentationScope;
-pub use opentelemetry::Key;
-pub use opentelemetry::KeyValue;
-pub use opentelemetry::StringValue;
-pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
 use opentelemetry_sdk::logs::LogRecord;
-use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
-use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
-use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -501,19 +501,19 @@ mod hyper_client {
   use std::task::Poll;
   use std::task::{self};
 
-  use deno_tls::create_client_config;
-  use deno_tls::load_certs;
-  use deno_tls::load_private_keys;
   use deno_tls::SocketUse;
   use deno_tls::TlsKey;
   use deno_tls::TlsKeys;
+  use deno_tls::create_client_config;
+  use deno_tls::load_certs;
+  use deno_tls::load_private_keys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
   use hyper::body::Body as HttpBody;
   use hyper::body::Frame;
   use hyper_rustls::HttpsConnector;
-  use hyper_util::client::legacy::connect::HttpConnector;
   use hyper_util::client::legacy::Client;
+  use hyper_util::client::legacy::connect::HttpConnector;
   use opentelemetry_http::Bytes;
   use opentelemetry_http::HttpError;
   use opentelemetry_http::Request;
@@ -2354,12 +2354,13 @@ async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
       .expect("mutex poisoned")
       .push(tx);
   }
-  match rx.await { Ok(done) => {
-    state.borrow_mut().put(ObservationDone(done));
-    true
-  } _ => {
-    false
-  }}
+  match rx.await {
+    Ok(done) => {
+      state.borrow_mut().put(ObservationDone(done));
+      true
+    }
+    _ => false,
+  }
 }
 
 #[op2(fast)]

@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
@@ -14,17 +14,17 @@ use std::time::SystemTime;
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
 use deno_runtime::colors;
-use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::anyhow::Context;
+use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::error::AnyError;
 use indexmap::IndexSet;
-use serde::de;
-use serde::de::SeqAccess;
-use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use serde::de;
+use serde::de::SeqAccess;
+use serde::de::Visitor;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {

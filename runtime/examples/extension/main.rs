@@ -7,10 +7,10 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
+use deno_core::op2;
 use deno_fs::RealFs;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;

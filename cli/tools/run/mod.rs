@@ -11,8 +11,8 @@ use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
@@ -44,10 +44,13 @@ fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
     // TODO: Audit that the environment access only happens in single-threaded code.
-    unsafe { std::env::set_var(
-      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
-      crate::npm::get_npm_config_user_agent(),
-    ) };
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      std::env::set_var(
+        crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
+        crate::npm::get_npm_config_user_agent(),
+      )
+    };
   });
 }
 

@@ -11,21 +11,21 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_unsync::sync::AtomicFlag;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
 
-use crate::remote::maybe_auth_header_value_for_npm_registry;
-use crate::rt::spawn_blocking;
-use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::MultiRuntimeAsyncValueCreator;
+use crate::rt::spawn_blocking;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -183,7 +183,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       match cache_item {
         MemoryCacheItem::FsCached(info) => return Ok(Some(info)),
         MemoryCacheItem::MemoryCached(maybe_info) => {
-          return maybe_info.map_err(LoadPackageInfoInnerError)
+          return maybe_info.map_err(LoadPackageInfoInnerError);
         }
         MemoryCacheItem::Pending(value_creator) => {
           (value_creator, mem_cache.clear_id)
@@ -240,7 +240,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         Ok(maybe_auth_header_value) => maybe_auth_header_value,
         Err(err) => {
           return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
-            .boxed_local()
+            .boxed_local();
         }
       };
     let name = name.to_string();

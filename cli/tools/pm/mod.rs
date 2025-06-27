@@ -4,21 +4,21 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_core::anyhow::bail;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_path_util::url_to_file_path;
+use deno_semver::StackString;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use deno_semver::Version;
-use deno_semver::VersionReq;
 use deps::KeyPath;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
@@ -30,8 +30,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -138,12 +138,15 @@ impl ConfigUpdater {
         let imports = self.root_object.object_value_or_set("imports");
         let value =
           format!("{}@{}", selected.package_name, selected.version_req);
-        match imports.get(&selected.import_name) { Some(prop) => {
-          prop.set_value(json!(value));
-        } _ => {
-          let index = insert_index(&imports, &selected.import_name);
-          imports.insert(index, &selected.import_name, json!(value));
-        }}
+        match imports.get(&selected.import_name) {
+          Some(prop) => {
+            prop.set_value(json!(value));
+          }
+          _ => {
+            let index = insert_index(&imports, &selected.import_name);
+            imports.insert(index, &selected.import_name, json!(value));
+          }
+        }
       }
       ConfigKind::PackageJson => {
         let deps_prop = self.root_object.get("dependencies");
@@ -192,12 +195,15 @@ impl ConfigUpdater {
           }
         }
 
-        match dependencies.get(&alias) { Some(prop) => {
-          prop.set_value(json!(value));
-        } _ => {
-          let index = insert_index(&dependencies, &alias);
-          dependencies.insert(index, &alias, json!(value));
-        }}
+        match dependencies.get(&alias) {
+          Some(prop) => {
+            prop.set_value(json!(value));
+          }
+          _ => {
+            let index = insert_index(&dependencies, &alias);
+            dependencies.insert(index, &alias, json!(value));
+          }
+        }
       }
     }
 
@@ -211,12 +217,13 @@ impl ConfigUpdater {
           .root_object
           .object_value("imports")
           .and_then(|i| i.get(package))
-        { Some(prop) => {
-          remove_prop_and_maybe_parent_prop(prop);
-          true
-        } _ => {
-          false
-        }}
+        {
+          Some(prop) => {
+            remove_prop_and_maybe_parent_prop(prop);
+            true
+          }
+          _ => false,
+        }
       }
       ConfigKind::PackageJson => {
         let deps = [
@@ -512,7 +519,9 @@ pub async fn add(
           bail!(
             "{} has only pre-release versions available. Try specifying a version: `{}`",
             crate::colors::red(&package_name),
-            crate::colors::yellow(format!("deno {cmd_name} {package_name}@^{version}"))
+            crate::colors::yellow(format!(
+              "deno {cmd_name} {package_name}@^{version}"
+            ))
           )
         }
         None => bail!("{} was not found.", crate::colors::red(package_name)),

@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::OpState;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
@@ -170,6 +170,7 @@ fn op_set_env(
   }
 
   // TODO: Audit that the environment access only happens in single-threaded code.
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe { env::set_var(key, value) };
   dt_change_notif(scope, key);
   Ok(())
@@ -243,6 +244,7 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
   // TODO: Audit that the environment access only happens in single-threaded code.
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe { env::remove_var(key) };
   Ok(())
 }
