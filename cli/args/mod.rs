@@ -386,8 +386,8 @@ impl MainModuleResolver for WorkspaceMainModuleResolver {
     cwd: &Url,
   ) -> Result<Url, AnyError> {
     let resolution = self.workspace_resolver.resolve(
-      &specifier,
-      &cwd,
+      specifier,
+      cwd,
       deno_resolver::workspace::ResolutionKind::Execution,
     )?;
     let url = match resolution {
