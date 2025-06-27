@@ -353,14 +353,6 @@ fn resolve_lint_rules_options(
   }
 }
 
-pub trait MainModuleResolver {
-  fn resolve_main_module(
-    &self,
-    specifier: &str,
-    cwd: &Url,
-  ) -> Result<Url, AnyError>;
-}
-
 pub struct WorkspaceMainModuleResolver {
   workspace_resolver: Arc<deno_resolver::workspace::WorkspaceResolver<CliSys>>,
   node_resolver: Arc<crate::node::CliNodeResolver>,
@@ -379,7 +371,7 @@ impl WorkspaceMainModuleResolver {
     }
   }
 }
-impl MainModuleResolver for WorkspaceMainModuleResolver {
+impl WorkspaceMainModuleResolver {
   fn resolve_main_module(
     &self,
     specifier: &str,
@@ -628,11 +620,14 @@ impl CliOptions {
   fn resolve_main_module_with_resolver_if_bare(
     &self,
     raw_specifier: &str,
-    resolver: Option<impl MainModuleResolver>,
+    resolver: Option<&WorkspaceMainModuleResolver>,
     default_resolve: impl Fn() -> Result<ModuleSpecifier, AnyError>,
   ) -> Result<ModuleSpecifier, AnyError> {
     match resolver {
-      Some(resolver) if !raw_specifier.starts_with(['/', '.', '\\']) => {
+      Some(resolver)
+        if !raw_specifier.starts_with('.')
+          && !Path::new(raw_specifier).is_absolute() =>
+      {
         let cwd = deno_path_util::url_from_directory_path(self.initial_cwd())?;
         resolver
           .resolve_main_module(raw_specifier, &cwd)
@@ -644,7 +639,7 @@ impl CliOptions {
 
   pub fn resolve_main_module_with_resolver(
     &self,
-    resolver: Option<impl MainModuleResolver>,
+    resolver: Option<&WorkspaceMainModuleResolver>,
   ) -> Result<&ModuleSpecifier, AnyError> {
     self
       .main_module_cell
@@ -707,7 +702,7 @@ impl CliOptions {
   }
 
   pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
-    self.resolve_main_module_with_resolver(None::<WorkspaceMainModuleResolver>)
+    self.resolve_main_module_with_resolver(None)
   }
 
   pub fn resolve_file_header_overrides(

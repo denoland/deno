@@ -80,7 +80,7 @@ pub async fn run_script(
   );
 
   let main_module = cli_options.resolve_main_module_with_resolver(Some(
-    crate::args::WorkspaceMainModuleResolver::new(
+    &crate::args::WorkspaceMainModuleResolver::new(
       workspace_resolver.clone(),
       node_resolver.clone(),
     ),
