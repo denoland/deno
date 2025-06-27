@@ -479,7 +479,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tests/node_compat/runner/suite"),
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
+          if: "matrix.job == 'test'",
         },
         {
           ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
@@ -710,12 +710,6 @@ const ci = {
           if: "matrix.job == 'lint'",
           run:
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-        },
-        {
-          name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Check tracing build",
