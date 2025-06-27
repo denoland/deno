@@ -371,7 +371,7 @@ async fn run_subcommand(
             .with_context(|| format!("Failed creating: {coverage_dir}"))?;
           // this is set in order to ensure spawned processes use the same
           // coverage directory
-          // TODO: Audit that the environment access only happens in single-threaded code.
+
           #[allow(clippy::undocumented_unsafe_blocks)]
           unsafe {
             env::set_var(
@@ -705,7 +705,7 @@ fn wait_for_start(
 > {
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
-  // TODO: Audit that the environment access only happens in single-threaded code.
+
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
@@ -809,7 +809,6 @@ fn wait_for_start(
     std::env::set_current_dir(cmd.cwd)?;
 
     for (k, v) in cmd.env {
-      // TODO: Audit that the environment access only happens in single-threaded code.
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
         std::env::set_var(k, v)

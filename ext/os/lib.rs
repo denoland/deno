@@ -169,7 +169,6 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  // TODO: Audit that the environment access only happens in single-threaded code.
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     env::set_var(key, value)
@@ -245,7 +244,7 @@ fn op_delete_env(
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
-  // TODO: Audit that the environment access only happens in single-threaded code.
+
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     env::remove_var(key)

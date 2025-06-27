@@ -470,7 +470,7 @@ impl CliOptions {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      // TODO: Audit that the environment access only happens in single-threaded code.
+
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
         std::env::remove_var("NODE_CHANNEL_FD")
@@ -985,7 +985,7 @@ impl CliOptions {
         match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
-            // TODO: Audit that the environment access only happens in single-threaded code.
+
             #[allow(clippy::undocumented_unsafe_blocks)]
             unsafe {
               std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)

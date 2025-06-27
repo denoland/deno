@@ -321,7 +321,6 @@ fn trust_proxy_headers() -> bool {
 
   *TRUST_PROXY_HEADERS.get_or_init(|| {
     if let Some(v) = std::env::var_os(VAR_NAME) {
-      // TODO: Audit that the environment access only happens in single-threaded code.
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
         std::env::remove_var(VAR_NAME)

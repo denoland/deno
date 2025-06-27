@@ -60,7 +60,6 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
-      // TODO: Audit that the environment access only happens in single-threaded code.
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
         std::env::set_var(env_var.0, env_var.1)

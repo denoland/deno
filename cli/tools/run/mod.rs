@@ -43,7 +43,6 @@ To grant permissions, set them before the script argument. For example:
 fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
-    // TODO: Audit that the environment access only happens in single-threaded code.
     #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       std::env::set_var(

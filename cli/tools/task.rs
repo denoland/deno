@@ -67,7 +67,7 @@ pub async fn execute_script(
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
       .map(|v| {
         // always remove so sub processes don't inherit this env var
-        // TODO: Audit that the environment access only happens in single-threaded code.
+
         #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
           std::env::remove_var(
