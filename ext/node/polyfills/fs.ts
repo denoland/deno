@@ -362,13 +362,10 @@ export {
   ftruncateSync,
   futimes,
   futimesSync,
-<<<<<<< main
   glob,
   globSync,
-=======
   lchmod,
   lchmodSync,
->>>>>>> main
   link,
   linkSync,
   lstat,
