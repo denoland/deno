@@ -1034,7 +1034,7 @@ declare namespace Deno {
     }
 
     /** @category Network */
-    enum PipeMode {
+    export enum PipeMode {
       Message = "message",
       Byte = "byte",
     }
