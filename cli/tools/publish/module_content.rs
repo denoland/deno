@@ -284,13 +284,24 @@ mod test {
 
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_file_path;
+  use deno_resolver::factory::WorkspaceDirectoryProvider;
+  use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+  use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
+  use deno_resolver::npm::DenoInNpmPackageChecker;
+  use deno_resolver::npm::NpmResolverCreateOptions;
   use deno_resolver::workspace::WorkspaceResolver;
+  use node_resolver::cache::NodeResolutionSys;
+  use node_resolver::DenoIsBuiltInNodeModuleChecker;
+  use node_resolver::NodeResolver;
+  use node_resolver::NodeResolverOptions;
+  use node_resolver::PackageJsonResolver;
   use pretty_assertions::assert_eq;
   use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
 
   use super::*;
+  use crate::npm::CliNpmResolver;
 
   #[test]
   fn test_module_content_jsx() {
@@ -404,8 +415,27 @@ mod test {
       .unwrap(),
     );
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
-    let compiler_options_resolver =
-      Arc::new(CompilerOptionsResolver::default());
+    let package_json_resolver =
+      Arc::new(PackageJsonResolver::new(sys.clone(), None));
+    let node_resolver = NodeResolver::new(
+      DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
+      DenoIsBuiltInNodeModuleChecker,
+      CliNpmResolver::new(NpmResolverCreateOptions::Byonm(
+        ByonmNpmResolverCreateOptions {
+          root_node_modules_dir: None,
+          sys: NodeResolutionSys::new(sys.clone(), None),
+          pkg_json_resolver: package_json_resolver.clone(),
+        },
+      )),
+      package_json_resolver,
+      NodeResolutionSys::new(sys.clone(), None),
+      NodeResolverOptions::default(),
+    );
+    let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
+      &sys,
+      &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
+      &node_resolver,
+    ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,
