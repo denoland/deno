@@ -28,4 +28,4 @@ thiserror.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
-libuv-sys-lite.workspace = true
+libuv-sys-lite = { workspace = true, features = ["dyn-symbols"] }

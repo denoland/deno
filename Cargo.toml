@@ -370,7 +370,7 @@ memmap2 = "0.9"
 
 # napi
 libloading = "0.7"
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = "=1.48.3"
 napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 
