@@ -541,11 +541,8 @@ deno_core::extension!(deno_node,
     "_fs/_fs_fsync.ts",
     "_fs/_fs_ftruncate.ts",
     "_fs/_fs_futimes.ts",
-<<<<<<< main
     "_fs/_fs_glob.ts",
-=======
     "_fs/_fs_lchmod.ts",
->>>>>>> main
     "_fs/_fs_lchown.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
