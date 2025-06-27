@@ -23,7 +23,7 @@ import {
 } from "./common.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
-const TIMEOUT = 5000;
+const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
 
@@ -153,17 +153,15 @@ function getFlags(source: string): [string[], string[]] {
   return [v8Flags, nodeOptions];
 }
 
-let testSerialId = 0;
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
- * @param testPath Relative path from test/ dir of Node.js (e.g. "parallel/test-assert.js").
+ * @param testPath Relative path to the test file
  */
-export async function runSingle(
+async function runSingle(
   testPath: string,
   retry = 0,
 ): Promise<NodeTestFileReport> {
-  testSerialId++;
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   let usesNodeTest = false;
@@ -185,7 +183,6 @@ export async function runSingle(
         NODE_SKIP_FLAG_CHECK: "1",
         NODE_OPTIONS: nodeOptions.join(" "),
         NO_COLOR: "1",
-        TEST_SERIAL_ID: String(testSerialId),
       },
       stdout: "piped",
       stderr: "piped",
@@ -337,14 +334,14 @@ async function main() {
         return true;
       }
 
-      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
+      reports[term] = { result: NodeTestFileResult.SKIP };
       return false;
     });
     parallel = parallel.filter((term) => {
       if (term.includes(filterTerm)) {
         return true;
       }
-      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
+      reports[term] = { result: NodeTestFileResult.SKIP };
       return false;
     });
     console.log(
