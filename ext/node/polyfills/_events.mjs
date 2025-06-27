@@ -497,7 +497,7 @@ function _addListener(target, type, listener, prepend) {
         : [existing, listener];
       // If we've already got an array, just append.
     } else if (prepend) {
-      ArrayPrototypeShift(existing,  listener);
+      ArrayPrototypeUnshift(existing,  listener);
     } else {
       ArrayPrototypePush(existing, listener);
     }
@@ -1207,7 +1207,7 @@ export class EventEmitterAsyncResource extends EventEmitter {
       throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
     }
     const { asyncResource } = this;
-    ArrayPrototypeShift(args,  super.emit, this, event);
+    ArrayPrototypeUnshift(args,  super.emit, this, event);
     return FunctionPrototypeApply(asyncResource.runInAsyncScope, asyncResource, args);
   }
 
