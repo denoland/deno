@@ -396,9 +396,8 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = if let Ok(package_ref) =
-      NpmPackageReqReference::from_specifier(&main_module)
-    {
+    let main_module = match NpmPackageReqReference::from_specifier(&main_module)
+    { Ok(package_ref) => {
       if let Some(npm_installer) = &self.npm_installer {
         let reqs = &[package_ref.req().clone()];
         npm_installer
@@ -441,9 +440,9 @@ impl CliMainWorkerFactory {
       }
 
       main_module
-    } else {
+    } _ => {
       main_module
-    };
+    }};
 
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,

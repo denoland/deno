@@ -65,9 +65,10 @@ pub async fn execute_script(
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
       .map(|v| {
         // always remove so sub processes don't inherit this env var
-        std::env::remove_var(
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var(
           crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
-        );
+        ) };
         v == "1"
       })
       .unwrap_or(false);
@@ -384,11 +385,11 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self, kill_signal, args) {
+        match context.get_next_task(self, kill_signal, args) { Some(task) => {
           queue.push(task);
-        } else {
+        } _ => {
           break;
-        }
+        }}
       }
 
       // If queue is empty at this point, then there are no more tasks in the queue.

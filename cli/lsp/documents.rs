@@ -197,7 +197,7 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
+  let hash = deno_lib::util::checksum::r#gen(&[file_name_str.as_bytes()]);
   Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
     .inspect_err(|err| {
       lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
@@ -702,13 +702,13 @@ impl Documents {
     if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(&uri) {
+    let doc = match ServerDocument::load(&uri) { Some(doc) => {
       doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
+    } _ => { match self.data_urls_by_uri.get(&uri) { Some(data_url) => {
       ServerDocument::data_url(&uri, data_url.value().clone())?
-    } else {
+    } _ => {
       return None;
-    };
+    }}}};
     let doc = Arc::new(doc);
     self.server.insert(uri.into_owned(), doc.clone());
     Some(Document::Server(doc))
@@ -1221,13 +1221,12 @@ impl DocumentModules {
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
+    let specifier = match JsrPackageReqReference::from_specifier(specifier)
+    { Ok(jsr_req_ref) => {
       Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
+    } _ => {
       Cow::Borrowed(specifier)
-    };
+    }};
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let document =
       self
@@ -1322,13 +1321,12 @@ impl DocumentModules {
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
+    let specifier = match JsrPackageReqReference::from_specifier(specifier)
+    { Ok(jsr_req_ref) => {
       Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
+    } _ => {
       Cow::Borrowed(specifier)
-    };
+    }};
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let modules = self.modules_for_scope(scope)?;
     modules.get_for_specifier(&specifier)
@@ -1601,22 +1599,22 @@ impl DocumentModules {
         } else {
           results.push(None);
         }
-      } else if let Ok(specifier) = scoped_resolver.as_cli_resolver().resolve(
+      } else { match scoped_resolver.as_cli_resolver().resolve(
         raw_specifier,
         referrer,
         deno_graph::Position::zeroed(),
         resolution_mode,
         NodeResolutionKind::Types,
-      ) {
+      ) { Ok(specifier) => {
         results.push(self.resolve_dependency(
           &specifier,
           referrer,
           resolution_mode,
           scope,
         ));
-      } else {
+      } _ => {
         results.push(None);
-      }
+      }}}
     }
     results
   }

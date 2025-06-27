@@ -240,9 +240,9 @@ impl PackageJson {
     maybe_cache: Option<&dyn PackageJsonCache>,
     path: &Path,
   ) -> Result<PackageJsonRc, PackageJsonLoadError> {
-    if let Some(item) = maybe_cache.and_then(|c| c.get(path)) {
+    match maybe_cache.and_then(|c| c.get(path)) { Some(item) => {
       Ok(item)
-    } else {
+    } _ => {
       match sys.fs_read_to_string_lossy(path) {
         Ok(file_text) => {
           let pkg_json =
@@ -258,7 +258,7 @@ impl PackageJson {
           source: err,
         }),
       }
-    }
+    }}
   }
 
   pub fn load_from_string(

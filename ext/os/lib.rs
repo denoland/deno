@@ -127,7 +127,7 @@ fn op_exec_path() -> Result<String, OsError> {
 }
 
 fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
-  extern "C" {
+  unsafe extern "C" {
     #[cfg(unix)]
     fn tzset();
 
@@ -169,7 +169,8 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  env::set_var(key, value);
+  // TODO: Audit that the environment access only happens in single-threaded code.
+  unsafe { env::set_var(key, value) };
   dt_change_notif(scope, key);
   Ok(())
 }
@@ -241,7 +242,8 @@ fn op_delete_env(
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
-  env::remove_var(key);
+  // TODO: Audit that the environment access only happens in single-threaded code.
+  unsafe { env::remove_var(key) };
   Ok(())
 }
 
@@ -594,7 +596,7 @@ fn rss() -> u64 {
   let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
-    extern "C" {
+    unsafe extern "C" {
       static mut mach_task_self_: std::ffi::c_uint;
     }
     libc::task_info(

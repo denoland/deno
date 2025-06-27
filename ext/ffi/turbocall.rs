@@ -395,11 +395,11 @@ extern "C" fn turbocall_ab_contents(
 
 unsafe extern "C" fn turbocall_raise(
   options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
-) {
+) { unsafe {
   let mut scope = deno_core::v8::CallbackScope::new(&*options);
   let exception = deno_core::error::to_v8_error(
     &mut scope,
     &crate::IRError::InvalidBufferType,
   );
   scope.throw_exception(exception);
-}
+}}

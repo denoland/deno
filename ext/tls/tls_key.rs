@@ -198,7 +198,7 @@ impl TlsKeyResolver {
   pub fn resolve(
     &self,
     sni: String,
-  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> {
+  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> + use<> {
     let mut cache = self.inner.cache.borrow_mut();
     let mut recv = match cache.get(&sni) {
       None => {
@@ -255,14 +255,13 @@ impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
   /// only one `poll`er should be active at any time.
   pub async fn poll(&self) -> Option<String> {
-    if let Some((sni, sender)) =
-      poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await
-    {
+    match poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await
+    { Some((sni, sender)) => {
       self.pending.borrow_mut().insert(sni.clone(), sender);
       Some(sni)
-    } else {
+    } _ => {
       None
-    }
+    }}
   }
 
   /// Resolve a previously polled item.

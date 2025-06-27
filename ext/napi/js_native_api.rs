@@ -2870,11 +2870,11 @@ fn napi_get_and_clear_last_exception(
   check_arg!(env, result);
 
   let ex: v8::Local<v8::Value> =
-    if let Some(last_exception) = env.last_exception.take() {
+    match env.last_exception.take() { Some(last_exception) => {
       v8::Local::new(&mut env.scope(), last_exception)
-    } else {
+    } _ => {
       v8::undefined(&mut env.scope()).into()
-    };
+    }};
 
   unsafe {
     *result = ex.into();
@@ -3022,7 +3022,7 @@ fn napi_create_typedarray<'s>(
   };
 
   macro_rules! create {
-    ($TypedArray:ident, $size_of_element:expr) => {{
+    ($TypedArray:ident, $size_of_element:expr_2021) => {{
       let soe = $size_of_element;
       if soe > 1 && byte_offset % soe != 0 {
         let message = v8::String::new(

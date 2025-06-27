@@ -425,7 +425,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         .resolve_storage_key(&args.main_module);
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -612,11 +612,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .origin_data_folder_path
           .as_ref()
           .unwrap() // must be set if storage key resolver returns a value
-          .join(checksum::gen(&[key.as_bytes()]))
+          .join(checksum::r#gen(&[key.as_bytes()]))
       });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
     let services = WorkerServiceOptions {

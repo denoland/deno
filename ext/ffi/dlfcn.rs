@@ -129,14 +129,14 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
     let value = serde_value::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    if let Ok(res) = ForeignStatic::deserialize(
+    match ForeignStatic::deserialize(
       ValueDeserializer::<D::Error>::new(value.clone()),
-    ) {
+    ) { Ok(res) => {
       Ok(ForeignSymbol::ForeignStatic(res))
-    } else {
+    } _ => {
       ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
         .map(ForeignSymbol::ForeignFunction)
-    }
+    }}
   }
 }
 

@@ -1527,11 +1527,11 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
         match version_req.inner() {
           RangeSetOrTag::RangeSet(set) => {
-            if let Some(version) = pkg_json
+            match pkg_json
               .version
               .as_ref()
               .and_then(|v| Version::parse_from_npm(v).ok())
-            {
+            { Some(version) => {
               if set.satisfies(&version) {
                 Ok(pkg_json.dir_path())
               } else {
@@ -1543,10 +1543,10 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                   .into(),
                 )
               }
-            } else {
+            } _ => {
               // just match it
               Ok(pkg_json.dir_path())
-            }
+            }}
           }
           RangeSetOrTag::Tag(_) => {
             // always match tags

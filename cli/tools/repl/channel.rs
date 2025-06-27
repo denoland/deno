@@ -65,8 +65,7 @@ impl RustylineSyncMessageSender {
     method: &str,
     params: Option<T>,
   ) -> Result<Value, CoreError> {
-    if let Err(err) =
-      self
+    match self
         .message_tx
         .blocking_send(RustylineSyncMessage::PostMessage {
           method: method.to_string(),
@@ -75,14 +74,14 @@ impl RustylineSyncMessageSender {
             .transpose()
             .map_err(JsErrorBox::from_err)?,
         })
-    {
+    { Err(err) => {
       Err(JsErrorBox::from_err(err).into())
-    } else {
+    } _ => {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => result,
         RustylineSyncResponse::LspCompletions(_) => unreachable!(),
       }
-    }
+    }}
   }
 
   pub fn lsp_completions(

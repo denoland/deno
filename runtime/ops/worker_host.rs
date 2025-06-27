@@ -261,11 +261,11 @@ fn op_create_worker(
 
 #[op2]
 fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
-  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
+  match state.borrow_mut::<WorkersTable>().remove(&id) { Some(worker_thread) => {
     worker_thread.terminate();
-  } else {
+  } _ => {
     debug!("tried to terminate non-existent worker {}", id);
-  }
+  }}
 }
 
 enum WorkerChannel {

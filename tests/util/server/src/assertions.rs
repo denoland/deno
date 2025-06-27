@@ -6,7 +6,7 @@ use crate::colors;
 
 #[macro_export]
 macro_rules! assert_starts_with {
-  ($string:expr, $($test:expr),+) => {
+  ($string:expr_2021, $($test:expr_2021),+) => {
     let string = $string; // This might be a function call or something
     if !($(string.starts_with($test))||+) {
       panic!("{:?} does not start with {:?}", string, [$($test),+]);
@@ -16,7 +16,7 @@ macro_rules! assert_starts_with {
 
 #[macro_export]
 macro_rules! assert_ends_with {
-  ($left:expr, $right:expr $(,)?) => {
+  ($left:expr_2021, $right:expr_2021 $(,)?) => {
     match (&$left, &$right) {
       (actual, expected) => {
         let actual = if expected.len() > actual.len() {
@@ -36,7 +36,7 @@ macro_rules! assert_ends_with {
 
 #[macro_export]
 macro_rules! assert_contains {
-  ($string:expr, $($test:expr),+ $(,)?) => {
+  ($string:expr_2021, $($test:expr_2021),+ $(,)?) => {
     let string = &$string; // This might be a function call or something
     if !($(string.contains($test))||+) {
       panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
@@ -46,7 +46,7 @@ macro_rules! assert_contains {
 
 #[macro_export]
 macro_rules! assert_not_contains {
-  ($string:expr, $($test:expr),+ $(,)?) => {
+  ($string:expr_2021, $($test:expr_2021),+ $(,)?) => {
     let string = &$string; // This might be a function call or something
     if !($(!string.contains($test))||+) {
       panic!("{:?} contained {:?}", string, [$($test),+]);

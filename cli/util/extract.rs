@@ -1588,7 +1588,7 @@ add('1', '2');
     }
 
     macro_rules! atom_set {
-      ($( $x:expr ),*) => {
+      ($( $x:expr_2021 ),*) => {
         [$( Atom::from($x) ),*].into_iter().collect::<BTreeSet<_>>()
       };
     }

@@ -1407,7 +1407,7 @@ impl FileBackedVfs {
   pub fn read_dir_with_metadata(
     &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + use<>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
     Ok(

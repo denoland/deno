@@ -289,9 +289,8 @@ impl<
       None => {
         if options.maintain_npm_specifiers {
           specifier.into_owned()
-        } else if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(&specifier)
-        {
+        } else { match NpmPackageReqReference::from_specifier(&specifier)
+        { Ok(reference) => {
           if let Some(url) =
             self.resolver.resolve_non_workspace_npm_req_ref_to_file(
               &reference,
@@ -304,9 +303,9 @@ impl<
           } else {
             specifier.into_owned()
           }
-        } else {
+        } _ => {
           specifier.into_owned()
-        }
+        }}}
       }
     };
     Ok(specifier)

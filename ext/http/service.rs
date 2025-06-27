@@ -44,7 +44,7 @@ pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
   std::sync::atomic::AtomicUsize::new(0);
 
 macro_rules! http_general_trace {
-  ($($args:expr),*) => {
+  ($($args:expr_2021),*) => {
     #[cfg(feature = "__http_tracing")]
     {
       let count = $crate::service::RECORD_COUNT
@@ -59,7 +59,7 @@ macro_rules! http_general_trace {
 }
 
 macro_rules! http_trace {
-  ($record:expr $(, $args:expr)*) => {
+  ($record:expr_2021 $(, $args:expr_2021)*) => {
     #[cfg(feature = "__http_tracing")]
     {
       let count = $crate::service::RECORD_COUNT
@@ -321,7 +321,8 @@ fn trust_proxy_headers() -> bool {
 
   *TRUST_PROXY_HEADERS.get_or_init(|| {
     if let Some(v) = std::env::var_os(VAR_NAME) {
-      std::env::remove_var(VAR_NAME);
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { std::env::remove_var(VAR_NAME) };
       v == "1"
     } else {
       false
@@ -346,11 +347,11 @@ impl HttpRecord {
     let request_body = Some(request_body.into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record =
-      if let Some((record, headers)) = server_state.borrow_mut().pool.pop() {
+      match server_state.borrow_mut().pool.pop() { Some((record, headers)) => {
         response_parts.headers = headers;
         http_trace!(record, "HttpRecord::reuse");
         record
-      } else {
+      } _ => {
         #[cfg(feature = "__http_tracing")]
         {
           RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -360,7 +361,7 @@ impl HttpRecord {
         let record = Rc::new(Self(RefCell::new(None)));
         http_trace!(record, "HttpRecord::new");
         record
-      };
+      }};
     *record.0.borrow_mut() = Some(HttpRecordInner {
       server_state,
       request_info,

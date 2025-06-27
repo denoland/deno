@@ -1389,11 +1389,11 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   }
 
   if let Some(help_expansion) = matches.get_one::<String>("help").cloned() {
-    let mut subcommand = if let Some((sub, _)) = matches.remove_subcommand() {
+    let mut subcommand = match matches.remove_subcommand() { Some((sub, _)) => {
       app.find_subcommand(sub).unwrap().clone()
-    } else {
+    } _ => {
       app
-    };
+    }};
 
     if help_expansion == "full" {
       subcommand = enable_full(subcommand);
@@ -1408,11 +1408,11 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     help_parse(&mut flags, subcommand);
     return Ok(flags);
   } else if matches.contains_id("help") {
-    let subcommand = if let Some((sub, _)) = matches.remove_subcommand() {
+    let subcommand = match matches.remove_subcommand() { Some((sub, _)) => {
       app.find_subcommand(sub).unwrap().clone()
-    } else {
+    } _ => {
       app
-    };
+    }};
 
     help_parse(&mut flags, subcommand);
     return Ok(flags);
@@ -1438,7 +1438,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     return Ok(flags);
   }
 
-  if let Some((subcommand, mut m)) = matches.remove_subcommand() {
+  match matches.remove_subcommand() { Some((subcommand, mut m)) => {
     let pre_subcommand_arg = app
       .get_arguments()
       .filter(|arg| !arg.is_global_set())
@@ -1519,7 +1519,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "publish" => publish_parse(&mut flags, &mut m)?,
       _ => unreachable!(),
     }
-  } else {
+  } _ => {
     let has_non_globals = app
       .get_arguments()
       .filter(|arg| !arg.is_global_set())
@@ -1541,7 +1541,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         },
       )
     }
-  }
+  }}
 
   Ok(flags)
 }
@@ -1583,7 +1583,7 @@ fn enable_full(command: Command) -> Command {
 }
 
 macro_rules! heading {
-    ($($name:ident = $title:expr),+; $total:literal) => {
+    ($($name:ident = $title:expr_2021),+; $total:literal) => {
       $(const $name: &str = $title;)+
       const HEADING_ORDER: [&str; $total] = [$($name),+];
     };
@@ -4932,11 +4932,11 @@ fn bench_parse(
       .extend(matches.remove_many::<String>("script_arg").unwrap());
   }
 
-  let include = if let Some(files) = matches.remove_many::<String>("files") {
+  let include = match matches.remove_many::<String>("files") { Some(files) => {
     files.collect()
-  } else {
+  } _ => {
     Vec::new()
-  };
+  }};
 
   let no_run = matches.get_flag("no-run");
 
@@ -5666,7 +5666,7 @@ fn run_parse(
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
 
-  if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
+  match matches.remove_many::<String>("script_arg") { Some(mut script_arg) => {
     let script = script_arg.next().unwrap();
     flags.argv.extend(script_arg);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
@@ -5675,7 +5675,7 @@ fn run_parse(
       bare,
       coverage_dir,
     });
-  } else if bare {
+  } _ => if bare {
     return Err(app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
       clap::error::ErrorKind::MissingRequiredArgument,
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
@@ -5685,7 +5685,7 @@ fn run_parse(
       clap::error::ErrorKind::MissingRequiredArgument,
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
     ));
-  }
+  }}
 
   Ok(())
 }
@@ -5784,7 +5784,7 @@ fn task_parse(
     eval: matches.get_flag("eval"),
   };
 
-  if let Some((task, mut matches)) = matches.remove_subcommand() {
+  match matches.remove_subcommand() { Some((task, mut matches)) => {
     task_flags.task = Some(task);
 
     flags.argv.extend(
@@ -5794,12 +5794,12 @@ fn task_parse(
         .flatten()
         .filter_map(|arg| arg.into_string().ok()),
     );
-  } else if task_flags.eval {
+  } _ => if task_flags.eval {
     return Err(app.find_subcommand_mut("task").unwrap().error(
       clap::error::ErrorKind::MissingRequiredArgument,
       "[TASK] must be specified when using --eval",
     ));
-  }
+  }}
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
   Ok(())
@@ -5854,11 +5854,11 @@ fn test_parse(
     flags.argv.extend(script_arg);
   }
 
-  let include = if let Some(files) = matches.remove_many::<String>("files") {
+  let include = match matches.remove_many::<String>("files") { Some(files) => {
     files.collect()
-  } else {
+  } _ => {
     Vec::new()
-  };
+  }};
 
   let junit_path = matches.remove_one::<String>("junit-path");
 
@@ -6515,7 +6515,7 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
+    ($($x:expr_2021),* $(,)?) => (vec![$($x.to_string().into()),*]);
   }
 
   #[test]
@@ -12174,33 +12174,30 @@ mod tests {
         continue;
       }
 
-      let long_flag = if let DenoSubcommand::Help(help) =
-        flags_from_vec(svec!["deno", command.get_name(), "--help"])
+      let long_flag = match flags_from_vec(svec!["deno", command.get_name(), "--help"])
           .unwrap()
           .subcommand
-      {
+      { DenoSubcommand::Help(help) => {
         help.help.to_string()
-      } else {
+      } _ => {
         unreachable!()
-      };
-      let short_flag = if let DenoSubcommand::Help(help) =
-        flags_from_vec(svec!["deno", command.get_name(), "-h"])
+      }};
+      let short_flag = match flags_from_vec(svec!["deno", command.get_name(), "-h"])
           .unwrap()
           .subcommand
-      {
+      { DenoSubcommand::Help(help) => {
         help.help.to_string()
-      } else {
+      } _ => {
         unreachable!()
-      };
-      let subcommand = if let DenoSubcommand::Help(help) =
-        flags_from_vec(svec!["deno", "help", command.get_name()])
+      }};
+      let subcommand = match flags_from_vec(svec!["deno", "help", command.get_name()])
           .unwrap()
           .subcommand
-      {
+      { DenoSubcommand::Help(help) => {
         help.help.to_string()
-      } else {
+      } _ => {
         unreachable!()
-      };
+      }};
       assert_eq!(long_flag, short_flag, "{} subcommand", command.get_name());
       assert_eq!(long_flag, subcommand, "{} subcommand", command.get_name());
     }

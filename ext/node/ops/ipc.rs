@@ -192,7 +192,7 @@ mod impl_ {
     // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
     // supported by `op2` currently.
     queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<impl Future<Output = Result<(), io::Error>>, IpcError> {
+  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
     let mut serialized = Vec::with_capacity(64);
     let mut ser = serde_json::Serializer::new(&mut serialized);
     serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;

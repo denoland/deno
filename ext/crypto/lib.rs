@@ -513,7 +513,7 @@ pub async fn op_crypto_verify_key(
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
-            if let Ok(signature) = P256Signature::from_slice(&args.signature) {
+            match P256Signature::from_slice(&args.signature) { Ok(signature) => {
               let prehash = match hash {
                 CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
                 CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
@@ -521,9 +521,9 @@ pub async fn op_crypto_verify_key(
                 CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
               };
               verifying_key.verify_prehash(&prehash, &signature).is_ok()
-            } else {
+            } _ => {
               false
-            }
+            }}
           }
           CryptoNamedCurve::P384 => {
             let verifying_key = match args.key.r#type {
@@ -540,7 +540,7 @@ pub async fn op_crypto_verify_key(
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
-            if let Ok(signature) = P384Signature::from_slice(&args.signature) {
+            match P384Signature::from_slice(&args.signature) { Ok(signature) => {
               let prehash = match hash {
                 CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
                 CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
@@ -548,9 +548,9 @@ pub async fn op_crypto_verify_key(
                 CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
               };
               verifying_key.verify_prehash(&prehash, &signature).is_ok()
-            } else {
+            } _ => {
               false
-            }
+            }}
           }
         }
       }

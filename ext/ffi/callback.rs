@@ -150,7 +150,7 @@ unsafe extern "C" fn deno_ffi_callback(
   result: &mut c_void,
   args: *const *const c_void,
   info: &CallbackInfo,
-) {
+) { unsafe {
   LOCAL_THREAD_ID.with(|s| {
     if *s.borrow() == info.thread_id {
       // Call from main thread. If this callback is being triggered due to a
@@ -192,7 +192,7 @@ unsafe extern "C" fn deno_ffi_callback(
       });
     }
   });
-}
+}}
 
 unsafe fn do_ffi_callback(
   scope: &mut v8::HandleScope,
@@ -200,7 +200,7 @@ unsafe fn do_ffi_callback(
   info: &CallbackInfo,
   result: &mut c_void,
   args: *const *const c_void,
-) {
+) { unsafe {
   let callback: NonNull<v8::Function> = info.callback;
   let func = std::mem::transmute::<
     NonNull<v8::Function>,
@@ -530,7 +530,7 @@ unsafe fn do_ffi_callback(
       // nop
     }
   };
-}
+}}
 
 #[op2(async)]
 pub fn op_ffi_unsafe_callback_ref(

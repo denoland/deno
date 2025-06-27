@@ -356,7 +356,7 @@ impl Stream for ResourceToBodyAdapter {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let this = self.get_mut();
-    if let Some(mut fut) = this.1.take() {
+    match this.1.take() { Some(mut fut) => {
       match fut.poll_unpin(cx) {
         Poll::Pending => {
           this.1 = Some(fut);
@@ -371,9 +371,9 @@ impl Stream for ResourceToBodyAdapter {
           Err(err) => Poll::Ready(Some(Err(err))),
         },
       }
-    } else {
+    } _ => {
       Poll::Ready(None)
-    }
+    }}
   }
 }
 
@@ -1408,29 +1408,29 @@ impl hyper::body::Body for ReqBody {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     match &mut *self {
-      ReqBody::Full(ref mut b) => {
+      ReqBody::Full(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Empty(ref mut b) => {
+      ReqBody::Empty(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Streaming(ref mut b) => Pin::new(b).poll_frame(cx),
+      ReqBody::Streaming(b) => Pin::new(b).poll_frame(cx),
     }
   }
 
   fn is_end_stream(&self) -> bool {
     match self {
-      ReqBody::Full(ref b) => b.is_end_stream(),
-      ReqBody::Empty(ref b) => b.is_end_stream(),
-      ReqBody::Streaming(ref b) => b.is_end_stream(),
+      ReqBody::Full(b) => b.is_end_stream(),
+      ReqBody::Empty(b) => b.is_end_stream(),
+      ReqBody::Streaming(b) => b.is_end_stream(),
     }
   }
 
   fn size_hint(&self) -> hyper::body::SizeHint {
     match self {
-      ReqBody::Full(ref b) => b.size_hint(),
-      ReqBody::Empty(ref b) => b.size_hint(),
-      ReqBody::Streaming(ref b) => b.size_hint(),
+      ReqBody::Full(b) => b.size_hint(),
+      ReqBody::Empty(b) => b.size_hint(),
+      ReqBody::Streaming(b) => b.size_hint(),
     }
   }
 }

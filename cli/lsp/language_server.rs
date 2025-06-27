@@ -4780,20 +4780,20 @@ impl Inner {
       }
 
       Some(contents)
-    } else if let Some(document) = self.get_document(
+    } else { match self.get_document(
       &params.text_document.uri,
       Enabled::Ignore,
       Exists::Filter,
       Diagnosable::Ignore,
-    )? {
+    )? { Some(document) => {
       Some(document.text().to_string())
-    } else {
+    } _ => {
       lsp_warn!(
         "The document was not found: {}",
         params.text_document.uri.as_str()
       );
       None
-    };
+    }}};
     self.performance.measure(mark);
     Ok(contents)
   }

@@ -583,21 +583,20 @@ impl<
     // 5. Create symlinks for package json dependencies
     {
       for remote in self.npm_install_deps_provider.remote_pkgs() {
-        let remote_pkg = if let Ok(remote_pkg) =
-          snapshot.resolve_pkg_from_pkg_req(&remote.req)
-        {
+        let remote_pkg = match snapshot.resolve_pkg_from_pkg_req(&remote.req)
+        { Ok(remote_pkg) => {
           remote_pkg
-        } else if remote.req.version_req.tag().is_some() {
+        } _ => if remote.req.version_req.tag().is_some() {
           // couldn't find a match, and `resolve_best_package_id`
           // panics if you give it a tag
           continue;
-        } else if let Some(remote_id) = snapshot
+        } else { match snapshot
           .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
-        {
+        { Some(remote_id) => {
           snapshot.package_from_id(&remote_id).unwrap()
-        } else {
+        } _ => {
           continue; // skip, package not found
-        };
+        }}}};
         let Some(remote_alias) = &remote.alias else {
           continue;
         };

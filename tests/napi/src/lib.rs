@@ -42,14 +42,14 @@ macro_rules! cstr {
 
 #[macro_export]
 macro_rules! assert_napi_ok {
-  ($call: expr) => {{
+  ($call: expr_2021) => {{
     assert_eq!(unsafe { $call }, napi_sys::Status::napi_ok);
   }};
 }
 
 #[macro_export]
 macro_rules! napi_get_callback_info {
-  ($env: expr, $callback_info: expr, $size: literal) => {{
+  ($env: expr_2021, $callback_info: expr_2021, $size: literal) => {{
     let mut args = [std::ptr::null_mut(); $size];
     let mut argc = $size;
     let mut this = std::ptr::null_mut();
@@ -67,7 +67,7 @@ macro_rules! napi_get_callback_info {
 
 #[macro_export]
 macro_rules! napi_new_property {
-  ($env: expr, $name: expr, $value: expr) => {
+  ($env: expr_2021, $name: expr_2021, $value: expr_2021) => {
     napi_property_descriptor {
       utf8name: concat!($name, "\0").as_ptr() as *const std::os::raw::c_char,
       name: std::ptr::null_mut(),
@@ -131,7 +131,7 @@ pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
   ));
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   _: napi_value,

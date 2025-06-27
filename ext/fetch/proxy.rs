@@ -94,26 +94,26 @@ enum Filter {
 pub(crate) fn from_env() -> Proxies {
   let mut intercepts = Vec::new();
 
-  if let Some(proxy) = parse_env_var("ALL_PROXY", Filter::All) {
+  match parse_env_var("ALL_PROXY", Filter::All) { Some(proxy) => {
     intercepts.push(proxy);
-  } else if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
+  } _ => { match parse_env_var("all_proxy", Filter::All) { Some(proxy) => {
     intercepts.push(proxy);
-  }
+  } _ => {}}}}
 
-  if let Some(proxy) = parse_env_var("HTTPS_PROXY", Filter::Https) {
+  match parse_env_var("HTTPS_PROXY", Filter::Https) { Some(proxy) => {
     intercepts.push(proxy);
-  } else if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
+  } _ => { match parse_env_var("https_proxy", Filter::Https) { Some(proxy) => {
     intercepts.push(proxy);
-  }
+  } _ => {}}}}
 
   // In a CGI context, headers become environment variables. So, "Proxy:" becomes HTTP_PROXY.
   // To prevent an attacker from injecting a proxy, check if we are in CGI.
   if env::var_os("REQUEST_METHOD").is_none() {
-    if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
+    match parse_env_var("HTTP_PROXY", Filter::Http) { Some(proxy) => {
       intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
+    } _ => { match parse_env_var("http_proxy", Filter::Http) { Some(proxy) => {
       intercepts.push(proxy);
-    }
+    } _ => {}}}}
   }
 
   let no = NoProxy::from_env();
@@ -796,9 +796,9 @@ where
 {
   fn connected(&self) -> Connected {
     match self {
-      Proxied::PassThrough(ref p) => p.connected(),
-      Proxied::HttpForward(ref p) => p.connected().proxy(true),
-      Proxied::HttpTunneled(ref p) => {
+      Proxied::PassThrough(p) => p.connected(),
+      Proxied::HttpForward(p) => p.connected().proxy(true),
+      Proxied::HttpTunneled(p) => {
         let tunneled_tls = p.inner().get_ref();
         if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
           tunneled_tls.0.connected().negotiated_h2()
@@ -806,8 +806,8 @@ where
           tunneled_tls.0.connected()
         }
       }
-      Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => {
+      Proxied::Socks(p) => p.connected(),
+      Proxied::SocksTls(p) => {
         let tunneled_tls = p.inner().get_ref();
         if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
           tunneled_tls.0.connected().negotiated_h2()

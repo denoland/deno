@@ -58,14 +58,14 @@ impl From<PackageInfo> for FormattedPackageInfo {
       package.new_version.version_text().trim_start_matches('^');
 
     let new_version_highlighted =
-      if let (Some(current_version), Ok(new_version)) = (
+      match (
         &package.current_version,
         Version::parse_standard(new_version_string),
-      ) {
+      ) { (Some(current_version), Ok(new_version)) => {
         highlight_new_version(current_version, &new_version)
-      } else {
+      } _ => {
         new_version_string.to_string()
-      };
+      }};
     FormattedPackageInfo {
       dep_ids: vec![package.id],
       current_version_string: package

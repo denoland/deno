@@ -1626,11 +1626,11 @@ impl WorkspaceDirectory {
       // root first
       if let Some(root) = &config.root {
         // read from root deno.json
-        if let Some(compiler_options) = root.to_compiler_options()? {
+        match root.to_compiler_options()? { Some(compiler_options) => {
           merge(compiler_options, &mut result);
-        } else {
+        } _ => {
           try_merge_from_ts_config(&root.dir_path(), &mut result);
-        }
+        }}
       } else if let Some(pkg_json) = &self.pkg_json {
         // if root deno.json doesn't exist, but package.json does, try read from
         // tsconfig.json next to pkg.json
@@ -1640,12 +1640,12 @@ impl WorkspaceDirectory {
       }
 
       // then read from member deno.json
-      if let Some(compiler_options) = config.member.to_compiler_options()? {
+      match config.member.to_compiler_options()? { Some(compiler_options) => {
         merge(compiler_options, &mut result);
-      } else if self.is_config_at_root() {
+      } _ => if self.is_config_at_root() {
         // config is root, so try to discover tsconfig
         try_merge_from_ts_config(&config.member.dir_path(), &mut result);
-      }
+      }}
     } else if let Some(pkg_json) = &self.pkg_json {
       if let Some(pkg_json) = &pkg_json.root {
         // try read from tsconfig.json next to root package.json

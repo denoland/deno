@@ -318,10 +318,11 @@ async fn run_subcommand(
             .with_context(|| format!("Failed creating: {coverage_dir}"))?;
           // this is set in order to ensure spawned processes use the same
           // coverage directory
-          env::set_var(
+          // TODO: Audit that the environment access only happens in single-threaded code.
+          unsafe { env::set_var(
             "DENO_COVERAGE_DIR",
             PathBuf::from(coverage_dir).canonicalize()?,
-          );
+          ) };
         }
 
         if test_flags.watch.is_some() {
@@ -638,11 +639,12 @@ fn wait_for_start(
       Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
       AnyError,
     >,
-  >,
+  > + use<>,
 > {
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
-  std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK");
+  // TODO: Audit that the environment access only happens in single-threaded code.
+  unsafe { std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK") };
 
   let argv0 = args[0].clone();
 
@@ -742,7 +744,8 @@ fn wait_for_start(
     std::env::set_current_dir(cmd.cwd)?;
 
     for (k, v) in cmd.env {
-      std::env::set_var(k, v);
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { std::env::set_var(k, v) };
     }
 
     let args = [argv0]

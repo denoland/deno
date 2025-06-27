@@ -540,7 +540,7 @@ fn create_external_formatter_for_typescript(
   &str,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
-) -> deno_core::anyhow::Result<Option<String>> {
+) -> deno_core::anyhow::Result<Option<String>> + use<> {
   let unstable_sql = unstable_options.sql;
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
@@ -1664,11 +1664,11 @@ where
       .and_then(|handle_result| handle_result.err())
   });
 
-  if let Some(e) = errors.next() {
+  match errors.next() { Some(e) => {
     Err(e)
-  } else {
+  } _ => {
     Ok(())
-  }
+  }}
 }
 
 /// This function is similar to is_supported_ext but adds additional extensions

@@ -96,10 +96,10 @@ pub fn get_types_declaration_file_text() -> String {
 }
 
 macro_rules! maybe_compressed_source {
-  ($file: expr) => {{
+  ($file: expr_2021) => {{
     maybe_compressed_source!(compressed = $file, uncompressed = $file)
   }};
-  (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
+  (compressed = $comp: expr_2021, uncompressed = $uncomp: expr_2021) => {{
     #[cfg(feature = "hmr")]
     {
       StaticAssetSource::Owned(
@@ -128,7 +128,7 @@ macro_rules! maybe_compressed_source {
 }
 
 macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
+  ($name: expr_2021, $file: expr_2021) => {
     (
       $name,
       StaticAsset {
@@ -137,7 +137,7 @@ macro_rules! maybe_compressed_lib {
       },
     )
   };
-  ($e: expr) => {
+  ($e: expr_2021) => {
     maybe_compressed_lib!($e, $e)
   };
 }
@@ -392,7 +392,7 @@ fn get_hash(source: &str, hash_data: u64) -> String {
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
 fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
-  let hash = checksum::gen(&[specifier.path().as_bytes()]);
+  let hash = checksum::r#gen(&[specifier.path().as_bytes()]);
   format!(
     "{}:///{}{}",
     specifier.scheme(),
@@ -1204,9 +1204,8 @@ fn resolve_non_graph_specifier_types(
         .and_then(|res| res.into_url())
         .ok(),
     )))
-  } else if let Ok(npm_req_ref) =
-    NpmPackageReqReference::from_str(raw_specifier)
-  {
+  } else { match NpmPackageReqReference::from_str(raw_specifier)
+  { Ok(npm_req_ref) => {
     debug_assert_eq!(resolution_mode, ResolutionMode::Import);
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
@@ -1231,9 +1230,9 @@ fn resolve_non_graph_specifier_types(
       },
     };
     Ok(Some(into_specifier_and_media_type(maybe_url)))
-  } else {
+  } _ => {
     Ok(None)
-  }
+  }}}
 }
 
 #[op2(fast)]

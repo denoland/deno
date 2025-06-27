@@ -459,13 +459,13 @@ impl DeferredDiagnostics {
         }
         let mut regex_string = ambient_modules_to_regex_string(&value);
         regex_string.push('$');
-        if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
+        match regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
-        }) {
+        }) { Ok(regex) => {
           ambient.regex = Some(regex);
-        } else {
+        } _ => {
           ambient.regex = None;
-        }
+        }}
       }
     }
   }
@@ -1029,16 +1029,15 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter, token)
-      {
+      match analysis::get_lint_references(parsed_source, linter, token)
+      { Ok(references) => {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
           .collect::<Vec<_>>()
-      } else {
+      } _ => {
         Vec::new()
-      }
+      }}
     }
     Some(Err(_)) => Vec::new(),
     None => {
@@ -1587,10 +1586,10 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(module) = snapshot
+      match snapshot
         .document_modules
         .module_for_specifier(specifier, referrer_module.scope.as_deref())
-      {
+      { Some(module) => {
         if let Some(headers) = &module.headers {
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
@@ -1612,15 +1611,13 @@ fn diagnose_resolution(
             None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
-      } else if let Ok(pkg_ref) =
-        JsrPackageReqReference::from_specifier(specifier)
-      {
+      } _ => { match JsrPackageReqReference::from_specifier(specifier)
+      { Ok(pkg_ref) => {
         let req = pkg_ref.into_inner().req;
         diagnostics
           .push(DenoDiagnostic::NotInstalledJsr(req, specifier.clone()));
-      } else if let Ok(pkg_ref) =
-        NpmPackageReqReference::from_specifier(specifier)
-      {
+      } _ => { match NpmPackageReqReference::from_specifier(specifier)
+      { Ok(pkg_ref) => {
         if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.req();
@@ -1646,7 +1643,7 @@ fn diagnose_resolution(
             }
           }
         }
-      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      } _ => if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       {
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
@@ -1686,7 +1683,7 @@ fn diagnose_resolution(
           _ => DenoDiagnostic::NoCache(specifier.clone()),
         };
         deferred_diagnostics.push(deno_diagnostic);
-      }
+      }}}}}}
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.

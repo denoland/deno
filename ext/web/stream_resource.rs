@@ -119,24 +119,24 @@ impl BoundedBufferChannelInner {
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
-  unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> {
+  unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> { unsafe {
     self
       .buffers
       .get_unchecked_mut(self.ring_consumer as usize)
       .assume_init_mut()
-  }
+  }}
 
   /// # Safety
   ///
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
-  unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> {
+  unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> { unsafe {
     let res = std::ptr::read(self.next_unsafe());
     self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
 
     res
-  }
+  }}
 
   fn drain(&mut self, mut f: impl FnMut(V8Slice<u8>)) {
     while self.ring_producer != self.ring_consumer {
@@ -370,7 +370,7 @@ struct ReadableStreamResource {
 }
 
 impl ReadableStreamResource {
-  pub fn cancel_handle(self: &Rc<Self>) -> impl RcLike<CancelHandle> {
+  pub fn cancel_handle(self: &Rc<Self>) -> impl RcLike<CancelHandle> + use<> {
     RcRef::map(self, |s| &s.cancel_handle).clone()
   }
 
@@ -587,7 +587,7 @@ pub fn op_readable_stream_resource_close(sender: *const c_void) {
 pub fn op_readable_stream_resource_await_close(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> impl Future<Output = ()> {
+) -> impl Future<Output = ()> + use<> {
   let completion = state
     .resource_table
     .get::<ReadableStreamResource>(rid)

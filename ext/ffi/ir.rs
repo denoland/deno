@@ -97,7 +97,7 @@ pub union NativeValue {
 }
 
 impl NativeValue {
-  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
+  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg { unsafe {
     match native_type {
       NativeType::Void => unreachable!(),
       NativeType::Bool => Arg::new(&self.bool_value),
@@ -118,7 +118,7 @@ impl NativeValue {
       }
       NativeType::Struct(_) => Arg::new(&*self.pointer),
     }
-  }
+  }}
 
   // SAFETY: native_type must correspond to the type of value represented by the union field
   #[inline]
@@ -126,7 +126,7 @@ impl NativeValue {
     &self,
     scope: &mut v8::HandleScope<'scope>,
     native_type: NativeType,
-  ) -> v8::Local<'scope, v8::Value> {
+  ) -> v8::Local<'scope, v8::Value> { unsafe {
     match native_type {
       NativeType::Void => v8::undefined(scope).into(),
       NativeType::Bool => v8::Boolean::new(scope, self.bool_value).into(),
@@ -162,7 +162,7 @@ impl NativeValue {
       }
       NativeType::Struct(_) => v8::null(scope).into(),
     }
-  }
+  }}
 }
 
 // SAFETY: unsafe trait must have unsafe implementation

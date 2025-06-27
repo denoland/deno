@@ -250,11 +250,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(cached_info) = downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? {
+        match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
           return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
-        } else {
+        } _ => {
           None
-        }
+        }}
       } else {
         downloader.cache.load_package_info(&name).await.ok().flatten()
       };

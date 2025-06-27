@@ -384,7 +384,7 @@ mod tests {
   use deno_core::stats::RuntimeActivity;
 
   macro_rules! leak_format_test {
-    ($name:ident, $appeared:literal, [$($activity:expr),*], $expected:literal) => {
+    ($name:ident, $appeared:literal, [$($activity:expr_2021),*], $expected:literal) => {
       #[test]
       fn $name() {
         let (leaks, trailer_notes) = super::format_sanitizer_accum(vec![$($activity),*], $appeared);

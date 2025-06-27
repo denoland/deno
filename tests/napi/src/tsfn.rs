@@ -10,7 +10,7 @@ use std::ptr;
 use napi_sys as sys;
 
 macro_rules! check_status_or_panic {
-  ($code:expr, $msg:expr) => {{
+  ($code:expr_2021, $msg:expr_2021) => {{
     let c = $code;
     match c {
       sys::Status::napi_ok => {}
@@ -83,9 +83,9 @@ unsafe extern "C" fn custom_gc_finalize(
   _env: sys::napi_env,
   _finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
-) {
+) { unsafe {
   let _ = Box::from_raw(finalize_hint as *mut i32);
-}
+}}
 
 extern "C" fn custom_gc(
   env: sys::napi_env,

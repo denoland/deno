@@ -66,7 +66,7 @@ impl TestModule {
     }
     id_components.push(self.specifier.as_str().as_bytes());
     id_components.reverse();
-    let id = checksum::gen(&id_components);
+    let id = checksum::r#gen(&id_components);
     if self.defs.contains_key(&id) {
       return (id, false);
     }

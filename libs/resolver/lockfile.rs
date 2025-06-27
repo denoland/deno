@@ -630,11 +630,11 @@ fn values_to_set<'a>(
 }
 
 fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
-  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+  match JsrPackageReqReference::from_str(value) { Ok(req_ref) => {
     Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
-  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+  } _ => { match NpmPackageReqReference::from_str(value) { Ok(req_ref) => {
     Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
-  } else {
+  } _ => {
     None
-  }
+  }}}}
 }

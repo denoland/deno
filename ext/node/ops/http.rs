@@ -187,11 +187,11 @@ where
         tokio::task::spawn(async move { conn.with_upgrades().await }),
         sender,
       )
-    } else if let Ok(resource_rc) = state
+    } else { match state
       .resource_table
       .take::<TcpStreamResource>(conn_rid)
       .map_err(ConnError::Resource)
-    {
+    { Ok(resource_rc) => {
       let resource =
         Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
       let (read_half, write_half) = resource.into_inner();
@@ -208,7 +208,7 @@ where
         }),
         sender,
       )
-    } else {
+    } _ => {
       #[cfg(unix)]
       {
         let resource_rc = state
@@ -235,7 +235,7 @@ where
 
       #[cfg(not(unix))]
       return Err(ConnError::Resource(ResourceError::BadResourceId));
-    }
+    }}}
   };
 
   // Create the request.
@@ -698,7 +698,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let this = self.get_mut();
-    if let Some(mut fut) = this.1.take() {
+    match this.1.take() { Some(mut fut) => {
       match fut.poll_unpin(cx) {
         Poll::Pending => {
           this.1 = Some(fut);
@@ -714,9 +714,9 @@ impl Stream for NodeHttpResourceToBodyAdapter {
           Err(err) => Poll::Ready(Some(Err(err))),
         },
       }
-    } else {
+    } _ => {
       Poll::Ready(None)
-    }
+    }}
   }
 }
 

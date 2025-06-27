@@ -632,14 +632,14 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
-    {
+    { Err(err) => {
       resource.set_error(Some(err.to_string()));
-    } else {
+    } _ => {
       resource.buffered.set(resource.buffered.get() - len);
-    }
+    }}
   });
 }
 
@@ -672,17 +672,17 @@ pub fn op_ws_send_text(
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(
         lock,
         Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
       )
       .await
-    {
+    { Err(err) => {
       resource.set_error(Some(err.to_string()));
-    } else {
+    } _ => {
       resource.buffered.set(resource.buffered.get() - len);
-    }
+    }}
   });
 }
 

@@ -75,7 +75,7 @@ pub async fn op_node_check_prime_async(
 pub fn op_node_check_prime_bytes_async(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,
-) -> impl Future<Output = Result<bool, tokio::task::JoinError>> {
+) -> impl Future<Output = Result<bool, tokio::task::JoinError>> + use<> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   async move {

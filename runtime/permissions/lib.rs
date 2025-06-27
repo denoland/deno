@@ -3936,7 +3936,7 @@ mod tests {
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
-      ($($x:expr),*) => (vec![$($x.to_string()),*]);
+      ($($x:expr_2021),*) => (vec![$($x.to_string()),*]);
   }
 
   #[derive(Debug, Clone)]

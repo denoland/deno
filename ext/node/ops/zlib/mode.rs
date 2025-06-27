@@ -7,7 +7,7 @@ pub struct ModeError;
 
 macro_rules! repr_i32 {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {
-      $($(#[$vmeta:meta])* $vname:ident $(= $val:expr)?,)*
+      $($(#[$vmeta:meta])* $vname:ident $(= $val:expr_2021)?,)*
     }) => {
       $(#[$meta])*
       $vis enum $name {

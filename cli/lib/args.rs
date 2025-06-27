@@ -170,7 +170,8 @@ pub fn npm_process_state(
     .get_or_init(|| {
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
       let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
-      std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME) };
       if fd_or_path.is_empty() {
         return None;
       }

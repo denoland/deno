@@ -653,15 +653,15 @@ where
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
-  } else if let Ok(init) = unsafe {
+  } else { match unsafe {
     library.get::<napi_register_module_v1>(b"napi_register_module_v1")
-  } {
+  } { Ok(init) => {
     // Initializer callback.
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { init(env_ptr, exports.into()) }
-  } else {
+  } _ => {
     return Err(NApiError::ModuleNotFound(path));
-  };
+  }}};
 
   let exports = maybe_exports.unwrap_or(exports.into());
 

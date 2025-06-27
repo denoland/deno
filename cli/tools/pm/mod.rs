@@ -138,12 +138,12 @@ impl ConfigUpdater {
         let imports = self.root_object.object_value_or_set("imports");
         let value =
           format!("{}@{}", selected.package_name, selected.version_req);
-        if let Some(prop) = imports.get(&selected.import_name) {
+        match imports.get(&selected.import_name) { Some(prop) => {
           prop.set_value(json!(value));
-        } else {
+        } _ => {
           let index = insert_index(&imports, &selected.import_name);
           imports.insert(index, &selected.import_name, json!(value));
-        }
+        }}
       }
       ConfigKind::PackageJson => {
         let deps_prop = self.root_object.get("dependencies");
@@ -192,12 +192,12 @@ impl ConfigUpdater {
           }
         }
 
-        if let Some(prop) = dependencies.get(&alias) {
+        match dependencies.get(&alias) { Some(prop) => {
           prop.set_value(json!(value));
-        } else {
+        } _ => {
           let index = insert_index(&dependencies, &alias);
           dependencies.insert(index, &alias, json!(value));
-        }
+        }}
       }
     }
 
@@ -207,16 +207,16 @@ impl ConfigUpdater {
   fn remove(&mut self, package: &str) -> bool {
     let removed = match self.kind {
       ConfigKind::DenoJson => {
-        if let Some(prop) = self
+        match self
           .root_object
           .object_value("imports")
           .and_then(|i| i.get(package))
-        {
+        { Some(prop) => {
           remove_prop_and_maybe_parent_prop(prop);
           true
-        } else {
+        } _ => {
           false
-        }
+        }}
       }
       ConfigKind::PackageJson => {
         let deps = [

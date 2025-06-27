@@ -111,9 +111,9 @@ pub fn graph_valid(
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
-  if let Some(error) = errors.next() {
+  match errors.next() { Some(error) => {
     Err(error)
-  } else {
+  } _ => {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
       return Err(JsErrorBox::new(
@@ -122,7 +122,7 @@ pub fn graph_valid(
       ));
     }
     Ok(())
-  }
+  }}
 }
 
 pub fn fill_graph_from_lockfile(

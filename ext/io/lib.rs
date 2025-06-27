@@ -566,7 +566,7 @@ impl StdFileResourceInner {
   fn with_blocking_task<F, R: 'static + Send>(
     &self,
     action: F,
-  ) -> impl Future<Output = R>
+  ) -> impl Future<Output = R> + use<F, R>
   where
     F: FnOnce() -> R + Send + 'static,
   {

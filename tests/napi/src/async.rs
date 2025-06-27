@@ -18,19 +18,19 @@ pub struct Baton {
   task: napi_async_work,
 }
 
-unsafe extern "C" fn execute(_env: napi_env, data: *mut c_void) {
+unsafe extern "C" fn execute(_env: napi_env, data: *mut c_void) { unsafe {
   let baton: &mut Baton = &mut *(data as *mut Baton);
   assert!(!baton.called);
   assert!(!baton.func.is_null());
 
   baton.called = true;
-}
+}}
 
 unsafe extern "C" fn complete(
   env: napi_env,
   status: napi_status,
   data: *mut c_void,
-) {
+) { unsafe {
   assert!(status == napi_ok);
   let baton: Box<Baton> = Box::from_raw(data as *mut Baton);
   assert!(baton.called);
@@ -53,7 +53,7 @@ unsafe extern "C" fn complete(
   ));
   assert_napi_ok!(napi_delete_reference(env, baton.func));
   assert_napi_ok!(napi_delete_async_work(env, baton.task));
-}
+}}
 
 extern "C" fn test_async_work(
   env: napi_env,

@@ -414,7 +414,7 @@ impl FilesData {
     if data.is_empty() {
       return OffsetWithLength { offset: 0, len: 0 };
     }
-    let checksum = crate::util::checksum::gen(&[&data]);
+    let checksum = crate::util::checksum::r#gen(&[&data]);
     match self.file_offsets.entry((checksum, data.len())) {
       Entry::Occupied(occupied_entry) => {
         let offset_and_len = *occupied_entry.get();

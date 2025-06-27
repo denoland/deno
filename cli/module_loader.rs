@@ -783,9 +783,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     {
       Some(code) => Ok(code),
       None => {
-        let specifier = if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(specifier)
-        {
+        let specifier = match NpmPackageReqReference::from_specifier(specifier)
+        { Ok(reference) => {
           let referrer = match maybe_referrer {
             // if we're here, it means it was importing from a dynamic import
             // and so there will be a referrer
@@ -813,9 +812,9 @@ impl<TGraphContainer: ModuleGraphContainer>
               .into_url()
               .map_err(LoadCodeSourceError::from_err)?,
           )
-        } else {
+        } _ => {
           Cow::Borrowed(specifier)
-        };
+        }};
         if self.shared.in_npm_pkg_checker.in_npm_package(&specifier) {
           return self
             .shared

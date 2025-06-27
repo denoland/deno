@@ -53,14 +53,14 @@ unsafe fn ffi_call_rtype_struct(
   fn_ptr: &libffi::middle::CodePtr,
   call_args: Vec<Arg>,
   out_buffer: *mut u8,
-) {
+) { unsafe {
   libffi::raw::ffi_call(
     cif.as_raw_ptr(),
     Some(*fn_ptr.as_safe_fun()),
     out_buffer as *mut c_void,
     call_args.as_ptr() as *mut *mut c_void,
   );
-}
+}}
 
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
@@ -304,7 +304,7 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError>
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<FP>, CallError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -349,7 +349,7 @@ pub fn op_ffi_call_nonblocking(
   #[string] symbol: String,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<>, CallError> {
   let symbol = {
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;

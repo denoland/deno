@@ -51,10 +51,10 @@ unsafe extern "C" fn finalize_cb_drop(
   _env: napi_env,
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
-) {
+) { unsafe {
   let _ = Box::from_raw(data as *mut Thing);
   assert!(hint.is_null());
-}
+}}
 
 extern "C" fn test_external_finalizer(
   env: napi_env,
@@ -79,10 +79,10 @@ unsafe extern "C" fn finalize_cb_vec(
   _env: napi_env,
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
-) {
+) { unsafe {
   let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
   assert!(hint.is_null());
-}
+}}
 
 extern "C" fn test_external_buffer(
   env: napi_env,

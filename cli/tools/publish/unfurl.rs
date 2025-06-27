@@ -381,11 +381,10 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     specifier: &str,
     resolution_kind: deno_resolver::workspace::ResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
-    let resolved = if let Ok(resolved) =
-      self
+    let resolved = match self
         .workspace_resolver
         .resolve(specifier, referrer, resolution_kind)
-    {
+    { Ok(resolved) => {
       match resolved {
         MappedResolution::Normal { specifier, .. } => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
@@ -501,9 +500,9 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           }
         },
       }
-    } else {
+    } _ => {
       None
-    };
+    }};
     let resolved = match resolved {
       Some(resolved) => resolved,
       None if self.bare_node_builtins && is_builtin_node_module(specifier) => {

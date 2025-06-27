@@ -579,7 +579,7 @@ impl DatabaseSync {
       p_ctx: *mut c_void,
       e_conflict: i32,
       _: *mut libsqlite3_sys::sqlite3_changeset_iter,
-    ) -> i32 {
+    ) -> i32 { unsafe {
       let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
       if let Some(conflict) = &mut ctx.confict {
@@ -609,13 +609,13 @@ impl DatabaseSync {
       }
 
       libsqlite3_sys::SQLITE_CHANGESET_ABORT
-    }
+    }}
 
     // Filter handler callback for `sqlite3changeset_apply()`.
     unsafe extern "C" fn filter_handler(
       p_ctx: *mut c_void,
       z_tab: *const c_char,
-    ) -> i32 {
+    ) -> i32 { unsafe {
       let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
       if let Some(filter) = &mut ctx.filter {
@@ -629,7 +629,7 @@ impl DatabaseSync {
       }
 
       1
-    }
+    }}
 
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;

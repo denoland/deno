@@ -96,7 +96,7 @@ fn new_raw<T>(t: T) -> *mut T {
   Box::into_raw(Box::new(t))
 }
 
-unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
+unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) { unsafe {
   let handle = handle.cast::<uv_async_t>();
   let async_ = (*handle).data as *mut Async;
   let env = (*async_).env;
@@ -106,9 +106,9 @@ unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
   let _ = Box::from_raw((*async_).mutex);
   let _ = Box::from_raw(async_);
   let _ = Box::from_raw(handle);
-}
+}}
 
-unsafe extern "C" fn callback(handle: *mut uv_async_t) {
+unsafe extern "C" fn callback(handle: *mut uv_async_t) { unsafe {
   eprintln!("callback");
   let async_ = (*handle).data as *mut Async;
   uv_mutex_lock((*async_).mutex);
@@ -140,7 +140,7 @@ unsafe extern "C" fn callback(handle: *mut uv_async_t) {
   if value == 5 {
     uv_close(handle.cast(), Some(close_cb));
   }
-}
+}}
 
 unsafe fn uv_async_send(ptr: UvAsyncPtr) {
   assert_napi_ok!(libuv_sys_lite::uv_async_send(ptr.0));

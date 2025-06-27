@@ -368,11 +368,11 @@ impl PollFrame for GZipResponseStream {
         ));
       }
       GZipState::Streaming => {
-        if let Some(partial) = this.partial.take() {
+        match this.partial.take() { Some(partial) => {
           ResponseStreamResult::NonEmptyBuf(partial)
-        } else {
+        } _ => {
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
-        }
+        }}
       }
       GZipState::Flushing => ResponseStreamResult::EndOfStream,
     };

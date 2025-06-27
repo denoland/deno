@@ -1292,7 +1292,7 @@ fn tmp_name(
   // before hitting a 50% chance. We also base32-encode this value so the entire
   // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
   // value.
-  let unique = rng.gen::<u64>();
+  let unique = rng.r#gen::<u64>();
   base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 

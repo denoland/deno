@@ -640,10 +640,10 @@ impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
     match self {
       BundleLoadError::CliModuleLoader(
-        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(ref e)),
+        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
       ) => match &**e {
         LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(ref e),
+          LoadPreparedModuleError::Graph(e),
         ) => matches!(
           e.error.as_kind(),
           ModuleErrorKind::UnsupportedMediaType { .. },
@@ -1041,7 +1041,7 @@ fn resolve_roots(
   let mut roots = Vec::with_capacity(entrypoints.len());
 
   for url in entrypoints {
-    let root = if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
+    let root = match NpmPackageReqReference::from_specifier(&url) { Ok(v) => {
       let referrer =
         ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
           .unwrap();
@@ -1052,9 +1052,9 @@ fn resolve_roots(
         .resolve_binary_export(&package_folder, v.sub_path())
         .unwrap();
       Url::from_file_path(&main_module).unwrap()
-    } else {
+    } _ => {
       url
-    };
+    }};
     roots.push(root)
   }
 

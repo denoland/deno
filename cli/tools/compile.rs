@@ -83,7 +83,7 @@ pub async fn compile(
   temp_filename.push(format!(
     ".tmp-{}",
     faster_hex::hex_encode(
-      &rand::thread_rng().gen::<[u8; 8]>(),
+      &rand::thread_rng().r#gen::<[u8; 8]>(),
       &mut [0u8; 16]
     )
     .unwrap()

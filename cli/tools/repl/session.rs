@@ -645,14 +645,14 @@ impl ReplSession {
       match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
         Ok(parsed) => parsed,
         Err(err) => {
-          if let Ok(parsed) = parse_source_as(
+          match parse_source_as(
             expression.to_string(),
             deno_ast::MediaType::TypeScript,
-          ) {
+          ) { Ok(parsed) => {
             parsed
-          } else {
+          } _ => {
             return Err(err);
-          }
+          }}
         }
       };
 

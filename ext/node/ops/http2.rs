@@ -201,7 +201,7 @@ pub async fn op_http2_accept(
     .resource_table
     .get::<Http2ServerConnection>(rid)?;
   let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
-  if let Some(res) = conn.accept().await {
+  match conn.accept().await { Some(res) => {
     let (req, resp) = res?;
     let (parts, body) = req.into_parts();
     let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
@@ -249,9 +249,9 @@ pub async fn op_http2_accept(
       });
 
     Ok(Some((req_headers, stm, resp)))
-  } else {
+  } _ => {
     Ok(None)
-  }
+  }}
 }
 
 #[op2(async)]
@@ -485,11 +485,11 @@ fn poll_data_or_trailers(
   body: &mut RecvStream,
 ) -> Poll<Result<DataOrTrailers, h2::Error>> {
   if let Poll::Ready(trailers) = body.poll_trailers(cx) {
-    if let Some(trailers) = trailers? {
+    match trailers? { Some(trailers) => {
       return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
-    } else {
+    } _ => {
       return Poll::Ready(Ok(DataOrTrailers::Eof));
-    }
+    }}
   }
   if let Poll::Ready(Some(data)) = body.poll_data(cx) {
     let data = data?;
@@ -563,7 +563,7 @@ pub async fn op_http2_client_get_response_trailers(
     .await
     .take();
   if let Some(trailers) = trailers {
-    if let Ok(Some(trailers)) = trailers.await {
+    match trailers.await { Ok(Some(trailers)) => {
       let mut v = Vec::with_capacity(trailers.len());
       for (key, value) in trailers.iter() {
         v.push((
@@ -572,9 +572,9 @@ pub async fn op_http2_client_get_response_trailers(
         ));
       }
       Ok(Some(v))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}
   } else {
     Ok(None)
   }

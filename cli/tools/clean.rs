@@ -646,9 +646,9 @@ fn remove_file(
   }
   state.files_removed += 1;
   state.update_progress();
-  if let Err(e) = std::fs::remove_file(path)
+  match std::fs::remove_file(path)
     .with_context(|| format!("Failed to remove file: {}", path.display()))
-  {
+  { Err(e) => {
     if cfg!(windows) {
       if let Ok(meta) = path.symlink_metadata() {
         if meta.is_symlink() {
@@ -660,9 +660,9 @@ fn remove_file(
       }
     }
     Err(e)
-  } else {
+  } _ => {
     Ok(())
-  }
+  }}
 }
 
 #[cfg(test)]

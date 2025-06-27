@@ -180,7 +180,7 @@ pub async fn get_import_completions(
       NodeResolutionKind::Execution,
     )
     .ok();
-  if let Some(completion_list) = get_jsr_completions(
+  match get_jsr_completions(
     &module.specifier,
     text,
     &range,
@@ -189,32 +189,31 @@ pub async fn get_import_completions(
     Some(jsr_search_api.get_resolver()),
   )
   .await
-  {
+  { Some(completion_list) => {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_npm_completions(&module.specifier, text, &range, npm_search_api).await
-  {
+  } _ => { match get_npm_completions(&module.specifier, text, &range, npm_search_api).await
+  { Some(completion_list) => {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_node_completions(text, &range) {
+  } _ => { match get_node_completions(text, &range) { Some(completion_list) => {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_import_map_completions(
+  } _ => { match get_import_map_completions(
     &module.specifier,
     text,
     &range,
     maybe_import_map,
-  ) {
+  ) { Some(completion_list) => {
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_local_completions(
+  } _ => { match get_local_completions(
     &module.specifier,
     resolution_mode,
     text,
     &range,
     resolver,
-  ) {
+  ) { Some(completion_list) => {
     // completions for local relative modules
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if !text.is_empty() {
+  } _ => if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(
       text,
@@ -269,7 +268,7 @@ pub async fn get_import_completions(
       is_incomplete,
       items,
     }))
-  }
+  }}}}}}}}}}
 }
 
 /// When the specifier is an empty string, return all the keys from the import

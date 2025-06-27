@@ -130,7 +130,7 @@ external!(RcHttpRecord, "http record");
 /// Construct Rc<HttpRecord> from raw external pointer, consuming
 /// refcount. You must make sure the external is deleted on the JS side.
 macro_rules! take_external {
-  ($external:expr, $args:tt) => {{
+  ($external:expr_2021, $args:tt) => {{
     let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
     let record = ptr.unsafely_take().0;
     http_trace!(record, $args);
@@ -140,7 +140,7 @@ macro_rules! take_external {
 
 /// Clone Rc<HttpRecord> from raw external pointer.
 macro_rules! clone_external {
-  ($external:expr, $args:tt) => {{
+  ($external:expr_2021, $args:tt) => {{
     let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
     ptr.unsafely_deref().0.clone()
   }};
@@ -397,13 +397,13 @@ where
   .unwrap()
   .into();
 
-  let (peer_ip, peer_port) = if let Some(client_addr) = &*http.client_addr() {
+  let (peer_ip, peer_port) = match &*http.client_addr() { Some(client_addr) => {
     let addr: std::net::SocketAddr =
       client_addr.to_str().unwrap().parse().unwrap();
     (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
-  } else {
+  } _ => {
     (request_info.peer_address.clone(), request_info.peer_port)
-  };
+  }};
 
   let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
@@ -515,14 +515,14 @@ pub fn op_http_read_request_body(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_read_request_body") };
-  let rid = if let Some(incoming) = http.take_request_body() {
+  let rid = match http.take_request_body() { Some(incoming) => {
     let body_resource = Rc::new(HttpRequestBody::new(incoming));
     state.borrow_mut().resource_table.add_rc(body_resource)
-  } else {
+  } _ => {
     // This should not be possible, but rather than panicking we'll return an invalid
     // resource value to JavaScript.
     ResourceId::MAX
-  };
+  }};
   http.put_resource(HttpRequestBodyAutocloser::new(rid, state.clone()));
   rid
 }

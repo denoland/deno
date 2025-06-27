@@ -186,7 +186,7 @@ const BASE64_URL_SAFE_FORGIVING:
   );
 
 macro_rules! jwt_b64_int_or_err {
-  ($name:ident, $b64:expr, $err:tt) => {
+  ($name:ident, $b64:expr_2021, $err:tt) => {
     let bytes = BASE64_URL_SAFE_FORGIVING
       .decode($b64)
       .map_err(|_| ImportKeyError::$err)?;

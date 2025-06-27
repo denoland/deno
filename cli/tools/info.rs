@@ -60,11 +60,11 @@ pub async fn info(
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
+    let maybe_import_specifier = match resolver.resolve(
       &specifier,
       &cwd_url,
       deno_resolver::workspace::ResolutionKind::Execution,
-    ) {
+    ) { Ok(resolved) => {
       match resolved {
         deno_resolver::workspace::MappedResolution::Normal {
           specifier,
@@ -136,9 +136,9 @@ pub async fn info(
           }
         },
       }
-    } else {
+    } _ => {
       None
-    };
+    }};
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
@@ -222,7 +222,7 @@ fn print_cache_info(
 
   if let Some(location) = &location {
     origin_dir =
-      origin_dir.join(checksum::gen(&[location.to_string().as_bytes()]));
+      origin_dir.join(checksum::r#gen(&[location.to_string().as_bytes()]));
   }
 
   let local_storage_dir = origin_dir.join("local_storage");

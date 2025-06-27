@@ -717,21 +717,33 @@ mod tests {
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      env::set_var("CI", "true");
-      env::set_var("GITHUB_ACTIONS", "true");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
-      env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
-      env::set_var("GITHUB_SERVER_URL", "https://github.com");
-      env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
-      env::set_var("GITHUB_SHA", "lol");
-      env::set_var("GITHUB_RUN_ID", "1");
-      env::set_var("GITHUB_RUN_ATTEMPT", "1");
-      env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
-      env::set_var(
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("CI", "true") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_ACTIONS", "true") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_SERVER_URL", "https://github.com") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_SHA", "lol") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_RUN_ID", "1") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("GITHUB_RUN_ATTEMPT", "1") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var("RUNNER_ENVIRONMENT", "github-hosted") };
+      // TODO: Audit that the environment access only happens in single-threaded code.
+      unsafe { env::set_var(
         "GITHUB_WORKFLOW_REF",
         "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
-      );
+      ) };
     }
 
     let subject = Subject {

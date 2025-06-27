@@ -308,7 +308,7 @@ pub fn op_blob_from_object_url(
   let blob_store = state
     .try_borrow::<Arc<BlobStore>>()
     .ok_or(BlobError::BlobURLsNotSupported)?;
-  if let Some(blob) = blob_store.get_object_url(url) {
+  match blob_store.get_object_url(url) { Some(blob) => {
     let parts = blob
       .parts
       .iter()
@@ -321,7 +321,7 @@ pub fn op_blob_from_object_url(
       media_type: blob.media_type.clone(),
       parts,
     }))
-  } else {
+  } _ => {
     Ok(None)
-  }
+  }}
 }

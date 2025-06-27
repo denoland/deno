@@ -1535,16 +1535,16 @@ impl ConfigFile {
     &self,
   ) -> Result<Vec<String>, ToInvalidConfigError> {
     let mut exclude: Vec<String> =
-      if let Some(exclude) = self.json.exclude.clone() {
+      match self.json.exclude.clone() { Some(exclude) => {
         serde_json::from_value(exclude).map_err(|error| {
           ToInvalidConfigError::Parse {
             config: "exclude",
             source: error,
           }
         })?
-      } else {
+      } _ => {
         Vec::new()
-      };
+      }};
 
     if self.json.vendor == Some(true) {
       exclude.push("vendor".to_string());
@@ -1765,7 +1765,7 @@ impl ConfigFile {
     &self,
   ) -> Result<Option<IndexMap<String, TaskDefinition>>, ToInvalidConfigError>
   {
-    if let Some(config) = self.json.tasks.clone() {
+    match self.json.tasks.clone() { Some(config) => {
       let tasks_config: IndexMap<String, TaskDefinition> =
         TaskDefinition::deserialize_tasks(config).map_err(|error| {
           ToInvalidConfigError::Parse {
@@ -1774,9 +1774,9 @@ impl ConfigFile {
           }
         })?;
       Ok(Some(tasks_config))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}
   }
 
   pub fn to_compiler_option_types(
@@ -1848,7 +1848,7 @@ impl ConfigFile {
   pub fn to_lock_config(
     &self,
   ) -> Result<Option<LockConfig>, ToLockConfigError> {
-    if let Some(config) = self.json.lock.clone() {
+    match self.json.lock.clone() { Some(config) => {
       let mut lock_config: LockConfig = serde_json::from_value(config)
         .map_err(|error| ToInvalidConfigError::Parse {
           config: "lock",
@@ -1865,9 +1865,9 @@ impl ConfigFile {
           .join(&path);
       }
       Ok(Some(lock_config))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}
   }
 
   pub fn resolve_lockfile_path(
@@ -1905,7 +1905,7 @@ mod tests {
 
   #[macro_export]
   macro_rules! assert_contains {
-    ($string:expr, $($test:expr),+ $(,)?) => {
+    ($string:expr_2021, $($test:expr_2021),+ $(,)?) => {
       let string = &$string; // This might be a function call or something
       if !($(string.contains($test))||+) {
         panic!("{:?} does not contain any of {:?}", string, [$($test),+]);

@@ -72,7 +72,7 @@ pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
 ) -> Result<(), JsErrorBox> {
-  if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
+  match state.try_take::<PermissionsHolder>() { Some(permissions_holder) => {
     if token != permissions_holder.0 {
       panic!("restore test permissions token does not match the stored token");
     }
@@ -80,9 +80,9 @@ pub fn op_restore_test_permissions(
     let permissions = permissions_holder.1;
     state.put::<PermissionsContainer>(permissions);
     Ok(())
-  } else {
+  } _ => {
     Err(JsErrorBox::generic("no permissions to restore"))
-  }
+  }}
 }
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
