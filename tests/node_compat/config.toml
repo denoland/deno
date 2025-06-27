@@ -1241,7 +1241,6 @@
 "parallel/test-vm-global-configurable-properties.js" = {}
 "parallel/test-vm-global-define-property.js" = {}
 "parallel/test-vm-global-identity.js" = {}
-"parallel/test-vm-global-property-prototype.js" = {}
 "parallel/test-vm-global-setter.js" = {}
 "parallel/test-vm-harmony-symbols.js" = {}
 "parallel/test-vm-indexed-properties.js" = {}
