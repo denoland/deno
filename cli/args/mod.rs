@@ -883,6 +883,7 @@ impl CliOptions {
     if !options.allow_all && options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
+    options.deny_import = options.deny_import.clone();
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {

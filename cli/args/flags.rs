@@ -3752,21 +3752,21 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
       <g>--allow-ffi[=<<PATH>...]</>              (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
                                              <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-  <g>    --deny-read[=<<PATH>...]</>              Deny file system read access. Optionally specify denied paths.
+      <g>--deny-read[=<<PATH>...]</>              Deny file system read access. Optionally specify denied paths.
                                              <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
-  <g>    --deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
+      <g>--deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
                                              <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
-  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+      <g>--deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
-  <g>    --deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
+      <g>--deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
                                              <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
-  <g>    --deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
+      <g>--deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
                                              <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
       <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny running subprocesses. Optionally specify denied runnable program names.
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
-  <g>    --deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
+      <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
       <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
@@ -4890,7 +4890,7 @@ fn cache_parse(
   compile_args_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   allow_scripts_arg_parse(flags, matches)?;
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
@@ -4917,7 +4917,7 @@ fn check_parse(
     doc_only: matches.get_flag("doc-only"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   Ok(())
 }
 
@@ -5090,7 +5090,7 @@ fn doc_parse(
   lock_args_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -5266,7 +5266,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -5468,7 +5468,7 @@ fn lint_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
 
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -6038,9 +6038,7 @@ fn permission_args_parse(
     flags.allow_all();
   }
 
-  allow_import_parse(flags, matches)?;
-
-  deny_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -6049,7 +6047,7 @@ fn permission_args_parse(
   Ok(())
 }
 
-fn allow_import_parse(
+fn allow_and_deny_import_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
@@ -6057,13 +6055,6 @@ fn allow_import_parse(
     let imports_allowlist = flags_net::parse(imports_wl.collect())?;
     flags.permissions.allow_import = Some(imports_allowlist);
   }
-  Ok(())
-}
-
-fn deny_import_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> clap::error::Result<()> {
   if let Some(imports_wl) = matches.remove_many::<String>("deny-import") {
     let imports_denylist = flags_net::parse(imports_wl.collect())?;
     flags.permissions.deny_import = Some(imports_denylist);
