@@ -353,6 +353,118 @@ fn resolve_lint_rules_options(
   }
 }
 
+pub trait MainModuleResolver {
+  fn resolve_main_module(
+    &self,
+    specifier: &str,
+    cwd: &Url,
+  ) -> Result<Url, AnyError>;
+}
+
+pub struct WorkspaceMainModuleResolver {
+  workspace_resolver: Arc<deno_resolver::workspace::WorkspaceResolver<CliSys>>,
+  node_resolver: Arc<crate::node::CliNodeResolver>,
+}
+
+impl WorkspaceMainModuleResolver {
+  pub fn new(
+    workspace_resolver: Arc<
+      deno_resolver::workspace::WorkspaceResolver<CliSys>,
+    >,
+    node_resolver: Arc<crate::node::CliNodeResolver>,
+  ) -> Self {
+    Self {
+      workspace_resolver,
+      node_resolver,
+    }
+  }
+}
+impl MainModuleResolver for WorkspaceMainModuleResolver {
+  fn resolve_main_module(
+    &self,
+    specifier: &str,
+    cwd: &Url,
+  ) -> Result<Url, AnyError> {
+    let resolution = self.workspace_resolver.resolve(
+      &specifier,
+      &cwd,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    )?;
+    let url = match resolution {
+      deno_resolver::workspace::MappedResolution::Normal {
+        specifier, ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
+        specifier,
+        ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json,
+        sub_path,
+        ..
+      } => self
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(cwd),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
+      deno_resolver::workspace::MappedResolution::PackageJson {
+        sub_path,
+        dep_result,
+        alias,
+        ..
+      } => {
+        let result = dep_result
+          .as_ref()
+          .map_err(|e| deno_core::anyhow::anyhow!("{e}"))?;
+        match result {
+          deno_package_json::PackageJsonDepValue::File(file) => {
+            let cwd_path = deno_path_util::url_to_file_path(cwd)?;
+            deno_path_util::resolve_path(file, &cwd_path)?
+          }
+          deno_package_json::PackageJsonDepValue::Req(package_req) => {
+            ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              package_req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?
+          }
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = self
+              .workspace_resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            self
+              .node_resolver
+              .resolve_package_subpath_from_deno_module(
+                pkg_folder,
+                sub_path.as_deref(),
+                Some(cwd),
+                node_resolver::ResolutionMode::Import,
+                node_resolver::NodeResolutionKind::Execution,
+              )?
+              .into_url()?
+          }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            )
+          }
+        }
+      }
+    };
+    Ok(url)
+  }
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 #[derive(Debug)]
@@ -513,7 +625,27 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
-  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+  fn resolve_main_module_with_resolver_if_bare(
+    &self,
+    raw_specifier: &str,
+    resolver: Option<impl MainModuleResolver>,
+    default_resolve: impl Fn() -> Result<ModuleSpecifier, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    match resolver {
+      Some(resolver) if !raw_specifier.starts_with(['/', '.', '\\']) => {
+        let cwd = deno_path_util::url_from_directory_path(self.initial_cwd())?;
+        resolver
+          .resolve_main_module(raw_specifier, &cwd)
+          .or_else(|_| default_resolve())
+      }
+      _ => default_resolve(),
+    }
+  }
+
+  pub fn resolve_main_module_with_resolver(
+    &self,
+    resolver: Option<impl MainModuleResolver>,
+  ) -> Result<&ModuleSpecifier, AnyError> {
     self
       .main_module_cell
       .get_or_init(|| {
@@ -531,25 +663,40 @@ impl CliOptions {
             if run_flags.is_stdin() {
               resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
             } else {
-              let url =
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
-              if self.is_node_main()
-                && url.scheme() == "file"
-                && MediaType::from_specifier(&url) == MediaType::Unknown
-              {
-                try_resolve_node_binary_main_entrypoint(
-                  &run_flags.script,
-                  self.initial_cwd(),
-                )?
-                .unwrap_or(url)
-              } else {
-                url
-              }
+              let default_resolve = || {
+                let url =
+                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                if self.is_node_main()
+                  && url.scheme() == "file"
+                  && MediaType::from_specifier(&url) == MediaType::Unknown
+                {
+                  Ok::<_, AnyError>(
+                    try_resolve_node_binary_main_entrypoint(
+                      &run_flags.script,
+                      self.initial_cwd(),
+                    )?
+                    .unwrap_or(url),
+                  )
+                } else {
+                  Ok(url)
+                }
+              };
+              self.resolve_main_module_with_resolver_if_bare(
+                &run_flags.script,
+                resolver,
+                default_resolve,
+              )?
             }
           }
-          DenoSubcommand::Serve(run_flags) => {
-            resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-          }
+          DenoSubcommand::Serve(run_flags) => self
+            .resolve_main_module_with_resolver_if_bare(
+              &run_flags.script,
+              resolver,
+              || {
+                resolve_url_or_path(&run_flags.script, self.initial_cwd())
+                  .map_err(|e| e.into())
+              },
+            )?,
           _ => {
             bail!("No main module.")
           }
@@ -557,6 +704,10 @@ impl CliOptions {
       })
       .as_ref()
       .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
+  }
+
+  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+    self.resolve_main_module_with_resolver(None::<WorkspaceMainModuleResolver>)
   }
 
   pub fn resolve_file_header_overrides(
