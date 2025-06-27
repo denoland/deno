@@ -957,7 +957,7 @@ declare namespace Deno {
    * @category Network
    * Named pipes for Deno
    */
-  export namespace PipeNs {
+  export namespace Pipe {
     /** @category Network */
     export interface Pipe extends Disposable {
       /** Read the incoming data from the pipe into an array buffer (`p`).
@@ -1034,6 +1034,12 @@ declare namespace Deno {
     }
 
     /** @category Network */
+    enum PipeMode {
+      Message = "message",
+      Byte = "byte",
+    }
+
+    /** @category Network */
     export interface WindowsListenOptions extends Options {
       maxInstances?: number;
       pipeMode: PipeMode;
@@ -1077,7 +1083,7 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export const pipe: PipeNs;
+  export const pipe: Pipe.Pipe;
 
   export {}; // only export exports
 }

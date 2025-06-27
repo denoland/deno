@@ -77,7 +77,7 @@ export class Pipe extends ConnectionWrap {
 
   constructor(
     type: number,
-    conn?: Deno.UnixConn | Deno.PipeNs.Pipe | StreamBase,
+    conn?: Deno.UnixConn | Deno.Pipe.Pipe | StreamBase,
   ) {
     let provider: providerType;
     let ipc: boolean;
@@ -147,7 +147,7 @@ export class Pipe extends ConnectionWrap {
       Deno.pipe.connect({
         path: address,
         kind: "windows",
-      }).then((pipe: Deno.PipeNs.Pipe) => {
+      }).then((pipe: Deno.Pipe.Pipe) => {
         this[kStreamBaseField] = pipe;
         this.#address = req.address;
 
