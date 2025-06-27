@@ -2098,6 +2098,7 @@ If no output file is given, the output is written to standard output:
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
+      .arg(deny_import_arg())
   })
 }
 
@@ -2126,6 +2127,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
+      .arg(deny_import_arg())
       .arg(env_file_arg())
   })
 }
@@ -2212,6 +2214,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .value_hint(ValueHint::FilePath),
         )
         .arg(allow_import_arg())
+        .arg(deny_import_arg())
       }
     )
 }
@@ -2467,6 +2470,7 @@ Show documentation for runtime built-ins:
         .arg(no_npm_arg())
         .arg(no_remote_arg())
         .arg(allow_import_arg())
+        .arg(deny_import_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -2855,6 +2859,7 @@ The following information is shown:
           .action(ArgAction::SetTrue),
       ))
       .arg(allow_import_arg())
+      .arg(deny_import_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -3303,6 +3308,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(allow_import_arg())
+      .arg(deny_import_arg())
   })
 }
 
@@ -5001,7 +5007,7 @@ fn bundle_parse(
   let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
-  allow_import_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
     watch: matches.get_flag("watch"),
