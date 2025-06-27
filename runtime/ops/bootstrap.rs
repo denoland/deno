@@ -51,10 +51,10 @@ impl Default for SnapshotOptions {
     let arch = std::env::consts::ARCH;
     let platform = std::env::consts::OS;
     let target = match platform {
-      "macos" => format!("{}-apple-darwin", arch),
-      "linux" => format!("{}-unknown-linux-gnu", arch),
-      "windows" => format!("{}-pc-windows-msvc", arch),
-      rest => format!("{}-{}", arch, rest),
+      "macos" => format!("{arch}-apple-darwin"),
+      "linux" => format!("{arch}-unknown-linux-gnu"),
+      "windows" => format!("{arch}-pc-windows-msvc"),
+      rest => format!("{arch}-{rest}"),
     };
 
     Self {

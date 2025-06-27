@@ -25,8 +25,7 @@ mod run;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
-    "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
-    feature
+    "Unstable API '{api_name}'. The `--unstable-{feature}` flag must be provided."
   );
   deno_runtime::exit(70);
 }
@@ -44,7 +43,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{:?}", error);
+      let mut error_string = format!("{error:?}");
 
       if let Some(CoreError::Js(js_error)) =
         any_and_jserrorbox_downcast_ref::<CoreError>(&error)

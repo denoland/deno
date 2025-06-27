@@ -892,7 +892,7 @@ impl WebWorker {
       biased;
 
       maybe_result = &mut receiver => {
-        debug!("received module evaluate {:#?}", maybe_result);
+        debug!("received module evaluate {maybe_result:#?}");
         maybe_result
       }
 
@@ -917,7 +917,7 @@ impl WebWorker {
       biased;
 
       maybe_result = &mut receiver => {
-        debug!("received worker module evaluate {:#?}", maybe_result);
+        debug!("received worker module evaluate {maybe_result:#?}");
         maybe_result
       }
 

@@ -405,7 +405,7 @@ impl<
               PackageJsonDepValue::Req(req) => Url::parse(&format!(
                 "npm:{}{}",
                 req,
-                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                sub_path.map(|s| format!("/{s}")).unwrap_or_default()
               ))
               .map_err(|e| {
                 DenoResolveErrorKind::PackageJsonDepValueUrlParse(e).into_box()
@@ -597,7 +597,7 @@ impl<
           && node_resolver.is_builtin_node_module(raw_specifier)
         {
           return Ok(DenoResolution {
-            url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
+            url: Url::parse(&format!("node:{raw_specifier}")).unwrap(),
             maybe_diagnostic,
             found_package_json_dep,
           });

@@ -294,7 +294,7 @@ where
       .map_err(|_| ConnError::InvalidPath(request_path.clone()))?;
   } else {
     *request.uri_mut() = query
-      .map(|q| format!("{}?{}", path, q))
+      .map(|q| format!("{path}?{q}"))
       .unwrap_or_else(|| path.to_string())
       .parse()
       .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;

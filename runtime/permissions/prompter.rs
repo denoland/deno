@@ -406,8 +406,7 @@ impl PermissionPrompter for TtyPrompter {
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
-          "https://docs.deno.com/go/--allow-{}",
-          name
+          "https://docs.deno.com/go/--allow-{name}"
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();

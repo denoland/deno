@@ -628,7 +628,7 @@ mod tests {
     }
     // Print the lengths of the vectors if we actually fail this test at some point
     let lengths = out.iter().map(|v| v.len()).collect::<Vec<_>>();
-    eprintln!("Lengths = {:?}", lengths);
+    eprintln!("Lengths = {lengths:?}");
     out.into_iter()
   }
 

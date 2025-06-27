@@ -115,7 +115,7 @@ async fn rust_test_client_with_resolver(
       root_cert_store: None,
       ca_certs: vec![],
       proxy: prx_addr.map(|p| deno_tls::Proxy::Http {
-        url: format!("{}://{}", proto, p),
+        url: format!("{proto}://{p}"),
         basic_auth: None,
       }),
       unsafely_ignore_certificate_errors: Some(vec![]),
@@ -132,7 +132,7 @@ async fn rust_test_client_with_resolver(
   .unwrap();
 
   let req = http::Request::builder()
-    .uri(format!("https://{}/foo", src_addr))
+    .uri(format!("https://{src_addr}/foo"))
     .body(crate::ReqBody::empty())
     .unwrap();
   let resp = client.send(req).await.unwrap();

@@ -327,7 +327,7 @@ mod tests {
     ];
 
     for p in a014233 {
-      assert!(!is_probably_prime(&p, 16), "{} should be composite", p);
+      assert!(!is_probably_prime(&p, 16), "{p} should be composite");
     }
   }
 }

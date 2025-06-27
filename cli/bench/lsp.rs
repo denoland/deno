@@ -151,7 +151,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
     .parse::<usize>()
     .unwrap();
   let count = open_count + server_count;
-  assert!(count > 1000, "count: {}", count);
+  assert!(count > 1000, "count: {count}");
 
   client.shutdown();
 

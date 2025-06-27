@@ -625,8 +625,7 @@ impl DiagnosticsServer {
                     .map_err(|err| {
                       if !token.is_cancelled() {
                         error!(
-                          "Error generating TypeScript diagnostics: {}",
-                          err
+                          "Error generating TypeScript diagnostics: {err}"
                         );
                         token.cancel();
                       }
@@ -1459,7 +1458,7 @@ impl DenoDiagnostic {
           if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
             if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
               if specifier.chars().next().unwrap_or('\0') == '@'{
-                let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
+                let hint = format!("\nHint: Use [deno add {specifier}] to add the dependency.");
                 message.push_str(hint.as_str());
               }
             }
@@ -1472,7 +1471,7 @@ impl DenoDiagnostic {
           .map(|specifier| json!({ "specifier": specifier }))
       )},
       Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
-      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
+      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{specifier}\" is resolved to \"node:{specifier}\". If you want to use a built-in Node module, add a \"node:\" prefix."), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
       range: *range,
@@ -1501,7 +1500,7 @@ fn relative_specifier(specifier: &Url, referrer: &Url) -> String {
       if relative.starts_with('.') {
         relative
       } else {
-        format!("./{}", relative)
+        format!("./{relative}")
       }
     }
     None => specifier.to_string(),

@@ -490,8 +490,7 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
     let path = normalize_path(path.as_ref());
     self.read_cache.get(&path).cloned().unwrap_or_else(|| {
       if !self.currently_reading.insert(path.clone()) {
-        return Err(Rc::new(std::io::Error::new(
-          ErrorKind::Other,
+        return Err(Rc::new(std::io::Error::other(
           "Cycle detected while following `extends`.",
         )));
       }
@@ -844,7 +843,7 @@ fn check_warn_compiler_options(
       .map(|s| logged_warnings.folders.insert(s.clone()))
       .unwrap_or(true)
     {
-      log::warn!("{}", ignored_options);
+      log::warn!("{ignored_options}");
     }
   }
   let serde_json::Value::Object(obj) = &compiler_options.compiler_options.0

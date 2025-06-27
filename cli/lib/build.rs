@@ -8,10 +8,10 @@ fn main() {
   println!("cargo:rerun-if-changed={}", version_path.display());
   #[allow(clippy::disallowed_methods)]
   let text = std::fs::read_to_string(version_path).unwrap();
-  println!("cargo:rustc-env=DENO_VERSION={}", text);
+  println!("cargo:rustc-env=DENO_VERSION={text}");
 
   let commit_hash = git_commit_hash();
-  println!("cargo:rustc-env=GIT_COMMIT_HASH={}", commit_hash);
+  println!("cargo:rustc-env=GIT_COMMIT_HASH={commit_hash}");
   println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
   println!(
     "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",

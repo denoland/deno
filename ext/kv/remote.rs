@@ -180,8 +180,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
 
     let Ok(parsed_url) = Url::parse(&url) else {
       return Err(JsErrorBox::type_error(format!(
-        "Invalid database url: {}",
-        url
+        "Invalid database url: {url}"
       )));
     };
 

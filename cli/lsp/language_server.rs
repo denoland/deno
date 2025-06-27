@@ -475,10 +475,7 @@ impl LanguageServer {
           self.inner.read().await.virtual_text_document(params)?,
         )
         .map_err(|err| {
-          error!(
-            "Failed to serialize virtual_text_document response: {:#}",
-            err
-          );
+          error!("Failed to serialize virtual_text_document response: {err:#}");
           LspError::internal_error()
         })?,
       )),
@@ -1235,7 +1232,7 @@ impl Inner {
         .language_id
         .parse()
         .unwrap_or_else(|err| {
-          error!("{:#}", err);
+          error!("{err:#}");
           LanguageId::Unknown
         });
     if language_id == LanguageId::Unknown {
@@ -1286,7 +1283,7 @@ impl Inner {
     ) {
       Ok(doc) => doc,
       Err(err) => {
-        error!("{:#}", err);
+        error!("{err:#}");
         return;
       }
     };
@@ -1398,7 +1395,7 @@ impl Inner {
     {
       Ok(doc) => doc,
       Err(err) => {
-        error!("{:#}", err);
+        error!("{err:#}");
         return;
       }
     };
@@ -1923,7 +1920,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!("Unable to get quick info from TypeScript: {:#}", err);
+            error!("Unable to get quick info from TypeScript: {err:#}");
             LspError::internal_error()
           }
         })?;
@@ -1943,7 +1940,7 @@ impl Inner {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
         let format = |scheme: &str, rest: &str| -> String {
-          format!("{}&#8203;{}", scheme, rest).replace('@', "&#8203;@")
+          format!("{scheme}&#8203;{rest}").replace('@', "&#8203;@")
         };
         match specifier.scheme() {
           "data" => "_(a data url)_".to_string(),
@@ -2059,10 +2056,7 @@ impl Inner {
                 // so we will log them to the output, but we won't send an error
                 // message back to the client.
                 if !token.is_cancelled() {
-                  error!(
-                    "Unable to get code actions from TypeScript: {:#}",
-                    err
-                  );
+                  error!("Unable to get code actions from TypeScript: {err:#}");
                 }
                 vec![]
               });
@@ -2073,7 +2067,7 @@ impl Inner {
               code_actions
                 .add_ts_fix_action(&action, diagnostic, &module, self)
                 .map_err(|err| {
-                  error!("Unable to convert fix: {:#}", err);
+                  error!("Unable to convert fix: {err:#}");
                   LspError::internal_error()
                 })?;
               if code_actions.is_fix_all_action(
@@ -2103,14 +2097,14 @@ impl Inner {
                 diagnostic,
               )
               .map_err(|err| {
-                error!("{:#}", err);
+                error!("{err:#}");
                 LspError::internal_error()
               })?
           }
           Some("deno-lint") => code_actions
             .add_deno_lint_actions(document.uri(), &module, diagnostic)
             .map_err(|err| {
-              error!("Unable to fix lint error: {:#}", err);
+              error!("Unable to fix lint error: {err:#}");
               LspError::internal_error()
             })?,
           _ => (),
@@ -2164,7 +2158,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!("Unable to get refactor info from TypeScript: {:#}", err);
+          error!("Unable to get refactor info from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2177,7 +2171,7 @@ impl Inner {
             if token.is_cancelled() {
               LspError::request_cancelled()
             } else {
-              error!("Unable to convert refactor info: {:#}", err);
+              error!("Unable to convert refactor info: {err:#}");
               LspError::internal_error()
             }
           })
@@ -2225,7 +2219,7 @@ impl Inner {
     {
       let code_action_data: CodeActionData =
         from_value(data).map_err(|err| {
-          error!("Unable to decode code action data: {:#}", err);
+          error!("Unable to decode code action data: {err:#}");
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
       let Some(document) = self.get_document(
@@ -2253,7 +2247,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!("Unable to get combined fix from TypeScript: {:#}", err);
+            error!("Unable to get combined fix from TypeScript: {err:#}");
             LspError::internal_error()
           }
         })?;
@@ -2273,7 +2267,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!("Unable to fix import changes: {:#}", err);
+            error!("Unable to fix import changes: {err:#}");
             LspError::internal_error()
           }
         })?
@@ -2283,7 +2277,7 @@ impl Inner {
       let mut code_action = params;
       code_action.edit =
         ts_changes_to_edit(&changes, &module, self).map_err(|err| {
-          error!("Unable to convert changes to edits: {:#}", err);
+          error!("Unable to convert changes to edits: {err:#}");
           LspError::internal_error()
         })?;
       code_action
@@ -2294,7 +2288,7 @@ impl Inner {
       let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
-          error!("Unable to decode code action data: {:#}", err);
+          error!("Unable to decode code action data: {err:#}");
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
       let Some(document) = self.get_document(
@@ -2325,10 +2319,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!(
-              "Unable to get refactor edit info from TypeScript: {:#}",
-              err
-            );
+            error!("Unable to get refactor edit info from TypeScript: {err:#}");
             LspError::invalid_request()
           }
         });
@@ -2347,7 +2338,7 @@ impl Inner {
               if token.is_cancelled() {
                 LspError::request_cancelled()
               } else {
-                error!("Unable to fix import changes: {:#}", err);
+                error!("Unable to fix import changes: {err:#}");
                 LspError::internal_error()
               }
             })?
@@ -2486,7 +2477,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!("Unable to get resolved code lens: {:#}", err);
+            error!("Unable to get resolved code lens: {err:#}");
             LspError::internal_error()
           }
         })
@@ -2535,10 +2526,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!(
-            "Unable to get document highlights from TypeScript: {:#}",
-            err
-          );
+          error!("Unable to get document highlights from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2553,7 +2541,7 @@ impl Inner {
                 if token.is_cancelled() {
                   LspError::request_cancelled()
                 } else {
-                  error!("Unable to convert document highlights: {:#}", err);
+                  error!("Unable to convert document highlights: {err:#}");
                   LspError::internal_error()
                 }
               })
@@ -2671,7 +2659,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!("Unable to get definition info from TypeScript: {:#}", err);
+          error!("Unable to get definition info from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2684,7 +2672,7 @@ impl Inner {
             if token.is_cancelled() {
               LspError::request_cancelled()
             } else {
-              error!("Unable to convert definition info: {:#}", err);
+              error!("Unable to convert definition info: {err:#}");
               LspError::internal_error()
             }
           })?;
@@ -2732,10 +2720,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!(
-            "Unable to get type definition info from TypeScript: {:#}",
-            err
-          );
+          error!("Unable to get type definition info from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2834,7 +2819,7 @@ impl Inner {
         .await
         .unwrap_or_else(|err| {
           if !token.is_cancelled() {
-            error!("Unable to get completion info from TypeScript: {:#}", err);
+            error!("Unable to get completion info from TypeScript: {err:#}");
           }
           None
         });
@@ -2859,7 +2844,7 @@ impl Inner {
               if token.is_cancelled() {
                 LspError::request_cancelled()
               } else {
-                error!("Unable to convert completion info: {:#}", err);
+                error!("Unable to convert completion info: {err:#}");
                 LspError::internal_error()
               }
             })?,
@@ -2882,7 +2867,7 @@ impl Inner {
     let completion_item = if let Some(data) = &params.data {
       let data: completions::CompletionItemData =
         serde_json::from_value(data.clone()).map_err(|err| {
-          error!("{:#}", err);
+          error!("{err:#}");
           LspError::invalid_params(
             "Could not decode data field of completion item.",
           )
@@ -2919,8 +2904,7 @@ impl Inner {
                 .as_completion_item(&params, data, &module, self)
                 .map_err(|err| {
                   error!(
-                    "Failed to serialize virtual_text_document response: {:#}",
-                    err
+                    "Failed to serialize virtual_text_document response: {err:#}"
                   );
                   LspError::internal_error()
                 })?
@@ -2933,10 +2917,7 @@ impl Inner {
           }
           Err(err) => {
             if !token.is_cancelled() {
-              error!(
-                "Unable to get completion info from TypeScript: {:#}",
-                err
-              );
+              error!("Unable to get completion info from TypeScript: {err:#}");
             }
             return Ok(params);
           }
@@ -3799,7 +3780,7 @@ impl Inner {
       snapshot: self.snapshot(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
-      error!("Cannot update diagnostics: {:#}", err);
+      error!("Cannot update diagnostics: {err:#}");
     }
   }
 
@@ -3808,7 +3789,7 @@ impl Inner {
   fn send_testing_update(&self) {
     if let Some(testing_server) = &self.maybe_testing_server {
       if let Err(err) = testing_server.update(self.snapshot()) {
-        error!("Cannot update testing server: {:#}", err);
+        error!("Cannot update testing server: {err:#}");
       }
     }
   }
@@ -4423,7 +4404,7 @@ impl Inner {
         scoped_resolver
           .npm_reqs()
           .iter()
-          .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
+          .map(|req| ModuleSpecifier::parse(&format!("npm:{req}")).unwrap()),
       );
     }
 
@@ -4636,7 +4617,7 @@ impl Inner {
     let text_span =
       tsc::TextSpan::from_range(&params.range, module.line_index.clone())
         .map_err(|err| {
-          error!("Failed to convert range to text_span: {:#}", err);
+          error!("Failed to convert range to text_span: {err:#}");
           LspError::internal_error()
         })?;
     let maybe_inlay_hints = self
@@ -4647,7 +4628,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!("Unable to get inlay hints from TypeScript: {:#}", err);
+          error!("Unable to get inlay hints from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -4672,7 +4653,7 @@ impl Inner {
     remove_dir_all_if_exists(&self.module_registry.location)
       .await
       .map_err(|err| {
-        error!("Unable to remove registries cache: {:#}", err);
+        error!("Unable to remove registries cache: {err:#}");
         LspError::internal_error()
       })?;
     self.module_registry.clear_cache();
@@ -4761,8 +4742,7 @@ impl Inner {
       let mut averages = self.performance.averages_as_f64();
       averages.sort_by(|a, b| a.0.cmp(&b.0));
       for (name, count, average_duration) in averages {
-        writeln!(contents, "|{}|{}|{}ms|", name, count, average_duration)
-          .unwrap();
+        writeln!(contents, "|{name}|{count}|{average_duration}ms|").unwrap();
       }
 
       contents.push_str(
@@ -4771,12 +4751,8 @@ impl Inner {
       let mut measurements_by_type = self.performance.measurements_by_type();
       measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
       for (name, total_count, total_duration) in measurements_by_type {
-        writeln!(
-          contents,
-          "|{}|{}|{:.3}ms|",
-          name, total_count, total_duration
-        )
-        .unwrap();
+        writeln!(contents, "|{name}|{total_count}|{total_duration:.3}ms|")
+          .unwrap();
       }
 
       Some(contents)

@@ -238,7 +238,7 @@ impl TestServer {
       runs.insert(params.id, test_run);
     }
     self.enqueue_run(params.id).map_err(|err| {
-      log::error!("cannot enqueue run: {}", err);
+      log::error!("cannot enqueue run: {err}");
       LspError::internal_error()
     })?;
     Ok(Some(json!({ "enqueued": enqueued })))

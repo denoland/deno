@@ -383,7 +383,7 @@ where
       if matches!(path.as_bytes().first(), Some(b'/' | b'*')) {
         Cow::Borrowed(path)
       } else {
-        Cow::Owned(format!("/{}", path))
+        Cow::Owned(format!("/{path}"))
       }
     }
     None => Cow::Borrowed(""),

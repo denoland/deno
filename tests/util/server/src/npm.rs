@@ -155,8 +155,8 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
+    let prefix1 = format!("/{DENOTEST_SCOPE_NAME}/");
+    let prefix2 = format!("/{DENOTEST_SCOPE_NAME}%2f");
 
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
@@ -166,8 +166,8 @@ impl TestNpmRegistry {
       return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
     }
 
-    let prefix1 = format!("/{}/", DENOTEST2_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST2_SCOPE_NAME);
+    let prefix1 = format!("/{DENOTEST2_SCOPE_NAME}/");
+    let prefix2 = format!("/{DENOTEST2_SCOPE_NAME}%2f");
 
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
@@ -177,8 +177,8 @@ impl TestNpmRegistry {
       return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
     }
 
-    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
+    let prefix1 = format!("/{DENOTEST3_SCOPE_NAME}/");
+    let prefix2 = format!("/{DENOTEST3_SCOPE_NAME}%2f");
 
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
@@ -290,7 +290,7 @@ fn create_package_version_info(
 
   let package_json_path = version_folder.join("package.json");
   let package_json_bytes = fs::read(&package_json_path).with_context(|| {
-    format!("Error reading package.json at {}", package_json_path)
+    format!("Error reading package.json at {package_json_path}")
   })?;
   let package_json_text = String::from_utf8_lossy(&package_json_bytes);
   let mut version_info: serde_json::Map<String, serde_json::Value> =
@@ -448,7 +448,7 @@ fn create_esbuild_package(
   let package = create_npm_registry_response(
     package_name,
     ESBUILD_VERSION,
-    &format!("The {} binary for esbuild", platform_name),
+    &format!("The {platform_name} binary for esbuild"),
     bin_path,
     tarball_bytes,
     registry_hostname,

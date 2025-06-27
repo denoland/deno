@@ -46,7 +46,7 @@ impl NodeAnalysisCache {
         if cfg!(debug_assertions) {
           panic!("Error using esm analysis: {err:#}");
         } else {
-          log::debug!("Error using esm analysis: {:#}", err);
+          log::debug!("Error using esm analysis: {err:#}");
         }
         T::default()
       }

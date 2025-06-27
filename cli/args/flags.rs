@@ -4697,8 +4697,7 @@ fn node_modules_dir_arg() -> Arg {
       "manual" => Ok(NodeModulesDirMode::Manual),
       "none" | "false" => Ok(NodeModulesDirMode::None),
       _ => Err(format!(
-        "Invalid value '{}': expected \"auto\", \"manual\" or \"none\"",
-        s
+        "Invalid value '{s}': expected \"auto\", \"manual\" or \"none\""
       )),
     }
   }
@@ -6294,10 +6293,9 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("no-check") {
     match cache_type.as_str() {
       "remote" => flags.type_check_mode = TypeCheckMode::Local,
-      _ => debug!(
-        "invalid value for 'no-check' of '{}' using default",
-        cache_type
-      ),
+      _ => {
+        debug!("invalid value for 'no-check' of '{cache_type}' using default")
+      }
     }
   } else if matches.contains_id("no-check") {
     flags.type_check_mode = TypeCheckMode::None;
@@ -6308,10 +6306,7 @@ fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("check") {
     match cache_type.as_str() {
       "all" => flags.type_check_mode = TypeCheckMode::All,
-      _ => debug!(
-        "invalid value for 'check' of '{}' using default",
-        cache_type
-      ),
+      _ => debug!("invalid value for 'check' of '{cache_type}' using default"),
     }
   } else if matches.contains_id("check") {
     flags.type_check_mode = TypeCheckMode::Local;
@@ -12594,7 +12589,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         .inspect_err(|e| {
           #[allow(clippy::print_stderr)]
           {
-            eprintln!("error: {:?} on input: {:?}", e, args);
+            eprintln!("error: {e:?} on input: {args:?}");
           }
         })
         .unwrap();

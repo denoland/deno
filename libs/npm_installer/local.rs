@@ -811,12 +811,12 @@ impl<
           if idx != len - 1 {
             log::warn!(
               "┠─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
+              colors::gray(format!("npm:{package_nv:?} ({msg})"))
             );
           } else {
             log::warn!(
               "┖─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
+              colors::gray(format!("npm:{package_nv:?} ({msg})"))
             );
           }
         }
@@ -1034,8 +1034,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
       log::warn!(
         "   {}",
         colors::bold(format!(
-          "deno install --allow-scripts={}",
-          packages_comma_separated
+          "deno install --allow-scripts={packages_comma_separated}"
         ))
       );
 

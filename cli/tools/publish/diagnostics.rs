@@ -212,7 +212,7 @@ impl Diagnostic for PublishDiagnostic {
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
-      MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
+      MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{specifier}' is missing a version constraint")),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
@@ -428,7 +428,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("the file was ignored and will not be published")
       ]),
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
-        Cow::Owned(format!("the import was resolved to '{}'", imported)),
+        Cow::Owned(format!("the import was resolved to '{imported}'")),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
       ]),

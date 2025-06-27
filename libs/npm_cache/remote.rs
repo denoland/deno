@@ -19,11 +19,11 @@ pub fn maybe_auth_header_value_for_npm_registry(
   registry_config: &RegistryConfig,
 ) -> Result<Option<String>, AuthHeaderForNpmRegistryError> {
   if let Some(token) = registry_config.auth_token.as_ref() {
-    return Ok(Some(format!("Bearer {}", token)));
+    return Ok(Some(format!("Bearer {token}")));
   }
 
   if let Some(auth) = registry_config.auth.as_ref() {
-    return Ok(Some(format!("Basic {}", auth)));
+    return Ok(Some(format!("Basic {auth}")));
   }
 
   let (username, password) = (
@@ -49,7 +49,7 @@ pub fn maybe_auth_header_value_for_npm_registry(
       String::from_utf8_lossy(&pw_base64)
     ));
 
-    return Ok(Some(format!("Basic {}", bearer)));
+    return Ok(Some(format!("Basic {bearer}")));
   }
 
   Ok(None)

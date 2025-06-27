@@ -91,7 +91,7 @@ where
       tokio::spawn(async move {
         #[allow(clippy::print_stderr)]
         for interval in runtime_monitor.intervals() {
-          eprintln!("{:#?}", interval);
+          eprintln!("{interval:#?}");
           // wait 500ms
           tokio::time::sleep(std::time::Duration::from_millis(
             metrics_interval,

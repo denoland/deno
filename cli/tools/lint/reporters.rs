@@ -64,7 +64,7 @@ impl LintReporter for PrettyLintReporter {
       if line.is_empty() {
         log::error!("");
       } else {
-        log::error!("    {}", line);
+        log::error!("    {line}");
       }
     }
   }
@@ -77,7 +77,7 @@ impl LintReporter for PrettyLintReporter {
       "".to_string()
     };
     match self.lint_count {
-      1 => info!("Found 1 problem{}", fixable_suffix),
+      1 => info!("Found 1 problem{fixable_suffix}"),
       n if n > 1 => {
         info!("Found {} problems{}", self.lint_count, fixable_suffix)
       }
@@ -86,7 +86,7 @@ impl LintReporter for PrettyLintReporter {
 
     match check_count {
       1 => info!("Checked 1 file"),
-      n => info!("Checked {} files", n),
+      n => info!("Checked {n} files"),
     }
   }
 }
@@ -139,7 +139,7 @@ impl LintReporter for CompactLintReporter {
 
     match check_count {
       1 => info!("Checked 1 file"),
-      n => info!("Checked {} files", n),
+      n => info!("Checked {n} files"),
     }
   }
 }

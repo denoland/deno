@@ -121,8 +121,8 @@ async fn private_npm_registry1_handler(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
-  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN)
-    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_BASE64)
+  if auth != format!("Bearer {PRIVATE_NPM_REGISTRY_AUTH_TOKEN}")
+    && auth != format!("Basic {PRIVATE_NPM_REGISTRY_AUTH_BASE64}")
   {
     return Ok(
       Response::builder()
@@ -143,8 +143,8 @@ async fn private_npm_registry2_handler(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
-  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN)
-    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_2_AUTH_BASE64)
+  if auth != format!("Bearer {PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN}")
+    && auth != format!("Basic {PRIVATE_NPM_REGISTRY_2_AUTH_BASE64}")
   {
     return Ok(
       Response::builder()
@@ -211,7 +211,7 @@ fn handle_custom_npm_registry_path(
     .collect::<Vec<_>>();
   let remainder = parts.split_off(1);
   let name = parts[0];
-  let package_name = format!("{}/{}", scope_name, name);
+  let package_name = format!("{scope_name}/{name}");
 
   if remainder.len() == 1 {
     if let Some(file_bytes) = test_npm_registry
@@ -339,7 +339,7 @@ fn replace_default_npm_registry_url_with_test_npm_registry_url(
     .decode_utf8()
     .unwrap();
   text.replace(
-    &format!("https://registry.npmjs.org/{}/-/", package_name),
+    &format!("https://registry.npmjs.org/{package_name}/-/"),
     &npm_registry.package_url(&package_name),
   )
 }

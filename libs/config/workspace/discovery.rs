@@ -1087,7 +1087,7 @@ fn resolve_vendor_dir(
 
 fn ensure_trailing_slash(path: &str) -> Cow<str> {
   if !path.ends_with('/') {
-    Cow::Owned(format!("{}/", path))
+    Cow::Owned(format!("{path}/"))
   } else {
     Cow::Borrowed(path)
   }

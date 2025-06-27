@@ -214,7 +214,7 @@ Deno.test(function addTest() {
   info!("{}", colors::gray("Run these commands to get started"));
   info!("");
   if let Some(dir) = init_flags.dir {
-    info!("  cd {}", dir);
+    info!("  cd {dir}");
     info!("");
   }
   if init_flags.serve {

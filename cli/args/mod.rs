@@ -381,7 +381,7 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {}", domains);
+        format!("DANGER: TLS certificate validation is disabled {domains}");
       {
         log::error!("{}", colors::yellow(msg));
       }
@@ -1171,7 +1171,7 @@ fn try_resolve_node_binary_main_entrypoint(
       path
         .extension()
         .and_then(|s| s.to_str())
-        .map(|s| format!("{}.js", s))
+        .map(|s| format!("{s}.js"))
         .unwrap_or("js".to_string()),
     );
     if path.is_file() {
@@ -1295,11 +1295,11 @@ pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
 fn allow_import_host_from_url(url: &Url) -> Option<String> {
   let host = url.host()?;
   if let Some(port) = url.port() {
-    Some(format!("{}:{}", host, port))
+    Some(format!("{host}:{port}"))
   } else {
     match url.scheme() {
-      "https" => Some(format!("{}:443", host)),
-      "http" => Some(format!("{}:80", host)),
+      "https" => Some(format!("{host}:443")),
+      "http" => Some(format!("{host}:80")),
       _ => None,
     }
   }

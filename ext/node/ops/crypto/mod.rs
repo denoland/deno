@@ -846,8 +846,7 @@ pub fn op_node_ecdh_generate_keys(
       Ok(())
     }
     &_ => Err(JsErrorBox::type_error(format!(
-      "Unsupported curve: {}",
-      curve
+      "Unsupported curve: {curve}"
     ))),
   }
 }

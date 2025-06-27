@@ -280,7 +280,7 @@ fn format_js_error_inner(
           if matches!(suggestion.kind, FixSuggestionKind::Docs) {
             write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
           } else {
-            write!(s, "{}", msg).unwrap();
+            write!(s, "{msg}").unwrap();
           }
         }
         FixSuggestionMessage::Multiline(messages) => {
@@ -289,7 +289,7 @@ fn format_js_error_inner(
               writeln!(s).unwrap();
               write!(s, "          ").unwrap();
             }
-            write!(s, "{}", message).unwrap();
+            write!(s, "{message}").unwrap();
           }
         }
       }

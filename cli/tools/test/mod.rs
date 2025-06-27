@@ -341,7 +341,7 @@ impl TestFailure {
       }
       TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
       TestFailure::FailedSteps(n) => {
-        Cow::Owned(format!("{} test steps failed.", n))
+        Cow::Owned(format!("{n} test steps failed."))
       }
       TestFailure::IncompleteSteps => {
         Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
@@ -353,10 +353,10 @@ impl TestFailure {
         let mut f = String::new();
         write!(f, "Leaks detected:").ok();
         for detail in details {
-          write!(f, "\n  - {}", detail).ok();
+          write!(f, "\n  - {detail}").ok();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer).ok();
+          write!(f, "\n{trailer}").ok();
         }
         Cow::Owned(f)
       }
@@ -364,7 +364,7 @@ impl TestFailure {
         let mut f = String::new();
         write!(f, "Started test step while another test step with sanitizers was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).ok();
+          write!(f, "\n  * {long_name}").ok();
         }
         Cow::Owned(f)
       }
@@ -372,7 +372,7 @@ impl TestFailure {
         let mut f = String::new();
         write!(f, "Started test step with sanitizers while another test step was running:").ok();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name).ok();
+          write!(f, "\n  * {long_name}").ok();
         }
         Cow::Owned(f)
       }
@@ -442,7 +442,7 @@ impl TestFailure {
   fn format_inline_summary(&self) -> Option<String> {
     match self {
       TestFailure::FailedSteps(1) => Some("due to 1 failed step".to_string()),
-      TestFailure::FailedSteps(n) => Some(format!("due to {} failed steps", n)),
+      TestFailure::FailedSteps(n) => Some(format!("due to {n} failed steps")),
       TestFailure::IncompleteSteps => {
         Some("due to incomplete steps".to_string())
       }
@@ -1416,7 +1416,7 @@ pub async fn report_tests(
 
         #[allow(clippy::print_stderr)]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
-          eprint!("Test reporter failed to flush: {}", err)
+          eprint!("Test reporter failed to flush: {err}")
         }
         #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
@@ -1711,7 +1711,7 @@ pub async fn run_tests(
       ),
       &reporters,
     ) {
-      log::info!("Error generating coverage report: {}", err);
+      log::info!("Error generating coverage report: {err}");
     }
   }
 

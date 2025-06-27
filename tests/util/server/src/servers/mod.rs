@@ -354,7 +354,7 @@ async fn get_tcp_listener_stream(
   // Eye catcher for HttpServerCount
   #[allow(clippy::print_stdout)]
   {
-    println!("ready: {name} on {:?}", addresses);
+    println!("ready: {name} on {addresses:?}");
   }
 
   futures::stream::select_all(listeners)
@@ -917,7 +917,7 @@ console.log("imported", import.meta.url);
         .get("authorization")
         .and_then(|x| x.to_str().ok())
         .unwrap_or_default()
-        != format!("Bearer {}", KV_ACCESS_TOKEN)
+        != format!("Bearer {KV_ACCESS_TOKEN}")
       {
         return Ok(
           Response::builder()
@@ -951,7 +951,7 @@ console.log("imported", import.meta.url);
         .get("authorization")
         .and_then(|x| x.to_str().ok())
         .unwrap_or_default()
-        != format!("Bearer {}", KV_ACCESS_TOKEN)
+        != format!("Bearer {KV_ACCESS_TOKEN}")
       {
         return Ok(
           Response::builder()
@@ -977,7 +977,7 @@ console.log("imported", import.meta.url);
         .get("authorization")
         .and_then(|x| x.to_str().ok())
         .unwrap_or_default()
-        != format!("Bearer {}", KV_ACCESS_TOKEN)
+        != format!("Bearer {KV_ACCESS_TOKEN}")
       {
         return Ok(
           Response::builder()
@@ -1011,7 +1011,7 @@ console.log("imported", import.meta.url);
         .get("authorization")
         .and_then(|x| x.to_str().ok())
         .unwrap_or_default()
-        != format!("Bearer {}", KV_DATABASE_TOKEN)
+        != format!("Bearer {KV_DATABASE_TOKEN}")
       {
         return Ok(
           Response::builder()
@@ -1068,7 +1068,7 @@ console.log("imported", import.meta.url);
         .get("authorization")
         .and_then(|x| x.to_str().ok())
         .unwrap_or_default()
-        != format!("Bearer {}", KV_DATABASE_TOKEN)
+        != format!("Bearer {KV_DATABASE_TOKEN}")
       {
         return Ok(
           Response::builder()

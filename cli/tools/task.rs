@@ -127,8 +127,7 @@ pub async fn execute_script(
       log::warn!(
         "{}",
         colors::red(format!(
-          "No matching task or script '{}' found in selected packages.",
-          task_name
+          "No matching task or script '{task_name}' found in selected packages."
         ))
       );
       return Ok(0);
@@ -256,7 +255,7 @@ impl<'a> TaskRunner<'a> {
             return Err(anyhow!("Task not found: {}", name));
           }
 
-          log::error!("Task not found: {}", name);
+          log::error!("Task not found: {name}");
           if log::log_enabled!(log::Level::Error) {
             self.print_available_tasks(&pkg_tasks_config.tasks_config)?;
           }
@@ -748,7 +747,7 @@ fn print_available_tasks_workspace(
   if !matched {
     log::warn!(
       "{}",
-      colors::red(format!("No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.", filter))
+      colors::red(format!("No package name matched the filter '{filter}' in available 'deno.json' or 'package.json' files."))
     );
   }
 
@@ -952,7 +951,7 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
 
   let mut regex_str = regex::escape(input);
   regex_str = regex_str.replace("\\*", ".*");
-  regex_str = format!("^{}", regex_str);
+  regex_str = format!("^{regex_str}");
   let re = Regex::new(&regex_str)?;
   Ok(TaskNameFilter::Regex(re))
 }

@@ -77,8 +77,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
       }
     }
     Err(JsErrorBox::type_error(format!(
-      "No backend supports the given path: {:?}",
-      path
+      "No backend supports the given path: {path:?}"
     )))
   }
 }

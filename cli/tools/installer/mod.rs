@@ -425,11 +425,11 @@ async fn create_install_shim(
   let installation_dir_str = shim_data.installation_dir.to_string_lossy();
 
   if !is_in_path(&shim_data.installation_dir) {
-    log::info!("ℹ️  Add {} to PATH", installation_dir_str);
+    log::info!("ℹ️  Add {installation_dir_str} to PATH");
     if cfg!(windows) {
-      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
+      log::info!("    set PATH=%PATH%;{installation_dir_str}");
     } else {
-      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+      log::info!("    export PATH=\"{installation_dir_str}:$PATH\"");
     }
   }
 
@@ -513,7 +513,7 @@ async fn resolve_shim_data(
   }
 
   for feature in &flags.unstable_config.features {
-    executable_args.push(format!("--unstable-{}", feature));
+    executable_args.push(format!("--unstable-{feature}"));
   }
 
   if flags.no_remote {
@@ -597,7 +597,7 @@ async fn resolve_shim_data(
       extra_files.push((
         copy_path,
         fs::read_to_string(lock_path)
-          .with_context(|| format!("error reading {}", lock_path))?,
+          .with_context(|| format!("error reading {lock_path}"))?,
       ));
     } else {
       // Provide an empty lockfile so that this overwrites any existing lockfile

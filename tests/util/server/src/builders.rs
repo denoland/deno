@@ -352,7 +352,7 @@ impl TestContext {
     }
 
     let url = url::Url::parse(self.envs.get("JSR_URL").unwrap()).unwrap();
-    let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
+    let url = url.join(&format!("{sub_path}_meta.json")).unwrap();
     let bytes = sync_fetch(url);
     get_checksum(&bytes)
   }
@@ -934,7 +934,7 @@ impl Drop for TestCommandOutput {
     fn panic_unasserted_output(output: &TestCommandOutput, text: &str) {
       output
         .diagnostic_logger
-        .writeln(format!("OUTPUT\n{}\nOUTPUT", text));
+        .writeln(format!("OUTPUT\n{text}\nOUTPUT"));
       panic!(concat!(
         "The non-empty text of the command was not asserted. ",
         "Call `output.skip_output_check()` to skip if necessary.",
@@ -1037,22 +1037,18 @@ impl TestCommandOutput {
       if *exit_code != expected_exit_code {
         self.print_output();
         panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          expected_exit_code, exit_code,
+          "bad exit code, expected: {expected_exit_code:?}, actual: {exit_code:?}",
         );
       }
     } else {
       self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          actual_exit_code,
-          signal,
+          "process terminated by signal, expected exit code: {actual_exit_code:?}, actual signal: {signal:?}",
         );
       } else {
         panic!(
-          "process terminated without status code on non unix platform, expected exit code: {:?}",
-          actual_exit_code,
+          "process terminated without status code on non unix platform, expected exit code: {actual_exit_code:?}",
         );
       }
     }
@@ -1143,7 +1139,7 @@ impl TestCommandOutput {
     let output_path = testdata_path().join(file_path);
     self
       .diagnostic_logger
-      .writeln(format!("output path {}", output_path));
+      .writeln(format!("output path {output_path}"));
     let expected_text = output_path.read_to_string();
     self.inner_assert_matches_text(actual, expected_text)
   }

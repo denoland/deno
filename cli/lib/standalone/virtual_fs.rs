@@ -46,19 +46,17 @@ impl WindowsSystemRootablePath {
     // this method doesn't handle multiple components
     debug_assert!(
       !name_component.contains('\\'),
-      "Invalid component: {}",
-      name_component
+      "Invalid component: {name_component}"
     );
     debug_assert!(
       !name_component.contains('/'),
-      "Invalid component: {}",
-      name_component
+      "Invalid component: {name_component}"
     );
 
     match self {
       WindowsSystemRootablePath::WindowSystemRoot => {
         // windows drive letter
-        PathBuf::from(&format!("{}\\", name_component))
+        PathBuf::from(&format!("{name_component}\\"))
       }
       WindowsSystemRootablePath::Path(path) => path.join(name_component),
     }

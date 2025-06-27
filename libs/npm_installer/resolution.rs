@@ -202,7 +202,7 @@ impl<
       };
       let mut text = String::new();
       _ = root_node.print(&mut text);
-      log::warn!("{}", text);
+      log::warn!("{text}");
     }
 
     if let Ok(snapshot) = &result.dep_graph_result {

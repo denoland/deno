@@ -22,7 +22,7 @@ use deno_runtime::worker::WorkerServiceOptions;
 
 #[op2(fast)]
 fn op_hello(#[string] text: &str) {
-  println!("Hello {} from an op!", text);
+  println!("Hello {text} from an op!");
 }
 
 deno_core::extension!(

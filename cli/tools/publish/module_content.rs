@@ -110,7 +110,7 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       }
     };
 
-    log::debug!("Unfurling {}", specifier);
+    log::debug!("Unfurling {specifier}");
     let mut reporter = |diagnostic| {
       diagnostics_collector
         .push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
@@ -195,14 +195,13 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     }
     if module_info.jsx_import_source.is_none() {
       if let Some(import_source) = jsx_options.jsx_import_source {
-        add_text_change(format!("/** @jsxImportSource {} */", import_source));
+        add_text_change(format!("/** @jsxImportSource {import_source} */"));
       }
     }
     if module_info.jsx_import_source_types.is_none() {
       if let Some(import_source) = jsx_options.jsx_import_source_types {
         add_text_change(format!(
-          "/** @jsxImportSourceTypes {} */",
-          import_source
+          "/** @jsxImportSourceTypes {import_source} */"
         ));
       }
     }

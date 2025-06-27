@@ -538,7 +538,7 @@ impl CliModuleLoaderFactory {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
-#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
+#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {r}")).unwrap_or_default())]
 pub struct LoadUnpreparedModuleError {
   specifier: ModuleSpecifier,
   maybe_referrer: Option<ModuleSpecifier>,
@@ -1032,7 +1032,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         && !specifier.as_str().starts_with(jsr_url().as_str())
         && matches!(specifier.scheme(), "http" | "https")
       {
-        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
+        return Err(JsErrorBox::generic(format!("Importing {specifier} blocked. JSR packages cannot import non-JSR remote modules for security reasons.")));
       }
       Ok(())
     }
@@ -1191,6 +1191,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
   }
 
+  #[allow(clippy::result_large_err)]
   fn load_prepared_module_or_defer_emit<'graph>(
     &self,
     graph: &'graph ModuleGraph,
@@ -1843,10 +1844,10 @@ impl EszipModuleLoader {
       loaded_eszips.push_back(async move {
         let (eszip, loader) = EszipV2::parse(eszip)
           .await
-          .with_context(|| format!("Error parsing eszip header at {}", path))?;
+          .with_context(|| format!("Error parsing eszip header at {path}"))?;
         loader
           .await
-          .with_context(|| format!("Error loading eszip at {}", path))?;
+          .with_context(|| format!("Error loading eszip at {path}"))?;
         Ok(eszip)
       });
     }

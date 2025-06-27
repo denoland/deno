@@ -285,7 +285,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         .await.map_err(JsErrorBox::from_err)?;
       match response {
         NpmCacheHttpClientResponse::NotModified => {
-          log::debug!("Respected etag for packument '{0}'", name); // used in the tests
+          log::debug!("Respected etag for packument '{name}'"); // used in the tests
           Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())))
         },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
@@ -300,9 +300,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                 }
                 Err(err) => {
                   log::debug!(
-                    "Error saving package {} to cache: {:#}",
-                    name,
-                    err
+                    "Error saving package {name} to cache: {err:#}"
                   );
                   Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
                 }
