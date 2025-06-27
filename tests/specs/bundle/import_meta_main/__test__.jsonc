@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "import_meta_main": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "import_meta_main.out"
+        },
+        {
+          "args": "run out.js",
+          "output": "b.ts false\na.ts false\nmain.ts true\na.ts from main.ts false\nb.ts from main.ts false\n"
+        }
+      ]
+    }
+  }
+}

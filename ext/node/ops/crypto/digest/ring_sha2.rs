@@ -5,12 +5,12 @@ use std::marker::PhantomData;
 use digest::generic_array::ArrayLength;
 
 pub trait RingDigestAlgo {
-  fn algorithm() -> &'static ring::digest::Algorithm;
+  fn algorithm() -> &'static aws_lc_rs::digest::Algorithm;
   type OutputSize: ArrayLength<u8> + 'static;
 }
 
 pub struct RingDigest<Algo: RingDigestAlgo> {
-  context: ring::digest::Context,
+  context: aws_lc_rs::digest::Context,
   _phantom: PhantomData<Algo>,
 }
 
@@ -27,14 +27,14 @@ impl<Algo: RingDigestAlgo> digest::HashMarker for RingDigest<Algo> {}
 impl<Algo: RingDigestAlgo> Default for RingDigest<Algo> {
   fn default() -> Self {
     Self {
-      context: ring::digest::Context::new(Algo::algorithm()),
+      context: aws_lc_rs::digest::Context::new(Algo::algorithm()),
       _phantom: PhantomData,
     }
   }
 }
 impl<Algo: RingDigestAlgo> digest::Reset for RingDigest<Algo> {
   fn reset(&mut self) {
-    self.context = ring::digest::Context::new(Algo::algorithm())
+    self.context = aws_lc_rs::digest::Context::new(Algo::algorithm())
   }
 }
 impl<Algo: RingDigestAlgo> digest::Update for RingDigest<Algo> {
@@ -55,7 +55,7 @@ impl<Algo: RingDigestAlgo> digest::FixedOutputReset for RingDigest<Algo> {
   fn finalize_into_reset(&mut self, out: &mut digest::Output<Self>) {
     let context = std::mem::replace(
       &mut self.context,
-      ring::digest::Context::new(Algo::algorithm()),
+      aws_lc_rs::digest::Context::new(Algo::algorithm()),
     );
     out.copy_from_slice(context.finish().as_ref());
   }
@@ -63,16 +63,16 @@ impl<Algo: RingDigestAlgo> digest::FixedOutputReset for RingDigest<Algo> {
 
 pub struct RingSha256Algo;
 impl RingDigestAlgo for RingSha256Algo {
-  fn algorithm() -> &'static ring::digest::Algorithm {
-    &ring::digest::SHA256
+  fn algorithm() -> &'static aws_lc_rs::digest::Algorithm {
+    &aws_lc_rs::digest::SHA256
   }
 
   type OutputSize = digest::typenum::U32;
 }
 pub struct RingSha512Algo;
 impl RingDigestAlgo for RingSha512Algo {
-  fn algorithm() -> &'static ring::digest::Algorithm {
-    &ring::digest::SHA512
+  fn algorithm() -> &'static aws_lc_rs::digest::Algorithm {
+    &aws_lc_rs::digest::SHA512
   }
 
   type OutputSize = digest::typenum::U64;

@@ -47,6 +47,7 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker::UnconfiguredRuntime;
+pub use worker::UnconfiguredRuntimeOptions;
 pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;

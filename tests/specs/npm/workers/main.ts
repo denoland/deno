@@ -10,3 +10,6 @@ new Worker(new URL("./worker3.ts", import.meta.url), {
   type: "module",
 });
 new WorkerThread(new URL("./worker4.mjs", import.meta.url));
+new Worker(new URL("./worker5.mjs", import.meta.url), {
+  type: "module",
+});

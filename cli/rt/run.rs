@@ -17,7 +17,6 @@ use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
-use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
@@ -66,7 +65,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -243,6 +241,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .into(),
         ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -406,10 +410,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             code_source.code.as_bytes(),
           );
           Ok(deno_core::ModuleSource::new_with_redirect(
-            match code_source.media_type {
-              MediaType::Json => ModuleType::Json,
-              _ => ModuleType::JavaScript,
-            },
+            code_source.module_type,
             code_source.code,
             &original_specifier,
             &code_source.found_url,
@@ -927,14 +928,8 @@ pub async fn run(
       }
     }
 
-    let desc_parser = Arc::new(RuntimePermissionDescriptorParser::new(
-      sys.clone(),
-      if metadata.unstable_config.subdomain_wildcards {
-        UnstableSubdomainWildcards::Enabled
-      } else {
-        UnstableSubdomainWildcards::Disabled
-      },
-    ));
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
@@ -960,6 +955,7 @@ pub async fn run(
     strace_ops: None,
     is_inspecting: false,
     is_standalone: true,
+    auto_serve: false,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
@@ -977,6 +973,7 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    enable_raw_imports: metadata.unstable_config.raw_imports,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),

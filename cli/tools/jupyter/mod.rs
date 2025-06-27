@@ -17,8 +17,8 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-use jupyter_runtime::jupyter::ConnectionInfo;
-use jupyter_runtime::messaging::StreamContent;
+use jupyter_protocol::messaging::StreamContent;
+use jupyter_runtime::ConnectionInfo;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
@@ -73,7 +73,7 @@ pub async fn kernel(
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -124,7 +124,7 @@ pub async fn kernel(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module,
     test_event_receiver,

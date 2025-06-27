@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.230.0"
+version = "0.232.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -51,3 +51,4 @@ tokio-vsock.workspace = true
 
 [dev-dependencies]
 fast-socks5.workspace = true
+rustls.workspace = true
