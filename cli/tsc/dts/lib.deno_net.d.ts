@@ -973,7 +973,7 @@ declare namespace Deno {
        *
        * ```ts
        * // If the text "hello world" is received by the client:
-       * const pipe = await Deno.pipe.listen({ path: "/tmp/my-pipe" });
+       * const pipe = await Deno.pipe.open({ kind: "unix", path: "/tmp/my-pipe" });
        * const buf = new Uint8Array(100);
        * const numberOfBytesRead = await pipe.read(buf); // 11 bytes
        * const text = new TextDecoder().decode(buf);  // "hello world"
@@ -990,7 +990,7 @@ declare namespace Deno {
        * call.**
        *
        * ```ts
-       * const pipe = await Deno.pipe.connect({ path: "/tmp/my-pipe", create: true });
+       * const pipe = await Deno.pipe.connect({ kind: "unix", path: "/tmp/my-pipe", create: true });
        * const encoder = new TextEncoder();
        * const data = encoder.encode("Hello world");
        * const bytesWritten = await pipe.write(data); // 11
