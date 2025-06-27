@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.38.0"
+version = "0.39.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -44,6 +44,7 @@ futures.workspace = true
 http = { workspace = true, optional = true }
 import_map.workspace = true
 indexmap.workspace = true
+jsonc-parser.workspace = true
 log.workspace = true
 node_resolver.workspace = true
 once_cell.workspace = true

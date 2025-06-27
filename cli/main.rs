@@ -548,6 +548,17 @@ fn resolve_flags_and_init(
 
   load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
+  if std::env::var("DENO_COMPAT").is_ok() {
+    flags.unstable_config.enable_node_compat();
+  }
+  if flags.node_conditions.is_empty() {
+    if let Ok(conditions) = std::env::var("DENO_CONDITIONS") {
+      flags.node_conditions = conditions
+        .split(",")
+        .map(|c| c.trim().to_string())
+        .collect();
+    }
+  }
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
@@ -654,15 +665,18 @@ fn wait_for_start(
       deno_resolver::npm::DenoInNpmPackageChecker,
       crate::npm::CliNpmResolver,
       crate::sys::CliSys,
-    >(
+    >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
-      deno_lib::worker::create_isolate_create_params(
+      create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),
-      Some(roots.shared_array_buffer_store.clone()),
-      Some(roots.compiled_wasm_module_store.clone()),
-      vec![],
-    );
+      shared_array_buffer_store: Some(roots.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        roots.compiled_wasm_module_store.clone(),
+      ),
+      additional_extensions: vec![],
+      enable_raw_imports: false,
+    });
 
     let (rx, mut tx): (
       Box<dyn AsyncRead + Unpin>,

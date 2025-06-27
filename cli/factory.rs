@@ -32,11 +32,13 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
+use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -44,7 +46,6 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -62,7 +63,6 @@ use crate::args::BundleFlags;
 use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -107,6 +107,7 @@ use crate::resolver::CliResolver;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
@@ -452,6 +453,12 @@ impl CliFactory {
     self.services.blob_store.get_or_init(Default::default)
   }
 
+  pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
+    let http_client = self.http_client_provider();
+    let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
+    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
+  }
+
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
     self.services.root_cert_store_provider.get_or_init(|| {
       Arc::new(CliRootCertStoreProvider::new(
@@ -687,7 +694,7 @@ impl CliFactory {
         self.cjs_tracker()?.clone(),
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
-        self.tsconfig_resolver()?.clone(),
+        self.compiler_options_resolver()?.clone(),
       )))
     })
   }
@@ -774,10 +781,10 @@ impl CliFactory {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
-  pub fn tsconfig_resolver(
+  pub fn compiler_options_resolver(
     &self,
-  ) -> Result<&Arc<CliTsConfigResolver>, AnyError> {
-    Ok(self.workspace_factory()?.tsconfig_resolver()?)
+  ) -> Result<&Arc<CompilerOptionsResolver>, AnyError> {
+    self.resolver_factory()?.compiler_options_resolver()
   }
 
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
@@ -798,7 +805,8 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.sys(),
-            self.tsconfig_resolver()?.clone(),
+            self.workspace_directory_provider()?.clone(),
+            self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
             } else {
@@ -837,7 +845,7 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
-            self.tsconfig_resolver()?.clone(),
+            self.compiler_options_resolver()?.clone(),
           )))
         }
         .boxed_local(),
@@ -926,14 +934,7 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      Ok(Arc::new(RuntimePermissionDescriptorParser::new(
-        self.sys(),
-        if self.cli_options()?.unstable_subdomain_wildcards() {
-          UnstableSubdomainWildcards::Enabled
-        } else {
-          UnstableSubdomainWildcards::Disabled
-        },
-      )))
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(self.sys())))
     })
   }
 
@@ -984,6 +985,12 @@ impl CliFactory {
         )?;
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
+  }
+
+  fn workspace_directory_provider(
+    &self,
+  ) -> Result<&Arc<WorkspaceDirectoryProvider>, AnyError> {
+    Ok(self.workspace_factory()?.workspace_directory_provider()?)
   }
 
   fn workspace_external_import_map_loader(
@@ -1041,6 +1048,7 @@ impl CliFactory {
         None
       },
       self.emitter()?.clone(),
+      self.file_fetcher()?.clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
@@ -1132,6 +1140,7 @@ impl CliFactory {
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
       is_standalone: false,
+      auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
@@ -1151,6 +1160,7 @@ impl CliFactory {
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+      enable_raw_imports: cli_options.unstable_raw_imports(),
     })
   }
 
@@ -1256,8 +1266,8 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
-          bare_node_builtins: self.flags.unstable_config.bare_node_builtins,
-          unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          bare_node_builtins: options.unstable_bare_node_builtins(),
+          unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,
           )),
