@@ -15,7 +15,7 @@ pub static mut sqlite3_api: *const sqlite3_api_routines = std::ptr::null();
 
 #[macro_export]
 macro_rules! SQLITE3_EXTENSION_INIT2 {
-  ($api:expr_2021) => {
+  ($api:expr) => {
     #[allow(unused_unsafe)]
     unsafe {
       sqlite3_api = $api;

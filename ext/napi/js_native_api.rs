@@ -3024,7 +3024,7 @@ fn napi_create_typedarray<'s>(
   };
 
   macro_rules! create {
-    ($TypedArray:ident, $size_of_element:expr_2021) => {{
+    ($TypedArray:ident, $size_of_element:expr) => {{
       let soe = $size_of_element;
       if soe > 1 && byte_offset % soe != 0 {
         let message = v8::String::new(

@@ -10,7 +10,7 @@ use std::ptr;
 use napi_sys as sys;
 
 macro_rules! check_status_or_panic {
-  ($code:expr_2021, $msg:expr_2021) => {{
+  ($code:expr, $msg:expr) => {{
     let c = $code;
     match c {
       sys::Status::napi_ok => {}

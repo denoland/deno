@@ -1041,7 +1041,7 @@ fn parse_span_id(
 }
 
 macro_rules! attr_raw {
-  ($scope:ident, $name:expr_2021, $value:expr_2021) => {{
+  ($scope:ident, $name:expr, $value:expr) => {{
     let name = if let Ok(name) = $name.try_cast() {
       let view = v8::ValueView::new($scope, name);
       match view.data() {
@@ -1087,7 +1087,7 @@ macro_rules! attr_raw {
 }
 
 macro_rules! attr {
-  ($scope:ident, $attributes:expr_2021 $(=> $dropped_attributes_count:expr_2021)?, $name:expr_2021, $value:expr_2021) => {
+  ($scope:ident, $attributes:expr $(=> $dropped_attributes_count:expr)?, $name:expr, $value:expr) => {
     let attr = attr_raw!($scope, $name, $value);
     if let Some(kv) = attr {
       $attributes.push(kv);

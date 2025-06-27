@@ -44,7 +44,7 @@ pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
   std::sync::atomic::AtomicUsize::new(0);
 
 macro_rules! http_general_trace {
-  ($($args:expr_2021),*) => {
+  ($($args:expr),*) => {
     #[cfg(feature = "__http_tracing")]
     {
       let count = $crate::service::RECORD_COUNT
@@ -59,7 +59,7 @@ macro_rules! http_general_trace {
 }
 
 macro_rules! http_trace {
-  ($record:expr_2021 $(, $args:expr_2021)*) => {
+  ($record:expr $(, $args:expr)*) => {
     #[cfg(feature = "__http_tracing")]
     {
       let count = $crate::service::RECORD_COUNT
@@ -323,7 +323,9 @@ fn trust_proxy_headers() -> bool {
     if let Some(v) = std::env::var_os(VAR_NAME) {
       // TODO: Audit that the environment access only happens in single-threaded code.
       #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe { std::env::remove_var(VAR_NAME) };
+      unsafe {
+        std::env::remove_var(VAR_NAME)
+      };
       v == "1"
     } else {
       false

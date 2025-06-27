@@ -96,8 +96,8 @@ pub fn get_types_declaration_file_text() -> String {
 }
 
 macro_rules! maybe_compressed_source {
-  ($file: expr_2021) => {{ maybe_compressed_source!(compressed = $file, uncompressed = $file) }};
-  (compressed = $comp: expr_2021, uncompressed = $uncomp: expr_2021) => {{
+  ($file: expr) => {{ maybe_compressed_source!(compressed = $file, uncompressed = $file) }};
+  (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
     #[cfg(feature = "hmr")]
     {
       StaticAssetSource::Owned(
@@ -126,7 +126,7 @@ macro_rules! maybe_compressed_source {
 }
 
 macro_rules! maybe_compressed_lib {
-  ($name: expr_2021, $file: expr_2021) => {
+  ($name: expr, $file: expr) => {
     (
       $name,
       StaticAsset {
@@ -135,7 +135,7 @@ macro_rules! maybe_compressed_lib {
       },
     )
   };
-  ($e: expr_2021) => {
+  ($e: expr) => {
     maybe_compressed_lib!($e, $e)
   };
 }

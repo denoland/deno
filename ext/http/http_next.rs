@@ -129,7 +129,7 @@ external!(RcHttpRecord, "http record");
 /// Construct Rc<HttpRecord> from raw external pointer, consuming
 /// refcount. You must make sure the external is deleted on the JS side.
 macro_rules! take_external {
-  ($external:expr_2021, $args:tt) => {{
+  ($external:expr, $args:tt) => {{
     let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
     let record = ptr.unsafely_take().0;
     http_trace!(record, $args);
@@ -139,7 +139,7 @@ macro_rules! take_external {
 
 /// Clone Rc<HttpRecord> from raw external pointer.
 macro_rules! clone_external {
-  ($external:expr_2021, $args:tt) => {{
+  ($external:expr, $args:tt) => {{
     let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
     ptr.unsafely_deref().0.clone()
   }};

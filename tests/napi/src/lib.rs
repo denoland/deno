@@ -40,7 +40,7 @@ macro_rules! cstr {
 
 #[macro_export]
 macro_rules! assert_napi_ok {
-  ($call: expr_2021) => {{
+  ($call: expr) => {{
     assert_eq!(
       {
         #[allow(unused_unsafe)]
@@ -55,7 +55,7 @@ macro_rules! assert_napi_ok {
 
 #[macro_export]
 macro_rules! napi_get_callback_info {
-  ($env: expr_2021, $callback_info: expr_2021, $size: literal) => {{
+  ($env: expr, $callback_info: expr, $size: literal) => {{
     let mut args = [std::ptr::null_mut(); $size];
     let mut argc = $size;
     let mut this = std::ptr::null_mut();
@@ -73,7 +73,7 @@ macro_rules! napi_get_callback_info {
 
 #[macro_export]
 macro_rules! napi_new_property {
-  ($env: expr_2021, $name: expr_2021, $value: expr_2021) => {
+  ($env: expr, $name: expr, $value: expr) => {
     napi_property_descriptor {
       utf8name: concat!($name, "\0").as_ptr() as *const std::os::raw::c_char,
       name: std::ptr::null_mut(),

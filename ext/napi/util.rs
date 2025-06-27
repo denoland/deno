@@ -78,7 +78,7 @@ pub(crate) fn make_external_backing_store(
 
 #[macro_export]
 macro_rules! check_env {
-  ($env: expr_2021) => {{
+  ($env: expr) => {{
     let env = $env;
     if env.is_null() {
       return napi_invalid_arg;
@@ -89,7 +89,7 @@ macro_rules! check_env {
 
 #[macro_export]
 macro_rules! return_error_status_if_false {
-  ($env: expr_2021, $condition: expr_2021, $status: ident) => {
+  ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
       return Err($crate::util::napi_set_last_error($env, $status).into());
     }
@@ -98,7 +98,7 @@ macro_rules! return_error_status_if_false {
 
 #[macro_export]
 macro_rules! return_status_if_false {
-  ($env: expr_2021, $condition: expr_2021, $status: ident) => {
+  ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
       return $crate::util::napi_set_last_error($env, $status);
     }
@@ -180,7 +180,7 @@ pub(crate) fn napi_set_last_error(
 
 #[macro_export]
 macro_rules! status_call {
-  ($call: expr_2021) => {
+  ($call: expr) => {
     let status = $call;
     if status != napi_ok {
       return status;
@@ -218,7 +218,7 @@ impl Nullable for napi_value<'_> {
 
 #[macro_export]
 macro_rules! check_arg {
-  ($env: expr_2021, $ptr: expr_2021) => {
+  ($env: expr, $ptr: expr) => {
     $crate::return_status_if_false!(
       $env,
       !$crate::util::Nullable::is_null(&$ptr),

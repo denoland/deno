@@ -1931,7 +1931,7 @@ mod tests {
 
   #[macro_export]
   macro_rules! assert_contains {
-    ($string:expr_2021, $($test:expr_2021),+ $(,)?) => {
+    ($string:expr, $($test:expr),+ $(,)?) => {
       let string = &$string; // This might be a function call or something
       if !($(string.contains($test))||+) {
         panic!("{:?} does not contain any of {:?}", string, [$($test),+]);

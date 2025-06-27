@@ -73,7 +73,7 @@ impl Hasher {
 }
 
 macro_rules! match_fixed_digest {
-  ($algorithm_name:expr_2021, fn <$type:ident>() $body:block, _ => $other:block) => {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
     match $algorithm_name {
       "blake2b512" => {
         type $type = ::blake2::Blake2b512;
@@ -91,7 +91,7 @@ macro_rules! match_fixed_digest {
 pub(crate) use match_fixed_digest;
 
 macro_rules! match_fixed_digest_with_eager_block_buffer {
-  ($algorithm_name:expr_2021, fn <$type:ident>() $body:block, _ => $other:block) => {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
     match $algorithm_name {
       "rsa-sm3" | "sm3" | "sm3withrsaencryption" => {
         type $type = ::sm3::Sm3;
@@ -112,7 +112,7 @@ macro_rules! match_fixed_digest_with_eager_block_buffer {
 pub(crate) use match_fixed_digest_with_eager_block_buffer;
 
 macro_rules! match_fixed_digest_with_oid {
-  ($algorithm_name:expr_2021, fn $(<$type:ident>)?($($hash_algorithm:ident: Option<RsaPssHashAlgorithm>)?) $body:block, _ => $other:block) => {
+  ($algorithm_name:expr, fn $(<$type:ident>)?($($hash_algorithm:ident: Option<RsaPssHashAlgorithm>)?) $body:block, _ => $other:block) => {
     match $algorithm_name {
       "rsa-md5" | "md5" | "md5withrsaencryption" | "ssl3-md5" => {
         $(let $hash_algorithm = None;)?

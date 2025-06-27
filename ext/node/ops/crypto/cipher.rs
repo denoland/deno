@@ -499,7 +499,7 @@ impl DecipherError {
 }
 
 macro_rules! assert_block_len {
-  ($input:expr_2021, $len:expr_2021) => {
+  ($input:expr, $len:expr) => {
     if $input != $len {
       return Err(DecipherError::InvalidFinalBlockLength);
     }

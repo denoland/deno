@@ -44,7 +44,7 @@ macro_rules! timeout {
 
 #[macro_export]
 macro_rules! itest(
-($name:ident {$( $key:ident: $value:expr_2021,)*})  => {
+($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
     $crate::timeout!();
@@ -68,7 +68,7 @@ macro_rules! itest(
 
 #[macro_export]
 macro_rules! context(
-({$( $key:ident: $value:expr_2021,)*})  => {
+({$( $key:ident: $value:expr,)*})  => {
   $crate::TestContext::create($crate::TestContextOptions {
     $(
       $key: $value,
@@ -80,7 +80,7 @@ macro_rules! context(
 
 #[macro_export]
 macro_rules! command_step(
-({$( $key:ident: $value:expr_2021,)*})  => {
+({$( $key:ident: $value:expr,)*})  => {
   $crate::CheckOutputIntegrationTestCommandStep {
     $(
       $key: $value,

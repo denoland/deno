@@ -1594,7 +1594,7 @@ fn enable_full(command: Command) -> Command {
 }
 
 macro_rules! heading {
-    ($($name:ident = $title:expr_2021),+; $total:literal) => {
+    ($($name:ident = $title:expr),+; $total:literal) => {
       $(const $name: &str = $title;)+
       const HEADING_ORDER: [&str; $total] = [$($name),+];
     };
@@ -6534,7 +6534,7 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr_2021),* $(,)?) => (vec![$($x.to_string().into()),*]);
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
   }
 
   #[test]
