@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_media_type::MediaType;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::ClosestPkgJsonError;
 use sys_traits::FsRead;
 use url::Url;
 
@@ -279,37 +279,39 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
         return Ok(ResolutionMode::Require);
       };
-      if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(&path)?
-      {
-        let is_file_location_cjs = pkg_json.typ != "module";
-        Ok(if is_file_location_cjs || path.extension().is_none() {
-          ResolutionMode::Require
-        } else {
-          ResolutionMode::Import
-        })
-      } else {
-        Ok(ResolutionMode::Require)
+      match self.pkg_json_resolver.get_closest_package_json(&path)? {
+        Some(pkg_json) => {
+          let is_file_location_cjs = pkg_json.typ != "module";
+          Ok(if is_file_location_cjs || path.extension().is_none() {
+            ResolutionMode::Require
+          } else {
+            ResolutionMode::Import
+          })
+        }
+        _ => Ok(ResolutionMode::Require),
       }
     } else if self.mode != IsCjsResolutionMode::Disabled {
       let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
         return Ok(ResolutionMode::Import);
       };
-      if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(&path)?
-      {
-        let is_cjs_type = pkg_json.typ == "commonjs"
-          || self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs
-            && pkg_json.typ == "none";
-        Ok(if is_cjs_type {
-          ResolutionMode::Require
-        } else {
-          ResolutionMode::Import
-        })
-      } else if self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs {
-        Ok(ResolutionMode::Require)
-      } else {
-        Ok(ResolutionMode::Import)
+      match self.pkg_json_resolver.get_closest_package_json(&path)? {
+        Some(pkg_json) => {
+          let is_cjs_type = pkg_json.typ == "commonjs"
+            || self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs
+              && pkg_json.typ == "none";
+          Ok(if is_cjs_type {
+            ResolutionMode::Require
+          } else {
+            ResolutionMode::Import
+          })
+        }
+        _ => {
+          if self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs {
+            Ok(ResolutionMode::Require)
+          } else {
+            Ok(ResolutionMode::Import)
+          }
+        }
       }
     } else {
       Ok(ResolutionMode::Import)

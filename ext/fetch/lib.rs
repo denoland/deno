@@ -26,15 +26,6 @@ use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
 use data_url::DataUrl;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::url;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -48,47 +39,56 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::url;
+use deno_core::url::Url;
+use deno_core::v8;
 use deno_error::JsErrorBox;
-use deno_fs::open_options_with_access_check;
 use deno_fs::CheckedPath;
 pub use deno_fs::FsError;
 use deno_fs::OpenOptions;
+use deno_fs::open_options_with_access_check;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
-use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
+use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
-use http::header::HeaderName;
-use http::header::HeaderValue;
+use http::Extensions;
+use http::Method;
+use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
-use http::Extensions;
-use http::Method;
-use http::Uri;
-use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
+use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
+use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
-use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
-use tower::retry;
 use tower::ServiceExt;
+use tower::retry;
 use tower_http::decompression::Decompression;
 
 #[derive(Clone)]
@@ -356,8 +356,8 @@ impl Stream for ResourceToBodyAdapter {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let this = self.get_mut();
-    if let Some(mut fut) = this.1.take() {
-      match fut.poll_unpin(cx) {
+    match this.1.take() {
+      Some(mut fut) => match fut.poll_unpin(cx) {
         Poll::Pending => {
           this.1 = Some(fut);
           Poll::Pending
@@ -370,9 +370,8 @@ impl Stream for ResourceToBodyAdapter {
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },
-      }
-    } else {
-      Poll::Ready(None)
+      },
+      _ => Poll::Ready(None),
     }
   }
 }
@@ -1129,7 +1128,9 @@ pub enum HttpClientCreateError {
   InvalidAddress(String),
   #[error("invalid proxy url")]
   InvalidProxyUrl,
-  #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
+  #[error(
+    "Cannot create Http Client: either `http1` or `http2` needs to be set to true"
+  )]
   HttpVersionSelectionInvalid,
   #[class(inherit)]
   #[error(transparent)]
@@ -1250,7 +1251,7 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(HttpClientCreateError::HttpVersionSelectionInvalid)
+      return Err(HttpClientCreateError::HttpVersionSelectionInvalid);
     }
   }
 
@@ -1408,29 +1409,29 @@ impl hyper::body::Body for ReqBody {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     match &mut *self {
-      ReqBody::Full(ref mut b) => {
+      ReqBody::Full(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Empty(ref mut b) => {
+      ReqBody::Empty(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Streaming(ref mut b) => Pin::new(b).poll_frame(cx),
+      ReqBody::Streaming(b) => Pin::new(b).poll_frame(cx),
     }
   }
 
   fn is_end_stream(&self) -> bool {
     match self {
-      ReqBody::Full(ref b) => b.is_end_stream(),
-      ReqBody::Empty(ref b) => b.is_end_stream(),
-      ReqBody::Streaming(ref b) => b.is_end_stream(),
+      ReqBody::Full(b) => b.is_end_stream(),
+      ReqBody::Empty(b) => b.is_end_stream(),
+      ReqBody::Streaming(b) => b.is_end_stream(),
     }
   }
 
   fn size_hint(&self) -> hyper::body::SizeHint {
     match self {
-      ReqBody::Full(ref b) => b.size_hint(),
-      ReqBody::Empty(ref b) => b.size_hint(),
-      ReqBody::Streaming(ref b) => b.size_hint(),
+      ReqBody::Full(b) => b.size_hint(),
+      ReqBody::Empty(b) => b.size_hint(),
+      ReqBody::Streaming(b) => b.size_hint(),
     }
   }
 }

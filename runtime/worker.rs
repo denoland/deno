@@ -2,10 +2,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -13,10 +13,6 @@ use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::CoreError;
-use deno_core::error::JsError;
-use deno_core::merge_op_metrics;
-use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
@@ -34,6 +30,10 @@ use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::error::CoreError;
+use deno_core::error::JsError;
+use deno_core::merge_op_metrics;
+use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -51,13 +51,13 @@ use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
+use crate::BootstrapOptions;
+use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::BootstrapOptions;
-use crate::FeatureChecker;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
@@ -134,7 +134,9 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!("Program finished. Waiting for inspector to disconnect to exit the process...");
+      log::info!(
+        "Program finished. Waiting for inspector to disconnect to exit the process..."
+      );
     }
   })
 }
@@ -474,49 +476,48 @@ impl MainWorker {
       })
     };
 
-    js_runtime.set_eval_context_code_cache_cbs(services.v8_code_cache.map(
-      |cache| {
-        let cache_clone = cache.clone();
-        (
-          Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
-            let source_hash = {
-              use std::hash::Hash;
-              use std::hash::Hasher;
-              let mut hasher = twox_hash::XxHash64::default();
-              code.hash(&mut hasher);
-              hasher.finish()
-            };
-            let data = cache
-              .get_sync(specifier, CodeCacheType::Script, source_hash)
-              .inspect(|_| {
-                // This log line is also used by tests.
-                log::debug!(
-                  "V8 code cache hit for script: {specifier}, [{source_hash}]"
-                );
-              })
-              .map(Cow::Owned);
-            Ok(SourceCodeCacheInfo {
-              data,
-              hash: source_hash,
-            })
-          }) as Box<dyn Fn(&_, &_) -> _>,
-          Box::new(
-            move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+    js_runtime
+      .set_eval_context_code_cache_cbs(services.v8_code_cache.map(|cache| {
+      let cache_clone = cache.clone();
+      (
+        Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
+          let source_hash = {
+            use std::hash::Hash;
+            use std::hash::Hasher;
+            let mut hasher = twox_hash::XxHash64::default();
+            code.hash(&mut hasher);
+            hasher.finish()
+          };
+          let data = cache
+            .get_sync(specifier, CodeCacheType::Script, source_hash)
+            .inspect(|_| {
               // This log line is also used by tests.
               log::debug!(
+                "V8 code cache hit for script: {specifier}, [{source_hash}]"
+              );
+            })
+            .map(Cow::Owned);
+          Ok(SourceCodeCacheInfo {
+            data,
+            hash: source_hash,
+          })
+        }) as Box<dyn Fn(&_, &_) -> _>,
+        Box::new(
+          move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+            // This log line is also used by tests.
+            log::debug!(
               "Updating V8 code cache for script: {specifier}, [{source_hash}]"
             );
-              cache_clone.set_sync(
-                specifier,
-                CodeCacheType::Script,
-                source_hash,
-                data,
-              );
-            },
-          ) as Box<dyn Fn(_, _, &_)>,
-        )
-      },
-    ));
+            cache_clone.set_sync(
+              specifier,
+              CodeCacheType::Script,
+              source_hash,
+              data,
+            );
+          },
+        ) as Box<dyn Fn(_, _, &_)>,
+      )
+    }));
 
     js_runtime
       .lazy_init_extensions(vec![
@@ -1140,8 +1141,8 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   })
 }
 
-pub fn create_permissions_stack_trace_callback(
-) -> deno_core::OpStackTraceCallback {
+pub fn create_permissions_stack_trace_callback()
+-> deno_core::OpStackTraceCallback {
   Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
     deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
       stack
@@ -1257,8 +1258,8 @@ impl ModuleLoader for PlaceholderModuleLoader {
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
-        Output = Result<(), deno_core::error::ModuleLoaderError>,
-      >,
+          Output = Result<(), deno_core::error::ModuleLoaderError>,
+        >,
     >,
   > {
     self.0.borrow_mut().clone().unwrap().prepare_load(

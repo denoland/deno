@@ -6,7 +6,8 @@
 use crate::structs::UnstableFeatureDefinition;
 use crate::structs::UnstableFeatureKind;
 
-pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[  UnstableFeatureDefinition {
+pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
+  UnstableFeatureDefinition {
     name: "bare-node-builtins",
     flag_name: "unstable-bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",

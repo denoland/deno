@@ -10,13 +10,13 @@ use aws_lc_rs::hkdf;
 use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
 use aws_lc_rs::hmac::Key as HmacKey;
 use aws_lc_rs::pbkdf2;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use p256::ecdsa::Signature as P256Signature;
 use p256::ecdsa::SigningKey as P256SigningKey;
@@ -27,20 +27,20 @@ use p384::ecdsa::Signature as P384Signature;
 use p384::ecdsa::SigningKey as P384SigningKey;
 use p384::ecdsa::VerifyingKey as P384VerifyingKey;
 pub use rand;
+use rand::Rng;
+use rand::SeedableRng;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
-use rand::Rng;
-use rand::SeedableRng;
+use rsa::Pss;
+use rsa::RsaPrivateKey;
+use rsa::RsaPublicKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::Signer;
 use rsa::signature::Verifier;
 use rsa::traits::SignatureScheme;
-use rsa::Pss;
-use rsa::RsaPrivateKey;
-use rsa::RsaPublicKey;
 use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Digest;
@@ -61,25 +61,25 @@ mod shared;
 mod x25519;
 mod x448;
 
-pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::decrypt::DecryptError;
+pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::ed25519::Ed25519Error;
-pub use crate::encrypt::op_crypto_encrypt;
 pub use crate::encrypt::EncryptError;
-pub use crate::export_key::op_crypto_export_key;
+pub use crate::encrypt::op_crypto_encrypt;
 pub use crate::export_key::ExportKeyError;
-pub use crate::generate_key::op_crypto_generate_key;
+pub use crate::export_key::op_crypto_export_key;
 pub use crate::generate_key::GenerateKeyError;
-pub use crate::import_key::op_crypto_import_key;
+pub use crate::generate_key::op_crypto_generate_key;
 pub use crate::import_key::ImportKeyError;
+pub use crate::import_key::op_crypto_import_key;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 pub use crate::shared::SharedError;
 use crate::shared::V8RawKeyData;
-pub use crate::x25519::X25519Error;
 pub use crate::x448::X448Error;
+pub use crate::x25519::X25519Error;
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
@@ -209,7 +209,9 @@ pub enum CryptoError {
   #[error("decryption error - integrity check failed")]
   DecryptionError,
   #[class("DOMExceptionQuotaExceededError")]
-  #[error("The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)")]
+  #[error(
+    "The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)"
+  )]
   ArrayBufferViewLengthExceeded(usize),
   #[class(inherit)]
   #[error(transparent)]
@@ -513,16 +515,17 @@ pub async fn op_crypto_verify_key(
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
-            if let Ok(signature) = P256Signature::from_slice(&args.signature) {
-              let prehash = match hash {
-                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-              };
-              verifying_key.verify_prehash(&prehash, &signature).is_ok()
-            } else {
-              false
+            match P256Signature::from_slice(&args.signature) {
+              Ok(signature) => {
+                let prehash = match hash {
+                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                };
+                verifying_key.verify_prehash(&prehash, &signature).is_ok()
+              }
+              _ => false,
             }
           }
           CryptoNamedCurve::P384 => {
@@ -540,16 +543,17 @@ pub async fn op_crypto_verify_key(
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
-            if let Ok(signature) = P384Signature::from_slice(&args.signature) {
-              let prehash = match hash {
-                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
-                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
-                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
-                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
-              };
-              verifying_key.verify_prehash(&prehash, &signature).is_ok()
-            } else {
-              false
+            match P384Signature::from_slice(&args.signature) {
+              Ok(signature) => {
+                let prehash = match hash {
+                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                };
+                verifying_key.verify_prehash(&prehash, &signature).is_ok()
+              }
+              _ => false,
             }
           }
         }

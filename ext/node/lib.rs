@@ -8,20 +8,20 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionsContainer;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use node_resolver::errors::ClosestPkgJsonError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -31,19 +31,19 @@ pub mod ops;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
-pub use node_resolver::PathClean;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
+pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
-pub use ops::vm::create_v8_context;
-pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
 
+pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
-pub use crate::global::GlobalsStorage;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
