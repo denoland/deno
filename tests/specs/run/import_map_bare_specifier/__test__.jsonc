@@ -54,6 +54,11 @@
           "if": "windows",
           "args": "run C:\\var\\thisshouldnotexist.js",
           "output": "absolute_windows.out"
+        },
+        {
+          "if": "windows",
+          "args": "run C:/var/thisshouldnotexist.js",
+          "output": "absolute_windows.out"
         }
       ]
     }
