@@ -188,6 +188,8 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),

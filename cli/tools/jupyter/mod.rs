@@ -100,6 +100,8 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
+      // `deno jupyter` doesn't support preloading modules
+      vec![],
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
