@@ -349,6 +349,13 @@ pub struct CliFactory {
   overrides: CliFactoryOverrides,
 }
 
+impl deno_runtime::deno_node::GraphContainer for MainModuleGraphContainer {
+  fn graph(&self) -> Arc<deno_graph::ModuleGraph> {
+    use crate::graph_container::ModuleGraphContainer;
+    <Self as ModuleGraphContainer>::graph(self).clone()
+  }
+}
+
 impl CliFactory {
   pub fn from_flags(flags: Arc<Flags>) -> Self {
     Self {
@@ -1104,6 +1111,8 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       cli_options.resolve_storage_key_resolver(),
       self.sys(),
+      self.resolver().await?.clone(),
+      self.main_module_graph_container().await?.clone(),
       self.create_lib_main_worker_options()?,
       roots,
     );
