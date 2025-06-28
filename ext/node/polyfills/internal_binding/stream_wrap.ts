@@ -27,11 +27,18 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
+const {
+  Array,
+  MapPrototypeGet,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  Symbol,
+  TypedArrayPrototypeSlice,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
 import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -45,6 +52,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
+import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -194,6 +202,13 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   writeBuffer(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array): number {
+    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)) {
+      throw new NodeTypeError(
+        "ERR_INVALID_ARG_TYPE",
+        "Second argument must be a buffer",
+      );
+    }
+
     this.#write(req, data);
 
     return 0;
@@ -222,20 +237,23 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
-      op_raw_write_vectored(
-        rid,
-        chunks[0],
-        chunks[1],
-      ).then((nwritten) => {
-        try {
-          req.oncomplete(0);
-        } catch {
-          // swallow callback errors.
-        }
+      PromisePrototypeThen(
+        op_raw_write_vectored(
+          rid,
+          chunks[0],
+          chunks[1],
+        ),
+        (nwritten) => {
+          try {
+            req.oncomplete(0);
+          } catch {
+            // swallow callback errors.
+          }
 
-        streamBaseState[kBytesWritten] = nwritten;
-        this.bytesWritten += nwritten;
-      });
+          streamBaseState[kBytesWritten] = nwritten;
+          this.bytesWritten += nwritten;
+        },
+      );
 
       return 0;
     }
@@ -261,6 +279,9 @@ export class LibuvStreamWrap extends HandleWrap {
       }
     }
 
+    // Ignoring primordial lint here since the static method `concat` is invoked
+    // via the Node.js `Buffer` class instead of a JS builtin.
+    // deno-lint-ignore prefer-primordials
     return this.writeBuffer(req, Buffer.concat(buffers));
   }
 
@@ -308,7 +329,7 @@ export class LibuvStreamWrap extends HandleWrap {
     try {
       this[kStreamBaseField]?.close();
     } catch {
-      status = codeMap.get("ENOTCONN")!;
+      status = MapPrototypeGet(codeMap, "ENOTCONN")!;
     }
 
     return status;
@@ -359,22 +380,25 @@ export class LibuvStreamWrap extends HandleWrap {
       if (e.message === "cancelled") return null;
 
       if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
+        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
       ) {
-        nread = codeMap.get("EOF")!;
+        nread = MapPrototypeGet(codeMap, "EOF")!;
       } else if (
-        e instanceof Deno.errors.ConnectionReset ||
-        e instanceof Deno.errors.ConnectionAborted
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.ConnectionReset.prototype,
+          e,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionAborted.prototype, e)
       ) {
-        nread = codeMap.get("ECONNRESET")!;
+        nread = MapPrototypeGet(codeMap, "ECONNRESET")!;
       } else {
         this[ownerSymbol].destroy(e);
         return;
       }
     }
 
-    nread ??= codeMap.get("EOF")!;
+    nread ??= MapPrototypeGet(codeMap, "EOF")!;
 
     streamBaseState[kReadBytesOrError] = nread;
 
@@ -382,7 +406,7 @@ export class LibuvStreamWrap extends HandleWrap {
       this.bytesRead += nread;
     }
 
-    buf = buf.slice(0, nread);
+    buf = TypedArrayPrototypeSlice(buf, 0, nread);
 
     streamBaseState[kArrayBufferOffset] = 0;
 
@@ -432,12 +456,12 @@ export class LibuvStreamWrap extends HandleWrap {
       let status: number;
       // TODO(cmorten): map err to status codes
       if (
-        e instanceof Deno.errors.BadResource ||
-        e instanceof Deno.errors.BrokenPipe
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
       ) {
-        status = codeMap.get("EBADF")!;
+        status = MapPrototypeGet(codeMap, "EBADF")!;
       } else {
-        status = codeMap.get("UNKNOWN")!;
+        status = MapPrototypeGet(codeMap, "UNKNOWN")!;
       }
 
       try {

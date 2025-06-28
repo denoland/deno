@@ -699,6 +699,7 @@
           "kv",
           "net",
           "node-globals",
+          "raw-imports",
           "sloppy-imports",
           "temporal",
           "unsafe-proto",
@@ -742,6 +743,14 @@
       ]
     },
     "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "deprecated": true,
+      "description": "This unstable property was renamed to \"links\" in Deno 2.3.6."
+    },
+    "links": {
       "type": "array",
       "items": {
         "type": "string"

@@ -4437,6 +4437,7 @@ Deno.test(
   async function httpServerVsockWebSocketUpgrade() {
     const ac = new AbortController();
     const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const serverWebSocketClosed = Promise.withResolvers<void>();
 
     await using server = Deno.serve(
       {
@@ -4456,6 +4457,10 @@ Deno.test(
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(event.data);
           }
+        };
+
+        socket.onclose = () => {
+          serverWebSocketClosed.resolve();
         };
 
         return response;
@@ -4487,6 +4492,7 @@ Deno.test(
     assert(responseText.includes("101 Switching Protocols"));
 
     await conn.close();
+    await serverWebSocketClosed.promise;
     ac.abort();
     await server.finished;
   },

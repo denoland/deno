@@ -4,7 +4,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_hkdf, op_node_hkdf_async } from "ext:core/ops";
+import {
+  op_node_get_hash_size,
+  op_node_hkdf,
+  op_node_hkdf_async,
+} from "ext:core/ops";
 
 import {
   validateFunction,
@@ -13,6 +17,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_CRYPTO_INVALID_DIGEST,
+  ERR_CRYPTO_INVALID_KEYLEN,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
@@ -33,6 +38,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
+import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
@@ -51,6 +57,13 @@ const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
       "must not contain more than 1024 bytes",
       info.byteLength,
     );
+  }
+
+  validateAlgorithm(hash);
+
+  const size = op_node_get_hash_size(hash);
+  if (typeof size === "number" && size * 255 < length) {
+    throw new ERR_CRYPTO_INVALID_KEYLEN();
   }
 
   return {
@@ -141,6 +154,17 @@ export function hkdfSync(
   }
 
   return okm.buffer;
+}
+
+let hashes: Set<string> | null = null;
+function validateAlgorithm(algorithm: string) {
+  if (hashes === null) {
+    hashes = new Set(getHashes());
+  }
+
+  if (!hashes.has(algorithm)) {
+    throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
+  }
 }
 
 export default {

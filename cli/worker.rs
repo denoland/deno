@@ -492,7 +492,6 @@ mod tests {
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
-  use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
   use deno_runtime::worker::WorkerOptions;
   use deno_runtime::worker::WorkerServiceOptions;
@@ -503,11 +502,9 @@ mod tests {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
-    let permission_desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(
-        crate::sys::CliSys::default(),
-        UnstableSubdomainWildcards::Enabled,
-      ));
+    let permission_desc_parser = Arc::new(
+      RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
+    );
     let options = WorkerOptions {
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       ..Default::default()

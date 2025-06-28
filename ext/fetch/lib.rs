@@ -418,6 +418,12 @@ pub trait FetchPermissions {
     api_name: &str,
     get_path: &'a dyn deno_fs::GetPath,
   ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
+  fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -502,6 +508,18 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     } else {
       Ok(CheckedPath::Unresolved(path))
     }
+  }
+
+  #[inline(always)]
+  fn check_net_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_vsock(
+      self, cid, port, api_name,
+    )
   }
 }
 
@@ -1014,6 +1032,10 @@ where
           return Err(FetchError::NotCapable("write"));
         }
       }
+      Proxy::Vsock { cid, port } => {
+        let permissions = state.borrow_mut::<FP>();
+        permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
+      }
     }
   }
 
@@ -1114,6 +1136,8 @@ pub enum HttpClientCreateError {
   RootCertStore(JsErrorBox),
   #[error("Unix proxy is not supported on Windows")]
   UnixProxyNotSupportedOnWindows,
+  #[error("Vsock proxy is not supported on this platform")]
+  VsockProxyNotSupported,
 }
 
 /// Create new instance of async Client. This client supports
@@ -1187,6 +1211,15 @@ pub fn create_http_client(
       #[cfg(windows)]
       Proxy::Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
+      }
+      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      Proxy::Vsock { cid, port } => {
+        let target = proxy::Target::new_vsock(cid, port);
+        proxy::Intercept::all(target)
+      }
+      #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+      Proxy::Vsock { .. } => {
+        return Err(HttpClientCreateError::VsockProxyNotSupported);
       }
     };
     proxies.prepend(intercept);

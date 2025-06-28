@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: "text" is not a valid module type.
+    type: typeText,
+          ^
+    at file:///[WILDLINE]/dynamic.ts:8:11

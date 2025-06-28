@@ -1,7 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference lib="deno.ns" />
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -11,6 +17,8 @@ import {
   copyFileSync,
   createWriteStream,
   existsSync,
+  fchmod,
+  fchmodSync,
   fchown,
   fchownSync,
   lstatSync,
@@ -29,6 +37,8 @@ import {
   copyFile,
   cp,
   FileHandle,
+  lchown,
+  lutimes,
   open,
   stat,
   writeFile,
@@ -350,4 +360,85 @@ Deno.test("[node/fs] fchown and fchownSync", {
     fchownSync(fd, 0, 0);
   });
   closeSync(fd);
+});
+
+Deno.test("[node/fs] fchmod works", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  // Prepare
+  const tempFile = await Deno.makeTempFile();
+  const originalFileMode = (await Deno.lstat(tempFile)).mode;
+  const fd = openSync(tempFile, "r+");
+  // Execute
+  await new Promise<void>((resolve, reject) => {
+    fchmod(fd, 0o777, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  })
+    // Assert
+    .then(() => {
+      const newFileMode = Deno.lstatSync(tempFile).mode;
+      assert(newFileMode && originalFileMode);
+      assert(newFileMode === 33279 && newFileMode > originalFileMode);
+    }, (error) => {
+      fail(error);
+    })
+    .finally(() => {
+      closeSync(fd);
+      Deno.removeSync(tempFile);
+    });
+});
+
+Deno.test("[node/fs] fchmodSync works", {
+  ignore: Deno.build.os === "windows",
+}, () => {
+  // Prepare
+  const tempFile = Deno.makeTempFileSync();
+  const originalFileMode = Deno.lstatSync(tempFile).mode;
+  const fd = openSync(tempFile, "r+");
+  // Execute
+  fchmodSync(fd, 0o777);
+  // Assert
+  const newFileMode = Deno.lstatSync(tempFile).mode;
+  assert(newFileMode && originalFileMode);
+  assert(newFileMode === 33279 && newFileMode > originalFileMode);
+  closeSync(fd);
+  Deno.removeSync(tempFile);
+});
+
+Deno.test("[node/fs/promises] lchown works", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const tempFile = Deno.makeTempFileSync();
+  const symlinkPath = tempFile + "-link";
+  Deno.symlinkSync(tempFile, symlinkPath);
+  const uid = await execCmd("id -u");
+  const gid = await execCmd("id -g");
+
+  await lchown(symlinkPath, +uid, +gid);
+
+  Deno.removeSync(tempFile);
+  Deno.removeSync(symlinkPath);
+});
+
+Deno.test("[node/fs/promises] lutimes works", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const tempFile = Deno.makeTempFileSync();
+  const symlinkPath = tempFile + "-link";
+  Deno.symlinkSync(tempFile, symlinkPath);
+
+  const date = new Date("1970-01-01T00:00:00Z");
+  await lutimes(symlinkPath, date, date);
+
+  const stats = Deno.lstatSync(symlinkPath);
+  assertEquals((stats.atime as Date).getTime(), date.getTime());
+  assertEquals((stats.mtime as Date).getTime(), date.getTime());
+
+  Deno.removeSync(tempFile);
+  Deno.removeSync(symlinkPath);
 });

@@ -113,13 +113,10 @@ pub enum OsError {
   Io(#[from] std::io::Error),
 }
 
-#[op2(stack_trace)]
+#[op2]
 #[string]
-fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
+fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // normalize path so it doesn't include '.' or '..' components
   let path = normalize_path(current_exe);
 
@@ -183,7 +180,17 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
-  Ok(env::vars().collect())
+
+  Ok(
+    env::vars_os()
+      .filter_map(|(key_os, value_os)| {
+        key_os
+          .into_string()
+          .ok()
+          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      })
+      .collect(),
+  )
 }
 
 fn get_env_var(key: &str) -> Result<Option<String>, OsError> {

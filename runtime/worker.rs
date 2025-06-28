@@ -30,6 +30,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
+use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
@@ -92,43 +93,39 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     rx
   });
 
-#[allow(clippy::result_large_err)]
-pub fn import_meta_resolve_callback(
-  loader: &dyn ModuleLoader,
-  specifier: String,
-  referrer: String,
-) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
-  loader.resolve(
-    &specifier,
-    &referrer,
-    deno_core::ResolutionKind::DynamicImport,
-  )
-}
-
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
-pub fn validate_import_attributes_callback(
-  scope: &mut v8::HandleScope,
-  attributes: &HashMap<String, String>,
-) {
-  for (key, value) in attributes {
-    let msg = if key != "type" {
-      Some(format!("\"{key}\" attribute is not supported."))
-    } else if value != "json" && value != "$$deno-core-internal-wasm-module" {
-      Some(format!("\"{value}\" is not a valid module type."))
-    } else {
-      None
-    };
+pub fn create_validate_import_attributes_callback(
+  enable_raw_imports: bool,
+) -> deno_core::ValidateImportAttributesCb {
+  Box::new(
+    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+      let valid_attribute = |kind: &str| {
+        enable_raw_imports && matches!(kind, "bytes" | "text")
+          || matches!(kind, "json")
+      };
+      for (key, value) in attributes {
+        let msg = if key != "type" {
+          Some(format!("\"{key}\" attribute is not supported."))
+        } else if !valid_attribute(value.as_str())
+          && value != "$$deno-core-internal-wasm-module"
+        {
+          Some(format!("\"{value}\" is not a valid module type."))
+        } else {
+          None
+        };
 
-    let Some(msg) = msg else {
-      continue;
-    };
+        let Some(msg) = msg else {
+          continue;
+        };
 
-    let message = v8::String::new(scope, &msg).unwrap();
-    let exception = v8::Exception::type_error(scope, message);
-    scope.throw_exception(exception);
-    return;
-  }
+        let message = v8::String::new(scope, &msg).unwrap();
+        let exception = v8::Exception::type_error(scope, message);
+        scope.throw_exception(exception);
+        return;
+      }
+    },
+  )
 }
 
 pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
@@ -258,6 +255,7 @@ pub struct WorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 
   pub unconfigured_runtime: Option<UnconfiguredRuntime>,
@@ -284,6 +282,7 @@ impl Default for WorkerOptions {
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      enable_raw_imports: false,
       enable_stack_trace_arg_in_ops: false,
       unconfigured_runtime: None,
     }
@@ -461,17 +460,18 @@ impl MainWorker {
 
       extensions.extend(std::mem::take(&mut options.extensions));
 
-      common_runtime(
-        services.module_loader.clone(),
-        options.startup_snapshot,
-        options.create_params,
-        options.skip_op_registration,
-        services.shared_array_buffer_store,
-        services.compiled_wasm_module_store,
+      common_runtime(CommonRuntimeOptions {
+        module_loader: services.module_loader.clone(),
+        startup_snapshot: options.startup_snapshot,
+        create_params: options.create_params,
+        skip_op_registration: options.skip_op_registration,
+        shared_array_buffer_store: services.shared_array_buffer_store,
+        compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
         op_metrics_factory_fn,
-        options.enable_stack_trace_arg_in_ops,
-      )
+        enable_raw_imports: options.enable_raw_imports,
+        enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
+      })
     };
 
     js_runtime.set_eval_context_code_cache_cbs(services.v8_code_cache.map(
@@ -1091,8 +1091,7 @@ fn common_extensions<
   ]
 }
 
-#[allow(clippy::too_many_arguments)]
-fn common_runtime(
+struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
   create_params: Option<v8::CreateParams>,
@@ -1101,16 +1100,20 @@ fn common_runtime(
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
+  enable_raw_imports: bool,
   enable_stack_trace_arg_in_ops: bool,
-) -> JsRuntime {
+}
+
+#[allow(clippy::too_many_arguments)]
+fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    module_loader: Some(module_loader),
-    startup_snapshot,
-    create_params,
-    skip_op_registration,
-    shared_array_buffer_store,
-    compiled_wasm_module_store,
-    extensions,
+    module_loader: Some(opts.module_loader),
+    startup_snapshot: opts.startup_snapshot,
+    create_params: opts.create_params,
+    skip_op_registration: opts.skip_op_registration,
+    shared_array_buffer_store: opts.shared_array_buffer_store,
+    compiled_wasm_module_store: opts.compiled_wasm_module_store,
+    extensions: opts.extensions,
     #[cfg(feature = "transpile")]
     extension_transpiler: Some(Rc::new(|specifier, source| {
       crate::transpile::maybe_transpile_source(specifier, source)
@@ -1119,18 +1122,21 @@ fn common_runtime(
     extension_transpiler: None,
     inspector: true,
     is_main: true,
-    op_metrics_factory_fn,
+    op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
     ),
-    import_meta_resolve_callback: Some(Box::new(import_meta_resolve_callback)),
-    validate_import_attributes_cb: Some(Box::new(
-      validate_import_attributes_callback,
-    )),
+    validate_import_attributes_cb: Some(
+      create_validate_import_attributes_callback(opts.enable_raw_imports),
+    ),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-    maybe_op_stack_trace_callback: enable_stack_trace_arg_in_ops
+    maybe_op_stack_trace_callback: opts
+      .enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),
-    ..Default::default()
+    extension_code_cache: None,
+    v8_platform: None,
+    custom_module_evaluation_cb: None,
+    eval_context_code_cache_cbs: None,
   })
 }
 
@@ -1150,6 +1156,15 @@ pub fn create_permissions_stack_trace_callback(
   }) as _
 }
 
+pub struct UnconfiguredRuntimeOptions {
+  pub startup_snapshot: &'static [u8],
+  pub create_params: Option<v8::CreateParams>,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub additional_extensions: Vec<Extension>,
+  pub enable_raw_imports: bool,
+}
+
 pub struct UnconfiguredRuntime {
   module_loader: Rc<PlaceholderModuleLoader>,
   js_runtime: JsRuntime,
@@ -1161,11 +1176,7 @@ impl UnconfiguredRuntime {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    startup_snapshot: &'static [u8],
-    create_params: Option<v8::CreateParams>,
-    shared_array_buffer_store: Option<SharedArrayBufferStore>,
-    compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-    additional_extensions: Vec<Extension>,
+    options: UnconfiguredRuntimeOptions,
   ) -> Self {
     let mut extensions = common_extensions::<
       TInNpmPackageChecker,
@@ -1173,22 +1184,23 @@ impl UnconfiguredRuntime {
       TExtNodeSys,
     >(true, true);
 
-    extensions.extend(additional_extensions);
+    extensions.extend(options.additional_extensions);
 
     let module_loader =
       Rc::new(PlaceholderModuleLoader(std::cell::RefCell::new(None)));
 
-    let js_runtime = common_runtime(
-      module_loader.clone(),
-      Some(startup_snapshot),
-      create_params,
-      true,
-      shared_array_buffer_store,
-      compiled_wasm_module_store,
+    let js_runtime = common_runtime(CommonRuntimeOptions {
+      module_loader: module_loader.clone(),
+      startup_snapshot: Some(options.startup_snapshot),
+      create_params: options.create_params,
+      skip_op_registration: true,
+      shared_array_buffer_store: options.shared_array_buffer_store,
+      compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
-      None,
-      false,
-    );
+      op_metrics_factory_fn: None,
+      enable_raw_imports: options.enable_raw_imports,
+      enable_stack_trace_arg_in_ops: false,
+    });
 
     UnconfiguredRuntime {
       module_loader,
@@ -1241,6 +1253,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
+    requested_module_type: RequestedModuleType,
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
@@ -1252,6 +1265,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
       module_specifier,
       maybe_referrer,
       is_dyn_import,
+      requested_module_type,
     )
   }
 

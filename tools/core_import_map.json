@@ -142,6 +142,7 @@
     "ext:deno_node/internal/fs/utils.mjs": "../ext/node/polyfills/internal/fs/utils.mjs",
     "ext:deno_node/internal/hide_stack_frames.ts": "../ext/node/polyfills/internal/hide_stack_frames.ts",
     "ext:deno_node/internal/http.ts": "../ext/node/polyfills/internal/http.ts",
+    "ext:deno_node/internal/http2/util.ts": "../ext/node/polyfills/internal/http2/util.ts",
     "ext:deno_node/internal/net.ts": "../ext/node/polyfills/internal/net.ts",
     "ext:deno_node/internal/normalize_encoding.mjs": "../ext/node/polyfills/internal/normalize_encoding.mjs",
     "ext:deno_node/internal/options.ts": "../ext/node/polyfills/internal/options.ts",

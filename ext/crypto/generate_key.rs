@@ -1,13 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use aws_lc_rs::rand::SecureRandom;
+use aws_lc_rs::signature::EcdsaKeyPair;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ToJsBuffer;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
-use ring::rand::SecureRandom;
-use ring::signature::EcdsaKeyPair;
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
@@ -119,12 +119,16 @@ fn generate_key_ec(
   named_curve: EcNamedCurve,
 ) -> Result<Vec<u8>, GenerateKeyError> {
   let curve = match named_curve {
-    EcNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-    EcNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+    EcNamedCurve::P256 => {
+      &aws_lc_rs::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+    }
+    EcNamedCurve::P384 => {
+      &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+    }
     EcNamedCurve::P521 => return Ok(generate_key_ec_p521()),
   };
 
-  let rng = ring::rand::SystemRandom::new();
+  let rng = aws_lc_rs::rand::SystemRandom::new();
 
   let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
     .map_err(|_| GenerateKeyError::FailedECKeyGeneration)?;
@@ -138,7 +142,7 @@ fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
   }
 
   let mut key = vec![0u8; length / 8];
-  let rng = ring::rand::SystemRandom::new();
+  let rng = aws_lc_rs::rand::SystemRandom::new();
   rng
     .fill(&mut key)
     .map_err(|_| GenerateKeyError::FailedKeyGeneration)?;
@@ -151,10 +155,10 @@ fn generate_key_hmac(
   length: Option<usize>,
 ) -> Result<Vec<u8>, GenerateKeyError> {
   let hash = match hash {
-    ShaHash::Sha1 => &ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-    ShaHash::Sha256 => &ring::hmac::HMAC_SHA256,
-    ShaHash::Sha384 => &ring::hmac::HMAC_SHA384,
-    ShaHash::Sha512 => &ring::hmac::HMAC_SHA512,
+    ShaHash::Sha1 => &aws_lc_rs::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+    ShaHash::Sha256 => &aws_lc_rs::hmac::HMAC_SHA256,
+    ShaHash::Sha384 => &aws_lc_rs::hmac::HMAC_SHA384,
+    ShaHash::Sha512 => &aws_lc_rs::hmac::HMAC_SHA512,
   };
 
   let length = if let Some(length) = length {
@@ -163,7 +167,7 @@ fn generate_key_hmac(
     }
 
     let length = length / 8;
-    if length > ring::digest::MAX_BLOCK_LEN {
+    if length > aws_lc_rs::digest::MAX_BLOCK_LEN {
       return Err(GenerateKeyError::InvalidHMACKeyLength);
     }
 
@@ -172,7 +176,7 @@ fn generate_key_hmac(
     hash.digest_algorithm().block_len()
   };
 
-  let rng = ring::rand::SystemRandom::new();
+  let rng = aws_lc_rs::rand::SystemRandom::new();
   let mut key = vec![0u8; length];
   rng
     .fill(&mut key)

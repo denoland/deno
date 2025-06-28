@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod deno_json;
 mod flags;
 mod flags_net;
 
@@ -17,6 +16,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
@@ -24,9 +24,8 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
@@ -354,6 +353,110 @@ fn resolve_lint_rules_options(
   }
 }
 
+pub struct WorkspaceMainModuleResolver {
+  workspace_resolver: Arc<deno_resolver::workspace::WorkspaceResolver<CliSys>>,
+  node_resolver: Arc<crate::node::CliNodeResolver>,
+}
+
+impl WorkspaceMainModuleResolver {
+  pub fn new(
+    workspace_resolver: Arc<
+      deno_resolver::workspace::WorkspaceResolver<CliSys>,
+    >,
+    node_resolver: Arc<crate::node::CliNodeResolver>,
+  ) -> Self {
+    Self {
+      workspace_resolver,
+      node_resolver,
+    }
+  }
+}
+impl WorkspaceMainModuleResolver {
+  fn resolve_main_module(
+    &self,
+    specifier: &str,
+    cwd: &Url,
+  ) -> Result<Url, AnyError> {
+    let resolution = self.workspace_resolver.resolve(
+      specifier,
+      cwd,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    )?;
+    let url = match resolution {
+      deno_resolver::workspace::MappedResolution::Normal {
+        specifier, ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
+        specifier,
+        ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json,
+        sub_path,
+        ..
+      } => self
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(cwd),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
+      deno_resolver::workspace::MappedResolution::PackageJson {
+        sub_path,
+        dep_result,
+        alias,
+        ..
+      } => {
+        let result = dep_result
+          .as_ref()
+          .map_err(|e| deno_core::anyhow::anyhow!("{e}"))?;
+        match result {
+          deno_package_json::PackageJsonDepValue::File(file) => {
+            let cwd_path = deno_path_util::url_to_file_path(cwd)?;
+            deno_path_util::resolve_path(file, &cwd_path)?
+          }
+          deno_package_json::PackageJsonDepValue::Req(package_req) => {
+            ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              package_req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?
+          }
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = self
+              .workspace_resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            self
+              .node_resolver
+              .resolve_package_subpath_from_deno_module(
+                pkg_folder,
+                sub_path.as_deref(),
+                Some(cwd),
+                node_resolver::ResolutionMode::Import,
+                node_resolver::NodeResolutionKind::Execution,
+              )?
+              .into_url()?
+          }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            )
+          }
+        }
+      }
+    };
+    Ok(url)
+  }
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 #[derive(Debug)]
@@ -498,6 +601,10 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  pub fn node_conditions(&self) -> &[String] {
+    self.flags.node_conditions.as_ref()
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
@@ -510,7 +617,30 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
-  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+  fn resolve_main_module_with_resolver_if_bare(
+    &self,
+    raw_specifier: &str,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+    default_resolve: impl Fn() -> Result<ModuleSpecifier, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    match resolver {
+      Some(resolver)
+        if !raw_specifier.starts_with('.')
+          && !Path::new(raw_specifier).is_absolute() =>
+      {
+        let cwd = deno_path_util::url_from_directory_path(self.initial_cwd())?;
+        resolver
+          .resolve_main_module(raw_specifier, &cwd)
+          .or_else(|_| default_resolve())
+      }
+      _ => default_resolve(),
+    }
+  }
+
+  pub fn resolve_main_module_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<&ModuleSpecifier, AnyError> {
     self
       .main_module_cell
       .get_or_init(|| {
@@ -528,25 +658,40 @@ impl CliOptions {
             if run_flags.is_stdin() {
               resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
             } else {
-              let url =
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
-              if self.is_node_main()
-                && url.scheme() == "file"
-                && MediaType::from_specifier(&url) == MediaType::Unknown
-              {
-                try_resolve_node_binary_main_entrypoint(
-                  &run_flags.script,
-                  self.initial_cwd(),
-                )?
-                .unwrap_or(url)
-              } else {
-                url
-              }
+              let default_resolve = || {
+                let url =
+                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                if self.is_node_main()
+                  && url.scheme() == "file"
+                  && MediaType::from_specifier(&url) == MediaType::Unknown
+                {
+                  Ok::<_, AnyError>(
+                    try_resolve_node_binary_main_entrypoint(
+                      &run_flags.script,
+                      self.initial_cwd(),
+                    )?
+                    .unwrap_or(url),
+                  )
+                } else {
+                  Ok(url)
+                }
+              };
+              self.resolve_main_module_with_resolver_if_bare(
+                &run_flags.script,
+                resolver,
+                default_resolve,
+              )?
             }
           }
-          DenoSubcommand::Serve(run_flags) => {
-            resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-          }
+          DenoSubcommand::Serve(run_flags) => self
+            .resolve_main_module_with_resolver_if_bare(
+              &run_flags.script,
+              resolver,
+              || {
+                resolve_url_or_path(&run_flags.script, self.initial_cwd())
+                  .map_err(|e| e.into())
+              },
+            )?,
           _ => {
             bail!("No main module.")
           }
@@ -554,6 +699,10 @@ impl CliOptions {
       })
       .as_ref()
       .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
+  }
+
+  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+    self.resolve_main_module_with_resolver(None)
   }
 
   pub fn resolve_file_header_overrides(
@@ -753,6 +902,11 @@ impl CliOptions {
   pub fn coverage_dir(&self) -> Option<String> {
     match &self.flags.subcommand {
       DenoSubcommand::Test(test) => test
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+      DenoSubcommand::Run(flags) => flags
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
@@ -993,11 +1147,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable_subdomain_wildcards(&self) -> bool {
-    self.flags.unstable_config.subdomain_wildcards
-      || self.workspace().has_unstable("subdomain-wildcards")
-  }
-
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")
@@ -1015,6 +1164,11 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_raw_imports(&self) -> bool {
+    self.flags.unstable_config.raw_imports
+      || self.workspace().has_unstable("raw-imports")
+  }
+
   pub fn unstable_lazy_dynamic_imports(&self) -> bool {
     self.flags.unstable_config.lazy_dynamic_imports
       || self.workspace().has_unstable("lazy-dynamic-imports")
@@ -1025,34 +1179,33 @@ impl CliOptions {
       || self.workspace().has_unstable("sloppy-imports")
   }
 
-  pub fn unstable_features(&self) -> Vec<String> {
+  pub fn unstable_features(&self) -> Vec<&str> {
     let from_config_file = self.workspace().unstable_features();
     let unstable_features = from_config_file
       .iter()
+      .map(|s| s.as_str())
       .chain(
         self
           .flags
           .unstable_config
           .features
           .iter()
-          .filter(|f| !from_config_file.contains(f)),
+          .filter(|f| !from_config_file.contains(f))
+          .map(|s| s.as_str()),
       )
-      .map(|f| f.to_owned())
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
       for unstable_value_from_config_file in &unstable_features {
-        if !all_valid_unstable_flags
-          .contains(&unstable_value_from_config_file.as_str())
-        {
+        if !all_valid_unstable_flags.contains(unstable_value_from_config_file) {
           log::warn!(
             "{} '{}' isn't a valid unstable feature",
             colors::yellow("Warning"),
