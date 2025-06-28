@@ -178,8 +178,7 @@ where
         .map_err(ConnError::Resource)?;
       let resource =
         Rc::try_unwrap(resource_rc).map_err(|_e| ConnError::TlsStreamBusy)?;
-      let (read_half, write_half) = resource.into_inner();
-      let tcp_stream = read_half.unsplit(write_half);
+      let tcp_stream = resource.into_tls_stream();
       let io = TokioIo::new(tcp_stream);
       drop(state);
       let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
