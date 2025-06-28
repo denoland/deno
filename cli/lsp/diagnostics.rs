@@ -25,7 +25,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -1090,13 +1089,7 @@ async fn generate_ts_diagnostics(
   let mut enabled_modules_with_diagnostics = Vec::new();
   for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(
-        snapshot.clone(),
-        enabled_modules.iter().map(|m| m.specifier.as_ref()),
-        scope.as_ref(),
-        notebook_uri.as_ref(),
-        &token,
-      )
+      .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
@@ -1574,7 +1567,6 @@ fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
   resolution: &Resolution,
-  resolution_kind: ResolutionKind,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
@@ -1637,16 +1629,21 @@ fn diagnose_resolution(
               req.clone(),
               specifier.clone(),
             ));
-          } else if scoped_resolver
-            .npm_to_file_url(
-              &pkg_ref,
-              &referrer_module.specifier,
-              NodeResolutionKind::from_deno_graph(resolution_kind),
-              referrer_module.resolution_mode,
-            )
-            .is_none()
-          {
-            diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
+          } else {
+            let resolution_kinds =
+              [NodeResolutionKind::Types, NodeResolutionKind::Execution];
+            if resolution_kinds.into_iter().all(|k| {
+              scoped_resolver
+                .npm_to_file_url(
+                  &pkg_ref,
+                  &referrer_module.specifier,
+                  k,
+                  referrer_module.resolution_mode,
+                )
+                .is_none()
+            }) {
+              diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
+            }
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
@@ -1769,9 +1766,7 @@ fn diagnose_dependency(
         .includes(i.specifier_range.range.start)
         .is_some()
     });
-  let resolution;
-  let resolution_kind;
-  if dependency.maybe_code.is_none()
+  let resolution = if dependency.maybe_code.is_none()
   // If not @ts-types, diagnose the types if the code errored because
   // it's likely resolving into the node_modules folder, which might be
   // erroring correctly due to resolution only being for bundlers. Let this
@@ -1779,17 +1774,14 @@ fn diagnose_dependency(
   || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
     && matches!(dependency.maybe_code, Resolution::Err(_))
   {
-    resolution = &dependency.maybe_type;
-    resolution_kind = ResolutionKind::Types;
+    &dependency.maybe_type
   } else {
-    resolution = &dependency.maybe_code;
-    resolution_kind = ResolutionKind::Execution;
+    &dependency.maybe_code
   };
   let (resolution_diagnostics, deferred) = diagnose_resolution(
     snapshot,
     dependency_key,
     resolution,
-    resolution_kind,
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
@@ -1825,7 +1817,6 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       &dependency.maybe_type,
-      ResolutionKind::Types,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,

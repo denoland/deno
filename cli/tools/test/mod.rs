@@ -654,7 +654,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-  sender: UnboundedSender<jupyter_runtime::messaging::content::StreamContent>,
+  sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
 ) -> Result<
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,

@@ -681,7 +681,7 @@ export class ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH extends NodeRangeError {
   constructor() {
     super(
       "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH",
-      "Input buffers must have the same length",
+      "Input buffers must have the same byte length",
     );
   }
 }
@@ -986,6 +986,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_KEYLEN extends NodeRangeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_KEYLEN", "Invalid key length");
   }
 }
 
@@ -1452,6 +1458,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
       "ERR_HTTP_TRAILER_INVALID",
       `Trailers are invalid with this transfer encoding`,
     );
+  }
+}
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
   }
 }
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {

@@ -1519,8 +1519,8 @@ async fn op_http_shutdown(
 #[op2]
 #[string]
 fn op_http_websocket_accept_header(#[string] key: String) -> String {
-  let digest = ring::digest::digest(
-    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+  let digest = aws_lc_rs::digest::digest(
+    &aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   BASE64_STANDARD.encode(digest)

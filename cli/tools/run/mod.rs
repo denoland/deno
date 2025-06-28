@@ -69,7 +69,8 @@ pub async fn run_script(
   let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
-
+  let workspace_resolver = factory.workspace_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
   // Run a background task that checks for available upgrades or output
   // if an earlier run of this background task found a new version of Deno.
   #[cfg(feature = "upgrade")]
@@ -78,7 +79,12 @@ pub async fn run_script(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module()?;
+  let main_module = cli_options.resolve_main_module_with_resolver(Some(
+    &crate::args::WorkspaceMainModuleResolver::new(
+      workspace_resolver.clone(),
+      node_resolver.clone(),
+    ),
+  ))?;
   let preload_modules = cli_options.preload_modules()?;
 
   if main_module.scheme() == "npm" {

@@ -14,7 +14,7 @@ pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
 use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use crate::web_worker::WorkerThreadType;
 
 deno_core::extension!(
   deno_web_worker,
@@ -63,7 +63,7 @@ fn op_worker_close(state: &mut OpState) {
 
 #[op2]
 #[serde]
-fn op_worker_get_type(state: &mut OpState) -> WebWorkerType {
+fn op_worker_get_type(state: &mut OpState) -> WorkerThreadType {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   handle.worker_type
 }

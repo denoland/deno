@@ -228,6 +228,10 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
+export function getOpenSSLSecLevel(): number {
+  return 5; // highest sec level, used in tests.
+}
+
 const kAesKeyLengths = [128, 192, 256];
 
 export { kAesKeyLengths, kHandle, kKeyObject };
@@ -238,6 +242,7 @@ export default {
   getCiphers,
   getCipherInfo,
   getCurves,
+  getOpenSSLSecLevel,
   secureHeapUsed,
   setEngine,
   validateByteSource,

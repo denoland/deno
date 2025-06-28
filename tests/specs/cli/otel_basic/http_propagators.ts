@@ -6,7 +6,7 @@ const command1 = new Deno.Command(Deno.execPath(), {
     "OTEL_SERVICE_NAME": "server_1",
     "DENO_UNSTABLE_OTEL_DETERMINISTIC": "1",
   },
-  args: ["run", "-A", "--unstable-otel", "http_propagators_1.ts"],
+  args: ["run", "-A", "http_propagators_1.ts"],
 });
 
 const p1 = command1.output();
@@ -19,7 +19,7 @@ const command2 = new Deno.Command(Deno.execPath(), {
     "OTEL_SERVICE_NAME": "server_2",
     "DENO_UNSTABLE_OTEL_DETERMINISTIC": "2",
   },
-  args: ["run", "-A", "--unstable-otel", "http_propagators_2.ts"],
+  args: ["run", "-A", "http_propagators_2.ts"],
 });
 
 const p2 = command2.output();

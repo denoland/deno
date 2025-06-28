@@ -6,7 +6,7 @@ import { primordials } from "ext:core/mod.js";
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 import { once } from "ext:deno_node/internal/util.mjs";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
-import Duplex from "ext:deno_node/internal/streams/duplex.js";
+import Duplex from "node:_stream_duplex";
 import imported1 from "ext:deno_node/internal/errors.ts";
 import {
   validateAbortSignal,
@@ -25,9 +25,9 @@ import {
 } from "ext:deno_node/internal/streams/utils.js";
 
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
-import _mod3 from "ext:deno_node/internal/streams/readable.js";
+import _mod3 from "node:_stream_readable";
 import * as _mod4 from "ext:deno_node/internal/events/abort_listener.mjs";
-import _mod5 from "ext:deno_node/internal/streams/passthrough.js";
+import _mod5 from "node:_stream_passthrough";
 
 const {
   AbortError,

@@ -44,6 +44,7 @@ use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::util::text_encoding::is_valid_utf8;
 use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
@@ -51,6 +52,9 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::file_fetcher::FetchLocalOptions;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::workspace::WorkspaceResolver;
 use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
@@ -61,6 +65,7 @@ use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
+use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsModuleExportAnalyzer;
 use crate::npm::CliNpmResolver;
@@ -197,6 +202,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
+  file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver<CliSys>,
@@ -211,6 +217,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
+    file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver<CliSys>,
@@ -222,6 +229,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       cli_options,
       deno_dir,
       emitter,
+      file_fetcher,
       http_client_provider,
       npm_resolver,
       workspace_resolver,
@@ -409,6 +417,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut specifier_store = SpecifierStore::with_capacity(specifiers_count);
     let mut remote_modules_store =
       SpecifierDataStore::with_capacity(specifiers_count);
+    let mut asset_module_urls = graph.asset_module_urls();
     // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
@@ -420,7 +429,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let (maybe_original_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
           let specifier = &m.specifier;
-          let original_bytes = m.source.as_bytes();
+          let original_bytes = match m.source.try_get_original_bytes() {
+            Some(bytes) => bytes,
+            None => self.load_asset_bypass_permissions(specifier).await?.source,
+          };
           if self.cjs_tracker.is_maybe_cjs(specifier, m.media_type)? {
             if self.cjs_tracker.is_cjs_with_known_is_script(
               specifier,
@@ -431,7 +443,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 .cjs_module_export_analyzer
                 .analyze_all_exports(
                   module.specifier(),
-                  Some(Cow::Borrowed(m.source.as_ref())),
+                  Some(Cow::Borrowed(m.source.text.as_ref())),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
@@ -456,9 +468,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 &m.specifier,
                 m.media_type,
                 module_kind,
-                &m.source,
+                &m.source.text,
               )?;
-            if source != m.source.as_ref() {
+            if source != m.source.text.as_ref() {
               maybe_source_map = Some(source_map.into_bytes());
               maybe_transpiled = Some(source.into_bytes());
             }
@@ -466,16 +478,26 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           (Some(original_bytes), m.media_type)
         }
         deno_graph::Module::Json(m) => {
-          (Some(m.source.as_bytes()), m.media_type)
+          let original_bytes = match m.source.try_get_original_bytes() {
+            Some(bytes) => bytes,
+            None => {
+              self
+                .load_asset_bypass_permissions(&m.specifier)
+                .await?
+                .source
+            }
+          };
+          (Some(original_bytes), m.media_type)
         }
         deno_graph::Module::Wasm(m) => {
-          (Some(m.source.as_ref()), MediaType::Wasm)
+          (Some(m.source.clone()), MediaType::Wasm)
         }
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
         | deno_graph::Module::External(_) => (None, MediaType::Unknown),
       };
       if let Some(original_source) = maybe_original_source {
+        asset_module_urls.swap_remove(module.specifier());
         let maybe_cjs_export_analysis = maybe_cjs_analysis
           .as_ref()
           .map(bincode::serialize)
@@ -505,7 +527,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             specifier_id,
             RemoteModuleEntry {
               media_type,
-              data: Cow::Borrowed(original_source),
+              is_valid_utf8: is_valid_utf8(&original_source),
+              data: Cow::Owned(original_source.to_vec()),
               maybe_transpiled: maybe_transpiled.map(Cow::Owned),
               maybe_source_map: maybe_source_map.map(Cow::Owned),
               maybe_cjs_export_analysis: maybe_cjs_export_analysis
@@ -513,6 +536,42 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             },
           );
         }
+      }
+    }
+
+    for url in asset_module_urls {
+      if graph.try_get(url).is_err() {
+        // skip because there was an error loading this module
+        continue;
+      }
+      match url.scheme() {
+        "file" => {
+          let file_path = deno_path_util::url_to_file_path(url)?;
+          vfs.add_file_at_path(&file_path)?;
+        }
+        "http" | "https" => {
+          let specifier_id = specifier_store.get_or_add(url);
+          if !remote_modules_store.contains(specifier_id) {
+            // it's ok to bypass permissions here because we verified the module
+            // loaded successfully in the graph
+            let file = self.load_asset_bypass_permissions(url).await?;
+            remote_modules_store.add(
+              specifier_id,
+              RemoteModuleEntry {
+                media_type: MediaType::from_specifier_and_headers(
+                  &file.url,
+                  file.maybe_headers.as_ref(),
+                ),
+                is_valid_utf8: is_valid_utf8(&file.source),
+                data: Cow::Owned(file.source.to_vec()),
+                maybe_cjs_export_analysis: None,
+                maybe_source_map: None,
+                maybe_transpiled: None,
+              },
+            );
+          }
+        }
+        _ => {}
       }
     }
 
@@ -709,12 +768,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
-        subdomain_wildcards: self.cli_options.unstable_subdomain_wildcards(),
         bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
-        features: self.cli_options.unstable_features(),
+        features: self
+          .cli_options
+          .unstable_features()
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
+        raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
       },
       otel_config: self.cli_options.otel_config(),
@@ -749,6 +813,32 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
       .context("Writing binary bytes")
+  }
+
+  async fn load_asset_bypass_permissions(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<
+    deno_cache_dir::file_fetcher::File,
+    deno_resolver::file_fetcher::FetchError,
+  > {
+    self
+      .file_fetcher
+      .fetch_with_options(
+        specifier,
+        FetchPermissionsOptionRef::AllowAll,
+        FetchOptions {
+          local: FetchLocalOptions {
+            include_mtime: false,
+          },
+          maybe_auth: None,
+          maybe_accept: None,
+          maybe_cache_setting: Some(
+            &deno_cache_dir::file_fetcher::CacheSetting::Use,
+          ),
+        },
+      )
+      .await
   }
 
   fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
@@ -794,11 +884,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let mut entries = fs::read_dir(&pending_dir)
-            .with_context(|| {
-              format!("Failed reading: {}", pending_dir.display())
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+          let Ok(entries) = fs::read_dir(&pending_dir) else {
+            // Don't bother surfacing this error as it might be an error
+            // like "access denied". In this case, just skip over it.
+            continue;
+          };
+          let mut entries = entries.filter_map(|e| e.ok()).collect::<Vec<_>>();
           entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
             let path = entry.path();

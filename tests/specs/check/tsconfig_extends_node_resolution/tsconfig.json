@@ -1,0 +1,4 @@
+{
+  "extends": "foo/tsconfig.dom",
+  "files": ["main.dom.ts"]
+}
