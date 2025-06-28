@@ -497,7 +497,7 @@ function _addListener(target, type, listener, prepend) {
         : [existing, listener];
       // If we've already got an array, just append.
     } else if (prepend) {
-      ArrayPrototypeUnshift(existing,  listener);
+      ArrayPrototypeUnshift(existing, listener);
     } else {
       ArrayPrototypePush(existing, listener);
     }
@@ -646,7 +646,7 @@ EventEmitter.prototype.removeListener = function removeListener(
     }
 
     if (position === 0) {
-      ArrayPrototypeShift(list) ;
+      ArrayPrototypeShift(list);
     } else {
       spliceOne(list, position);
     }
@@ -1023,7 +1023,7 @@ export function on(emitter, event, options = kEmptyObject) {
   const iterator = ObjectSetPrototypeOf({
     next() {
       // First, we consume all unread events
-      const value = ArrayPrototypeShift(unconsumedEvents) ;
+      const value = ArrayPrototypeShift(unconsumedEvents);
       if (value) {
         return Promise.resolve(createIterResult(value, false));
       }
@@ -1117,7 +1117,7 @@ export function on(emitter, event, options = kEmptyObject) {
   }
 
   function eventHandler(...args) {
-    const promise = ArrayPrototypeShift(unconsumedPromises) ;
+    const promise = ArrayPrototypeShift(unconsumedPromises);
     if (promise) {
       promise.resolve(createIterResult(args, false));
     } else {
@@ -1128,7 +1128,7 @@ export function on(emitter, event, options = kEmptyObject) {
   function errorHandler(err) {
     finished = true;
 
-    const toError = ArrayPrototypeShift(unconsumedPromises) ;
+    const toError = ArrayPrototypeShift(unconsumedPromises);
 
     if (toError) {
       toError.reject(err);
@@ -1207,8 +1207,12 @@ export class EventEmitterAsyncResource extends EventEmitter {
       throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
     }
     const { asyncResource } = this;
-    ArrayPrototypeUnshift(args,  super.emit, this, event);
-    return FunctionPrototypeApply(asyncResource.runInAsyncScope, asyncResource, args);
+    ArrayPrototypeUnshift(args, super.emit, this, event);
+    return FunctionPrototypeApply(
+      asyncResource.runInAsyncScope,
+      asyncResource,
+      args,
+    );
   }
 
   /**
