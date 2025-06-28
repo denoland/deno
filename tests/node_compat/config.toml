@@ -430,7 +430,6 @@
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
-"parallel/test-fs-read-stream-concurrent-reads.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
 "parallel/test-fs-read-stream-fd-leak.js" = {}
