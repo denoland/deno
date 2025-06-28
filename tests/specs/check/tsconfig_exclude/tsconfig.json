@@ -1,0 +1,6 @@
+{
+  "exclude": ["*.deno.ts"],
+  "compilerOptions": {
+    "lib": ["esnext", "dom"]
+  }
+}

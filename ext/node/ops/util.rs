@@ -106,6 +106,7 @@ pub fn op_node_call_is_from_dependency<
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
     return false;
   };
+  let mut only_internal = true;
   for i in 0..stack_trace.get_frame_count() {
     let Some(frame) = stack_trace.get_frame(scope, i) else {
       continue;
@@ -117,23 +118,31 @@ pub fn op_node_call_is_from_dependency<
       continue;
     };
     let name = script.to_rust_string_lossy(scope);
+
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
-    } else if name.starts_with("https:")
+    } else {
+      only_internal = false;
+    }
+
+    if name.starts_with("https:")
       || name.contains("/node_modules/")
       || name.contains(r"\node_modules\")
     {
       return true;
-    } else {
-      let Ok(specifier) = url::Url::parse(&name) else {
-        continue;
-      };
-      return state.borrow::<NodeResolverRc<
+    }
+
+    let Ok(specifier) = url::Url::parse(&name) else {
+      continue;
+    };
+    if only_internal {
+      return true;
+    }
+    return state.borrow::<NodeResolverRc<
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TSys,
       >>().in_npm_package(&specifier);
-    }
   }
-  false
+  only_internal
 }

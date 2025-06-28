@@ -698,6 +698,8 @@
           "http",
           "kv",
           "net",
+          "node-globals",
+          "raw-imports",
           "sloppy-imports",
           "temporal",
           "unsafe-proto",

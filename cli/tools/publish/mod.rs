@@ -121,7 +121,7 @@ pub async fn publish(
     cli_factory.parsed_source_cache().clone(),
     specifier_unfurler,
     cli_factory.sys(),
-    cli_factory.tsconfig_resolver()?.clone(),
+    cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
     GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),
