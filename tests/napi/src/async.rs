@@ -19,11 +19,13 @@ pub struct Baton {
 }
 
 unsafe extern "C" fn execute(_env: napi_env, data: *mut c_void) {
-  let baton: &mut Baton = &mut *(data as *mut Baton);
-  assert!(!baton.called);
-  assert!(!baton.func.is_null());
+  unsafe {
+    let baton: &mut Baton = &mut *(data as *mut Baton);
+    assert!(!baton.called);
+    assert!(!baton.func.is_null());
 
-  baton.called = true;
+    baton.called = true;
+  }
 }
 
 unsafe extern "C" fn complete(
@@ -31,28 +33,30 @@ unsafe extern "C" fn complete(
   status: napi_status,
   data: *mut c_void,
 ) {
-  assert!(status == napi_ok);
-  let baton: Box<Baton> = Box::from_raw(data as *mut Baton);
-  assert!(baton.called);
-  assert!(!baton.func.is_null());
+  unsafe {
+    assert!(status == napi_ok);
+    let baton: Box<Baton> = Box::from_raw(data as *mut Baton);
+    assert!(baton.called);
+    assert!(!baton.func.is_null());
 
-  let mut global: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
 
-  let mut callback: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_reference_value(env, baton.func, &mut callback));
+    let mut callback: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_reference_value(env, baton.func, &mut callback));
 
-  let mut _result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_call_function(
-    env,
-    global,
-    callback,
-    0,
-    ptr::null(),
-    &mut _result
-  ));
-  assert_napi_ok!(napi_delete_reference(env, baton.func));
-  assert_napi_ok!(napi_delete_async_work(env, baton.task));
+    let mut _result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      callback,
+      0,
+      ptr::null(),
+      &mut _result
+    ));
+    assert_napi_ok!(napi_delete_reference(env, baton.func));
+    assert_napi_ok!(napi_delete_async_work(env, baton.task));
+  }
 }
 
 extern "C" fn test_async_work(

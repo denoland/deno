@@ -14,27 +14,27 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_lib::args::get_root_cert_store;
 use deno_lib::args::CaData;
+use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexMap;
@@ -44,20 +44,20 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
 use tower_lsp::lsp_types::*;
 
-use super::analysis::fix_ts_import_changes;
-use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::TsResponseImportMapper;
+use super::analysis::fix_ts_import_changes;
+use super::analysis::ts_changes_to_edit;
 use super::cache::LspCache;
 use super::capabilities;
 use super::capabilities::semantic_tokens_registration_options;
@@ -65,9 +65,9 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
+use super::config::SETTINGS_SECTION;
 use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
-use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
@@ -100,8 +100,8 @@ use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -1870,35 +1870,48 @@ impl Inner {
           .map(|d| &d.dependency)
           .unwrap_or(&Resolution::None)
       });
-      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_types_dependency) {
+      let value = match (
+        dep.maybe_code.is_none(),
+        dep.maybe_type.is_none(),
+        &dep_types_dependency,
+      ) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
-          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
         (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
-          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
           self.resolution_to_hover_text(types_dep, module.scope.as_deref()),
         ),
         (false, false, Some(_)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
-          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
         (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
           self.resolution_to_hover_text(types_dep, module.scope.as_deref()),
         ),
         (false, true, _) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
         ),
         (true, false, _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+          self
+            .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
@@ -2363,7 +2376,11 @@ impl Inner {
           if token.is_cancelled() {
             return Err(LspError::request_cancelled());
           } else {
-            lsp_warn!("Unable to get refactor edit info from TypeScript: {:#}\nCode action data: {:#}", err, json!(&action_data));
+            lsp_warn!(
+              "Unable to get refactor edit info from TypeScript: {:#}\nCode action data: {:#}",
+              err,
+              json!(&action_data)
+            );
           }
         }
       }
@@ -4784,19 +4801,22 @@ impl Inner {
       }
 
       Some(contents)
-    } else if let Some(document) = self.get_document(
-      &params.text_document.uri,
-      Enabled::Ignore,
-      Exists::Filter,
-      Diagnosable::Ignore,
-    )? {
-      Some(document.text().to_string())
     } else {
-      lsp_warn!(
-        "The document was not found: {}",
-        params.text_document.uri.as_str()
-      );
-      None
+      match self.get_document(
+        &params.text_document.uri,
+        Enabled::Ignore,
+        Exists::Filter,
+        Diagnosable::Ignore,
+      )? {
+        Some(document) => Some(document.text().to_string()),
+        _ => {
+          lsp_warn!(
+            "The document was not found: {}",
+            params.text_document.uri.as_str()
+          );
+          None
+        }
+      }
     };
     self.performance.measure(mark);
     Ok(contents)

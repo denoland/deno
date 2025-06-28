@@ -3,10 +3,10 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleEntryRef;

@@ -5,12 +5,10 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 #[cfg(unix)]
-use std::sync::atomic::AtomicBool;
-#[cfg(unix)]
 use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -18,12 +16,14 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-#[cfg(unix)]
-use tokio::signal::unix::signal;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 #[cfg(unix)]
 use tokio::signal::unix::Signal;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
+#[cfg(unix)]
+use tokio::signal::unix::signal;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]

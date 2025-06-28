@@ -9,11 +9,11 @@ use deno_resolver::cjs::CjsTracker;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_core::ModuleSourceCode;
 use deno_runtime::deno_core::ModuleType;
-use node_resolver::analyze::CjsCodeAnalyzer;
-use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::NodeCodeTranslator;
 use thiserror::Error;
 use url::Url;
 
@@ -121,12 +121,12 @@ pub struct NpmModuleLoader<
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoLibSys,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoLibSys,
+>
   NpmModuleLoader<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,

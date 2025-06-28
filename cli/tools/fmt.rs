@@ -9,23 +9,23 @@
 
 use std::borrow::Cow;
 use std::fs;
-use std::io::stdin;
-use std::io::stdout;
 use std::io::Read;
 use std::io::Write;
+use std::io::stdin;
+use std::io::stdout;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -540,7 +540,8 @@ fn create_external_formatter_for_typescript(
   &str,
   String,
   &dprint_plugin_typescript::configuration::Configuration,
-) -> deno_core::anyhow::Result<Option<String>> {
+) -> deno_core::anyhow::Result<Option<String>>
++ use<> {
   let unstable_sql = unstable_options.sql;
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
@@ -1211,11 +1212,7 @@ fn format_stdin(
 }
 
 fn files_str(len: usize) -> &'static str {
-  if len == 1 {
-    "file"
-  } else {
-    "files"
-  }
+  if len == 1 { "file" } else { "files" }
 }
 
 fn get_typescript_config_builder(
@@ -1686,10 +1683,9 @@ where
       .and_then(|handle_result| handle_result.err())
   });
 
-  if let Some(e) = errors.next() {
-    Err(e)
-  } else {
-    Ok(())
+  match errors.next() {
+    Some(e) => Err(e),
+    _ => Ok(()),
   }
 }
 

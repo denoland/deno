@@ -11,17 +11,22 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
+use deno_runtime::UNSTABLE_FEATURES;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
-use deno_runtime::deno_core::error::CoreError;
-use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
@@ -41,13 +46,8 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_runtime::UNSTABLE_FEATURES;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -425,7 +425,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         .resolve_storage_key(&args.main_module);
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -612,11 +612,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .origin_data_folder_path
           .as_ref()
           .unwrap() // must be set if storage key resolver returns a value
-          .join(checksum::gen(&[key.as_bytes()]))
+          .join(checksum::r#gen(&[key.as_bytes()]))
       });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
     let services = WorkerServiceOptions {

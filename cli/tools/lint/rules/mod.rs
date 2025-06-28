@@ -130,7 +130,7 @@ impl ConfiguredRules {
     self.rules.iter().all(|r| r.supports_incremental_cache())
   }
 
-  pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
+  pub fn incremental_cache_state(&self) -> impl std::hash::Hash + use<> {
     // use a hash of the rule names in order to bust the cache
     let mut codes = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
     // ensure this is stable by sorting it

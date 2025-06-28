@@ -248,11 +248,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   }
   let is_node = host_defined_options.get(scope, 0).is_true();
-  if is_node {
-    Mode::Node
-  } else {
-    Mode::Deno
-  }
+  if is_node { Mode::Node } else { Mode::Deno }
 }
 
 pub fn getter<'s>(

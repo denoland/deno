@@ -4,20 +4,20 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitWith as _;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;

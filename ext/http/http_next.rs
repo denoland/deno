@@ -2,21 +2,14 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::future::poll_fn;
 use std::future::Future;
+use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
 
 use cache_control::CacheControl;
-use deno_core::external;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::serde_v8::from_v8;
-use deno_core::unsync::spawn;
-use deno_core::unsync::JoinHandle;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -30,12 +23,19 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::external;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::serde_v8::from_v8;
+use deno_core::unsync::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::v8;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
+use hyper::StatusCode;
 use hyper::body::Incoming;
-use hyper::header::HeaderMap;
 use hyper::header::ACCEPT_ENCODING;
 use hyper::header::CACHE_CONTROL;
 use hyper::header::CONTENT_ENCODING;
@@ -43,13 +43,13 @@ use hyper::header::CONTENT_LENGTH;
 use hyper::header::CONTENT_RANGE;
 use hyper::header::CONTENT_TYPE;
 use hyper::header::COOKIE;
+use hyper::header::HeaderMap;
 use hyper::http::HeaderName;
 use hyper::http::HeaderValue;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
-use hyper::service::service_fn;
 use hyper::service::HttpService;
-use hyper::StatusCode;
+use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
@@ -57,6 +57,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 use super::fly_accept_encoding;
+use crate::LocalExecutor;
+use crate::Options;
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
@@ -66,17 +68,15 @@ use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytesInner;
-use crate::service::handle_request;
-use crate::service::http_general_trace;
-use crate::service::http_trace;
 use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
 use crate::service::SignallingRc;
+use crate::service::handle_request;
+use crate::service::http_general_trace;
+use crate::service::http_trace;
 use crate::websocket_upgrade::WebSocketUpgrade;
-use crate::LocalExecutor;
-use crate::Options;
 
 type Request = hyper::Request<Incoming>;
 
@@ -115,9 +115,8 @@ trait HttpServeStream:
   tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
 {
 }
-impl<
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
-  > HttpServeStream for S
+impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static>
+  HttpServeStream for S
 {
 }
 
@@ -397,12 +396,13 @@ where
   .unwrap()
   .into();
 
-  let (peer_ip, peer_port) = if let Some(client_addr) = &*http.client_addr() {
-    let addr: std::net::SocketAddr =
-      client_addr.to_str().unwrap().parse().unwrap();
-    (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
-  } else {
-    (request_info.peer_address.clone(), request_info.peer_port)
+  let (peer_ip, peer_port) = match &*http.client_addr() {
+    Some(client_addr) => {
+      let addr: std::net::SocketAddr =
+        client_addr.to_str().unwrap().parse().unwrap();
+      (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+    }
+    _ => (request_info.peer_address.clone(), request_info.peer_port),
   };
 
   let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
@@ -515,13 +515,16 @@ pub fn op_http_read_request_body(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_read_request_body") };
-  let rid = if let Some(incoming) = http.take_request_body() {
-    let body_resource = Rc::new(HttpRequestBody::new(incoming));
-    state.borrow_mut().resource_table.add_rc(body_resource)
-  } else {
-    // This should not be possible, but rather than panicking we'll return an invalid
-    // resource value to JavaScript.
-    ResourceId::MAX
+  let rid = match http.take_request_body() {
+    Some(incoming) => {
+      let body_resource = Rc::new(HttpRequestBody::new(incoming));
+      state.borrow_mut().resource_table.add_rc(body_resource)
+    }
+    _ => {
+      // This should not be possible, but rather than panicking we'll return an invalid
+      // resource value to JavaScript.
+      ResourceId::MAX
+    }
   };
   http.put_resource(HttpRequestBodyAutocloser::new(rid, state.clone()));
   rid

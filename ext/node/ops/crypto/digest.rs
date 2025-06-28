@@ -2,8 +2,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::op2;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
@@ -217,10 +217,10 @@ impl Hash {
   ) -> Result<Self, HashError> {
     match algorithm_name {
       "shake128" | "shake-128" => {
-        return Ok(Shake128(Default::default(), output_length))
+        return Ok(Shake128(Default::default(), output_length));
       }
       "shake256" | "shake-256" => {
-        return Ok(Shake256(Default::default(), output_length))
+        return Ok(Shake256(Default::default(), output_length));
       }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();

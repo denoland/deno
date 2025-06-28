@@ -279,7 +279,7 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_total = xs.xsu_total;
       mem_info.swap_free = xs.xsu_avail;
 
-      extern "C" {
+      unsafe extern "C" {
         fn mach_host_self() -> std::ffi::c_uint;
       }
 

@@ -7,13 +7,13 @@ use std::io;
 
 use console_static_text::ConsoleSize;
 use console_static_text::TextItem;
+use crossterm::ExecutableCommand;
 use crossterm::cursor;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use crossterm::terminal;
-use crossterm::ExecutableCommand;
 use deno_core::anyhow;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -57,15 +57,15 @@ impl From<PackageInfo> for FormattedPackageInfo {
     let new_version_string =
       package.new_version.version_text().trim_start_matches('^');
 
-    let new_version_highlighted =
-      if let (Some(current_version), Ok(new_version)) = (
-        &package.current_version,
-        Version::parse_standard(new_version_string),
-      ) {
+    let new_version_highlighted = match (
+      &package.current_version,
+      Version::parse_standard(new_version_string),
+    ) {
+      (Some(current_version), Ok(new_version)) => {
         highlight_new_version(current_version, &new_version)
-      } else {
-        new_version_string.to_string()
-      };
+      }
+      _ => new_version_string.to_string(),
+    };
     FormattedPackageInfo {
       dep_ids: vec![package.id],
       current_version_string: package

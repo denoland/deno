@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_core::op2;
+use deno_core::v8;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 

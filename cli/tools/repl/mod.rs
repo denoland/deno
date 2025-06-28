@@ -26,10 +26,10 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::rustyline_channel;
 use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
+use channel::rustyline_channel;
 use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;

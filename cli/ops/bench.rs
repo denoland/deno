@@ -3,10 +3,10 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -77,16 +77,19 @@ pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
 ) -> Result<(), JsErrorBox> {
-  if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
-    if token != permissions_holder.0 {
-      panic!("restore test permissions token does not match the stored token");
-    }
+  match state.try_take::<PermissionsHolder>() {
+    Some(permissions_holder) => {
+      if token != permissions_holder.0 {
+        panic!(
+          "restore test permissions token does not match the stored token"
+        );
+      }
 
-    let permissions = permissions_holder.1;
-    state.put::<PermissionsContainer>(permissions);
-    Ok(())
-  } else {
-    Err(JsErrorBox::generic("no permissions to restore"))
+      let permissions = permissions_holder.1;
+      state.put::<PermissionsContainer>(permissions);
+      Ok(())
+    }
+    _ => Err(JsErrorBox::generic("no permissions to restore")),
   }
 }
 

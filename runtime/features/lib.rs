@@ -1,12 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod gen;
+mod r#gen;
 mod structs;
 
 use std::collections::BTreeSet;
 
-pub use gen::UNSTABLE_ENV_VAR_NAMES;
-pub use gen::UNSTABLE_FEATURES;
+pub use r#gen::UNSTABLE_ENV_VAR_NAMES;
+pub use r#gen::UNSTABLE_FEATURES;
 pub use structs::UnstableFeatureKind;
 
 pub const JS_SOURCE: deno_core::FastStaticString =

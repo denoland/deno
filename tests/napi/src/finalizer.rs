@@ -52,8 +52,10 @@ unsafe extern "C" fn finalize_cb_drop(
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
 ) {
-  let _ = Box::from_raw(data as *mut Thing);
-  assert!(hint.is_null());
+  unsafe {
+    let _ = Box::from_raw(data as *mut Thing);
+    assert!(hint.is_null());
+  }
 }
 
 extern "C" fn test_external_finalizer(
@@ -80,8 +82,10 @@ unsafe extern "C" fn finalize_cb_vec(
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
 ) {
-  let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
-  assert!(hint.is_null());
+  unsafe {
+    let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
+    assert!(hint.is_null());
+  }
 }
 
 extern "C" fn test_external_buffer(

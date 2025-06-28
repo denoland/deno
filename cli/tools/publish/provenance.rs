@@ -6,9 +6,9 @@ use std::env;
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
 use aws_lc_rs::signature::KeyPair;
+use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
-use base64::Engine as _;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -21,9 +21,9 @@ use p256::pkcs8::AssociatedOid;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use spki::der::EncodePem;
 use spki::der::asn1;
 use spki::der::pem::LineEnding;
-use spki::der::EncodePem;
 
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
@@ -717,21 +717,24 @@ mod tests {
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      env::set_var("CI", "true");
-      env::set_var("GITHUB_ACTIONS", "true");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
-      env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
-      env::set_var("GITHUB_SERVER_URL", "https://github.com");
-      env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
-      env::set_var("GITHUB_SHA", "lol");
-      env::set_var("GITHUB_RUN_ID", "1");
-      env::set_var("GITHUB_RUN_ATTEMPT", "1");
-      env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
-      env::set_var(
-        "GITHUB_WORKFLOW_REF",
-        "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
-      );
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        env::set_var("CI", "true");
+        env::set_var("GITHUB_ACTIONS", "true");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
+        env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
+        env::set_var("GITHUB_SERVER_URL", "https://github.com");
+        env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
+        env::set_var("GITHUB_SHA", "lol");
+        env::set_var("GITHUB_RUN_ID", "1");
+        env::set_var("GITHUB_RUN_ATTEMPT", "1");
+        env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+        env::set_var(
+          "GITHUB_WORKFLOW_REF",
+          "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
+        )
+      }
     }
 
     let subject = Subject {

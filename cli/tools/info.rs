@@ -21,13 +21,13 @@ use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_lib::util::checksum;
 use deno_lib::version::DENO_VERSION_INFO;
-use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_resolver::display::DisplayTreeNode;
 use deno_resolver::DenoResolveErrorKind;
+use deno_resolver::display::DisplayTreeNode;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -60,12 +60,12 @@ pub async fn info(
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
+    let maybe_import_specifier = match resolver.resolve(
       &specifier,
       &cwd_url,
       deno_resolver::workspace::ResolutionKind::Execution,
     ) {
-      match resolved {
+      Ok(resolved) => match resolved {
         deno_resolver::workspace::MappedResolution::Normal {
           specifier,
           ..
@@ -135,9 +135,8 @@ pub async fn info(
             ))?)
           }
         },
-      }
-    } else {
-      None
+      },
+      _ => None,
     };
 
     let specifier = match maybe_import_specifier {
@@ -222,7 +221,7 @@ fn print_cache_info(
 
   if let Some(location) = &location {
     origin_dir =
-      origin_dir.join(checksum::gen(&[location.to_string().as_bytes()]));
+      origin_dir.join(checksum::r#gen(&[location.to_string().as_bytes()]));
   }
 
   let local_storage_dir = origin_dir.join("local_storage");

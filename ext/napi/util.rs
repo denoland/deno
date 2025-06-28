@@ -231,7 +231,7 @@ macro_rules! check_arg {
 macro_rules! napi_wrap {
   ( $( # [ $attr:meta ] )* $vis:vis fn $name:ident $( < $( $x:lifetime ),* > )? ( $env:ident : & $( $lt:lifetime )? mut Env $( , $ident:ident : $ty:ty )* $(,)? ) -> napi_status $body:block ) => {
     $( # [ $attr ] )*
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     $vis unsafe extern "C" fn $name $( < $( $x ),* > )? ( env_ptr : *mut Env , $( $ident : $ty ),* ) -> napi_status {
       let env: & $( $lt )? mut Env = $crate::check_env!(env_ptr);
 
@@ -271,7 +271,7 @@ macro_rules! napi_wrap {
 
   ( $( # [ $attr:meta ] )* $vis:vis fn $name:ident $( < $( $x:lifetime ),* > )? ( $( $ident:ident : $ty:ty ),* $(,)? ) -> napi_status $body:block ) => {
     $( # [ $attr ] )*
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     $vis unsafe extern "C" fn $name $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status {
       #[inline(always)]
       fn inner $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status $body

@@ -5,14 +5,14 @@ mod interactive;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
 use super::deps::Dep;
@@ -24,8 +24,8 @@ use super::deps::PackageLatestVersion;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -533,8 +533,8 @@ async fn dep_manager_args(
 }
 
 mod filter {
-  use deno_core::anyhow::anyhow;
   use deno_core::anyhow::Context;
+  use deno_core::anyhow::anyhow;
   use deno_core::error::AnyError;
   use deno_semver::VersionReq;
 

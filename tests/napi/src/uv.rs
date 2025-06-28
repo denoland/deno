@@ -97,48 +97,52 @@ fn new_raw<T>(t: T) -> *mut T {
 }
 
 unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-  let handle = handle.cast::<uv_async_t>();
-  let async_ = (*handle).data as *mut Async;
-  let env = (*async_).env;
-  assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
+  unsafe {
+    let handle = handle.cast::<uv_async_t>();
+    let async_ = (*handle).data as *mut Async;
+    let env = (*async_).env;
+    assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
 
-  uv_mutex_destroy((*async_).mutex);
-  let _ = Box::from_raw((*async_).mutex);
-  let _ = Box::from_raw(async_);
-  let _ = Box::from_raw(handle);
+    uv_mutex_destroy((*async_).mutex);
+    let _ = Box::from_raw((*async_).mutex);
+    let _ = Box::from_raw(async_);
+    let _ = Box::from_raw(handle);
+  }
 }
 
 unsafe extern "C" fn callback(handle: *mut uv_async_t) {
-  eprintln!("callback");
-  let async_ = (*handle).data as *mut Async;
-  uv_mutex_lock((*async_).mutex);
-  let env = (*async_).env;
-  let mut js_cb = null_mut();
-  assert_napi_ok!(napi_get_reference_value(
-    env,
-    (*async_).callback,
-    &mut js_cb
-  ));
-  let mut global: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_global(env, &mut global));
+  unsafe {
+    eprintln!("callback");
+    let async_ = (*handle).data as *mut Async;
+    uv_mutex_lock((*async_).mutex);
+    let env = (*async_).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*async_).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
 
-  let mut result: napi_value = ptr::null_mut();
-  let value = (*async_).value;
-  eprintln!("value is {value}");
-  let mut value_js = ptr::null_mut();
-  assert_napi_ok!(napi_create_uint32(env, value, &mut value_js));
-  let args = &[value_js];
-  assert_napi_ok!(napi_call_function(
-    env,
-    global,
-    js_cb,
-    1,
-    args.as_ptr(),
-    &mut result,
-  ));
-  uv_mutex_unlock((*async_).mutex);
-  if value == 5 {
-    uv_close(handle.cast(), Some(close_cb));
+    let mut result: napi_value = ptr::null_mut();
+    let value = (*async_).value;
+    eprintln!("value is {value}");
+    let mut value_js = ptr::null_mut();
+    assert_napi_ok!(napi_create_uint32(env, value, &mut value_js));
+    let args = &[value_js];
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      1,
+      args.as_ptr(),
+      &mut result,
+    ));
+    uv_mutex_unlock((*async_).mutex);
+    if value == 5 {
+      uv_close(handle.cast(), Some(close_cb));
+    }
   }
 }
 

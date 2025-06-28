@@ -84,7 +84,9 @@ unsafe extern "C" fn custom_gc_finalize(
   _finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
 ) {
-  let _ = Box::from_raw(finalize_hint as *mut i32);
+  unsafe {
+    let _ = Box::from_raw(finalize_hint as *mut i32);
+  }
 }
 
 extern "C" fn custom_gc(

@@ -19,8 +19,8 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
-use futures::stream::FuturesOrdered;
 use futures::TryStreamExt;
+use futures::stream::FuturesOrdered;
 use indexmap::IndexMap;
 use node_resolver::PackageJson;
 use parking_lot::Mutex;
@@ -475,7 +475,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
-      Err(JsErrorBox::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
+      Err(JsErrorBox::generic(format!(
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+      )))
     } else {
       Ok(())
     }
@@ -630,11 +632,11 @@ fn values_to_set<'a>(
 }
 
 fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
-  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-    Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
-  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-    Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
-  } else {
-    None
+  match JsrPackageReqReference::from_str(value) {
+    Ok(req_ref) => Some(JsrDepPackageReq::jsr(req_ref.into_inner().req)),
+    _ => match NpmPackageReqReference::from_str(value) {
+      Ok(req_ref) => Some(JsrDepPackageReq::npm(req_ref.into_inner().req)),
+      _ => None,
+    },
   }
 }
