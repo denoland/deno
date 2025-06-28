@@ -3,8 +3,6 @@
 use test_util as util;
 use util::deno_config_path;
 
-// TODO(kt3k): Enable this when we excluded flaky compat tests
-#[ignore]
 #[test]
 fn node_compat_tests() {
   let _server = util::http_server();
