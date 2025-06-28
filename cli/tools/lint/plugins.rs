@@ -163,7 +163,7 @@ async fn create_plugin_runner_inner(
       // TODO(bartlomieju): add "lint" execution mode
       WorkerExecutionMode::Run,
       main_module.clone(),
-      // TODO(bartlomieju):
+      // `deno lint` doesn't support preloading modules
       vec![],
       permissions,
       vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],

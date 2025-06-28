@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -7,6 +9,7 @@ use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
 use deno_core::Extension;
+use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
@@ -231,6 +234,15 @@ impl CliMainWorker {
   #[inline]
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     self.worker.execute_side_module().await
+  }
+
+  #[inline]
+  pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
+    self.worker.execute_preload_modules().await
+  }
+
+  pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
+    self.worker.js_runtime().op_state()
   }
 
   pub async fn maybe_setup_hmr_runner(

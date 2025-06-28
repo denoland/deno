@@ -12809,7 +12809,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
     let flags = flags_from_vec(svec![
       "deno",
-      "run",
+      "compile",
       "--preload",
       "p1.js",
       "--preload",
@@ -12820,10 +12820,18 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     assert_eq!(
       flags,
       Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "main.ts".into(),
-          ..Default::default()
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "main.ts".into(),
+          output: None,
+          args: vec![],
+          target: None,
+          no_terminal: false,
+          icon: None,
+          include: Default::default(),
+          exclude: Default::default(),
+          eszip: false,
         }),
+        type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
         code_cache_enabled: true,
         ..Default::default()
@@ -12832,23 +12840,48 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
     let flags = flags_from_vec(svec![
       "deno",
-      "run",
+      "test",
       "--preload",
       "p1.js",
       "--import",
       "./p2.js",
-      "main.ts"
     ])
     .unwrap();
     assert_eq!(
       flags,
       Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "main.ts".into(),
-          ..Default::default()
-        }),
+        subcommand: DenoSubcommand::Test(TestFlags::default()),
         preload: svec!["p1.js", "./p2.js"],
-        code_cache_enabled: true,
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: false,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Default::default()
+      }
+    );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "bench",
+      "--preload",
+      "p1.js",
+      "--import",
+      "./p2.js",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Bench(BenchFlags::default()),
+        preload: svec!["p1.js", "./p2.js"],
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: false,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Default::default()
       }
     );

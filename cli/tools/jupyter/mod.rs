@@ -100,7 +100,7 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
-      // TODO(bartlomieju):
+      // `deno jupyter` doesn't support preloading modules
       vec![],
       permissions,
       vec![
