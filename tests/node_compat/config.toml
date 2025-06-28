@@ -50,7 +50,6 @@
 "es-module/test-vm-compile-function-lineoffset.js" = {}
 "es-module/test-wasm-memory-out-of-bound.js" = {}
 "es-module/test-wasm-simple.js" = {}
-"internet/test-dgram-broadcast-multi-process.js" = {}
 "internet/test-dgram-connect.js" = {}
 "internet/test-dns-lookup.js" = {}
 "internet/test-dns-promises-resolve.js" = {}
@@ -1368,7 +1367,6 @@
 "sequential/test-debugger-invalid-args.js" = {}
 "sequential/test-debugger-launch.mjs" = {}
 "sequential/test-debugger-pid.js" = {}
-"sequential/test-dgram-pingpong.js" = {}
 "sequential/test-diagnostic-dir-cpu-prof.js" = {}
 "sequential/test-diagnostic-dir-heap-prof.js" = {}
 "sequential/test-fs-readdir-recursive.js" = {}
