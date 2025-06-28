@@ -74,7 +74,7 @@ impl std::fmt::Display for ApiError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{} ({})", self.message, self.code)?;
     if let Some(x_deno_ray) = &self.x_deno_ray {
-      write!(f, "[x-deno-ray: {}]", x_deno_ray)?;
+      write!(f, "[x-deno-ray: {x_deno_ray}]")?;
     }
     Ok(())
   }
@@ -108,7 +108,7 @@ pub async fn parse_response<T: DeserializeOwned>(
       Err(_) => {
         let err = ApiError {
           code: "unknown".to_string(),
-          message: format!("{}: {}", status, text),
+          message: format!("{status}: {text}"),
           x_deno_ray,
           data: serde_json::json!({}),
         };
@@ -119,7 +119,7 @@ pub async fn parse_response<T: DeserializeOwned>(
 
   serde_json::from_str(&text).map_err(|err| ApiError {
     code: "unknown".to_string(),
-    message: format!("Failed to parse response: {}, response: '{}'", err, text),
+    message: format!("Failed to parse response: {err}, response: '{text}'"),
     x_deno_ray,
     data: serde_json::json!({}),
   })
@@ -130,7 +130,7 @@ pub fn get_package_api_url(
   scope: &str,
   package: &str,
 ) -> String {
-  format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
+  format!("{registry_api_url}scopes/{scope}/packages/{package}")
 }
 
 pub async fn get_package(
@@ -165,7 +165,7 @@ pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
     Some(format!(
       "\"jsr:@std/{}@1{}\"",
       module,
-      export.map(|s| format!("/{}", s)).unwrap_or_default()
+      export.map(|s| format!("/{s}")).unwrap_or_default()
     ))
   } else {
     None

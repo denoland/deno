@@ -79,7 +79,7 @@ impl Pty {
       line.as_ref().to_string()
     };
     if let Err(err) = self.pty.write(line.as_bytes()) {
-      panic!("{:#}", err)
+      panic!("{err:#}")
     }
     self.pty.flush().unwrap();
   }
@@ -259,7 +259,7 @@ impl Pty {
         "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
         String::from_utf8_lossy(&self.read_bytes)
       );
-      eprintln!("Next text: {:?}", text);
+      eprintln!("Next text: {text:?}");
     }
 
     false

@@ -207,7 +207,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     version: &str,
   ) {
     let specifier =
-      Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
+      Url::parse(&format!("http://127.0.0.1:4250/{package}/meta.json"))
         .unwrap();
     let cache = deno_cache_dir::GlobalHttpCache::new(
       sys_traits::impls::RealSys,
@@ -313,7 +313,7 @@ console.log(version);"#,
   let integrity_check_failed_msg = format!("[WILDCARD]Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.
 
   Package: @denotest/no-module-graph@0.1.1
-  Actual: {}
+  Actual: {actual_integrity}
   Expected: bad_integrity
 
 This could be caused by:
@@ -321,7 +321,7 @@ This could be caused by:
   * the source itself may be corrupt
 
 Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server.
-", actual_integrity);
+");
   test_context
     .new_command()
     .args("run --quiet main.ts")

@@ -442,7 +442,7 @@ pub async fn add(
       entry_text,
       add_flags.default_registry.map(|r| r.into()),
     )
-    .with_context(|| format!("Failed to parse package: {}", entry_text))?;
+    .with_context(|| format!("Failed to parse package: {entry_text}"))?;
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
@@ -789,7 +789,7 @@ impl AddRmPackageReq {
     match prefix {
       Prefix::Jsr => {
         let req_ref =
-          JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
+          JsrPackageReqReference::from_str(&format!("jsr:{entry_text}"))?;
         let package_req = req_ref.into_inner().req;
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
@@ -798,7 +798,7 @@ impl AddRmPackageReq {
       }
       Prefix::Npm => {
         let req_ref =
-          NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
+          NpmPackageReqReference::from_str(&format!("npm:{entry_text}"))?;
         let mut package_req = req_ref.into_inner().req;
         // deno_semver defaults to a version req of `*` if none is specified
         // we want to default to `latest` instead
@@ -832,7 +832,7 @@ pub async fn remove(
 
   for package in &remove_flags.packages {
     let req = AddRmPackageReq::parse(package, None)
-      .with_context(|| format!("Failed to parse package: {}", package))?;
+      .with_context(|| format!("Failed to parse package: {package}"))?;
     let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
       match &req {

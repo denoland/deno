@@ -132,14 +132,14 @@ impl LintRule for NoSloppyImportsRule {
                     let relative = if relative.starts_with("../") {
                       relative
                     } else {
-                      format!("./{}", relative)
+                      format!("./{relative}")
                     };
                     let current_text =
                       context.text_info().range_text(&source_range);
                     if current_text.starts_with('"') {
-                      format!("\"{}\"", relative)
+                      format!("\"{relative}\"")
                     } else if current_text.starts_with('\'') {
-                      format!("'{}'", relative)
+                      format!("'{relative}'")
                     } else {
                       relative
                     }

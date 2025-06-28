@@ -82,7 +82,7 @@ impl EmitCache {
   ) {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // might error in cases such as a readonly file system
-      log::debug!("Error saving emit data ({}): {}", specifier, err);
+      log::debug!("Error saving emit data ({specifier}): {err}");
       // assume the cache can't be written to and disable caching to it
       self.emit_failed_flag.raise();
     }
@@ -95,7 +95,7 @@ impl EmitCache {
     code: &[u8],
   ) -> Result<(), AnyError> {
     if matches!(self.mode, Mode::Disable) || self.emit_failed_flag.is_raised() {
-      log::debug!("Skipped emit cache save of {}", specifier);
+      log::debug!("Skipped emit cache save of {specifier}");
       return Ok(());
     }
 

@@ -45,7 +45,7 @@ impl Certificate {
       // OpenSSL returns colon separated upper case hex values.
       let mut hex = String::with_capacity(bytes.len() * 2);
       for byte in bytes {
-        hex.push_str(&format!("{:02X}:", byte));
+        hex.push_str(&format!("{byte:02X}:"));
       }
       hex.pop();
       Some(hex)
@@ -269,7 +269,7 @@ fn x509name_to_string(
           Ok(s) => String::from(s),
           _ => format!("{:?}", attr.attr_type()),
         };
-        let rdn = format!("{}={}", abbrev, val_str);
+        let rdn = format!("{abbrev}={val_str}");
         match acc2.len() {
           0 => Ok(rdn),
           _ => Ok(acc2 + " + " + rdn.as_str()),

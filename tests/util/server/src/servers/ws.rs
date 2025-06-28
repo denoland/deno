@@ -160,7 +160,7 @@ where
 
         #[allow(clippy::print_stderr)]
         if let Err(e) = handler(ws).await {
-          eprintln!("Error in websocket connection: {}", e);
+          eprintln!("Error in websocket connection: {e}");
         }
       });
 
@@ -278,14 +278,14 @@ async fn ping_websocket_handler(
     assert!(frame.payload.is_empty());
 
     ws.write_frame(Frame::text(
-      format!("hello {}", i).as_bytes().to_vec().into(),
+      format!("hello {i}").as_bytes().to_vec().into(),
     ))
     .await
     .unwrap();
 
     let frame = ws.read_frame().await.unwrap();
     assert_eq!(frame.opcode, OpCode::Text);
-    assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
+    assert_eq!(frame.payload, format!("hello {i}").as_bytes());
   }
 
   ws.write_frame(Frame::close(1000, b"")).await.unwrap();

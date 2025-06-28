@@ -559,7 +559,7 @@ async fn jupyter_execute_request() -> Result<()> {
           // may timeout if we missed some messages
           eprintln!("Timed out waiting for messages");
         }
-        panic!("Error: {:#?}", e);
+        panic!("Error: {e:#?}");
       }
     }
   }

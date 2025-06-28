@@ -62,7 +62,7 @@ pub fn create_gzipped_tarball(
     });
     assert!(path_str.starts_with('/'));
     tar
-      .add_file(format!(".{}", path_str), &content)
+      .add_file(format!(".{path_str}"), &content)
       .with_context(|| {
         format!("Unable to add file to tarball '{}'", path.path.display())
       })?;
@@ -72,7 +72,7 @@ pub fn create_gzipped_tarball(
   let hash_bytes: Vec<u8> = sha2::Sha256::digest(&v).iter().cloned().collect();
   let mut hash = "sha256-".to_string();
   for byte in hash_bytes {
-    write!(&mut hash, "{:02x}", byte).unwrap();
+    write!(&mut hash, "{byte:02x}").unwrap();
   }
 
   files.sort_by(|a, b| a.specifier.cmp(&b.specifier));

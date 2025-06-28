@@ -175,13 +175,13 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
 
   if is_err {
     if let Err(err) = sender.send(StreamContent::stderr(msg)) {
-      log::error!("Failed to send stderr message: {}", err);
+      log::error!("Failed to send stderr message: {err}");
     }
     return;
   }
 
   if let Err(err) = sender.send(StreamContent::stdout(msg)) {
-    log::error!("Failed to send stdout message: {}", err);
+    log::error!("Failed to send stdout message: {err}");
   }
 }
 

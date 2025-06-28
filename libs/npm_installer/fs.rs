@@ -40,10 +40,7 @@ pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
         std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::Unsupported
       ) {
         log::debug!(
-          "Failed to clone dir {:?} to {:?} via clonefile: {}",
-          from,
-          to,
-          err
+          "Failed to clone dir {from:?} to {to:?} via clonefile: {err}"
         );
       }
       // clonefile won't overwrite existing files, so if the dir exists
@@ -52,7 +49,7 @@ pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
     }
   } else if let Err(e) = deno_npm_cache::hard_link_dir_recursive(sys, from, to)
   {
-    log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+    log::debug!("Failed to hard link dir {from:?} to {to:?}: {e}");
     copy_dir_recursive(sys, from, to)?;
   }
 

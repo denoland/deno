@@ -319,7 +319,7 @@ async fn get_tcp_listener_stream(
   // Eye catcher for HttpServerCount
   #[allow(clippy::print_stdout)]
   {
-    println!("ready: {name} on {:?}", addresses);
+    println!("ready: {name} on {addresses:?}");
   }
 
   futures::stream::select_all(listeners)
@@ -684,7 +684,7 @@ pub fn wildcard_match(pattern: &str, text: &str) -> bool {
   match wildcard_match_detailed(pattern, text) {
     WildcardMatchResult::Success => true,
     WildcardMatchResult::Fail(debug_output) => {
-      eprintln!("{}", debug_output);
+      eprintln!("{debug_output}");
       false
     }
   }
@@ -733,11 +733,11 @@ pub fn wildcard_match_detailed(
       WildcardPatternPart::Wildnum(times) => {
         if current_text.len() < *times {
           output_lines
-            .push(format!("==== HAD MISSING WILDCHARS({}) ====", times));
+            .push(format!("==== HAD MISSING WILDCHARS({times}) ===="));
           output_lines.push(colors::red(annotate_whitespace(current_text)));
           return WildcardMatchResult::Fail(output_lines.join("\n"));
         }
-        output_lines.push(format!("<WILDCHARS({}) />", times));
+        output_lines.push(format!("<WILDCHARS({times}) />"));
         current_text = &current_text[*times..];
       }
       WildcardPatternPart::Text(search_text) => {

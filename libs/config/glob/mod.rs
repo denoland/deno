@@ -779,10 +779,10 @@ mod test {
                 "{}/",
                 root.to_string_lossy().replace('\\', "/")
               ))
-              .unwrap_or_else(|| panic!("pattern: {:?}, root: {:?}", p, root))
+              .unwrap_or_else(|| panic!("pattern: {p:?}, root: {root:?}"))
               .to_string();
             Some(if was_negated {
-              format!("!{}", text)
+              format!("!{text}")
             } else {
               text
             })
@@ -1499,7 +1499,7 @@ mod test {
   fn new_ctor() {
     let cwd = current_dir();
     for scheme in &["http", "https"] {
-      let url = format!("{}://deno.land/x/test", scheme);
+      let url = format!("{scheme}://deno.land/x/test");
       let pattern = PathOrPattern::new(&url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {
@@ -1509,7 +1509,7 @@ mod test {
       }
     }
     for scheme in &["npm", "jsr"] {
-      let url = format!("{}:@denotest/basic", scheme);
+      let url = format!("{scheme}:@denotest/basic");
       let pattern = PathOrPattern::new(&url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {
@@ -1536,7 +1536,7 @@ mod test {
   fn from_relative_specifier() {
     let cwd = current_dir();
     for scheme in &["http", "https"] {
-      let url = format!("{}://deno.land/x/test", scheme);
+      let url = format!("{scheme}://deno.land/x/test");
       let pattern = PathOrPattern::from_relative(&cwd, &url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {
@@ -1546,7 +1546,7 @@ mod test {
       }
     }
     for scheme in &["npm", "jsr"] {
-      let url = format!("{}:@denotest/basic", scheme);
+      let url = format!("{scheme}:@denotest/basic");
       let pattern = PathOrPattern::from_relative(&cwd, &url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {

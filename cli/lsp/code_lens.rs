@@ -374,8 +374,7 @@ pub async fn resolve_code_lens(
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap()).map_err(|err| {
       LspError::invalid_params(format!(
-        "Unable to parse code lens data: {:#}",
-        err
+        "Unable to parse code lens data: {err:#}"
       ))
     })?;
   match data.source {

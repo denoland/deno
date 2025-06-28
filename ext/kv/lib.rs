@@ -594,7 +594,7 @@ where
   // if we fail to finish the message, there is not much we can do and the
   // message will be retried anyway, so we just ignore the error
   if let Err(err) = handle.finish(success).await {
-    debug!("Failed to finish dequeued message: {}", err);
+    debug!("Failed to finish dequeued message: {err}");
   };
   Ok(())
 }

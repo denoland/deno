@@ -65,7 +65,7 @@ impl JsrFetchResolver {
       return info.value().clone();
     }
     let fetch_package_info = || async {
-      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let meta_url = jsr_url().join(&format!("{name}/meta.json")).ok()?;
       let file = self
         .file_fetcher
         .fetch_bypass_permissions(&meta_url)

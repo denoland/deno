@@ -266,7 +266,7 @@ impl JsrCacheResolver {
       return info.value().clone();
     }
     let read_cached_package_info = || {
-      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let meta_url = jsr_url().join(&format!("{name}/meta.json")).ok()?;
       let meta_bytes = read_cached_url(&meta_url, &self.cache)?;
       serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
     };

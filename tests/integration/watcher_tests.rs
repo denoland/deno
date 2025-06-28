@@ -118,7 +118,7 @@ where
         timeout.as_secs()
       )
     })
-    .unwrap_or_else(|| panic!("Output ended without containing \"{}\"", s))
+    .unwrap_or_else(|| panic!("Output ended without containing \"{s}\""))
 }
 
 /// Before test cases touch files, they need to wait for the watcher to be
@@ -155,8 +155,7 @@ where
   })
   .unwrap_or_else(|| {
     panic!(
-      "Output ended without before the watcher started watching file \"{}\"",
-      file_name
+      "Output ended without before the watcher started watching file \"{file_name}\""
     )
   })
 }

@@ -312,7 +312,7 @@ fn vary_header_matches(
     if header == "accept-encoding" {
       continue;
     }
-    let lookup_key = format!("{}{}", REQHDR_PREFIX, header);
+    let lookup_key = format!("{REQHDR_PREFIX}{header}");
     let query_header = get_header(&header, query_request_headers);
     let cached_header = cached_headers.get(&lookup_key);
     if query_header.as_ref().map(|x| &x[..])

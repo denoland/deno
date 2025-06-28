@@ -463,7 +463,7 @@ impl Display for AstProp {
       AstProp::Value => "value",
     };
 
-    write!(f, "{}", s)
+    write!(f, "{s}")
   }
 }
 
@@ -1747,7 +1747,7 @@ impl TsEsTreeBuilder {
   pub fn write_bool_lit(&mut self, span: &Span, value: bool) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Literal, span);
 
-    let raw = &format!("{}", value);
+    let raw = &format!("{value}");
     self.ctx.write_str(AstProp::Raw, raw);
     self.ctx.write_bool(AstProp::Value, value);
 

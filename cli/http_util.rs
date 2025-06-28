@@ -98,7 +98,7 @@ impl HttpClientProvider {
 
 #[derive(Debug, Error, JsError)]
 #[class(type)]
-#[error("Bad response: {:?}{}", .status_code, .response_text.as_ref().map(|s| format!("\n\n{}", s)).unwrap_or_else(String::new))]
+#[error("Bad response: {:?}{}", .status_code, .response_text.as_ref().map(|s| format!("\n\n{s}")).unwrap_or_else(String::new))]
 pub struct BadResponseError {
   pub status_code: StatusCode,
   pub response_text: Option<String>,

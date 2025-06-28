@@ -184,7 +184,7 @@ where
   NP: NetPermissions + 'static,
 {
   let permissions = state.borrow_mut::<NP>();
-  let api_call_expr = format!("{}()", api_name);
+  let api_call_expr = format!("{api_name}()");
   let address_path = permissions
     .check_read(&address_path, &api_call_expr)
     .map_err(NetError::Permission)?;

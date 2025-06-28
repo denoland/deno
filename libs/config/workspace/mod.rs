@@ -2206,7 +2206,7 @@ fn compiler_options_from_ts_config_next_to_pkg_json<TSys: FsRead>(
   let path = dir_path.join("tsconfig.json");
   let warn = |err: &dyn std::fmt::Display| {
     let path = path.display();
-    log::warn!("Failed to read tsconfig.json from {}: {}", path, err);
+    log::warn!("Failed to read tsconfig.json from {path}: {err}");
   };
   let text = sys
     .fs_read_to_string(&path)
@@ -2449,6 +2449,7 @@ fn combine_files_config_with_cli_args(
   }
 }
 
+#[allow(clippy::owned_cow)]
 struct CombineOptionVecsWithOverride<'a, T: Clone> {
   root: Option<Vec<T>>,
   member: Option<Cow<'a, Vec<T>>>,
@@ -2538,8 +2539,7 @@ fn parent_specifier_str(specifier: &str) -> Option<&str> {
 
 fn is_valid_jsr_pkg_name(name: &str) -> bool {
   let jsr = deno_semver::jsr::JsrPackageReqReference::from_str(&format!(
-    "jsr:{}@*",
-    name
+    "jsr:{name}@*"
   ));
   match jsr {
     Ok(jsr) => jsr.sub_path().is_none(),

@@ -151,7 +151,7 @@ impl LintPluginContainer {
     if !changes.is_empty() {
       fixes.push(LintFix {
         changes,
-        description: format!("Fix this {} problem", id).into(),
+        description: format!("Fix this {id} problem").into(),
       });
     }
 

@@ -302,9 +302,9 @@ impl<'a> TsResponseImportMapper<'a> {
       pkg_req: &PackageReq,
       sub_path: Option<&str>,
     ) -> String {
-      let result = format!("{}{}", prefix, pkg_req);
+      let result = format!("{prefix}{pkg_req}");
       match sub_path {
-        Some(path) => format!("{}/{}", result, path),
+        Some(path) => format!("{result}/{path}"),
         None => result,
       }
     }
@@ -517,13 +517,13 @@ impl<'a> TsResponseImportMapper<'a> {
       // JavaScript file after not being able to find the .d.ts file.
       if let Some(file_stem) = file_name.strip_suffix(".d.ts") {
         search_paths
-          .push(specifier_path.with_file_name(format!("{}.js", file_stem)));
+          .push(specifier_path.with_file_name(format!("{file_stem}.js")));
       } else if let Some(file_stem) = file_name.strip_suffix(".d.cts") {
         search_paths
-          .push(specifier_path.with_file_name(format!("{}.cjs", file_stem)));
+          .push(specifier_path.with_file_name(format!("{file_stem}.cjs")));
       } else if let Some(file_stem) = file_name.strip_suffix(".d.mts") {
         search_paths
-          .push(specifier_path.with_file_name(format!("{}.mjs", file_stem)));
+          .push(specifier_path.with_file_name(format!("{file_stem}.mjs")));
       }
     }
 
@@ -672,7 +672,7 @@ fn try_reverse_map_package_json_exports(
               if result.is_empty() {
                 suffix.to_string()
               } else {
-                format!("{}/{}", suffix, result)
+                format!("{suffix}/{result}")
               }
             } else {
               result // condition (ex. "types"), ignore

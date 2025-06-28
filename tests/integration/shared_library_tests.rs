@@ -28,8 +28,7 @@ fn linux_shared_libraries() {
     let path = line.split_whitespace().next().unwrap();
     assert!(
       EXPECTED.contains(&path),
-      "Unexpected shared library: {}",
-      path
+      "Unexpected shared library: {path}"
     );
   }
 }

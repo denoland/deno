@@ -212,24 +212,24 @@ impl PathRef {
 
   pub fn read_to_string_if_exists(&self) -> Result<String, anyhow::Error> {
     fs::read_to_string(self)
-      .with_context(|| format!("Could not read file: {}", self))
+      .with_context(|| format!("Could not read file: {self}"))
   }
 
   pub fn read_to_bytes_if_exists(&self) -> Result<Vec<u8>, anyhow::Error> {
-    fs::read(self).with_context(|| format!("Could not read file: {}", self))
+    fs::read(self).with_context(|| format!("Could not read file: {self}"))
   }
 
   #[track_caller]
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
     serde_json::from_str(&self.read_to_string())
-      .with_context(|| format!("Failed deserializing: {}", self))
+      .with_context(|| format!("Failed deserializing: {self}"))
       .unwrap()
   }
 
   #[track_caller]
   pub fn read_json_value(&self) -> serde_json::Value {
     serde_json::from_str(&self.read_to_string())
-      .with_context(|| format!("Failed deserializing: {}", self))
+      .with_context(|| format!("Failed deserializing: {self}"))
       .unwrap()
   }
 
@@ -239,9 +239,9 @@ impl PathRef {
       &self.read_to_string(),
       &Default::default(),
     )
-    .with_context(|| format!("Failed to parse {}", self))
+    .with_context(|| format!("Failed to parse {self}"))
     .unwrap()
-    .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
+    .unwrap_or_else(|| panic!("JSON file was empty for {self}"))
   }
 
   #[track_caller]
@@ -384,7 +384,7 @@ impl PathRef {
     let wildcard_file = testdata_path().join(wildcard_file);
     #[allow(clippy::print_stdout)]
     {
-      println!("output path {}", wildcard_file);
+      println!("output path {wildcard_file}");
     }
     let expected_text = wildcard_file.read_to_string();
     self.assert_matches_text(&expected_text)

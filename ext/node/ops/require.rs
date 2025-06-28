@@ -201,7 +201,7 @@ pub fn op_require_node_module_paths<
       let bytes = from_str.as_bytes();
       if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
       {
-        let p = format!("{}node_modules", from_str);
+        let p = format!("{from_str}node_modules");
         return Ok(vec![p]);
       }
     }

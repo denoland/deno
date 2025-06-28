@@ -123,7 +123,7 @@ impl NpmProcessState {
         format!(
           "failed to reading from {}: {}",
           match fd_or_path {
-            FdOrPath::Fd(fd) => format!("fd {}", fd),
+            FdOrPath::Fd(fd) => format!("fd {fd}"),
             FdOrPath::Path(path) => path.display().to_string(),
           },
           err,

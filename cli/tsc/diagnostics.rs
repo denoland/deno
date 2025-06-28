@@ -336,7 +336,7 @@ impl Diagnostics {
   pub fn emit_warnings(&mut self) {
     self.0.retain(|d| {
       if d.category == DiagnosticCategory::Warning {
-        log::warn!("{}\n", d);
+        log::warn!("{d}\n");
         false
       } else {
         true

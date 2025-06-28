@@ -264,7 +264,7 @@ fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
   } else {
-    debug!("tried to terminate non-existent worker {}", id);
+    debug!("tried to terminate non-existent worker {id}");
   }
 }
 
@@ -397,11 +397,11 @@ fn op_host_post_message(
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
-    debug!("post message to worker {}", id);
+    debug!("post message to worker {id}");
     let worker_handle = worker_thread.worker_handle.clone();
     worker_handle.port.send(state, data)?;
   } else {
-    debug!("tried to post message to non-existent worker {}", id);
+    debug!("tried to post message to non-existent worker {id}");
   }
   Ok(())
 }

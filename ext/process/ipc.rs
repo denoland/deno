@@ -430,7 +430,7 @@ mod tests {
       let size = 1024 * 1024;
 
       let stri = "x".repeat(size);
-      let data = format!("\"{}\"\n", stri);
+      let data = format!("\"{stri}\"\n");
       for _ in 0..100 {
         fd2.write_all(data.as_bytes()).await?;
       }

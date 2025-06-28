@@ -54,7 +54,7 @@ impl TextDecodedFile {
         source,
       }),
       Err(err) => {
-        Err(err).with_context(|| format!("Failed decoding \"{}\".", specifier))
+        Err(err).with_context(|| format!("Failed decoding \"{specifier}\"."))
       }
     }
   }
@@ -140,7 +140,7 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
       // Retry once, and bail otherwise.
       if !*retried {
         *retried = true;
-        log::debug!("Import '{}' failed: {}. Retrying...", specifier, err_str);
+        log::debug!("Import '{specifier}' failed: {err_str}. Retrying...");
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         Ok(())
       } else {
@@ -1173,7 +1173,7 @@ mod tests {
     if let Err(SendError::StatusCode(status)) = result {
       assert_eq!(status, 500);
     } else {
-      panic!("{:?}", result);
+      panic!("{result:?}");
     }
   }
 

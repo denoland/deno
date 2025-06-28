@@ -54,7 +54,7 @@ pub enum NpmModuleLoadError {
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
   #[class(inherit)]
-  #[error("Unable to load {}{}", file_path.display(), maybe_referrer.as_ref().map(|r| format!(" imported from {}", r)).unwrap_or_default())]
+  #[error("Unable to load {}{}", file_path.display(), maybe_referrer.as_ref().map(|r| format!(" imported from {r}")).unwrap_or_default())]
   UnableToLoad {
     file_path: PathBuf,
     maybe_referrer: Option<Url>,

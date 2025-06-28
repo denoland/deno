@@ -157,7 +157,7 @@ impl TypeChecker {
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
-        log::error!("{}\n", diagnostics);
+        log::error!("{diagnostics}\n");
       }
     }
     if failed {
@@ -536,14 +536,14 @@ impl DiagnosticsByFolderRealIterator<'_> {
     )?;
 
     let ambient_modules = response.ambient_modules;
-    log::debug!("Ambient Modules: {:?}", ambient_modules);
+    log::debug!("Ambient Modules: {ambient_modules:?}");
 
     let ambient_modules_regex = if ambient_modules.is_empty() {
       None
     } else {
       regex::Regex::new(&ambient_modules_to_regex_string(&ambient_modules))
         .inspect_err(|e| {
-          log::warn!("Failed to create regex for ambient modules: {}", e);
+          log::warn!("Failed to create regex for ambient modules: {e}");
         })
         .ok()
     };

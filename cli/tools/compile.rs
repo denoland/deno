@@ -211,7 +211,7 @@ pub async fn compile_eszip(
 
   let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = cli_options.workspace().root_dir();
-  log::debug!("Binary root dir: {}", root_dir_url);
+  log::debug!("Binary root dir: {root_dir_url}");
   let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
   let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
@@ -227,7 +227,7 @@ pub async fn compile_eszip(
     let import_map_path = import_map_specifier.to_file_path().unwrap();
     let import_map_content = std::fs::read_to_string(&import_map_path)
       .with_context(|| {
-        format!("Failed to read import map: {:?}", import_map_path)
+        format!("Failed to read import map: {import_map_path:?}")
       })?;
 
     let import_map_specifier_str = if let Some(relative_import_map_specifier) =

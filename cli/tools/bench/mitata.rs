@@ -61,7 +61,7 @@ fn human_readable_decimal_with_fractional(
   if fmt_decimal.len() >= 4 {
     fmt_decimal
   } else {
-    format!("{}.{}", fmt_decimal, fractional)
+    format!("{fmt_decimal}.{fractional}")
   }
 }
 
@@ -70,7 +70,7 @@ pub fn fmt_duration(time: f64) -> String {
     return format!("{:.1} ps", time * 1e3);
   }
   if time < 1e3 {
-    return format!("{:.1} ns", time);
+    return format!("{time:.1} ns");
   }
   if time < 1e6 {
     return format!("{:.1} µs", time / 1e3);
@@ -245,7 +245,7 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("{:<size$}", n));
+    s.push_str(&format!("{n:<size$}"));
     s.push_str(&format!(" {}: {}", colors::red("error"), e.message));
 
     if let Some(ref stack) = e.stack {
@@ -284,7 +284,7 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("| {:<size$} |", name));
+    s.push_str(&format!("| {name:<size$} |"));
 
     if options.avg {
       s.push_str(&format!(
@@ -341,9 +341,9 @@ pub mod reporter {
         4,
       );
       let diff = if x_faster > 1000. {
-        &format!("{:>9.0}", x_faster)
+        &format!("{x_faster:>9.0}")
       } else {
-        &format!("{:>9.2}", x_faster)
+        &format!("{x_faster:>9.2}")
       };
       s.push_str(&format!(
         "\n{}x {} than {}",

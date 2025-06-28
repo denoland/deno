@@ -497,18 +497,18 @@ fn generate_docs_directory(
   let path = &output_dir_resolved;
   let _ = std::fs::remove_dir_all(path);
   std::fs::create_dir(path)
-    .with_context(|| format!("Failed to create directory {:?}", path))?;
+    .with_context(|| format!("Failed to create directory {path:?}"))?;
 
   let no_of_files = files.len();
   for (name, content) in files {
     let this_path = path.join(name);
     let prefix = this_path.parent().with_context(|| {
-      format!("Failed to get parent path for {:?}", this_path)
+      format!("Failed to get parent path for {this_path:?}")
     })?;
     std::fs::create_dir_all(prefix)
-      .with_context(|| format!("Failed to create directory {:?}", prefix))?;
+      .with_context(|| format!("Failed to create directory {prefix:?}"))?;
     std::fs::write(&this_path, content)
-      .with_context(|| format!("Failed to write file {:?}", this_path))?;
+      .with_context(|| format!("Failed to write file {this_path:?}"))?;
   }
 
   log::info!(

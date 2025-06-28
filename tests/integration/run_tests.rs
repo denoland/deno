@@ -2828,7 +2828,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       let start_prompt_index = all_text.find("Allow?").unwrap();
       let end_prompt_index = all_text.find("Granted read access to").unwrap();
       let prompt_text = &all_text[start_prompt_index..end_prompt_index];
-      assert!(!prompt_text.contains(malicious_output), "Prompt text: {:?}", prompt_text);
+      assert!(!prompt_text.contains(malicious_output), "Prompt text: {prompt_text:?}");
   });
 }
 
@@ -2845,8 +2845,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "\u{250f} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
-      env_name
+      "\u{250f} \u{26a0}\u{fe0f}  Deno requests env access to \"{env_name}\"."
     ))
   });
 

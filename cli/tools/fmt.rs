@@ -626,7 +626,7 @@ fn format_embedded_css(
   // @variable for both property values and mixins, which is convenient
   // for handling placeholders used as both properties and mixins.
   let text = malva::format_text(
-    &format!("a{{\n{}\n;}}", text),
+    &format!("a{{\n{text}\n;}}"),
     malva::Syntax::Less,
     &options,
   )?;
@@ -936,7 +936,7 @@ impl Formatter for CheckFormatter {
               deno_resolver::display::diff(&file_text, &formatted_text);
             info!("");
             info!("{} {}:", colors::bold("from"), file_path.display());
-            info!("{}", diff);
+            info!("{diff}");
           }
           Ok(None) => {
             // When checking formatting, only update the incremental cache when
@@ -981,7 +981,7 @@ impl Formatter for CheckFormatter {
     let checked_files_str =
       format!("{} {}", checked_files_count, files_str(checked_files_count));
     if not_formatted_files_count == 0 {
-      info!("Checked {}", checked_files_str);
+      info!("Checked {checked_files_str}");
       Ok(())
     } else {
       let not_formatted_files_str = files_str(not_formatted_files_count);

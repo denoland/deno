@@ -585,7 +585,7 @@ impl TsServer {
       .request::<()>(snapshot.clone(), req, None, None, &Default::default())
       .await
       .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
+        log::error!("Failed to request to tsserver {err}");
         LspError::invalid_request()
       })
       .ok();
@@ -656,7 +656,7 @@ impl TsServer {
       .request(snapshot, req, None, None, &Default::default())
       .await
       .map_err(|err| {
-        log::error!("Unable to get fixable diagnostics: {}", err);
+        log::error!("Unable to get fixable diagnostics: {err}");
         LspError::internal_error()
       })
   }
@@ -769,7 +769,7 @@ impl TsServer {
       )
       .await
       .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
+        log::error!("Failed to request to tsserver {err}");
         LspError::invalid_request()
       })
   }
@@ -1991,7 +1991,7 @@ impl QuickInfo {
       .map(|p| display_parts_to_string(&p, module, language_server))
     {
       if !display_string.is_empty() {
-        parts.push(format!("```typescript\n{}\n```", display_string));
+        parts.push(format!("```typescript\n{display_string}\n```"));
       }
     }
     if let Some(documentation) = self
@@ -3704,7 +3704,7 @@ impl CompletionEntryDetails {
           &specifier_rewrite.new_deno_types_specifier
         {
           *new_text =
-            format!("// @ts-types=\"{}\"\n{}", deno_types_specifier, new_text);
+            format!("// @ts-types=\"{deno_types_specifier}\"\n{new_text}");
         }
       }
     }

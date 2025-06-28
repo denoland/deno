@@ -37,8 +37,7 @@ pub fn maybe_transpile_source(
     MediaType::JavaScript => return Ok((source, None)),
     MediaType::Mjs => return Ok((source, None)),
     _ => panic!(
-      "Unsupported media type for snapshotting {media_type:?} for file {}",
-      name
+      "Unsupported media type for snapshotting {media_type:?} for file {name}"
     ),
   }
 

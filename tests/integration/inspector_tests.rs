@@ -84,7 +84,7 @@ impl StdErrLines {
     Self {
       reader: Box::new(std::io::BufReader::new(stderr).lines().map(|r| {
         let line = r.unwrap();
-        eprintln!("STDERR: {}", line);
+        eprintln!("STDERR: {line}");
         line
       })),
       check_lines: Default::default(),
@@ -150,7 +150,7 @@ impl InspectorTester {
     let stdout = child.stdout.take().unwrap();
     let stdout_lines = std::io::BufReader::new(stdout).lines().map(|r| {
       let line = r.unwrap();
-      eprintln!("STDOUT: {}", line);
+      eprintln!("STDOUT: {line}");
       line
     });
 

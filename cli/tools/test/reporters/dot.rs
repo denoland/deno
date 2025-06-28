@@ -37,7 +37,7 @@ impl DotTestReporter {
   fn print_status(&mut self, status: String) {
     // Non-TTY console prints every result on a separate line.
     if self.width == 0 {
-      println!("{}", status);
+      println!("{status}");
       return;
     }
 
@@ -46,7 +46,7 @@ impl DotTestReporter {
     }
     self.n += 1;
 
-    print!("{}", status);
+    print!("{status}");
   }
 
   fn print_test_step_result(&mut self, result: &TestStepResult) {

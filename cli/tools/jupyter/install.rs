@@ -45,8 +45,7 @@ pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
       install_cmd.push_str(name);
     }
     log::warn!(
-      "ℹ️ Deno kernel is not yet installed, run `{}` to set it up",
-      install_cmd
+      "ℹ️ Deno kernel is not yet installed, run `{install_cmd}` to set it up"
     );
     Ok(())
   }

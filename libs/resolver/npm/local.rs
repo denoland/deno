@@ -24,7 +24,7 @@ pub fn get_package_folder_id_folder_name_from_parts(
   let copy_str = if copy_index == 0 {
     Cow::Borrowed("")
   } else {
-    Cow::Owned(format!("_{}", copy_index))
+    Cow::Owned(format!("_{copy_index}"))
   };
   let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
   format!("{}@{}{}", name, nv.version, copy_str)

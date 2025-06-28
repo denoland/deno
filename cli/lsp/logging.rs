@@ -48,7 +48,7 @@ impl LogFile {
       unbuffered
     };
     if let Ok(file) = fs::OpenOptions::new().append(true).open(path) {
-      write!(&file, "{}", unbuffered).ok();
+      write!(&file, "{unbuffered}").ok();
     }
   }
 }
@@ -62,7 +62,7 @@ pub fn init_log_file(enabled: bool) {
     let now = SystemTime::now();
     let now: DateTime<Utc> = now.into();
     let now = now.to_rfc3339().replace(':', "_");
-    let path = cwd.join(format!(".deno_lsp/log_{}.txt", now));
+    let path = cwd.join(format!(".deno_lsp/log_{now}.txt"));
     fs::create_dir_all(path.parent()?).ok()?;
     fs::write(&path, "").ok()?;
     Some(path)

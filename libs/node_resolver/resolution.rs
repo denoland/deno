@@ -1090,7 +1090,7 @@ impl<
                   .is_builtin_node_module(target)
                 {
                   Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(
-                    Url::parse(&format!("node:{}", target)).unwrap(),
+                    Url::parse(&format!("node:{target}")).unwrap(),
                   )))
                 } else {
                   Err(err)
@@ -2100,7 +2100,7 @@ fn resolve_bin_entry_value<'a>(
         .name
         .as_ref()
         .map(|n| {
-          let mut prefix = format!("npm:{}", n);
+          let mut prefix = format!("npm:{n}");
           if let Some(version) = &package_json.version {
             prefix.push('@');
             prefix.push_str(version);
@@ -2122,7 +2122,7 @@ fn resolve_bin_entry_value<'a>(
         package_json.path.display(),
         bin_name
           .or(package_json.name.as_deref())
-          .map(|name| format!(" for '{}'", name))
+          .map(|name| format!(" for '{name}'"))
           .unwrap_or_default(),
         if keys.is_empty() {
           "".to_string()
@@ -2243,7 +2243,7 @@ pub fn parse_npm_pkg_name<'a>(
 
   let (package_name, subpath) = if let Some(index) = separator_index {
     let (package_name, subpath) = specifier.split_at(index);
-    (package_name, Cow::Owned(format!(".{}", subpath)))
+    (package_name, Cow::Owned(format!(".{subpath}")))
   } else {
     (specifier, Cow::Borrowed("."))
   };
@@ -2346,7 +2346,7 @@ pub fn types_package_name(package_name: &str) -> String {
 fn node_join_url(url: &Url, path: &str) -> Result<Url, url::ParseError> {
   if let Some(suffix) = path.strip_prefix(".//") {
     // specifier had two leading slashes
-    url.join(&format!("./{}", suffix))
+    url.join(&format!("./{suffix}"))
   } else {
     url.join(path)
   }

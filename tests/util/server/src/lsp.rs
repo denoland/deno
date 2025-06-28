@@ -160,7 +160,7 @@ impl LspStdoutReader {
   #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
-    eprintln!("{:?}", messages);
+    eprintln!("{messages:?}");
   }
 
   pub fn had_message(&self, is_match: impl Fn(&LspMessage) -> bool) -> bool {
@@ -576,7 +576,7 @@ impl LspClientBuilder {
               Ok(line) => {
                 #[allow(clippy::print_stderr)]
                 {
-                  eprintln!("{}", line);
+                  eprintln!("{line}");
                 }
                 if let Some(tx) = perf_tx.as_ref() {
                   // look for perf records
@@ -591,7 +591,7 @@ impl LspClientBuilder {
                       Err(err) => {
                         #[allow(clippy::print_stderr)]
                         {
-                          eprintln!("failed to parse perf record: {:#}", err);
+                          eprintln!("failed to parse perf record: {err:#}");
                         }
                       }
                     }
@@ -600,7 +600,7 @@ impl LspClientBuilder {
                 tx.send(line).unwrap();
               }
               Err(err) => {
-                panic!("failed to read line from stderr: {:#}", err);
+                panic!("failed to read line from stderr: {err:#}");
               }
             }
           }
@@ -791,7 +791,7 @@ impl LspClient {
     {
       eprintln!("==== STDERR OUTPUT ====");
       for line in found_lines {
-        eprintln!("{}", line)
+        eprintln!("{line}")
       }
       eprintln!("== END STDERR OUTPUT ==");
     }

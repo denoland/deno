@@ -139,7 +139,7 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
-      eprint!("{}", CLEAR_SCREEN);
+      eprint!("{CLEAR_SCREEN}");
     }
   }
 }
@@ -461,7 +461,7 @@ fn add_paths_to_watcher(
     watched_paths.push(path.clone());
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
-  log::debug!("Watching paths: {:?}", watched_paths);
+  log::debug!("Watching paths: {watched_paths:?}");
 }
 
 fn consume_paths_to_watch(

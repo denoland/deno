@@ -62,8 +62,8 @@ fn sqlite_extension_test() {
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
 
   if !output.status.success() {
-    println!("stdout: {}", stdout);
-    println!("stderr: {}", stderr);
+    println!("stdout: {stdout}");
+    println!("stderr: {stderr}");
     panic!("Test failed");
   }
 }

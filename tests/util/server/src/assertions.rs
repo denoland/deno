@@ -84,7 +84,7 @@ pub fn assert_wildcard_match_with_logger(
           colors::bold(" START --"),
         )
         .unwrap();
-        writeln!(logger, "{}", actual).unwrap();
+        writeln!(logger, "{actual}").unwrap();
         writeln!(logger, "{}", colors::bold("-- OUTPUT END --")).unwrap();
         writeln!(
           logger,
@@ -94,7 +94,7 @@ pub fn assert_wildcard_match_with_logger(
           colors::bold(" START --"),
         )
         .unwrap();
-        writeln!(logger, "{}", expected).unwrap();
+        writeln!(logger, "{expected}").unwrap();
         writeln!(logger, "{}", colors::bold("-- EXPECTED END --")).unwrap();
         writeln!(
           logger,
