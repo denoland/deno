@@ -26,6 +26,8 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 
+use crate::util::text_encoding::is_valid_utf8;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {
   /// The root of the system above any drive letters.
@@ -257,6 +259,8 @@ pub struct VirtualFile {
   pub name: String,
   #[serde(rename = "o")]
   pub offset: OffsetWithLength,
+  #[serde(default, rename = "u", skip_serializing_if = "is_false")]
+  pub is_valid_utf8: bool,
   #[serde(rename = "m", skip_serializing_if = "Option::is_none")]
   pub transpiled_offset: Option<OffsetWithLength>,
   #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
@@ -265,6 +269,10 @@ pub struct VirtualFile {
   pub source_map_offset: Option<OffsetWithLength>,
   #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
   pub mtime: Option<u128>, // mtime in milliseconds
+}
+
+fn is_false(value: &bool) -> bool {
+  !value
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -766,6 +774,7 @@ impl VfsBuilder {
     log::debug!("Adding file '{}'", path.display());
     let case_sensitivity = self.case_sensitivity;
 
+    let is_valid_utf8 = is_valid_utf8(&options.data);
     let offset_and_len = self.files.add_data(options.data);
     let transpiled_offset = options
       .maybe_transpiled
@@ -790,6 +799,7 @@ impl VfsBuilder {
       || {
         VfsEntry::File(VirtualFile {
           name: name.to_string(),
+          is_valid_utf8,
           offset: offset_and_len,
           transpiled_offset,
           cjs_export_analysis_offset,
