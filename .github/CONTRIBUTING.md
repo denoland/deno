@@ -2,10 +2,10 @@
 
 This is the main repository that provides the `deno` CLI.
 
-If you want to fix a bug or add a new feature to `deno` this is the repository
+If you want to fix a bug or add a new feature to `deno`, this is the repository
 to contribute to.
 
-Some systems, including a large part of the Node.js compatibility layer are
+Some systems (including a large part of the Node.js compatibility layer) are
 implemented in JavaScript and TypeScript modules. These are a good place to
 start if you are looking to make your first contribution.
 
@@ -15,10 +15,10 @@ provide valuable insight into how the compatibility layer works in practice, and
 where improvements might be needed. They can also serve as a useful guide for
 identifying areas where contributions are most impactful.
 
-While iterating on such modules it is recommended to include `--features hmr` in
+While iterating on such modules, it is recommended to include `--features hmr` in
 your `cargo` flags. This is a special development mode where the JS/TS sources
-are not included in the binary but read at runtime, meaning the binary will not
-have to be rebuilt if they are changed.
+are not included in the binary, but read at runtime (meaning the binary will not
+have to be rebuilt if they are changed).
 
 To use the commands below, you need to first install the necessary tools on your
 system as described [here](#building-from-source).
@@ -62,24 +62,24 @@ To use a development version of the LSP in VSCode:
 
 ## Submitting a PR
 
-In addition to the above make sure that:
+In addition to the above, make sure that:
 
 > To use the commands below, you need to first install the necessary tools on
 > your system as described [here](building_from_source).
 
 1. `cargo test` passes - this will run full test suite for `deno` including unit
-   tests, integration tests and Web Platform Tests
+   tests, integration tests and Web Platform Tests.
 
 1. Run `./tools/format.js` - this will format all of the code to adhere to the
-   consistent style in the repository
+   consistent style in the repository.
 
 1. Run `./tools/lint.js` - this will check Rust and JavaScript code for common
-   mistakes and errors using `clippy` (for Rust) and `dlint` (for JavaScript)
+   mistakes and errors using `clippy` (for Rust) and `dlint` (for JavaScript).
 
 ## Building from source
 
 Below are instructions on how to build Deno from source. If you just want to use
-Deno you can download a prebuilt executable (more information in the
+Deno, you can download a prebuilt executable (more information in the
 [`Getting Started`](/runtime/getting_started/installation/) chapter).
 
 ### Cloning the Repository
@@ -110,7 +110,7 @@ git clone --recurse-submodules https://github.com/denoland/deno.git
 #### Rust
 
 > Deno requires a specific release of Rust. Deno may not support building on
-> other versions, or on the Rust Nightly Releases. The version of Rust required
+> other versions (such as the Rust Nightly Releases). The version of Rust required
 > for a particular release is specified in the `rust-toolchain.toml` file.
 
 [Update or Install Rust](https://www.rust-lang.org/tools/install). Check that
@@ -139,7 +139,7 @@ apt install --install-recommends -y cmake libglib2.0-dev
 
 Mac users must have the _XCode Command Line Tools_ installed.
 ([XCode](https://developer.apple.com/xcode/) already includes the _XCode Command
-Line Tools_. Run `xcode-select --install` to install it without XCode.)
+Line Tools_. Run `xcode-select --install` to install it without XCode).
 
 [CMake](https://cmake.org/) is also required, but does not ship with the
 _Command Line Tools_.
@@ -161,7 +161,7 @@ brew install llvm lld
 
 1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with the
    "Desktop development with C++" toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
+   required tools listed below along with all C++ tools:
 
    - Visual C++ tools for CMake
    - Windows 10 SDK (10.0.17763.0)
@@ -172,14 +172,14 @@ brew install llvm lld
    - VC++ 2015.3 v14.00 (v140) toolset for desktop
 
 2. Enable "Debugging Tools for Windows".
-   - Go to "Control Panel" → "Programs" → "Programs and Features"
-   - Select "Windows Software Development Kit - Windows 10"
+   - Go to "Control Panel" → "Programs" → "Programs and Features".
+   - Select "Windows Software Development Kit - Windows 10".
    - → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change"
-     →"Finish".
+     → "Finish".
    - Or use:
      [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/)
      (Notice: it will download the files, you should install
-     `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
+     `X64 Debuggers And Tools-x64_en-us.msi` file manually).
 
 #### Protobuf Compiler
 
