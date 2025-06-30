@@ -474,7 +474,7 @@ pub struct BundleFlags {
   pub format: BundleFormat,
   pub minify: bool,
   pub code_splitting: bool,
-  pub one_file: bool,
+  pub inline: bool,
   pub packages: PackageHandling,
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
@@ -2062,9 +2062,9 @@ If no output file is given, the output is written to standard output:
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("one-file")
-          .long("one-file")
-          .help("Bundle into one file")
+        Arg::new("inline")
+          .long("inline")
+          .help("Whether to inline imported dependencies into the importing file (default: true)")
           .require_equals(true)
           .default_value("true")
           .default_missing_value("true")
@@ -5021,7 +5021,7 @@ fn bundle_parse(
     packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
     code_splitting: matches.get_flag("code-splitting"),
-    one_file: matches.get_flag("one-file"),
+    inline: matches.get_flag("inline"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
     sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
   });
