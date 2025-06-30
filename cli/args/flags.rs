@@ -2064,7 +2064,7 @@ If no output file is given, the output is written to standard output:
       .arg(
         Arg::new("inline")
           .long("inline")
-          .help("Whether to inline imported dependencies into the importing file (default: true)")
+          .help(cstr!("Whether to inline imported dependencies into the importing file <p(245)>[default: true]</>"))
           .require_equals(true)
           .default_value("true")
           .default_missing_value("true")
