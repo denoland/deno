@@ -2193,6 +2193,7 @@ pub struct PermissionsOptions {
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
+  pub deny_import: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -2384,7 +2385,9 @@ impl Permissions {
         parse_maybe_vec(opts.allow_import.as_deref(), |item| {
           parser.parse_import_descriptor(item)
         })?,
-        None,
+        parse_maybe_vec(opts.deny_import.as_deref(), |item| {
+          parser.parse_import_descriptor(item)
+        })?,
         opts.prompt,
       ),
       all: Permissions::new_all(opts.allow_all),
@@ -4428,6 +4431,7 @@ mod tests {
         deny_env: Some(svec!["HOME"]),
         deny_sys: Some(svec!["hostname"]),
         deny_run: Some(svec!["deno"]),
+        deny_import: Some(svec!["example.com:443"]),
         ..Default::default()
       },
     )
@@ -4449,6 +4453,8 @@ mod tests {
         deny_sys: Some(svec!["hostname"]),
         allow_run: Some(vec![]),
         deny_run: Some(svec!["deno"]),
+        allow_import: Some(vec![]),
+        deny_import: Some(svec!["example.com:443"]),
         ..Default::default()
       },
     )
@@ -4541,6 +4547,11 @@ mod tests {
       assert_eq!(perms4.run.query(None), PermissionState::GrantedPartial);
       assert_eq!(perms4.run.query(Some(&deno_run_query)), PermissionState::Denied);
       assert_eq!(perms4.run.query(Some(&node_run_query)), PermissionState::Granted);
+      assert_eq!(perms3.import.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("example.com"), Some(443))))), PermissionState::Denied);
+      assert_eq!(perms4.import.query(None), PermissionState::GrantedPartial);
+      assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("example.com"), Some(443))))), PermissionState::Denied);
+      assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("deno.land"), Some(443))))), PermissionState::Granted);
     };
   }
 

@@ -17,6 +17,7 @@ use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
+use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
@@ -370,7 +371,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &Url,
     maybe_referrer: Option<&Url>,
     _is_dynamic: bool,
-    _requested_module_type: RequestedModuleType,
+    requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
       let data_url_text =
@@ -423,6 +424,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
+        match requested_module_type {
+          RequestedModuleType::Text | RequestedModuleType::Bytes => {
+            let module_source = DenoCompileModuleSource::Bytes(module.data);
+            return deno_core::ModuleLoadResponse::Sync(Ok(
+              deno_core::ModuleSource::new_with_redirect(
+                match requested_module_type {
+                  RequestedModuleType::Text => ModuleType::Text,
+                  RequestedModuleType::Bytes => ModuleType::Bytes,
+                  _ => unreachable!(),
+                },
+                match requested_module_type {
+                  RequestedModuleType::Text => module_source.into_for_v8(),
+                  RequestedModuleType::Bytes => {
+                    ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
+                  }
+                  _ => unreachable!(),
+                },
+                original_specifier,
+                module.specifier,
+                None,
+              ),
+            ));
+          }
+          RequestedModuleType::Other(_)
+          | RequestedModuleType::None
+          | RequestedModuleType::Json => {
+            // ignore
+          }
+        }
+
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
