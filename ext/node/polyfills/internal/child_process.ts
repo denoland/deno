@@ -57,7 +57,6 @@ import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
 import {
-  kDetached,
   kExtraStdio,
   kInputOption,
   kIpc,
@@ -286,9 +285,9 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        detached,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        [kDetached]: detached,
         // deno-lint-ignore no-explicit-any
         [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();

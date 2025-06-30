@@ -3809,6 +3809,20 @@ declare namespace Deno {
      *
      * @default {false} */
     windowsRawArguments?: boolean;
+
+    /** Whether to detach the spawned process from the current process.
+     * This allows the spawned process to continue running after the current
+     * process exits.
+     *
+     * Note: In order to allow the current process to exit, you need to ensure
+     * you call `unref()` on the child process.
+     *
+     * In addition, the stdio streams – if inherited or piped – may keep the
+     * current process from exiting until the streams are closed.
+     *
+     * @default {false}
+     */
+    detached?: boolean;
   }
 
   /**
