@@ -1089,7 +1089,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
-    .bundle(bundle_flags.one_file)
+    .bundle(bundle_flags.inline_imports)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
