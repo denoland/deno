@@ -28,7 +28,6 @@
     "ext:deno_node/_fs/_fs_common.ts": "../ext/node/polyfills/_fs/_fs_common.ts",
     "ext:deno_node/_fs/_fs_constants.ts": "../ext/node/polyfills/_fs/_fs_constants.ts",
     "ext:deno_node/_fs/_fs_dir.ts": "../ext/node/polyfills/_fs/_fs_dir.ts",
-    "ext:deno_node/_fs/_fs_dirent.ts": "../ext/node/polyfills/_fs/_fs_dirent.ts",
     "ext:deno_node/_fs/_fs_exists.ts": "../ext/node/polyfills/_fs/_fs_exists.ts",
     "ext:deno_node/_fs/_fs_lstat.ts": "../ext/node/polyfills/_fs/_fs_lstat.ts",
     "ext:deno_node/_fs/_fs_mkdir.ts": "../ext/node/polyfills/_fs/_fs_mkdir.ts",

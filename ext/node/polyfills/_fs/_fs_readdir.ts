@@ -4,17 +4,16 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  type Dirent,
+  direntFromDeno,
+  getValidatedPath,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
 import { join, relative } from "node:path";
-
-function toDirent(val: Deno.DirEntry & { parentPath: string }): Dirent {
-  return new Dirent(val);
-}
 
 type readDirOptions = {
   encoding?: string;
@@ -83,7 +82,7 @@ export function readdir(
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            result.push(toDirent(entry));
+            result.push(direntFromDeno(entry));
           } else {
             let name = decode(entry.name, options?.encoding);
             if (options?.recursive) {
@@ -166,7 +165,7 @@ export function readdirSync(
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          result.push(toDirent(entry));
+          result.push(direntFromDeno(entry));
         } else {
           let name = decode(entry.name, options?.encoding);
           if (options?.recursive) {

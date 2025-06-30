@@ -22,7 +22,6 @@ util::unit_test_factory!(
     _fs_close_test = _fs / _fs_close_test,
     _fs_copy_test = _fs / _fs_copy_test,
     _fs_dir_test = _fs / _fs_dir_test,
-    _fs_dirent_test = _fs / _fs_dirent_test,
     _fs_open_test = _fs / _fs_open_test,
     _fs_read_test = _fs / _fs_read_test,
     _fs_exists_test = _fs / _fs_exists_test,

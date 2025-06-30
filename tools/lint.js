@@ -66,6 +66,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
+    ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/ffi/tests/test.js",
@@ -121,6 +122,7 @@ async function dlintPreferPrimordials() {
     "ext/**/*.ts",
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
+    ":!:ext/node/polyfills/deps/**",
   ]);
 
   if (!sourceFiles.length) {
