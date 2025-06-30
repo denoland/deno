@@ -345,7 +345,7 @@ impl HttpClient {
 
         let mut headers = headers.clone();
         // SECURITY: Do NOT forward auth headers to a new origin
-        if new_url.origin() != url.origin() {
+        if new_url.origin() != url.origin() && url.host() != new_url.host() {
           headers.remove(http::header::AUTHORIZATION);
         }
         *req.headers_mut() = headers;
