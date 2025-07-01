@@ -316,6 +316,8 @@ impl TestRun {
             worker_factory,
             permissions_container,
             specifier,
+            // Executing tests in the LSP currently doesn't support preload option
+            vec![],
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {

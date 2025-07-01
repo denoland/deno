@@ -1354,7 +1354,8 @@
 "sequential/test-debugger-pid.js" = {}
 "sequential/test-diagnostic-dir-cpu-prof.js" = {}
 "sequential/test-diagnostic-dir-heap-prof.js" = {}
-"sequential/test-fs-readdir-recursive.js" = {}
+# TODO(kt3k): Enable this when node_test is updated to v24.x
+# "sequential/test-fs-readdir-recursive.js" = {}
 "sequential/test-fs-stat-sync-overflow.js" = {}
 "sequential/test-http-server-keep-alive-timeout-slow-server.js" = {}
 "sequential/test-inspector-open-dispose.mjs" = {}

@@ -1053,6 +1053,8 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
+    // TODO(bartlomieju): support preload modules in `deno compile`
+    vec![],
   )?;
 
   let exit_code = worker.run().await?;

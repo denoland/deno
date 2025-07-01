@@ -1,7 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import {
+  type Dirent,
+  direntFromDeno,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
@@ -47,12 +50,12 @@ export default class Dir {
         AsyncGeneratorPrototypeNext(this.#asyncIterator),
         (iteratorResult) => {
           resolve(
-            iteratorResult.done ? null : new Dirent(iteratorResult.value),
+            iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
           );
           if (callback) {
             callback(
               null,
-              iteratorResult.done ? null : new Dirent(iteratorResult.value),
+              iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
             );
           }
         },
@@ -75,7 +78,7 @@ export default class Dir {
     if (iteratorResult.done) {
       return null;
     } else {
-      return new Dirent(iteratorResult.value);
+      return direntFromDeno(iteratorResult.value);
     }
   }
 

@@ -159,6 +159,15 @@ impl GraphDiagnosticsCollector {
       );
 
       for (specifier_text, dep) in &module.dependencies {
+        for asset_import in
+          dep.imports.iter().filter(|i| i.attributes.has_asset())
+        {
+          diagnostics_collector.push(PublishDiagnostic::UnstableRawImport {
+            text_info: parsed_source.text_info_lazy().clone(),
+            referrer: asset_import.specifier_range.clone(),
+          });
+        }
+
         if let Some(resolved) = dep.maybe_code.ok() {
           collect_if_invalid(
             &mut skip_specifiers,

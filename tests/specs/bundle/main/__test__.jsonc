@@ -100,7 +100,7 @@
     "sloppy_imports": {
       "steps": [
         {
-          "args": "bundle --unstable-sloppy-imports --output=out.js sloppy.ts",
+          "args": "bundle --sloppy-imports --output=out.js sloppy.ts",
           "output": "sloppy_imports.out"
         },
         {
