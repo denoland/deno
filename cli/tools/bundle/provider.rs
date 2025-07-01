@@ -77,7 +77,7 @@ impl From<BundleOptions> for crate::args::BundleFlags {
       platform: value.platform.into(),
       watch: value.watch,
       sourcemap: value.sourcemap.map(|s| s.into()),
-      one_file: value.one_file,
+      inline_imports: value.inline_imports,
       packages: value.packages.into(),
     }
   }
