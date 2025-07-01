@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -21,6 +22,7 @@ use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::JsxImportSourceSpecifierConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::TsTypeLib;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -366,7 +368,7 @@ type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
 pub struct TsConfigData {
-  pub compiler_options: CompilerOptionsData,
+  compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
   references: Vec<String>,
 }
@@ -401,21 +403,40 @@ type TsConfigNodeResolver<TSys> = NodeResolver<
   TSys,
 >;
 
-#[derive(Debug)]
-struct TsConfigCollector<'a, TSys: FsRead, NSys: NpmResolverSys> {
+type GetNodeResolverFn<'a, NSys> =
+  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys>> + 'a>;
+
+struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<Url, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
-  node_resolver: &'a TsConfigNodeResolver<NSys>,
+  get_node_resolver: GetNodeResolverFn<'b, NSys>,
   logged_warnings: &'a LoggedWarningsRc,
 }
 
-impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
+impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
+  for TsConfigCollector<'_, '_, TSys, NSys>
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsConfigCollector")
+      .field("roots", &self.roots)
+      .field("collected", &self.collected)
+      .field("read_cache", &self.read_cache)
+      .field("currently_reading", &self.currently_reading)
+      .field("sys", &self.sys)
+      .field("logged_warnings", &self.logged_warnings)
+      .finish()
+  }
+}
+
+impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
+  TsConfigCollector<'a, 'b, TSys, NSys>
+{
   fn new(
     sys: &'a TSys,
-    node_resolver: &'a TsConfigNodeResolver<NSys>,
+    get_node_resolver: GetNodeResolverFn<'b, NSys>,
     logged_warnings: &'a LoggedWarningsRc,
   ) -> Self {
     Self {
@@ -424,7 +445,7 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
       read_cache: Default::default(),
       currently_reading: Default::default(),
       sys,
-      node_resolver,
+      get_node_resolver,
       logged_warnings,
     }
   }
@@ -537,8 +558,8 @@ impl<'a, TSys: FsRead, NSys: NpmResolverSys> TsConfigCollector<'a, TSys, NSys> {
         }
       })
       .filter_map(|s| {
-        let node_resolution = self
-          .node_resolver
+        let node_resolver = (self.get_node_resolver)(&specifier)?;
+        let node_resolution = node_resolver
           .resolve(
             s,
             &specifier,
@@ -677,8 +698,11 @@ impl CompilerOptionsResolver {
       CompilerOptionsSourceKind::DenoJson,
       logged_warnings.clone(),
     ));
-    let mut ts_config_collector =
-      TsConfigCollector::new(sys, node_resolver, &logged_warnings);
+    let mut ts_config_collector = TsConfigCollector::new(
+      sys,
+      Box::new(|_| Some(node_resolver)),
+      &logged_warnings,
+    );
     for (dir_url, dir) in workspace_directory_provider.entries() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
@@ -725,6 +749,38 @@ impl CompilerOptionsResolver {
 
   pub fn ts_configs(&self) -> &Vec<TsConfigData> {
     &self.ts_configs
+  }
+
+  pub fn new_for_lsp<TSys: FsRead, NSys: NpmResolverSys>(
+    sys: &TSys,
+    dirs: BTreeMap<&Url, &WorkspaceDirectory>,
+    get_node_resolver: GetNodeResolverFn<'_, NSys>,
+  ) -> Self {
+    let logged_warnings = new_rc(LoggedWarnings::default());
+    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
+      Vec::new(),
+      CompilerOptionsSourceKind::DenoJson,
+      logged_warnings.clone(),
+    ));
+    let mut ts_config_collector =
+      TsConfigCollector::new(sys, get_node_resolver, &logged_warnings);
+    for dir in dirs.values() {
+      if dir.has_deno_or_pkg_json() {
+        ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
+      }
+      workspace_configs.insert(
+        dir.dir_url().clone(),
+        CompilerOptionsData::new(
+          dir.to_configured_compiler_options_sources(),
+          CompilerOptionsSourceKind::DenoJson,
+          logged_warnings.clone(),
+        ),
+      );
+    }
+    Self {
+      workspace_configs,
+      ts_configs: ts_config_collector.collect(),
+    }
   }
 }
 

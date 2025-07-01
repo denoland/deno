@@ -104,6 +104,7 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -236,6 +237,7 @@ pub struct Inner {
   pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
+  compiler_options_resolver: LspCompilerOptionsResolver,
   /// Configuration information.
   pub config: Config,
   diagnostics_state: Arc<diagnostics::DiagnosticsState>,
@@ -558,6 +560,7 @@ impl Inner {
     Self {
       cache,
       client,
+      compiler_options_resolver: Default::default(),
       config,
       diagnostics_state,
       diagnostics_server,
@@ -1153,6 +1156,12 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn refresh_compiler_options(&mut self) {
+    self.compiler_options_resolver =
+      LspCompilerOptionsResolver::new(&self.config, &self.resolver);
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn dispatch_cache_jsx_import_sources(&self) {
     for config_file in self.config.tree.config_files() {
       (|| {
@@ -1578,9 +1587,10 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
-    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
+    self.refresh_compiler_options();
+    self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1632,13 +1642,14 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      self.update_cache();
+      self.refresh_resolver().await;
+      self.refresh_compiler_options();
       // Don't cache anything if only a lockfile has changed, or it can
       // retrigger this notification and cause an infinite loop.
       if changed_deno_json {
         self.dispatch_cache_jsx_import_sources();
       }
-      self.update_cache();
-      self.refresh_resolver().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.project_changed(
@@ -4315,9 +4326,10 @@ impl Inner {
     self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
-    self.dispatch_cache_jsx_import_sources();
     self.update_cache();
     self.refresh_resolver().await;
+    self.refresh_compiler_options();
+    self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
 
     if self.config.did_change_watched_files_capable() {
@@ -4533,8 +4545,9 @@ impl Inner {
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_resolver().await;
+    self.refresh_compiler_options();
+    self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();

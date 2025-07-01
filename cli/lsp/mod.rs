@@ -14,6 +14,7 @@ mod cache;
 mod capabilities;
 mod client;
 mod code_lens;
+mod compiler_options;
 mod completions;
 mod config;
 mod diagnostics;

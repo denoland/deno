@@ -304,6 +304,10 @@ impl LspScopedResolver {
     self.config_data.as_ref()
   }
 
+  pub fn as_node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
+    self.node_resolver.as_ref()
+  }
+
   pub fn as_maybe_managed_npm_resolver(
     &self,
   ) -> Option<&Arc<CliManagedNpmResolver>> {

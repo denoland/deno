@@ -418,7 +418,7 @@ mod test {
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
-    let node_resolver = NodeResolver::new(
+    let node_resolver = Arc::new(NodeResolver::new(
       DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
       DenoIsBuiltInNodeModuleChecker,
       CliNpmResolver::new(NpmResolverCreateOptions::Byonm(
@@ -431,7 +431,7 @@ mod test {
       package_json_resolver,
       NodeResolutionSys::new(sys.clone(), None),
       NodeResolverOptions::default(),
-    );
+    ));
     let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
       &sys,
       &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
