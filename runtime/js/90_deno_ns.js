@@ -168,10 +168,13 @@ const denoNs = {
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
   telemetry: telemetry.telemetry,
-  bundle ,
 };
 
 const denoNsUnstableById = { __proto__: null };
+
+denoNsUnstableById[unstableIds.bundle] = {
+  bundle,
+};
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
