@@ -27,8 +27,10 @@ deno_core::extension!(
 
 #[async_trait]
 impl BundleProvider for () {
-  async fn bundle(&self, options: BundleOptions) -> Result<(), AnyError> {
-    todo!()
+  async fn bundle(&self, _options: BundleOptions) -> Result<(), AnyError> {
+    Err(deno_core::anyhow::anyhow!(
+      "default BundleProvider does not do anything"
+    ))
   }
 }
 
