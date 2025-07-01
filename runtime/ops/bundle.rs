@@ -54,8 +54,8 @@ pub struct BundleOptions {
   pub minify: bool,
   #[serde(default)]
   pub code_splitting: bool,
-  #[serde(default)]
-  pub one_file: bool,
+  #[serde(default = "tru")]
+  pub inline_imports: bool,
   #[serde(default)]
   pub packages: PackageHandling,
   #[serde(default)]
@@ -64,6 +64,10 @@ pub struct BundleOptions {
   pub platform: BundlePlatform,
   #[serde(default)]
   pub watch: bool,
+}
+
+fn tru() -> bool {
+  true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
