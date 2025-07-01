@@ -27,7 +27,10 @@ deno_core::extension!(
 
 #[async_trait]
 impl BundleProvider for () {
-  async fn bundle(&self, _options: BundleOptions) -> Result<(), AnyError> {
+  async fn bundle(
+    &self,
+    _options: BundleOptions,
+  ) -> Result<BuildResponse, AnyError> {
     Err(deno_core::anyhow::anyhow!(
       "default BundleProvider does not do anything"
     ))
@@ -36,7 +39,10 @@ impl BundleProvider for () {
 
 #[async_trait]
 pub trait BundleProvider: Send + Sync {
-  async fn bundle(&self, options: BundleOptions) -> Result<(), AnyError>;
+  async fn bundle(
+    &self,
+    options: BundleOptions,
+  ) -> Result<BuildResponse, AnyError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, serde::Deserialize)]
@@ -128,12 +134,46 @@ impl std::fmt::Display for PackageHandling {
     }
   }
 }
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Message {
+  pub text: String,
+  pub location: Option<Location>,
+  pub notes: Vec<Note>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BuildOutputFile {
+  pub path: String,
+  pub contents: Option<Vec<u8>>,
+  pub hash: String,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BuildResponse {
+  pub errors: Vec<Message>,
+  pub warnings: Vec<Message>,
+  pub output_files: Option<Vec<BuildOutputFile>>,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Note {
+  pub text: String,
+  pub location: Option<Location>,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Location {
+  pub file: String,
+  pub namespace: String,
+  pub line: u32,
+  pub column: u32,
+  pub length: u32,
+  pub suggestion: String,
+}
 
 #[op2(async)]
+#[serde]
 pub async fn op_bundle(
   state: Rc<RefCell<OpState>>,
   #[serde] options: BundleOptions,
-) -> Result<(), JsErrorBox> {
+) -> Result<BuildResponse, JsErrorBox> {
   let state = state.borrow();
   let provider = state.borrow::<Arc<dyn BundleProvider>>().clone();
   drop(state);
