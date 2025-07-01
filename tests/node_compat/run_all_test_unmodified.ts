@@ -22,10 +22,10 @@ import {
   usesNodeTestModule,
 } from "./common.ts";
 
-// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
-const TIMEOUT = 5000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
+// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
+const TIMEOUT = IS_CI ? 10_000 : 5000;
 
 // The metadata of the test report
 export type TestReportMetadata = {
@@ -359,7 +359,11 @@ async function main() {
   }
   // Runs parallel tests
   for await (
-    const _ of pooledMap(navigator.hardwareConcurrency, parallel, run)
+    const _ of pooledMap(
+      Math.max(1, navigator.hardwareConcurrency - 1),
+      parallel,
+      run,
+    )
   ) {
     // pass
   }
