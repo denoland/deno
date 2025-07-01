@@ -28,6 +28,7 @@ use discovery::ConfigFolder;
 use discovery::DenoOrPkgJson;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use serde_json::json;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
@@ -35,12 +36,10 @@ use thiserror::Error;
 use url::Url;
 
 use crate::deno_json;
-use crate::deno_json::get_base_compiler_options_for_emit;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompilerOptionTypesDeserializeError;
 use crate::deno_json::CompilerOptions;
 use crate::deno_json::CompilerOptionsParseError;
-use crate::deno_json::CompilerOptionsType;
 use crate::deno_json::CompilerOptionsWithIgnoredOptions;
 use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
@@ -1120,6 +1119,118 @@ pub struct WorkspaceDirLintConfig {
   pub files: FilePatterns,
 }
 
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub enum TsTypeLib {
+  DenoWindow,
+  DenoWorker,
+}
+
+impl Default for TsTypeLib {
+  fn default() -> Self {
+    Self::DenoWindow
+  }
+}
+
+/// An enum that represents the base tsc configuration to return.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerOptionsType {
+  /// Return a configuration for bundling, using swc to emit the bundle. This is
+  /// independent of type checking.
+  Bundle,
+  /// Return a configuration to use tsc to type check. This
+  /// is independent of either bundling or emitting via swc.
+  Check { lib: TsTypeLib },
+  /// Return a configuration to use swc to emit single module files.
+  Emit,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CompilerOptionsSourceKind {
+  DenoJson,
+  TsConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompilerOptionsSource {
+  pub specifier: Url,
+  pub compiler_options: Option<CompilerOptions>,
+}
+
+/// For a given configuration type get the starting point CompilerOptions
+/// used that can then be merged with user specified options.
+pub fn get_base_compiler_options_for_emit(
+  config_type: CompilerOptionsType,
+  source_kind: CompilerOptionsSourceKind,
+) -> CompilerOptions {
+  match config_type {
+    CompilerOptionsType::Bundle => CompilerOptions::new(json!({
+      "allowImportingTsExtensions": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": true,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": false,
+      "inlineSources": false,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+    })),
+    CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
+      "allowJs": true,
+      "allowImportingTsExtensions": true,
+      "allowSyntheticDefaultImports": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": false,
+      "incremental": true,
+      "jsx": "react",
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "isolatedModules": true,
+      "lib": match (lib, source_kind) {
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
+      },
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "moduleDetection": "force",
+      "noEmit": true,
+      "noImplicitOverride": true,
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
+      "useDefineForClassFields": true,
+    })),
+    CompilerOptionsType::Emit => CompilerOptions::new(json!({
+      "allowImportingTsExtensions": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": false,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "resolveJsonModule": true,
+    })),
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceDirectory {
   pub workspace: WorkspaceRc,
@@ -1422,8 +1533,10 @@ impl WorkspaceDirectory {
     sys: &TSys,
     config_type: CompilerOptionsType,
   ) -> Result<CompilerOptionsWithIgnoredOptions, CompilerOptionsParseError> {
-    let mut base_compiler_options =
-      get_base_compiler_options_for_emit(config_type);
+    let mut base_compiler_options = get_base_compiler_options_for_emit(
+      config_type,
+      CompilerOptionsSourceKind::DenoJson,
+    );
     let CompilerOptionsWithIgnoredOptions {
       compiler_options,
       ignored_options,
@@ -1447,6 +1560,38 @@ impl WorkspaceDirectory {
         .as_ref()
         .map(|p| p.root.is_none())
         .unwrap_or(true)
+  }
+
+  /// Gets a list of raw compiler options that the user provided, in a vec of
+  /// size 0-2 based on `[maybe_root, maybe_member].flatten()`.
+  pub fn to_configured_compiler_options_sources(
+    &self,
+  ) -> Vec<CompilerOptionsSource> {
+    let Some(deno_json) = self.deno_json.as_ref() else {
+      return Vec::new();
+    };
+    let root = deno_json.root.as_ref().map(|d| CompilerOptionsSource {
+      specifier: d.specifier.clone(),
+      compiler_options: d
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
+    });
+    let member = CompilerOptionsSource {
+      specifier: deno_json.member.specifier.clone(),
+      compiler_options: deno_json
+        .member
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
+    };
+    root.into_iter().chain([member]).collect()
   }
 
   /// Gets the combined compiler options that the user provided, without any of
@@ -3019,7 +3164,7 @@ pub mod test {
         .to_resolved_compiler_options(
           &sys,
           CompilerOptionsType::Check {
-            lib: deno_json::TsTypeLib::DenoWindow
+            lib: TsTypeLib::DenoWindow
           }
         )
         .unwrap(),

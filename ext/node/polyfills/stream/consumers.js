@@ -1,15 +1,31 @@
 // deno-lint-ignore-file
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 import { Blob } from "ext:deno_web/09_file.js";
 import { Buffer } from "node:buffer";
-"use strict";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_STATE,
+} from "ext:deno_node/internal/errors.ts";
 
 const {
+  ArrayBufferIsView,
   JSONParse,
 } = primordials;
+
+function validateStreamIterator(stream) {
+  try {
+    return stream[Symbol.asyncIterator]();
+  } catch (e) {
+    if (e instanceof TypeError && e.message === "ReadableStream is locked") {
+      throw new ERR_INVALID_STATE(e.message);
+    } else {
+      throw e;
+    }
+  }
+}
 
 /**
  * @typedef {import('../internal/webstreams/readablestream').ReadableStream
@@ -23,7 +39,8 @@ const {
  */
 async function blob(stream) {
   const chunks = [];
-  for await (const chunk of stream) {
+  const iter = validateStreamIterator(stream);
+  for await (const chunk of iter) {
     chunks.push(chunk);
   }
   return new Blob(chunks);
@@ -53,10 +70,18 @@ async function buffer(stream) {
 async function text(stream) {
   const dec = new TextDecoder();
   let str = "";
-  for await (const chunk of stream) {
+  const iter = validateStreamIterator(stream);
+  for await (const chunk of iter) {
     if (typeof chunk === "string") {
       str += chunk;
     } else {
+      if (!core.isAnyArrayBuffer(chunk) && !ArrayBufferIsView(chunk)) {
+        throw new ERR_INVALID_ARG_TYPE("input", [
+          "SharedArrayBuffer",
+          "ArrayBuffer",
+          "ArrayBufferView",
+        ], chunk);
+      }
       str += dec.decode(chunk, { stream: true });
     }
   }

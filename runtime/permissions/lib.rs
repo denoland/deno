@@ -19,6 +19,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
+use ipnetwork::IpNetwork;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::de;
@@ -825,14 +826,13 @@ pub enum SubdomainWildcards {
   Disabled,
 }
 
-pub type UnstableSubdomainWildcards = SubdomainWildcards;
-
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
   Fqdn(FQDN),
   FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
+  IpSubnet(IpNetwork),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -881,6 +881,8 @@ impl Host {
         ));
       }
       Ok(Host::Ip(ip))
+    } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
+      Ok(Host::IpSubnet(ip_subnet))
     } else {
       let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
         Cow::Borrowed(s)
@@ -971,6 +973,7 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
       _ => false,
     }
   }
@@ -989,6 +992,12 @@ impl QueryDescriptor for NetDescriptor {
 
   fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
     false
+  }
+}
+
+impl NetDescriptor {
+  pub fn into_import(self) -> ImportDescriptor {
+    ImportDescriptor(self)
   }
 }
 
@@ -1031,9 +1040,8 @@ impl NetDescriptor {
 
   pub fn parse_for_list(
     hostname: &str,
-    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
-    Self::parse_inner(hostname, unstable_subdomain_wildcards)
+    Self::parse_inner(hostname, SubdomainWildcards::Enabled)
   }
 
   fn parse_inner(
@@ -1151,6 +1159,7 @@ impl fmt::Display for NetDescriptor {
     match &self.0 {
       Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
       Host::FqdnWithSubdomainWildcard(fqdn) => write!(f, "*.{fqdn}"),
+      Host::IpSubnet(ip_subnet) => write!(f, "{ip_subnet}"),
       Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
@@ -1222,12 +1231,8 @@ impl QueryDescriptor for ImportDescriptor {
 impl ImportDescriptor {
   pub fn parse_for_list(
     specifier: &str,
-    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
   ) -> Result<Self, NetDescriptorParseError> {
-    Ok(ImportDescriptor(NetDescriptor::parse_for_list(
-      specifier,
-      unstable_subdomain_wildcards,
-    )?))
+    Ok(ImportDescriptor(NetDescriptor::parse_for_list(specifier)?))
   }
 
   pub fn from_url(url: &Url) -> Result<Self, NetDescriptorFromUrlParseError> {
@@ -2188,6 +2193,7 @@ pub struct PermissionsOptions {
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub allow_import: Option<Vec<String>>,
+  pub deny_import: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -2379,7 +2385,9 @@ impl Permissions {
         parse_maybe_vec(opts.allow_import.as_deref(), |item| {
           parser.parse_import_descriptor(item)
         })?,
-        None,
+        parse_maybe_vec(opts.deny_import.as_deref(), |item| {
+          parser.parse_import_descriptor(item)
+        })?,
         opts.prompt,
       ),
       all: Permissions::new_all(opts.allow_all),
@@ -3266,6 +3274,29 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn query_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let inner = self.inner.lock();
+    let permission = &inner.import;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
+    Ok(
+      permission.query(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // revoke
 
   #[inline(always)]
@@ -3376,6 +3407,24 @@ impl PermissionsContainer {
     )
   }
 
+  #[inline(always)]
+  pub fn revoke_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.revoke(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
   // request
 
   #[inline(always)]
@@ -3482,6 +3531,24 @@ impl PermissionsContainer {
           })
           .transpose()?
           .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_import(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    Ok(
+      self.inner.lock().import.request(
+        match host {
+          None => None,
+          Some(h) => {
+            Some(self.descriptor_parser.parse_net_query(h)?.into_import())
+          }
+        }
+        .as_ref(),
       ),
     )
   }
@@ -3907,17 +3974,14 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<NetDescriptor, NetDescriptorParseError> {
-      NetDescriptor::parse_for_list(text, UnstableSubdomainWildcards::Enabled)
+      NetDescriptor::parse_for_list(text)
     }
 
     fn parse_import_descriptor(
       &self,
       text: &str,
     ) -> Result<ImportDescriptor, NetDescriptorParseError> {
-      ImportDescriptor::parse_for_list(
-        text,
-        UnstableSubdomainWildcards::Enabled,
-      )
+      ImportDescriptor::parse_for_list(text)
     }
 
     fn parse_env_descriptor(
@@ -4367,6 +4431,7 @@ mod tests {
         deny_env: Some(svec!["HOME"]),
         deny_sys: Some(svec!["hostname"]),
         deny_run: Some(svec!["deno"]),
+        deny_import: Some(svec!["example.com:443"]),
         ..Default::default()
       },
     )
@@ -4388,6 +4453,8 @@ mod tests {
         deny_sys: Some(svec!["hostname"]),
         allow_run: Some(vec![]),
         deny_run: Some(svec!["deno"]),
+        allow_import: Some(vec![]),
+        deny_import: Some(svec!["example.com:443"]),
         ..Default::default()
       },
     )
@@ -4480,6 +4547,11 @@ mod tests {
       assert_eq!(perms4.run.query(None), PermissionState::GrantedPartial);
       assert_eq!(perms4.run.query(Some(&deno_run_query)), PermissionState::Denied);
       assert_eq!(perms4.run.query(Some(&node_run_query)), PermissionState::Granted);
+      assert_eq!(perms3.import.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("example.com"), Some(443))))), PermissionState::Denied);
+      assert_eq!(perms4.import.query(None), PermissionState::GrantedPartial);
+      assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("example.com"), Some(443))))), PermissionState::Denied);
+      assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("deno.land"), Some(443))))), PermissionState::Granted);
     };
   }
 
@@ -5003,6 +5075,31 @@ mod tests {
   }
 
   #[test]
+  fn test_net_ip_subnet() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["10.0.0.0/24"]),
+        deny_net: Some(svec!["192.168.1.0/24", "172.16.0.0/12"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let cases = [
+      ("10.0.0.1", true),
+      ("192.168.1.1", false),
+      ("172.16.0.1", false),
+    ];
+
+    for (host, is_ok) in cases {
+      assert_eq!(perms.check_net(&(host, None), "api").is_ok(), is_ok);
+    }
+  }
+
+  #[test]
   fn test_deserialize_child_permissions_arg() {
     set_prompter(Box::new(TestPrompter));
     assert_eq!(
@@ -5169,11 +5266,9 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([NetDescriptor::parse_for_list(
-            "foo",
-            UnstableSubdomainWildcards::Enabled
-          )
-          .unwrap()])),
+          Some(HashSet::from([
+            NetDescriptor::parse_for_list("foo").unwrap()
+          ])),
           None,
           false
         ),
@@ -5496,11 +5591,7 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(
-        NetDescriptor::parse_for_list(
-          input,
-          UnstableSubdomainWildcards::Enabled
-        )
-        .ok(),
+        NetDescriptor::parse_for_list(input).ok(),
         *expected,
         "'{input}'"
       );

@@ -2,19 +2,29 @@
 
 mod esbuild;
 mod externals;
+mod transform;
 
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::time::Duration;
 
+use deno_ast::EmitOptions;
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json::TsTypeLib;
+use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::RequestedModuleType;
 use deno_error::JsError;
-use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
@@ -26,7 +36,6 @@ use esbuild_client::protocol::BuildResponse;
 use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
-use esbuild_client::ProtocolClient;
 use indexmap::IndexMap;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
@@ -44,7 +53,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
-use crate::module_loader::EnhancedGraphError;
 use crate::module_loader::LoadCodeSourceError;
 use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::LoadPreparedModuleError;
@@ -55,6 +63,10 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
+use crate::util::file_watcher::WatcherRestartMode;
+
+static DISABLE_HACK: LazyLock<bool> =
+  LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
 pub async fn bundle(
   mut flags: Arc<Flags>,
@@ -64,7 +76,7 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
 
   let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
 
@@ -83,6 +95,7 @@ pub async fn bundle(
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
 
+  let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
     resolver: resolver.clone(),
@@ -95,11 +108,12 @@ pub async fn bundle(
     } else {
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
+    on_end_tx,
   });
   let start = std::time::Instant::now();
 
   let resolved_entrypoints =
-    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints);
+    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
     .await;
@@ -112,6 +126,7 @@ pub async fn bundle(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
     plugin_handler.clone(),
+    Default::default(),
   )
   .await
   .unwrap();
@@ -122,31 +137,35 @@ pub async fn bundle(
     log::warn!("esbuild exited: {:?}", res);
   });
 
-  let response =
-    execute_esbuild_req(client, &bundle_flags, &init_cwd, roots).await;
+  let esbuild_flags = configure_esbuild_flags(&bundle_flags);
+  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let bundler = EsbuildBundler::new(
+    client,
+    plugin_handler.clone(),
+    match bundle_flags.watch {
+      true => BundlingMode::Watch,
+      false => BundlingMode::OneShot,
+    },
+    on_end_rx,
+    init_cwd.clone(),
+    esbuild_flags,
+    entries,
+  );
+  let response = bundler.build().await?;
+
+  if bundle_flags.watch {
+    return bundle_watch(flags, bundler).await;
+  }
+
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
-  if let Some(stdout) = response.write_to_stdout {
-    let stdout = replace_require_shim(&String::from_utf8_lossy(&stdout));
-    crate::display::write_to_stdout_ignore_sigpipe(stdout.as_bytes())?;
-  } else if response.errors.is_empty() {
-    if bundle_flags.output_dir.is_none()
-      && std::env::var("NO_DENO_BUNDLE_HACK").is_err()
-      && bundle_flags.output_path.is_some()
-    {
-      let out = bundle_flags.output_path.as_ref().unwrap();
-      let contents = std::fs::read_to_string(out).unwrap();
-      let contents = replace_require_shim(&contents);
-      std::fs::write(out, contents).unwrap();
-    }
+  if response.errors.is_empty() {
+    let metafile = metafile_from_response(&response)?;
+    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
 
-    log::info!(
-      "{}",
-      deno_terminal::colors::green(format!(
-        "bundled in {}",
-        crate::display::human_elapsed(start.elapsed().as_millis()),
-      ))
-    );
+    if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
+      print_finished_message(&metafile, &output_infos, start.elapsed())?;
+    }
   }
 
   if !response.errors.is_empty() {
@@ -154,6 +173,190 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+fn metafile_from_response(
+  response: &BuildResponse,
+) -> Result<esbuild_client::Metafile, AnyError> {
+  Ok(serde_json::from_str::<esbuild_client::Metafile>(
+    response.metafile.as_deref().ok_or_else(|| {
+      deno_core::anyhow::anyhow!("expected a metafile to be present")
+    })?,
+  )?)
+}
+
+async fn bundle_watch(
+  flags: Arc<Flags>,
+  bundler: EsbuildBundler,
+) -> Result<(), AnyError> {
+  let initial_roots = bundler
+    .roots
+    .iter()
+    .filter_map(|(_, root)| {
+      let url = Url::parse(root).ok()?;
+      deno_path_util::url_to_file_path(&url).ok()
+    })
+    .collect::<Vec<_>>();
+  let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
+  let mut print_config =
+    crate::util::file_watcher::PrintConfig::new_with_banner(
+      "Watcher", "Bundle", true,
+    );
+  print_config.print_finished = false;
+  crate::util::file_watcher::watch_recv(
+    flags,
+    print_config,
+    WatcherRestartMode::Automatic,
+    move |_flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
+      let bundler = Rc::clone(&bundler);
+      let current_roots = current_roots.clone();
+      Ok(async move {
+        let mut bundler = bundler.lock().await;
+        let start = std::time::Instant::now();
+        if let Some(changed_paths) = changed_paths {
+          bundler
+            .plugin_handler
+            .reload_specifiers(&changed_paths)
+            .await?;
+        }
+        let response = bundler.rebuild().await?;
+        handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
+        if response.errors.is_empty() {
+          let metafile = metafile_from_response(&response)?;
+          let output_infos =
+            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+          print_finished_message(&metafile, &output_infos, start.elapsed())?;
+
+          let new_watched = get_input_paths_for_watch(&response);
+          *current_roots.borrow_mut() = new_watched.clone();
+          let _ = watcher_communicator.watch_paths(new_watched);
+        } else {
+          let _ =
+            watcher_communicator.watch_paths(current_roots.borrow().clone());
+        }
+
+        Ok(())
+      })
+    },
+  )
+  .boxed_local()
+  .await?;
+
+  Ok(())
+}
+
+fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
+  let metafile = serde_json::from_str::<esbuild_client::Metafile>(
+    response
+      .metafile
+      .as_deref()
+      .expect("metafile is required for watch mode"),
+  )
+  .unwrap();
+  let inputs = metafile
+    .inputs
+    .keys()
+    .cloned()
+    .map(PathBuf::from)
+    .collect::<Vec<_>>();
+  inputs
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BundlingMode {
+  OneShot,
+  Watch,
+}
+
+pub struct EsbuildBundler {
+  client: esbuild_client::ProtocolClient,
+  plugin_handler: Arc<DenoPluginHandler>,
+  on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+  mode: BundlingMode,
+  cwd: PathBuf,
+  flags: EsbuildFlags,
+  roots: Vec<(String, String)>,
+}
+
+impl EsbuildBundler {
+  pub fn new(
+    client: esbuild_client::ProtocolClient,
+    plugin_handler: Arc<DenoPluginHandler>,
+    mode: BundlingMode,
+    on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
+    cwd: PathBuf,
+    flags: EsbuildFlags,
+    roots: Vec<(String, String)>,
+  ) -> EsbuildBundler {
+    EsbuildBundler {
+      client,
+      plugin_handler,
+      on_end_rx,
+      mode,
+      cwd,
+      flags,
+      roots,
+    }
+  }
+
+  // When doing a watch build, we're actually enabling the
+  // "context" mode of esbuild. That leaves esbuild running and
+  // waits for a rebuild to be triggered. The initial build request
+  // doesn't actually do anything, it's just registering the args/flags
+  // we're going to use for all of the rebuilds.
+  fn make_build_request(&self) -> protocol::BuildRequest {
+    protocol::BuildRequest {
+      entries: self.roots.clone(),
+      key: 0,
+      flags: self.flags.to_flags(),
+      write: false,
+      stdin_contents: None.into(),
+      stdin_resolve_dir: None.into(),
+      abs_working_dir: self.cwd.to_string_lossy().to_string(),
+      context: matches!(self.mode, BundlingMode::Watch),
+      mangle_cache: None,
+      node_paths: vec![],
+      plugins: Some(vec![protocol::BuildPlugin {
+        name: "deno".into(),
+        on_start: false,
+        on_end: matches!(self.mode, BundlingMode::Watch),
+        on_resolve: (vec![protocol::OnResolveSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }]),
+        on_load: vec![protocol::OnLoadSetupOptions {
+          id: 0,
+          filter: ".*".into(),
+          namespace: "".into(),
+        }],
+      }]),
+    }
+  }
+
+  async fn build(&self) -> Result<BuildResponse, AnyError> {
+    let response = self
+      .client
+      .send_build_request(self.make_build_request())
+      .await
+      .unwrap();
+    Ok(response)
+  }
+
+  async fn rebuild(&mut self) -> Result<BuildResponse, AnyError> {
+    match self.mode {
+      BundlingMode::OneShot => {
+        panic!("rebuild not supported for one-shot mode")
+      }
+      BundlingMode::Watch => {
+        let _response = self.client.send_rebuild_request(0).await.unwrap();
+        let response = self.on_end_rx.recv().await.unwrap();
+        Ok(response.into())
+      }
+    }
+  }
 }
 
 // TODO(nathanwhit): MASSIVE HACK
@@ -244,18 +447,21 @@ fn requested_type_from_map(
   let type_ = map.get("type").map(|s| s.as_str());
   match type_ {
     Some("json") => RequestedModuleType::Json,
+    Some("bytes") => RequestedModuleType::Bytes,
+    Some("text") => RequestedModuleType::Text,
     Some(other) => RequestedModuleType::Other(other.to_string().into()),
     None => RequestedModuleType::None,
   }
 }
 
-struct DenoPluginHandler {
+pub struct DenoPluginHandler {
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
   module_loader: CliModuleLoader<MainModuleGraphContainer>,
   externals_matcher: Option<ExternalsMatcher>,
+  on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -334,7 +540,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     let result = self
-      .bundle_load(&args.path, requested_type_from_map(&args.with))
+      .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
     let result = match result {
       Ok(r) => r,
@@ -384,6 +590,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
+    log::debug!("{}: {_args:?}", deno_terminal::colors::magenta("on_end"));
+    self.on_end_tx.send(_args).await?;
     Ok(None)
   }
 }
@@ -417,6 +625,15 @@ pub enum BundleLoadError {
   #[class(generic)]
   #[error("Wasm modules are not implemented in deno bundle.")]
   WasmUnsupported,
+  #[class(generic)]
+  #[error("UTF-8 conversion error")]
+  Utf8(#[from] std::str::Utf8Error),
+  #[class(generic)]
+  #[error("Parse error")]
+  Parse(#[from] deno_ast::ParseDiagnostic),
+  #[class(generic)]
+  #[error("Emit error")]
+  Emit(#[from] deno_ast::EmitError),
 }
 
 impl BundleLoadError {
@@ -428,11 +645,8 @@ impl BundleLoadError {
         LoadCodeSourceErrorKind::LoadPreparedModule(
           LoadPreparedModuleError::Graph(ref e),
         ) => matches!(
-          &**e,
-          EnhancedGraphError {
-            error: ModuleError::UnsupportedMediaType { .. },
-            ..
-          }
+          e.error.as_kind(),
+          ModuleErrorKind::UnsupportedMediaType { .. },
         ),
         _ => false,
       },
@@ -442,6 +656,25 @@ impl BundleLoadError {
 }
 
 impl DenoPluginHandler {
+  async fn reload_specifiers(
+    &self,
+    specifiers: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
+    for specifier in specifiers {
+      let specifier = deno_path_util::url_from_file_path(specifier)?;
+      specifiers_vec.push(specifier);
+    }
+    self
+      .module_load_preparer
+      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
+      .await?;
+    graph_permit.commit();
+    Ok(())
+  }
   fn bundle_resolve(
     &self,
     path: &str,
@@ -546,7 +779,7 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    requested_type: RequestedModuleType,
+    requested_type: &RequestedModuleType,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
   {
     log::debug!(
@@ -560,59 +793,142 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
-    let (specifier, loader) = if let Some((specifier, loader)) =
-      self.specifier_and_type_from_graph(&specifier)?
-    {
-      (specifier, loader)
-    } else {
-      log::debug!(
-        "{}: no specifier and type from graph for {}",
-        deno_terminal::colors::yellow("warn"),
-        specifier
-      );
-
-      if specifier.scheme() == "data" {
-        return Ok(Some((
-          specifier.to_string().as_bytes().to_vec(),
-          esbuild_client::BuiltinLoader::DataUrl,
-        )));
-      }
-
-      let (media_type, _) =
-        deno_media_type::resolve_media_type_and_charset_from_content_type(
-          &specifier, None,
+    let (specifier, media_type, loader) =
+      if let RequestedModuleType::Bytes = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Binary,
+        )
+      } else if let RequestedModuleType::Text = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Text,
+        )
+      } else if let Some((specifier, media_type, loader)) =
+        self.specifier_and_type_from_graph(&specifier)?
+      {
+        (specifier, media_type, loader)
+      } else {
+        log::debug!(
+          "{}: no specifier and type from graph for {}",
+          deno_terminal::colors::yellow("warn"),
+          specifier
         );
-      if media_type == deno_media_type::MediaType::Unknown {
-        return Ok(None);
-      }
-      (specifier, media_type_to_loader(media_type))
-    };
+
+        if specifier.scheme() == "data" {
+          return Ok(Some((
+            specifier.to_string().as_bytes().to_vec(),
+            esbuild_client::BuiltinLoader::DataUrl,
+          )));
+        }
+
+        let (media_type, _) =
+          deno_media_type::resolve_media_type_and_charset_from_content_type(
+            &specifier, None,
+          );
+        if media_type == deno_media_type::MediaType::Unknown {
+          return Ok(None);
+        }
+        (specifier, media_type, media_type_to_loader(media_type))
+      };
     let loaded = self
       .module_loader
       .load_module_source(&specifier, None, requested_type)
       .await?;
 
-    Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
+    if matches!(
+      media_type,
+      MediaType::JavaScript
+        | MediaType::TypeScript
+        | MediaType::Mjs
+        | MediaType::Mts
+        | MediaType::Cjs
+        | MediaType::Cts
+        | MediaType::Jsx
+        | MediaType::Tsx
+    ) && !self
+      .module_graph_container
+      .graph()
+      .roots
+      .contains(&specifier)
+    {
+      let code = self.apply_transform(
+        &specifier,
+        media_type,
+        std::str::from_utf8(loaded.code.as_bytes())?,
+      )?;
+      Ok(Some((code.into_bytes(), loader)))
+    } else {
+      Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
+    }
+  }
+
+  fn apply_transform(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: deno_ast::MediaType,
+    code: &str,
+  ) -> Result<String, BundleLoadError> {
+    let mut transform = transform::BundleImportMetaMainTransform::new(
+      self
+        .module_graph_container
+        .graph()
+        .roots
+        .contains(specifier),
+    );
+    let parsed_source = deno_ast::parse_program_with_post_process(
+      deno_ast::ParseParams {
+        specifier: specifier.clone(),
+        text: code.into(),
+        media_type,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+      },
+      |mut program, _| {
+        use deno_ast::swc::ecma_visit::VisitMut;
+        transform.visit_mut_program(&mut program);
+        program
+      },
+    )?;
+    let code = deno_ast::emit(
+      parsed_source.program_ref(),
+      &parsed_source.comments().as_single_threaded(),
+      &deno_ast::SourceMap::default(),
+      &EmitOptions {
+        source_map: deno_ast::SourceMapOption::None,
+        ..Default::default()
+      },
+    )?;
+    Ok(code.text)
   }
 
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<
-    Option<(ModuleSpecifier, esbuild_client::BuiltinLoader)>,
+    Option<(
+      ModuleSpecifier,
+      deno_ast::MediaType,
+      esbuild_client::BuiltinLoader,
+    )>,
     BundleLoadError,
   > {
     let graph = self.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
       return Ok(None);
     };
-    let (specifier, loader) = match module {
+    let (specifier, media_type, loader) = match module {
       deno_graph::Module::Js(js_module) => (
         js_module.specifier.clone(),
+        js_module.media_type,
         media_type_to_loader(js_module.media_type),
       ),
       deno_graph::Module::Json(json_module) => (
         json_module.specifier.clone(),
+        deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => {
@@ -629,7 +945,7 @@ impl DenoPluginHandler {
           deno_media_type::resolve_media_type_and_charset_from_content_type(
             &url, None,
           );
-        (url, media_type_to_loader(media_type))
+        (url, media_type, media_type_to_loader(media_type))
       }
       deno_graph::Module::Node(_) => {
         return Ok(None);
@@ -638,7 +954,7 @@ impl DenoPluginHandler {
         return Ok(None);
       }
     };
-    Ok(Some((specifier, loader)))
+    Ok(Some((specifier, media_type, loader)))
   }
 }
 
@@ -675,33 +991,45 @@ fn media_type_to_loader(
   }
 }
 
+fn resolve_url_or_path_absolute(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<Url, AnyError> {
+  if deno_path_util::specifier_has_uri_scheme(specifier) {
+    Ok(Url::parse(specifier)?)
+  } else {
+    let path = current_dir.join(specifier);
+    let path = deno_path_util::normalize_path(&path);
+    let path = path.canonicalize()?;
+    Ok(deno_path_util::url_from_file_path(&path)?)
+  }
+}
+
 fn resolve_entrypoints(
   resolver: &CliResolver,
   init_cwd: &Path,
   entrypoints: &[String],
-) -> Vec<Url> {
+) -> Result<Vec<Url>, AnyError> {
   let entrypoints = entrypoints
     .iter()
-    .map(|e| resolve_url_or_path(e, init_cwd).unwrap())
-    .collect::<Vec<_>>();
+    .map(|e| resolve_url_or_path_absolute(e, init_cwd))
+    .collect::<Result<Vec<_>, _>>()?;
 
   let init_cwd_url = Url::from_directory_path(init_cwd).unwrap();
 
   let mut resolved = Vec::with_capacity(entrypoints.len());
 
   for e in &entrypoints {
-    let r = resolver
-      .resolve(
-        e.as_str(),
-        &init_cwd_url,
-        Position::new(0, 0),
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .unwrap();
+    let r = resolver.resolve(
+      e.as_str(),
+      &init_cwd_url,
+      Position::new(0, 0),
+      ResolutionMode::Import,
+      NodeResolutionKind::Execution,
+    )?;
     resolved.push(r);
   }
-  resolved
+  Ok(resolved)
 }
 
 fn resolve_roots(
@@ -761,7 +1089,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
-    .bundle(bundle_flags.one_file)
+    .bundle(bundle_flags.inline_imports)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
@@ -789,6 +1117,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
   }
+  builder.metafile(true);
 
   match bundle_flags.platform {
     crate::args::BundlePlatform::Browser => {
@@ -798,46 +1127,6 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   }
 
   builder.build().unwrap()
-}
-
-async fn execute_esbuild_req(
-  client: ProtocolClient,
-  bundle_flags: &BundleFlags,
-  init_cwd: &Path,
-  roots: Vec<Url>,
-) -> BuildResponse {
-  let flags = configure_esbuild_flags(bundle_flags);
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
-
-  let msg = protocol::BuildRequest {
-    entries,
-    key: 0,
-    flags: flags.to_flags(),
-    write: true,
-    stdin_contents: None.into(),
-    stdin_resolve_dir: None.into(),
-    abs_working_dir: init_cwd.to_string_lossy().to_string(),
-    context: false,
-    mangle_cache: None,
-    node_paths: vec![],
-    plugins: Some(vec![protocol::BuildPlugin {
-      name: "deno".into(),
-      on_start: false,
-      on_end: false,
-      on_resolve: (vec![protocol::OnResolveSetupOptions {
-        id: 0,
-        filter: ".*".into(),
-        namespace: "".into(),
-      }]),
-      on_load: vec![protocol::OnLoadSetupOptions {
-        id: 0,
-        filter: ".*".into(),
-        namespace: "".into(),
-      }],
-    }]),
-  };
-
-  client.send_build_request(msg).await.unwrap()
 }
 
 fn handle_esbuild_errors_and_warnings(
@@ -859,4 +1148,118 @@ fn handle_esbuild_errors_and_warnings(
       format_message(warning, init_cwd)
     );
   }
+}
+
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
+struct OutputFileInfo {
+  relative_path: PathBuf,
+  size: usize,
+  is_js: bool,
+}
+fn process_result(
+  response: &BuildResponse,
+  cwd: &Path,
+  should_replace_require_shim: bool,
+) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let mut exists_cache = std::collections::HashSet::new();
+  let output_files = response
+    .output_files
+    .as_ref()
+    .map(Cow::Borrowed)
+    .unwrap_or_default();
+  let mut output_infos = Vec::new();
+  for file in output_files.iter() {
+    let path = Path::new(&file.path);
+    let relative_path =
+      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
+    let is_js = is_js(path);
+    let bytes = if is_js || file.path.ends_with("<stdout>") {
+      let string = String::from_utf8(file.contents.clone())?;
+      let string = if should_replace_require_shim {
+        replace_require_shim(&string)
+      } else {
+        string
+      };
+      Cow::Owned(string.into_bytes())
+    } else {
+      Cow::Borrowed(&file.contents)
+    };
+
+    if file.path.ends_with("<stdout>") {
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      continue;
+    }
+
+    if let Some(parent) = path.parent() {
+      if !exists_cache.contains(parent) {
+        if !parent.exists() {
+          std::fs::create_dir_all(parent)?;
+        }
+        exists_cache.insert(parent.to_path_buf());
+      }
+    }
+
+    output_infos.push(OutputFileInfo {
+      relative_path,
+      size: bytes.len(),
+      is_js,
+    });
+
+    std::fs::write(path, bytes.as_ref())?;
+  }
+  Ok(output_infos)
+}
+
+fn print_finished_message(
+  metafile: &esbuild_client::Metafile,
+  output_infos: &[OutputFileInfo],
+  duration: Duration,
+) -> Result<(), AnyError> {
+  let mut output = String::new();
+  output.push_str(&format!(
+    "{} {} module{} in {}",
+    deno_terminal::colors::green("Bundled"),
+    metafile.inputs.len(),
+    if metafile.inputs.len() == 1 { "" } else { "s" },
+    crate::display::human_elapsed(duration.as_millis()),
+  ));
+
+  let longest = output_infos
+    .iter()
+    .map(|info| info.relative_path.to_string_lossy().len())
+    .max()
+    .unwrap_or(0);
+  for info in output_infos {
+    output.push_str(&format!(
+      "\n  {} {}",
+      if info.is_js {
+        deno_terminal::colors::cyan(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      } else {
+        deno_terminal::colors::magenta(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      },
+      deno_terminal::colors::gray(
+        crate::display::human_size(info.size as f64,)
+      )
+    ));
+  }
+  output.push('\n');
+  log::info!("{}", output);
+
+  Ok(())
 }

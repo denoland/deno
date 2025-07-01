@@ -1154,7 +1154,7 @@ function _base64Slice(buf, start, end) {
     return forgivingBase64Encode(buf.slice(start, end));
   }
 }
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 function _utf8Slice(buf, start, end) {
   try {

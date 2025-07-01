@@ -33,6 +33,7 @@ use deno_graph::analysis::SpecifierWithRange;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -43,7 +44,6 @@ use regex::Regex;
 use tokio::sync::Mutex;
 
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
@@ -194,7 +194,7 @@ impl ReplSession {
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     resolver: Arc<CliResolver>,
-    tsconfig_resolver: &CliTsConfigResolver,
+    compiler_options_resolver: &CompilerOptionsResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -250,8 +250,9 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let experimental_decorators = tsconfig_resolver
-      .transpile_and_emit_options(&cwd_url)?
+    let experimental_decorators = compiler_options_resolver
+      .for_specifier(&cwd_url)
+      .transpile_options()?
       .transpile
       .use_ts_decorators;
     let mut repl_session = ReplSession {

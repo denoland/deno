@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -355,6 +356,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           ignore_graph_errors: true,
+          allow_unknown_jsr_exports: false,
         },
       )?;
 
@@ -1796,7 +1798,10 @@ impl Inner {
             });
             format_file(
               &file_path,
-              &document.text(),
+              &crate::tools::fmt::FileContents {
+                text: Cow::Borrowed(document.text().as_ref()),
+                had_bom: false,
+              },
               &fmt_options,
               &unstable_options,
               ext,

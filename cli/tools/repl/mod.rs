@@ -176,7 +176,7 @@ pub async fn run(
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -188,6 +188,8 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
@@ -200,7 +202,7 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,

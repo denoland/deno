@@ -4,6 +4,8 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
 
+use base64::prelude::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
@@ -42,9 +44,18 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub enum CaData {
   /// The string is a file path
   File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
+  /// The string holds the actual certificate
   Bytes(Vec<u8>),
+}
+
+impl CaData {
+  pub fn parse(input: String) -> Option<Self> {
+    if let Some(x) = input.strip_prefix("base64:") {
+      Some(CaData::Bytes(BASE64_STANDARD.decode(x).ok()?))
+    } else {
+      Some(CaData::File(input))
+    }
+  }
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
@@ -114,8 +125,8 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_data =
-    maybe_ca_data.or_else(|| std::env::var("DENO_CERT").ok().map(CaData::File));
+  let ca_data = maybe_ca_data
+    .or_else(|| std::env::var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {
@@ -190,10 +201,10 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub subdomain_wildcards: bool,
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
+  pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
@@ -208,10 +219,6 @@ impl UnstableConfig {
     }
 
     maybe_set(
-      &mut self.subdomain_wildcards,
-      UNSTABLE_ENV_VAR_NAMES.subdomain_wildcards,
-    );
-    maybe_set(
       &mut self.bare_node_builtins,
       UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
     );
@@ -223,9 +230,16 @@ impl UnstableConfig {
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
+    maybe_set(&mut self.raw_imports, UNSTABLE_ENV_VAR_NAMES.raw_imports);
     maybe_set(
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
+  }
+
+  pub fn enable_node_compat(&mut self) {
+    self.bare_node_builtins = true;
+    self.sloppy_imports = true;
+    self.detect_cjs = true;
   }
 }
