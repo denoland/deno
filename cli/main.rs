@@ -54,6 +54,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
+use regex::Regex;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
@@ -257,7 +258,7 @@ async fn run_subcommand(
               }
             }
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
+            if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
@@ -373,6 +374,28 @@ async fn run_subcommand(
   };
 
   handle.await?
+}
+
+/// Determines whether a error encountered during `deno run`
+/// should trigger fallback behavior, such as attempting to run a Deno task
+/// with the same name.
+///
+/// Checks if the error message indicates a "module not found",
+/// "unsupported scheme", or certain OS-level import failures (such as
+/// "Is a directory" or "Access is denied"); if so, Deno will attempt to
+/// interpret the original argument as a script name or task instead of a
+/// file path.
+///
+/// See: https://github.com/denoland/deno/issues/28878
+fn should_fallback_on_run_error(script_err: &str) -> bool {
+  if script_err.starts_with(MODULE_NOT_FOUND)
+    || script_err.starts_with(UNSUPPORTED_SCHEME)
+  {
+    return true;
+  }
+  let pattern = r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)";
+  let re = Regex::new(pattern).unwrap();
+  re.is_match(script_err)
 }
 
 #[allow(clippy::print_stderr)]
