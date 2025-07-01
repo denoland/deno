@@ -92,6 +92,8 @@ async fn do_serve(
     .create_main_worker_with_unconfigured_runtime(
       deno_runtime::WorkerExecutionMode::ServeMain { worker_count },
       main_module.clone(),
+      // TODO(bartlomieju):
+      vec![],
       unconfigured_runtime,
     )
     .await?;
@@ -145,6 +147,8 @@ async fn run_worker(
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::ServeWorker { worker_index },
       main_module,
+      // TODO(bartlomieju):
+      vec![],
     )
     .await?;
   if hmr {

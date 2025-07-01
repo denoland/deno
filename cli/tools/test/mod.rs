@@ -650,6 +650,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
+  preload_modules: Vec<Url>,
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
@@ -662,6 +663,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
+      preload_modules,
       permissions_container,
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
@@ -683,20 +685,24 @@ async fn configure_main_worker(
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
-  let res = worker.execute_side_module().await;
-  let worker = worker.into_main_worker();
-  match res {
+
+  let op_state = worker.op_state();
+
+  let check_res = |res| match res {
     Ok(()) => Ok(()),
-    Err(CoreError::Js(err)) => {
-      send_test_event(
-        &worker.js_runtime.op_state(),
-        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-      )
-      .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e)))?;
-      Ok(())
-    }
+    Err(CoreError::Js(err)) => send_test_event(
+      &op_state,
+      TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+    )
+    .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e))),
     Err(err) => Err(err),
-  }?;
+  };
+
+  check_res(worker.execute_preload_modules().await)?;
+  check_res(worker.execute_side_module().await)?;
+
+  let worker = worker.into_main_worker();
+
   Ok((coverage_collector, worker))
 }
 
@@ -706,6 +712,7 @@ pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
+  preload_modules: Vec<ModuleSpecifier>,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
@@ -717,6 +724,7 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
+    preload_modules,
     permissions_container,
     worker_sender,
     &options,
@@ -1254,6 +1262,7 @@ async fn test_specifiers(
   permissions: &Permissions,
   permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
+  preload_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
@@ -1284,6 +1293,7 @@ async fn test_specifiers(
       permission_desc_parser.clone(),
       permissions.clone(),
     );
+    let preload_modules = preload_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
@@ -1292,6 +1302,7 @@ async fn test_specifiers(
         worker_factory,
         permissions_container,
         specifier,
+        preload_modules,
         worker_sender,
         fail_fast_tracker,
         specifier_options,
@@ -1655,6 +1666,7 @@ pub async fn run_tests(
 
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
+  let preload_modules = cli_options.preload_modules()?;
 
   // Run tests
   test_specifiers(
@@ -1662,6 +1674,7 @@ pub async fn run_tests(
     &permissions,
     permission_desc_parser,
     specifiers_for_typecheck_and_test,
+    preload_modules,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1865,12 +1878,14 @@ pub async fn run_tests_with_watch(
 
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
+        let preload_modules = cli_options.preload_modules()?;
 
         test_specifiers(
           worker_factory,
           &permissions,
           permission_desc_parser,
           specifiers_for_typecheck_and_test,
+          preload_modules,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
