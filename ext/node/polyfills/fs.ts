@@ -20,7 +20,6 @@ import {
 } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
-import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
 import { fchown, fchownSync } from "ext:deno_node/_fs/_fs_fchown.ts";
@@ -140,7 +139,11 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
-import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  Dirent,
+  toUnixTimestamp as _toUnixTimestamp,
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 
 const {
   F_OK,
@@ -168,6 +171,7 @@ const promises = {
   constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
+  glob: globPromise,
   open: openPromise,
   opendir: opendirPromise,
   rename: renamePromise,
@@ -235,6 +239,8 @@ export default {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
   lchmod,
   lchmodSync,
   lchown,
@@ -356,6 +362,8 @@ export {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
   lchmod,
   lchmodSync,
   link,
