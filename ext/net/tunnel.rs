@@ -52,13 +52,6 @@ pub enum Error {
   UnexpectedHeader,
   #[error("UnsupportedVersion")]
   UnsupportedVersion,
-
-  #[error("missing auth token")]
-  MissingToken,
-  #[error("missing org")]
-  MissingOrg,
-  #[error("missing app")]
-  MissingApp,
 }
 
 static TUNNEL: OnceLock<crate::tunnel::TunnelListener> = OnceLock::new();
@@ -114,6 +107,9 @@ impl TunnelListener {
     addr: std::net::SocketAddr,
     hostname: &str,
     root_cert_store: Option<RootCertStore>,
+    token: String,
+    org: String,
+    app: String,
   ) -> Result<(Self, Metadata), Error> {
     let config = quinn::EndpointConfig::default();
     let socket = std::net::UdpSocket::bind(("::", 0))?;
@@ -155,13 +151,6 @@ impl TunnelListener {
       if control.1.read_u32_le().await? != VERSION {
         return Err(Error::UnsupportedVersion);
       }
-
-      let token = std::env::var("DENO_UNSTABLE_TUNNEL_TOKEN")
-        .map_err(|_| Error::MissingToken)?;
-      let org = std::env::var("DENO_UNSTABLE_TUNNEL_ORG")
-        .map_err(|_| Error::MissingOrg)?;
-      let app = std::env::var("DENO_UNSTABLE_TUNNEL_APP")
-        .map_err(|_| Error::MissingApp)?;
 
       write_stream_header(
         &mut control.0,

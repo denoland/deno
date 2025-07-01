@@ -36,6 +36,8 @@ pub enum WorkerExecutionMode {
   },
   /// `deno jupyter`
   Jupyter,
+  /// `deno deploy`
+  Deploy,
 }
 
 impl WorkerExecutionMode {
@@ -51,6 +53,7 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::ServeMain { .. }
       | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
+      WorkerExecutionMode::Deploy => 9
     }
   }
 }
@@ -115,6 +118,7 @@ pub struct BootstrapOptions {
   pub auto_serve: bool,
   pub otel_config: OtelConfig,
   pub close_on_idle: bool,
+  pub tunnel: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -153,6 +157,7 @@ impl Default for BootstrapOptions {
       serve_host: Default::default(),
       otel_config: Default::default(),
       close_on_idle: false,
+      tunnel: false,
     }
   }
 }
@@ -202,6 +207,8 @@ struct BootstrapV8<'a>(
   bool,
   // auto serve
   bool,
+  // tunnel
+  bool,
 );
 
 impl BootstrapOptions {
@@ -235,6 +242,7 @@ impl BootstrapOptions {
       self.close_on_idle,
       self.is_standalone,
       self.auto_serve,
+      self.tunnel,
     );
 
     bootstrap.serialize(ser).unwrap()

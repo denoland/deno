@@ -1152,6 +1152,7 @@ impl CliFactory {
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+      tunnel: self.flags.connected.is_some(),
     })
   }
 

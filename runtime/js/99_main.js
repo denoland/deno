@@ -716,6 +716,11 @@ const NOT_IMPORTED_OPS = [
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
+
+  // deno deploy subcommand
+  "op_deploy_token_get",
+  "op_deploy_token_set",
+  "op_deploy_token_delete",
 ];
 
 function removeImportedOps() {
@@ -810,7 +815,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       13: otelConfig,
       15: standalone,
       16: autoServe,
+      17: tunnel,
     } = runtimeOptions;
+    Object.assign(internals, { tunnel: tunnel });
 
     denoNs.build.standalone = standalone;
 

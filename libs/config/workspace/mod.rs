@@ -35,7 +35,7 @@ use thiserror::Error;
 use url::Url;
 
 use crate::deno_json;
-use crate::deno_json::get_base_compiler_options_for_emit;
+use crate::deno_json::{get_base_compiler_options_for_emit, DeployConfig};
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompilerOptionTypesDeserializeError;
 use crate::deno_json::CompilerOptions;
@@ -1997,6 +1997,25 @@ impl WorkspaceDirectory {
     Ok(TestConfig {
       files: combine_patterns(root_config.files, member_config.files),
     })
+  }
+
+  pub fn to_deploy_config(
+    &self,
+  ) -> Result<DeployConfig, ToInvalidConfigError> {
+    let config = if let Some(deno_json) = self.deno_json.as_ref() {
+      if let Some(config) = deno_json.member.to_deploy_config()? {
+        Some(config)
+      } else {
+        match &deno_json.root {
+          Some(root) => root.to_deploy_config()?,
+          None => None,
+        }
+      }
+    } else {
+      None
+    };
+    
+    Ok(config.unwrap())
   }
 
   /// Removes any "include" patterns from the root files that have

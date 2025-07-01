@@ -346,6 +346,7 @@ pub struct LibMainWorkerOptions {
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub tunnel: bool,
 }
 
 #[derive(Default, Clone)]
@@ -487,6 +488,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           otel_config: shared.options.otel_config.clone(),
           no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
+          tunnel: shared.options.tunnel,
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
@@ -668,6 +670,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
         close_on_idle: true,
+        tunnel: shared.options.tunnel,
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,

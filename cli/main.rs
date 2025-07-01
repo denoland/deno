@@ -137,7 +137,7 @@ async fn run_subcommand(
       })
     },
     DenoSubcommand::Deploy => {
-      spawn_subcommand(async { tools::deploy::deploy(flags, roots).await })
+      spawn_subcommand(async { tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await })
     }
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
@@ -551,10 +551,8 @@ async fn resolve_flags_and_init(
 
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.
-  if let Some(host) = flags.tunnel_config() {
-    if let Err(err) =
-      initialize_tunnel(host, &flags.ca_stores, &flags.ca_data).await
-    {
+  if let Some(host) = &flags.connected {
+    if let Err(err) = initialize_tunnel(host, &flags).await {
       init_logging(None, None);
       exit_for_error(AnyError::from(err))
     }
@@ -751,13 +749,37 @@ fn wait_for_start(
   })
 }
 
+async fn auth_tunnel(
+  flags: &Flags,
+) -> Result<String, deno_core::anyhow::Error> {
+  let mut deploy_flags = flags.clone();
+  deploy_flags.subcommand = DenoSubcommand::Deploy;
+
+  deploy_flags.argv = vec!["tunnel-login".to_string()];
+
+  if let Err(err) = tools::deploy::deploy(deploy_flags).await {
+    init_logging(None, None);
+    exit_for_error(err);
+  }
+
+  Ok(keyring::Entry::new("Deno Deploy Token", "Deno Deploy")?.get_password()?)
+}
+
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
-  host: String,
-  maybe_ca_stores: &Option<Vec<String>>,
-  maybe_ca_data: &Option<deno_lib::args::CaData>,
+  host: &str,
+  flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
   use deno_lib::args::get_root_cert_store;
+
+  let token = match tools::deploy::get_token_entry()?.get_password() {
+    Ok(token) => token,
+    Err(keyring::Error::NoEntry) => auth_tunnel(flags).await?,
+    Err(e) => {
+      init_logging(None, None);
+      exit_for_error(e.into());
+    }
+  };
 
   eprintln!(
     "{}{}{}",
@@ -775,15 +797,22 @@ async fn initialize_tunnel(
 
   let root_cert_store = get_root_cert_store(
     None,
-    maybe_ca_stores.to_owned(),
-    maybe_ca_data.to_owned(),
+    flags.ca_stores.to_owned(),
+    flags.ca_data.to_owned(),
   )?;
+
+  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let cli_options = factory.cli_options()?;
+  let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
   let (tunnel, metadata) =
     deno_runtime::deno_net::tunnel::TunnelListener::connect(
       addr,
       hostname,
       Some(root_cert_store),
+      token,
+      deploy_config.org,
+      deploy_config.app,
     )
     .await?;
 

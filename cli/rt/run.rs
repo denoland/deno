@@ -984,6 +984,7 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    tunnel: false,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),

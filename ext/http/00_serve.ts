@@ -868,7 +868,7 @@ function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
-  const wantsTunnel = options.tunnel === true;
+  const wantsTunnel = internals.tunnel || options.tunnel === true;
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
