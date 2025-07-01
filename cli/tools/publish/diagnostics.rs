@@ -123,6 +123,10 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     range: SourceRange,
   },
+  UnstableRawImport {
+    text_info: SourceTextInfo,
+    referrer: deno_graph::Range,
+  },
   SyntaxError(ParseDiagnostic),
   MissingLicense {
     config_specifier: Url,
@@ -176,6 +180,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
       MissingLicense { .. } => DiagnosticLevel::Error,
+      UnstableRawImport { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -195,6 +200,7 @@ impl Diagnostic for PublishDiagnostic {
       }
       SyntaxError { .. } => Cow::Borrowed("syntax-error"),
       MissingLicense { .. } => Cow::Borrowed("missing-license"),
+      UnstableRawImport { .. } => Cow::Borrowed("unstable-raw-import"),
     }
   }
 
@@ -216,6 +222,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
+      UnstableRawImport { .. } => Cow::Borrowed("raw imports have not been stabilized"),
     }
   }
 
@@ -251,6 +258,10 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
+      }
+      | UnstableRawImport {
+        referrer,
+        text_info,
       } => from_referrer_range(referrer, text_info),
       ExcludedModule { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
@@ -315,6 +326,11 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
+      }
+      | UnstableRawImport {
+        referrer,
+        text_info,
+        ..
       } => from_range(text_info, referrer),
       ExcludedModule { .. } => None,
       MissingConstraint {
@@ -372,6 +388,7 @@ impl Diagnostic for PublishDiagnostic {
       MissingLicense { .. } => Some(
         Cow::Borrowed("add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published"),
       ),
+      UnstableRawImport { .. } => Some(Cow::Borrowed("for the time being, embed the data directly into a JavaScript file (ex. as encoded base64 text)"))
     }
   }
 
@@ -408,7 +425,8 @@ impl Diagnostic for PublishDiagnostic {
       | ExcludedModule { .. }
       | MissingConstraint { .. }
       | BannedTripleSlashDirectives { .. }
-      | MissingLicense { .. } => None,
+      | MissingLicense { .. }
+      | UnstableRawImport { .. } => None,
     }
   }
 
@@ -448,6 +466,7 @@ impl Diagnostic for PublishDiagnostic {
       ]),
       SyntaxError(diagnostic) => diagnostic.info(),
       MissingLicense { .. } => Cow::Borrowed(&[]),
+      UnstableRawImport { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -481,6 +500,9 @@ impl Diagnostic for PublishDiagnostic {
       MissingLicense { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/missing-license"))
       }
+      UnstableRawImport { .. } => Some(Cow::Borrowed(
+        "https://github.com/denoland/deno/issues/29904",
+      )),
     }
   }
 }
