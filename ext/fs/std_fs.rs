@@ -841,17 +841,20 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
     use winapi::um::fileapi::GetFileInformationByHandle;
 
-    let info = {
-      let mut info =
-        std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
-      if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
-        return Err(std::io::Error::last_os_error());
-      }
+    // SAFETY: winapi calls
+    unsafe {
+      let info = {
+        let mut info =
+          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+          return Err(std::io::Error::last_os_error());
+        }
 
-      info.assume_init()
-    };
+        info.assume_init()
+      };
 
-    Ok(info.dwVolumeSerialNumber as u64)
+      Ok(info.dwVolumeSerialNumber as u64)
+    }
   }
 
   const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
@@ -873,30 +876,33 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
-    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-    let mut io_status_block =
-      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
-    let status = NtQueryInformationFile(
-      handle as _,
-      io_status_block.as_mut_ptr(),
-      info.as_mut_ptr() as *mut _,
-      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-      18, /* FileAllInformation */
-    );
+    // SAFETY: winapi calls
+    unsafe {
+      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+      let mut io_status_block =
+        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+      let status = NtQueryInformationFile(
+        handle as _,
+        io_status_block.as_mut_ptr(),
+        info.as_mut_ptr() as *mut _,
+        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+        18, /* FileAllInformation */
+      );
 
-    if status < 0 {
-      let converted_status = RtlNtStatusToDosError(status);
+      if status < 0 {
+        let converted_status = RtlNtStatusToDosError(status);
 
-      // If error more data is returned, then it means that the buffer is too small to get full filename information
-      // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
-      // since struct is populated with other data anyway.
-      // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-      if converted_status != ERROR_MORE_DATA {
-        return Err(converted_status as NTSTATUS);
+        // If error more data is returned, then it means that the buffer is too small to get full filename information
+        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+        // since struct is populated with other data anyway.
+        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+        if converted_status != ERROR_MORE_DATA {
+          return Err(converted_status as NTSTATUS);
+        }
       }
-    }
 
-    Ok(info.assume_init())
+      Ok(info.assume_init())
+    }
   }
 
   // SAFETY: winapi calls
