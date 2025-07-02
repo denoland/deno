@@ -30,8 +30,8 @@ use deno_graph::source::LoaderChecksum;
 use deno_permissions::CheckSpecifierKind;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use http::header;
 use node_resolver::InNpmPackageChecker;
 use parking_lot::Mutex;
@@ -430,10 +430,10 @@ pub struct DenoGraphLoader<
 }
 
 impl<
-    TBlobStore: BlobStore + 'static,
-    TSys: DenoGraphLoaderSys + 'static,
-    THttpClient: HttpClient + 'static,
-  > DenoGraphLoader<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore + 'static,
+  TSys: DenoGraphLoaderSys + 'static,
+  THttpClient: HttpClient + 'static,
+> DenoGraphLoader<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
@@ -590,10 +590,10 @@ impl<
 }
 
 impl<
-    TBlobStore: BlobStore + 'static,
-    TSys: DenoGraphLoaderSys + 'static,
-    THttpClient: HttpClient + 'static,
-  > Loader for DenoGraphLoader<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore + 'static,
+  TSys: DenoGraphLoaderSys + 'static,
+  THttpClient: HttpClient + 'static,
+> Loader for DenoGraphLoader<TBlobStore, TSys, THttpClient>
 {
   fn cache_info_enabled(&self) -> bool {
     self.cache_info_enabled
@@ -678,11 +678,8 @@ struct LoadStrategy<
 }
 
 #[async_trait::async_trait(?Send)]
-impl<
-    TBlobStore: BlobStore,
-    TSys: DenoGraphLoaderSys,
-    THttpClient: HttpClient,
-  > LoadOrCacheStrategy for LoadStrategy<TBlobStore, TSys, THttpClient>
+impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
+  LoadOrCacheStrategy for LoadStrategy<TBlobStore, TSys, THttpClient>
 {
   type Response = deno_graph::source::LoadResponse;
 
@@ -734,11 +731,8 @@ struct CacheStrategy<
 }
 
 #[async_trait::async_trait(?Send)]
-impl<
-    TBlobStore: BlobStore,
-    TSys: DenoGraphLoaderSys,
-    THttpClient: HttpClient,
-  > LoadOrCacheStrategy for CacheStrategy<TBlobStore, TSys, THttpClient>
+impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
+  LoadOrCacheStrategy for CacheStrategy<TBlobStore, TSys, THttpClient>
 {
   type Response = deno_graph::source::CacheResponse;
 

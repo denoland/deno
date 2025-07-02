@@ -6,13 +6,11 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::Extension;
+use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
-use deno_core::Extension;
-use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;

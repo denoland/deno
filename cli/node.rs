@@ -11,13 +11,13 @@ use deno_graph::ast::ParsedSourceStore;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use serde::Deserialize;
 use serde::Serialize;
 

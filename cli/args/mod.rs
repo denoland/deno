@@ -448,7 +448,7 @@ impl WorkspaceMainModuleResolver {
               deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
                 .into_box()
                 .into(),
-            )
+            );
           }
         }
       }
