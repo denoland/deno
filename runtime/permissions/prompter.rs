@@ -218,7 +218,8 @@ fn clear_stdin(
   return Ok(());
 
   unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
-    let success = FlushConsoleInputBuffer(stdin);
+    // SAFETY: winapi calls
+    let success = unsafe { FlushConsoleInputBuffer(stdin) };
     if success != TRUE {
       return Err(std::io::Error::other(format!(
         "Could not flush the console input buffer: {}",
@@ -231,24 +232,28 @@ fn clear_stdin(
   unsafe fn emulate_enter_key_press(
     stdin: HANDLE,
   ) -> Result<(), std::io::Error> {
-    // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
-    let mut input_record: INPUT_RECORD = std::mem::zeroed();
-    input_record.EventType = KEY_EVENT;
-    input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
-    input_record.Event.KeyEvent_mut().wRepeatCount = 1;
-    input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
-    input_record.Event.KeyEvent_mut().wVirtualScanCode =
-      MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
-    *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as WCHAR;
+    // SAFETY: winapi calls
+    unsafe {
+      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
+      let mut input_record: INPUT_RECORD = std::mem::zeroed();
+      input_record.EventType = KEY_EVENT;
+      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
+      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
+      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
+      input_record.Event.KeyEvent_mut().wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
+      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
+        '\r' as WCHAR;
 
-    let mut record_written = 0;
-    let success =
-      WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
-    if success != TRUE {
-      return Err(std::io::Error::other(format!(
-        "Could not emulate enter key press: {}",
-        std::io::Error::last_os_error()
-      )));
+      let mut record_written = 0;
+      let success =
+        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
+      if success != TRUE {
+        return Err(std::io::Error::other(format!(
+          "Could not emulate enter key press: {}",
+          std::io::Error::last_os_error()
+        )));
+      }
     }
     Ok(())
   }
@@ -258,8 +263,10 @@ fn clear_stdin(
   ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
-    let success =
-      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
+    // SAFETY: winapi calls
+    let success = unsafe {
+      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read)
+    };
     if success != TRUE {
       return Err(std::io::Error::other(format!(
         "Could not peek the console input buffer: {}",
