@@ -75,7 +75,7 @@ impl From<BundleOptions> for crate::args::BundleFlags {
       minify: value.minify,
       code_splitting: value.code_splitting,
       platform: value.platform.into(),
-      watch: value.watch,
+      watch: false,
       sourcemap: value.sourcemap.map(|s| s.into()),
       inline_imports: value.inline_imports,
       packages: value.packages.into(),

@@ -68,8 +68,6 @@ pub struct BundleOptions {
   pub sourcemap: Option<SourceMapType>,
   #[serde(default)]
   pub platform: BundlePlatform,
-  #[serde(default)]
-  pub watch: bool,
 }
 
 fn tru() -> bool {
