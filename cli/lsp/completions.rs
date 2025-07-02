@@ -838,6 +838,7 @@ mod tests {
     document_modules.update_config(
       &Default::default(),
       &Default::default(),
+      &Default::default(),
       &cache,
       &Default::default(),
     );

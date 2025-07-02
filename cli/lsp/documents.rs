@@ -66,6 +66,7 @@ use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use super::urls::COMPONENT;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -839,6 +840,7 @@ pub struct DocumentModule {
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
+  pub compiler_options_key: String,
   pub media_type: MediaType,
   pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
@@ -859,6 +861,7 @@ impl DocumentModule {
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
+    compiler_options_resolver: &LspCompilerOptionsResolver,
     cache: &LspCache,
   ) -> Self {
     let text = document.text();
@@ -870,6 +873,9 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
+    let compiler_options_key = compiler_options_resolver
+      .key_for_specifier(&specifier)
+      .to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(
       &specifier,
@@ -909,6 +915,7 @@ impl DocumentModule {
       script_version: document.script_version(),
       specifier,
       scope,
+      compiler_options_key,
       media_type,
       headers,
       text,
@@ -1029,6 +1036,7 @@ impl WeakDocumentModuleMap {
 pub struct DocumentModules {
   pub documents: Documents,
   config: Arc<Config>,
+  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
@@ -1041,11 +1049,13 @@ impl DocumentModules {
   pub fn update_config(
     &mut self,
     config: &Config,
+    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
     workspace_files: &Arc<IndexSet<PathBuf>>,
   ) {
     self.config = Arc::new(config.clone());
+    self.compiler_options_resolver = compiler_options_resolver.clone();
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
     self.workspace_files = workspace_files.clone();
@@ -1200,6 +1210,7 @@ impl DocumentModules {
       scope.cloned().map(Arc::new),
       &self.resolver,
       &self.config,
+      &self.compiler_options_resolver,
       &self.cache,
     ));
     self.resolver.did_create_module(&module);
@@ -1368,6 +1379,7 @@ impl DocumentModules {
           Some(scope.clone()),
           &self.resolver,
           &self.config,
+          &self.compiler_options_resolver,
           &self.cache,
         ))
       });
@@ -1380,6 +1392,7 @@ impl DocumentModules {
         None,
         &self.resolver,
         &self.config,
+        &self.compiler_options_resolver,
         &self.cache,
       ))
     });
@@ -2047,9 +2060,12 @@ mod tests {
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let compiler_options_resolver =
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
+      &compiler_options_resolver,
       &resolver,
       &cache,
       &Default::default(),
@@ -2192,8 +2208,11 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,
@@ -2234,8 +2253,11 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,

@@ -724,6 +724,10 @@ impl CompilerOptionsResolver {
     }
   }
 
+  pub fn unscoped(&self) -> &CompilerOptionsData {
+    &self.workspace_configs.unscoped
+  }
+
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
     if let Ok(path) = url_to_file_path(specifier) {
       for ts_config in &self.ts_configs {

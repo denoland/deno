@@ -237,7 +237,7 @@ pub struct Inner {
   pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
-  compiler_options_resolver: LspCompilerOptionsResolver,
+  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   /// Configuration information.
   pub config: Config,
   diagnostics_state: Arc<diagnostics::DiagnosticsState>,
@@ -1156,9 +1156,11 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn refresh_compiler_options(&mut self) {
-    self.compiler_options_resolver =
-      LspCompilerOptionsResolver::new(&self.config, &self.resolver);
+  fn refresh_compiler_options_resolver(&mut self) {
+    self.compiler_options_resolver = Arc::new(LspCompilerOptionsResolver::new(
+      &self.config,
+      &self.resolver,
+    ));
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1214,6 +1216,7 @@ impl Inner {
   async fn refresh_documents_config(&mut self) {
     self.document_modules.update_config(
       &self.config,
+      &self.compiler_options_resolver,
       &self.resolver,
       &self.cache,
       &self.workspace_files,
@@ -1589,7 +1592,7 @@ impl Inner {
     self.refresh_config_tree().await;
     self.update_cache();
     self.refresh_resolver().await;
-    self.refresh_compiler_options();
+    self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
@@ -1644,7 +1647,7 @@ impl Inner {
       self.refresh_config_tree().await;
       self.update_cache();
       self.refresh_resolver().await;
-      self.refresh_compiler_options();
+      self.refresh_compiler_options_resolver();
       // Don't cache anything if only a lockfile has changed, or it can
       // retrigger this notification and cause an infinite loop.
       if changed_deno_json {
@@ -4328,7 +4331,7 @@ impl Inner {
     self.refresh_config_tree().await;
     self.update_cache();
     self.refresh_resolver().await;
-    self.refresh_compiler_options();
+    self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
 
@@ -4546,7 +4549,7 @@ impl Inner {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
     self.refresh_resolver().await;
-    self.refresh_compiler_options();
+    self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
