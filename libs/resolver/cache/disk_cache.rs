@@ -81,7 +81,10 @@ impl<TSys: DiskCacheSys> DiskCache<TSys> {
         };
         let mut path_components = path.components();
 
-        if cfg!(target_os = "windows") {
+        if sys_traits::impls::is_windows() {
+          if url.path() == "/" {
+            return None; // not a valid windows path
+          }
           if let Some(Component::Prefix(prefix_component)) =
             path_components.next()
           {
@@ -274,7 +277,7 @@ mod tests {
     for test_case in &test_cases {
       let cache_filename =
         cache.get_cache_filename(&Url::parse(test_case).unwrap());
-      assert_eq!(cache_filename, None);
+      assert_eq!(cache_filename, None, "Failed for {:?}", test_case);
     }
   }
 }
