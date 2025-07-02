@@ -725,9 +725,9 @@ fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
   }
 }
 
-pub fn get_resolution_error_bare_node_specifier<'a>(
-  error: &'a ResolutionError,
-) -> Option<&'a str> {
+pub fn get_resolution_error_bare_node_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
   get_resolution_error_bare_specifier(error).filter(|specifier| {
     DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(specifier)
   })

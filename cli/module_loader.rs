@@ -767,9 +767,14 @@ impl<TGraphContainer: ModuleGraphContainer>
               }
             },
             found_url: prepared_module.specifier.clone(),
-            module_type: module_type_from_media_type(
-              prepared_module.media_type,
-            ),
+            module_type: match requested_module_type {
+              RequestedModuleType::Json => ModuleType::Json,
+              RequestedModuleType::Text => ModuleType::Text,
+              RequestedModuleType::Bytes => ModuleType::Bytes,
+              RequestedModuleType::None | RequestedModuleType::Other(_) => {
+                module_type_from_media_type(prepared_module.media_type)
+              }
+            },
           })
         }
         PreparedModuleOrAsset::ExternalAsset { specifier } => {
