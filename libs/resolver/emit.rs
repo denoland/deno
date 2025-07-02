@@ -16,9 +16,9 @@ use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use node_resolver::InNpmPackageChecker;
 use url::Url;
 

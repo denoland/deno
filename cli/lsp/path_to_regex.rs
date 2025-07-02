@@ -875,13 +875,27 @@ mod tests {
       );
       let actual = result.unwrap();
       if let Some((text, start, end)) = *expected {
-        assert!(actual.is_some(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None");
+        assert!(
+          actual.is_some(),
+          "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None"
+        );
         let actual = actual.unwrap();
-        assert_eq!(actual.as_str(), text, "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".", path, fixture, text, actual.as_str());
+        assert_eq!(
+          actual.as_str(),
+          text,
+          "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".",
+          path,
+          fixture,
+          text,
+          actual.as_str()
+        );
         assert_eq!(actual.start(), start);
         assert_eq!(actual.end(), end);
       } else {
-        assert!(actual.is_none(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}");
+        assert!(
+          actual.is_none(),
+          "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}"
+        );
       }
     }
   }

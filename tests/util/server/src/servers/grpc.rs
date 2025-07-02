@@ -8,9 +8,9 @@ use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 use tokio::task::LocalSet;
 
+use super::SupportedHttpVersions;
 use super::get_tcp_listener_stream;
 use super::get_tls_listener_stream;
-use super::SupportedHttpVersions;
 
 pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
   let mut tcp = get_tcp_listener_stream("grpc", h2_grpc_port).await;

@@ -4,13 +4,13 @@ use std::cell::RefCell;
 use std::io::Write;
 
 use deno_core::op2;
+use flate2::Compression;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::write::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::write::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use flate2::Compression;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CompressionError {

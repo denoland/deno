@@ -11,11 +11,11 @@ use deno_media_type::MediaType;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;

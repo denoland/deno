@@ -5,11 +5,11 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -18,23 +18,23 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_npm_cache::hard_link_file;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
+use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_semver::package::PackageNv;
 use deno_semver::StackString;
+use deno_semver::package::PackageNv;
 use deno_terminal::colors;
-use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -43,21 +43,6 @@ use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 
-use crate::bin_entries::EntrySetupOutcome;
-use crate::bin_entries::SetupBinEntrySys;
-use crate::flag::LaxSingleProcessFsFlag;
-use crate::flag::LaxSingleProcessFsFlagSys;
-use crate::fs::clone_dir_recursive;
-use crate::fs::symlink_dir;
-use crate::fs::CloneDirRecursiveSys;
-use crate::lifecycle_scripts::has_lifecycle_scripts;
-use crate::lifecycle_scripts::is_running_lifecycle_script;
-use crate::lifecycle_scripts::LifecycleScripts;
-use crate::lifecycle_scripts::LifecycleScriptsExecutor;
-use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use crate::lifecycle_scripts::LifecycleScriptsStrategy;
-use crate::package_json::NpmInstallDepsProvider;
-use crate::process_state::NpmProcessState;
 use crate::BinEntries;
 use crate::CachedNpmPackageExtraInfoProvider;
 use crate::ExpectedExtraInfo;
@@ -66,6 +51,21 @@ use crate::NpmPackageExtraInfoProvider;
 use crate::NpmPackageFsInstaller;
 use crate::PackageCaching;
 use crate::Reporter;
+use crate::bin_entries::EntrySetupOutcome;
+use crate::bin_entries::SetupBinEntrySys;
+use crate::flag::LaxSingleProcessFsFlag;
+use crate::flag::LaxSingleProcessFsFlagSys;
+use crate::fs::CloneDirRecursiveSys;
+use crate::fs::clone_dir_recursive;
+use crate::fs::symlink_dir;
+use crate::lifecycle_scripts::LifecycleScripts;
+use crate::lifecycle_scripts::LifecycleScriptsExecutor;
+use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use crate::lifecycle_scripts::LifecycleScriptsStrategy;
+use crate::lifecycle_scripts::has_lifecycle_scripts;
+use crate::lifecycle_scripts::is_running_lifecycle_script;
+use crate::package_json::NpmInstallDepsProvider;
+use crate::process_state::NpmProcessState;
 
 #[sys_traits::auto_impl]
 pub trait LocalNpmInstallSys:
@@ -100,10 +100,10 @@ pub struct LocalNpmPackageInstaller<
 }
 
 impl<
-    THttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: LocalNpmInstallSys,
-  > std::fmt::Debug for LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
+  THttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: LocalNpmInstallSys,
+> std::fmt::Debug for LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("LocalNpmPackageInstaller")
@@ -121,10 +121,10 @@ impl<
 }
 
 impl<
-    THttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: LocalNpmInstallSys,
-  > LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
+  THttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: LocalNpmInstallSys,
+> LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -583,20 +583,27 @@ impl<
     // 5. Create symlinks for package json dependencies
     {
       for remote in self.npm_install_deps_provider.remote_pkgs() {
-        let remote_pkg = if let Ok(remote_pkg) =
-          snapshot.resolve_pkg_from_pkg_req(&remote.req)
-        {
-          remote_pkg
-        } else if remote.req.version_req.tag().is_some() {
-          // couldn't find a match, and `resolve_best_package_id`
-          // panics if you give it a tag
-          continue;
-        } else if let Some(remote_id) = snapshot
-          .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
-        {
-          snapshot.package_from_id(&remote_id).unwrap()
-        } else {
-          continue; // skip, package not found
+        let remote_pkg = match snapshot.resolve_pkg_from_pkg_req(&remote.req) {
+          Ok(remote_pkg) => remote_pkg,
+          _ => {
+            if remote.req.version_req.tag().is_some() {
+              // couldn't find a match, and `resolve_best_package_id`
+              // panics if you give it a tag
+              continue;
+            } else {
+              match snapshot.resolve_best_package_id(
+                &remote.req.name,
+                &remote.req.version_req,
+              ) {
+                Some(remote_id) => {
+                  snapshot.package_from_id(&remote_id).unwrap()
+                }
+                _ => {
+                  continue; // skip, package not found
+                }
+              }
+            }
+          }
         };
         let Some(remote_alias) = &remote.alias else {
           continue;
@@ -875,10 +882,10 @@ impl<
 
 #[async_trait(?Send)]
 impl<
-    THttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: LocalNpmInstallSys,
-  > NpmPackageFsInstaller
+  THttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: LocalNpmInstallSys,
+> NpmPackageFsInstaller
   for LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
   async fn cache_packages<'a>(
@@ -1014,7 +1021,11 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
     if !packages.is_empty() {
-      log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+      log::warn!(
+        "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
+        colors::yellow("Warning"),
+        colors::gray("preinstall/install/postinstall")
+      );
 
       for (package, _) in packages {
         log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
@@ -1025,7 +1036,12 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
         "┠─ {}",
         colors::italic("This may cause the packages to not work correctly.")
       );
-      log::warn!("┖─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
+      log::warn!(
+        "┖─ {}",
+        colors::italic(
+          "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
+        )
+      );
       let packages_comma_separated = packages
         .iter()
         .map(|(p, _)| format!("npm:{}", p.id.nv))
@@ -1233,10 +1249,12 @@ pub enum SymlinkPackageDirError {
 }
 
 fn symlink_package_dir(
-  sys: &(impl sys_traits::FsSymlinkDir
-      + sys_traits::FsRemoveDirAll
-      + sys_traits::FsCreateDirAll
-      + sys_traits::FsCreateJunction),
+  sys: &(
+     impl sys_traits::FsSymlinkDir
+     + sys_traits::FsRemoveDirAll
+     + sys_traits::FsCreateDirAll
+     + sys_traits::FsCreateJunction
+   ),
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), SymlinkPackageDirError> {
@@ -1378,25 +1396,31 @@ mod test {
     let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());
     assert!(cache.insert_deno_symlink("package-a", "package-a@1.0.0"));
     assert!(cache.insert_root_symlink("package-a", "package-a@1.0.0"));
-    assert!(cache
-      .with_dep("package-a")
-      .insert("package-b", "package-b@1.0.0"));
+    assert!(
+      cache
+        .with_dep("package-a")
+        .insert("package-b", "package-b@1.0.0")
+    );
     assert!(cache.save());
 
     let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());
     assert!(!cache.insert_deno_symlink("package-a", "package-a@1.0.0"));
     assert!(!cache.insert_root_symlink("package-a", "package-a@1.0.0"));
-    assert!(!cache
-      .with_dep("package-a")
-      .insert("package-b", "package-b@1.0.0"));
+    assert!(
+      !cache
+        .with_dep("package-a")
+        .insert("package-b", "package-b@1.0.0")
+    );
     assert!(!cache.save());
     assert!(cache.insert_root_symlink("package-b", "package-b@0.2.0"));
     assert!(cache.save());
 
     let mut cache = LocalSetupCache::load(sys, cache_bin_path);
     cache.remove_dep("package-a");
-    assert!(cache
-      .with_dep("package-a")
-      .insert("package-b", "package-b@1.0.0"));
+    assert!(
+      cache
+        .with_dep("package-a")
+        .insert("package-b", "package-b@1.0.0")
+    );
   }
 }

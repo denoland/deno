@@ -11,14 +11,12 @@ use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveError;
 use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
@@ -31,8 +29,10 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
-use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_graph::source::Loader;
+use deno_graph::source::ResolveError;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
@@ -41,16 +41,16 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::SmallStackString;
+use deno_semver::jsr::JsrDepPackageReq;
 use indexmap::IndexMap;
 use sys_traits::FsMetadata;
 
-use crate::args::config_to_deno_graph_workspace_member;
-use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
+use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::jsr_url;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -111,17 +111,18 @@ pub fn graph_valid(
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
-  if let Some(error) = errors.next() {
-    Err(error)
-  } else {
-    // finally surface the npm resolution result
-    if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(JsErrorBox::new(
-        err.get_class(),
-        format_deno_graph_error(err),
-      ));
+  match errors.next() {
+    Some(error) => Err(error),
+    _ => {
+      // finally surface the npm resolution result
+      if let Err(err) = &graph.npm_dep_graph_result {
+        return Err(JsErrorBox::new(
+          err.get_class(),
+          format_deno_graph_error(err),
+        ));
+      }
+      Ok(())
     }
-    Ok(())
   }
 }
 
@@ -656,7 +657,9 @@ pub enum BuildGraphWithNpmResolutionError {
   #[error(transparent)]
   Other(#[from] JsErrorBox),
   #[class(generic)]
-  #[error("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead")]
+  #[error(
+    "Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead"
+  )]
   UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 
@@ -1059,7 +1062,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let maybe_hint = if let Some(specifier) =
     get_resolution_error_bare_node_specifier(error)
   {
-    Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+    Some(format!(
+      "If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+    ))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
@@ -1117,73 +1122,61 @@ fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::Load {
       specifier,
-      err: ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
-        checksum_err,
-      )),
+      err:
+        ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(checksum_err)),
       ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed in package. The package may have been tampered with.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "If you modified your global cache, run again with the --reload flag to restore ",
-          "its state. If you want to modify dependencies locally run again with the ",
-          "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
-          "of the vendor/ folder."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
-    ModuleErrorKind::Load {
-      err: ModuleLoadError::Jsr(
-        JsrLoadError::PackageVersionManifestChecksumIntegrity(
-          package_nv,
-          checksum_err,
-        ),
+    } => Some(format!(
+      concat!(
+        "Integrity check failed in package. The package may have been tampered with.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "If you modified your global cache, run again with the --reload flag to restore ",
+        "its state. If you want to modify dependencies locally run again with the ",
+        "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+        "of the vendor/ folder."
       ),
-      ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Package: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
+    ModuleErrorKind::Load {
+      err:
+        ModuleLoadError::Jsr(
+          JsrLoadError::PackageVersionManifestChecksumIntegrity(
+            package_nv,
+            checksum_err,
+          ),
         ),
-        package_nv,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
+      ..
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Package: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      package_nv, checksum_err.actual, checksum_err.expected,
+    )),
     ModuleErrorKind::Load {
       specifier,
       err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
       ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
     _ => None,
   }
 }
@@ -1430,11 +1423,11 @@ mod test {
   use std::sync::Arc;
 
   use deno_ast::ModuleSpecifier;
-  use deno_graph::source::ResolveError;
   use deno_graph::PositionRange;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
+  use deno_graph::source::ResolveError;
 
   use super::*;
 

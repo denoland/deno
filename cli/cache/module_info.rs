@@ -316,9 +316,9 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
 
 #[cfg(test)]
 mod test {
+  use deno_graph::PositionRange;
   use deno_graph::analysis::JsDocImportInfo;
   use deno_graph::analysis::SpecifierWithRange;
-  use deno_graph::PositionRange;
 
   use super::*;
 

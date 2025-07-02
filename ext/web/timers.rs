@@ -7,8 +7,8 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;

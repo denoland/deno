@@ -273,8 +273,8 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw(
-) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
+pub fn bi_pipe_pair_raw()
+-> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS
