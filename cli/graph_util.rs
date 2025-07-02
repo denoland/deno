@@ -43,7 +43,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::SmallStackString;
 use indexmap::IndexMap;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use sys_traits::FsMetadata;
 
 use crate::args::config_to_deno_graph_workspace_member;
@@ -261,7 +260,6 @@ pub fn graph_walk_errors<'a>(
       }
       let message = enhance_graph_error(
         sys,
-        &DenoIsBuiltInNodeModuleChecker,
         &error,
         if is_root {
           EnhanceGraphErrorMode::HideRange

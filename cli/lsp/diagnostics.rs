@@ -41,7 +41,6 @@ use import_map::ImportMap;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
@@ -1200,11 +1199,8 @@ impl DenoDiagnostic {
       Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
       Self::ResolutionError(err) => {
-        if deno_resolver::graph::get_resolution_error_bare_node_specifier(
-          &DenoIsBuiltInNodeModuleChecker,
-          err,
-        )
-        .is_some()
+        if deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
+          .is_some()
         {
           "import-node-prefix-missing"
         } else {
@@ -1459,7 +1455,7 @@ impl DenoDiagnostic {
       },
       Self::ResolutionError(err) => {
         let mut message;
-        message = enhanced_resolution_error_message(&DenoIsBuiltInNodeModuleChecker, err);
+        message = enhanced_resolution_error_message(err);
         if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
           if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
             if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
@@ -1473,7 +1469,7 @@ impl DenoDiagnostic {
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
-        deno_resolver::graph::get_resolution_error_bare_node_specifier(&DenoIsBuiltInNodeModuleChecker, err)
+        deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
       )},
       Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),

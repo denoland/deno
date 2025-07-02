@@ -11,7 +11,6 @@ use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use node_resolver::analyze::NodeCodeTranslatorSys;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use thiserror::Error;
 use url::Url;
@@ -276,7 +275,6 @@ impl<
       graph.try_get(specifier).map_err(|err| EnhancedGraphError {
         message: enhance_graph_error(
           &self.sys,
-          &DenoIsBuiltInNodeModuleChecker,
           &deno_graph::ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
         ),

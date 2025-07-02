@@ -537,24 +537,17 @@ pub enum EnhanceGraphErrorMode {
 
 pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
-  is_builtin_node_module_checker: &impl IsBuiltInNodeModuleChecker,
   error: &ModuleGraphError,
   mode: EnhanceGraphErrorMode,
 ) -> String {
   let mut message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
-      enhanced_resolution_error_message(
-        is_builtin_node_module_checker,
-        resolution_error,
-      )
+      enhanced_resolution_error_message(resolution_error)
     }
     ModuleGraphError::TypesResolutionError(resolution_error) => {
       format!(
         "Failed resolving types. {}",
-        enhanced_resolution_error_message(
-          is_builtin_node_module_checker,
-          resolution_error
-        )
+        enhanced_resolution_error_message(resolution_error)
       )
     }
     ModuleGraphError::ModuleError(error) => {
@@ -577,17 +570,12 @@ pub fn enhance_graph_error(
 }
 
 /// Adds more explanatory information to a resolution error.
-pub fn enhanced_resolution_error_message(
-  is_builtin_node_module_checker: &impl IsBuiltInNodeModuleChecker,
-  error: &ResolutionError,
-) -> String {
+pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format_deno_graph_error(error);
 
   let maybe_hint = if let Some(specifier) =
-    get_resolution_error_bare_node_specifier(
-      is_builtin_node_module_checker,
-      error,
-    ) {
+    get_resolution_error_bare_node_specifier(error)
+  {
     Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
@@ -738,11 +726,10 @@ fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
 }
 
 pub fn get_resolution_error_bare_node_specifier<'a>(
-  is_builtin_node_module_checker: &impl IsBuiltInNodeModuleChecker,
   error: &'a ResolutionError,
 ) -> Option<&'a str> {
   get_resolution_error_bare_specifier(error).filter(|specifier| {
-    is_builtin_node_module_checker.is_builtin_node_module(specifier)
+    DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(specifier)
   })
 }
 
@@ -905,13 +892,7 @@ mod test {
           range: PositionRange::zeroed(),
         },
       };
-      assert_eq!(
-        get_resolution_error_bare_node_specifier(
-          &DenoIsBuiltInNodeModuleChecker,
-          &err
-        ),
-        output
-      );
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
     }
   }
 
@@ -931,13 +912,7 @@ mod test {
           referrer: None,
         },
       };
-      assert_eq!(
-        get_resolution_error_bare_node_specifier(
-          &DenoIsBuiltInNodeModuleChecker,
-          &err
-        ),
-        output,
-      );
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
   }
 }
