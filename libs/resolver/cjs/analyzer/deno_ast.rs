@@ -60,7 +60,7 @@ impl super::ModuleForExportAnalysis for ParsedSource {
   }
 
   fn analyze_cjs(&self) -> super::ModuleExportsAndReExports {
-    let analysis = ParsedSource::analyze_cjs(&self);
+    let analysis = ParsedSource::analyze_cjs(self);
     super::ModuleExportsAndReExports {
       exports: analysis.exports,
       reexports: analysis.reexports,
