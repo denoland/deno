@@ -3,7 +3,6 @@
 mod args;
 mod cache;
 mod cdp;
-mod emit;
 mod factory;
 mod file_fetcher;
 mod graph_container;

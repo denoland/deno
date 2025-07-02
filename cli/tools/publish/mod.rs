@@ -117,14 +117,15 @@ pub async fn publish(
   );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
+  let parsed_source_cache = cli_factory.parsed_source_cache()?;
   let module_content_provider = Arc::new(ModuleContentProvider::new(
-    cli_factory.parsed_source_cache().clone(),
+    parsed_source_cache.clone(),
     specifier_unfurler,
     cli_factory.sys(),
     cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),
+    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),

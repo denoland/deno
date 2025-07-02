@@ -12,6 +12,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::graph::LazyGraphSourceParser;
+use deno_resolver::graph::ParsedSourceCache;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
 use sys_traits::FsMetadata;
@@ -21,8 +23,6 @@ use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
-use crate::cache::LazyGraphSourceParser;
-use crate::cache::ParsedSourceCache;
 use crate::sys::CliSys;
 
 struct JsxFolderOptions<'a> {

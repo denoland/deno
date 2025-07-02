@@ -162,7 +162,7 @@ pub async fn compile_eszip(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let parsed_source_cache = factory.parsed_source_cache();
+  let parsed_source_cache = factory.parsed_source_cache()?;
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let bin_name_resolver = factory.bin_name_resolver()?;
   let entrypoint = cli_options.resolve_main_module()?;

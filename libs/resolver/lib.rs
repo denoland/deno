@@ -41,10 +41,13 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
+pub mod cache;
 pub mod cjs;
 pub mod collections;
 pub mod deno_json;
 pub mod display;
+#[cfg(feature = "deno_ast")]
+pub mod emit;
 pub mod factory;
 #[cfg(feature = "graph")]
 pub mod file_fetcher;
@@ -54,6 +57,8 @@ pub mod import_map;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
+#[cfg(feature = "deno_ast")]
+mod rt;
 mod sync;
 pub mod workspace;
 

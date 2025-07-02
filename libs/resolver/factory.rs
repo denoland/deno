@@ -31,13 +31,16 @@ use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonResolverRc;
-use sys_traits::EnvCacheDir;
-use sys_traits::EnvCurrentDir;
-use sys_traits::EnvHomeDir;
-use sys_traits::EnvVar;
 use thiserror::Error;
 use url::Url;
 
+use crate::cache::DenoDir;
+use crate::cache::DenoDirOptions;
+use crate::cache::DenoDirProvider;
+use crate::cache::DenoDirProviderRc;
+use crate::cache::DenoDirSys;
+use crate::cache::EmitCache;
+use crate::cache::EmitCacheRc;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
@@ -163,49 +166,6 @@ pub trait SpecifiedImportMapProvider:
   ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
-#[derive(Debug, Clone)]
-pub struct DenoDirPathProviderOptions {
-  pub maybe_custom_root: Option<PathBuf>,
-}
-
-#[allow(clippy::disallowed_types)]
-pub type DenoDirPathProviderRc<TSys> =
-  crate::sync::MaybeArc<DenoDirPathProvider<TSys>>;
-
-#[sys_traits::auto_impl]
-pub trait DenoDirPathProviderSys:
-  EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir
-{
-}
-
-/// Lazily creates the deno dir which might be useful in scenarios
-/// where functionality wants to continue if the DENO_DIR can't be created.
-#[derive(Debug)]
-pub struct DenoDirPathProvider<TSys: DenoDirPathProviderSys> {
-  sys: TSys,
-  options: DenoDirPathProviderOptions,
-  deno_dir: Deferred<PathBuf>,
-}
-
-impl<TSys: DenoDirPathProviderSys> DenoDirPathProvider<TSys> {
-  pub fn new(sys: TSys, options: DenoDirPathProviderOptions) -> Self {
-    Self {
-      sys,
-      options,
-      deno_dir: Default::default(),
-    }
-  }
-
-  pub fn get_or_create(&self) -> Result<&PathBuf, DenoDirResolutionError> {
-    self.deno_dir.get_or_try_init(|| {
-      deno_cache_dir::resolve_deno_dir(
-        &self.sys,
-        self.options.maybe_custom_root.clone(),
-      )
-    })
-  }
-}
-
 #[derive(Debug)]
 pub struct NpmProcessStateOptions {
   pub node_modules_dir: Option<Cow<'static, str>>,
@@ -213,15 +173,18 @@ pub struct NpmProcessStateOptions {
 }
 
 #[derive(Debug, Default)]
-pub struct WorkspaceFactoryOptions<TSys: WorkspaceFactorySys> {
+pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
-  pub deno_dir_path_provider: Option<DenoDirPathProviderRc<TSys>>,
   pub is_package_manager_subcommand: bool,
+  /// Version to use for the emit cache. This is something that
+  /// should change when the version of the underlying emit changes.
+  pub emit_cache_version: Cow<'static, str>,
   pub frozen_lockfile: Option<bool>,
   pub lock_arg: Option<String>,
   /// Whether to skip writing to the lockfile.
   pub lockfile_skip_write: bool,
+  pub maybe_custom_deno_dir_root: Option<PathBuf>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -238,7 +201,7 @@ pub type WorkspaceFactoryRc<TSys> =
 
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
-  DenoDirPathProviderSys
+  DenoDirSys
   + crate::lockfile::LockfileSys
   + crate::npm::NpmResolverSys
   + deno_cache_dir::GlobalHttpCacheSys
@@ -248,7 +211,8 @@ pub trait WorkspaceFactorySys:
 
 pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   sys: TSys,
-  deno_dir_path: DenoDirPathProviderRc<TSys>,
+  deno_dir_provider: Deferred<DenoDirProviderRc<TSys>>,
+  emit_cache: Deferred<EmitCacheRc<TSys>>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<GlobalOrLocalHttpCache<TSys>>,
   jsr_url: Deferred<Url>,
@@ -263,27 +227,19 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
   initial_cwd: PathBuf,
-  options: WorkspaceFactoryOptions<TSys>,
+  options: WorkspaceFactoryOptions,
 }
 
 impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   pub fn new(
     sys: TSys,
     initial_cwd: PathBuf,
-    mut options: WorkspaceFactoryOptions<TSys>,
+    options: WorkspaceFactoryOptions,
   ) -> Self {
     Self {
-      deno_dir_path: options.deno_dir_path_provider.take().unwrap_or_else(
-        || {
-          new_rc(DenoDirPathProvider::new(
-            sys.clone(),
-            DenoDirPathProviderOptions {
-              maybe_custom_root: None,
-            },
-          ))
-        },
-      ),
       sys,
+      deno_dir_provider: Default::default(),
+      emit_cache: Default::default(),
       global_http_cache: Default::default(),
       http_cache: Default::default(),
       jsr_url: Default::default(),
@@ -306,6 +262,27 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     workspace_directory: WorkspaceDirectoryRc,
   ) {
     self.workspace_directory = Deferred::from(workspace_directory);
+  }
+
+  pub fn deno_dir_provider(&self) -> &DenoDirProviderRc<TSys> {
+    self.deno_dir_provider.get_or_init(|| {
+      new_rc(DenoDirProvider::new(
+        self.sys.clone(),
+        DenoDirOptions {
+          maybe_custom_root: self.options.maybe_custom_deno_dir_root.clone(),
+        },
+      ))
+    })
+  }
+
+  pub fn emit_cache(&self) -> Result<&EmitCacheRc<TSys>, anyhow::Error> {
+    self.emit_cache.get_or_try_init(|| {
+      Ok(new_rc(EmitCache::new(
+        &self.sys,
+        self.deno_dir()?.gen_cache.clone(),
+        self.options.emit_cache_version.clone(),
+      )))
+    })
   }
 
   pub fn jsr_url(&self) -> &Url {
@@ -348,7 +325,8 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           let workspace = &self.workspace_directory()?.workspace;
 
           if let Some(pkg_json) = workspace.root_pkg_json() {
-            if let Ok(deno_dir) = self.deno_dir_path() {
+            if let Ok(deno_dir) = self.deno_dir() {
+              let deno_dir = &deno_dir.root;
               // `deno_dir` can be symlink in macOS or on the CI
               if let Ok(deno_dir) =
                 canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
@@ -431,15 +409,15 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .map(|p| p.as_deref())
   }
 
-  pub fn deno_dir_path(&self) -> Result<&PathBuf, DenoDirResolutionError> {
-    self.deno_dir_path.get_or_create()
+  pub fn deno_dir(&self) -> Result<&DenoDir<TSys>, DenoDirResolutionError> {
+    self.deno_dir_provider().get_or_create()
   }
 
   pub fn global_http_cache(
     &self,
   ) -> Result<&GlobalHttpCacheRc<TSys>, DenoDirResolutionError> {
     self.global_http_cache.get_or_try_init(|| {
-      let global_cache_dir = self.deno_dir_path()?.join("remote");
+      let global_cache_dir = self.deno_dir()?.remote_folder_path();
       let global_http_cache = new_rc(deno_cache_dir::GlobalHttpCache::new(
         self.sys.clone(),
         global_cache_dir,
@@ -514,7 +492,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     &self,
   ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
     self.npm_cache_dir.get_or_try_init(|| {
-      let npm_cache_dir = self.deno_dir_path()?.join("npm");
+      let npm_cache_dir = self.deno_dir()?.npm_folder_path();
       Ok(new_rc(NpmCacheDir::new(
         &self.sys,
         npm_cache_dir,
@@ -683,6 +661,8 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "graph")]
   deno_resolver:
     async_once_cell::OnceCell<crate::graph::DefaultDenoResolverRc<TSys>>,
+  #[cfg(feature = "deno_ast")]
+  emitter: Deferred<crate::emit::EmitterRc<DenoInNpmPackageChecker, TSys>>,
   #[cfg(feature = "graph")]
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
@@ -704,6 +684,8 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
+  #[cfg(feature = "graph")]
+  parsed_source_cache: crate::graph::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
   raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
@@ -725,6 +707,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       raw_deno_resolver: Default::default(),
       #[cfg(feature = "graph")]
       deno_resolver: Default::default(),
+      #[cfg(feature = "deno_ast")]
+      emitter: Default::default(),
       #[cfg(feature = "graph")]
       found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
@@ -732,6 +716,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
+      #[cfg(feature = "graph")]
+      parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
@@ -794,6 +780,23 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.workspace_factory.workspace_directory_provider()?,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
+      )))
+    })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn emitter(
+    &self,
+  ) -> Result<
+    &crate::emit::EmitterRc<DenoInNpmPackageChecker, TSys>,
+    anyhow::Error,
+  > {
+    self.emitter.get_or_try_init(|| {
+      Ok(new_rc(crate::emit::Emitter::new(
+        self.cjs_tracker()?.clone(),
+        self.workspace_factory.emit_cache()?.clone(),
+        self.parsed_source_cache().clone(),
+        self.compiler_options_resolver()?.clone(),
       )))
     })
   }
@@ -934,6 +937,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.options.package_json_cache.clone(),
       ))
     })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn parsed_source_cache(&self) -> &crate::graph::ParsedSourceCacheRc {
+    &self.parsed_source_cache
   }
 
   pub fn workspace_factory(&self) -> &WorkspaceFactoryRc<TSys> {

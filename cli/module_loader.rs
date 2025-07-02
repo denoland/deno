@@ -56,6 +56,7 @@ use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+use deno_resolver::graph::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -84,8 +85,6 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::CodeCache;
-use crate::cache::ParsedSourceCache;
-use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
@@ -115,6 +114,8 @@ pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
   CliNpmResolver,
   CliSys,
 >;
+pub type CliEmitter =
+  deno_resolver::emit::Emitter<DenoInNpmPackageChecker, CliSys>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {
@@ -331,7 +332,7 @@ struct SharedCliModuleLoaderState {
   is_repl: bool,
   cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
-  emitter: Arc<Emitter>,
+  emitter: Arc<CliEmitter>,
   file_fetcher: Arc<CliFileFetcher>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -393,7 +394,7 @@ impl CliModuleLoaderFactory {
     options: &CliOptions,
     cjs_tracker: Arc<CliCjsTracker>,
     code_cache: Option<Arc<CodeCache>>,
-    emitter: Arc<Emitter>,
+    emitter: Arc<CliEmitter>,
     file_fetcher: Arc<CliFileFetcher>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -459,9 +460,6 @@ impl CliModuleLoaderFactory {
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
-        node_code_translator: self.shared.node_code_translator.clone(),
-        emitter: self.shared.emitter.clone(),
-        parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
         loaded_files: Default::default(),
       })));
@@ -527,9 +525,6 @@ impl CliModuleLoaderFactory {
       parent_permissions: root_permissions.clone(),
       permissions: root_permissions,
       graph_container: (*self.shared.main_module_graph_container).clone(),
-      node_code_translator: self.shared.node_code_translator.clone(),
-      emitter: self.shared.emitter.clone(),
-      parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
       loaded_files: Default::default(),
     }))
@@ -557,7 +552,7 @@ pub struct EnhancedGraphError {
 pub enum LoadPreparedModuleError {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(#[from] crate::emit::EmitParsedSourceHelperError),
+  NpmModuleLoad(#[from] deno_resolver::emit::EmitParsedSourceHelperError),
   #[class(inherit)]
   #[error(transparent)]
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
@@ -576,7 +571,7 @@ pub enum LoadPreparedModuleError {
 pub enum LoadMaybeCjsError {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(#[from] crate::emit::EmitParsedSourceHelperError),
+  NpmModuleLoad(#[from] deno_resolver::emit::EmitParsedSourceHelperError),
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
@@ -591,9 +586,6 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   parent_permissions: PermissionsContainer,
   permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
-  emitter: Arc<Emitter>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
 }
@@ -1109,12 +1101,13 @@ impl<TGraphContainer: ModuleGraphContainer>
         source,
       }) => {
         let transpile_result = self
+          .shared
           .emitter
           .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
           .await?;
 
         // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
+        self.shared.parsed_source_cache.free(specifier);
 
         Ok(Some(ModuleCodeStringSource {
           // note: it's faster to provide a string if we know it's a string
@@ -1162,7 +1155,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         media_type,
         source,
       }) => {
-        let transpile_result = self.emitter.emit_parsed_source_sync(
+        let transpile_result = self.shared.emitter.emit_parsed_source_sync(
           specifier,
           media_type,
           ModuleKind::Esm,
@@ -1170,7 +1163,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         )?;
 
         // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
+        self.shared.parsed_source_cache.free(specifier);
 
         Ok(Some(ModuleCodeStringSource {
           // note: it's faster to provide a string if we know it's a string
@@ -1180,7 +1173,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         }))
       }
       Some(CodeOrDeferredEmit::Cjs { .. }) => {
-        self.parsed_source_cache.free(specifier);
+        self.shared.parsed_source_cache.free(specifier);
 
         // todo(dsherret): to make this work, we should probably just
         // rely on the CJS export cache. At the moment this is hard because
@@ -1316,7 +1309,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             };
 
             // at this point, we no longer need the parsed source in memory, so free it
-            self.parsed_source_cache.free(specifier);
+            self.shared.parsed_source_cache.free(specifier);
 
             Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
               code: ModuleSourceCode::String(code),
@@ -1365,6 +1358,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let js_source = if media_type.is_emittable() {
       Cow::Owned(
         self
+          .shared
           .emitter
           .emit_parsed_source(
             specifier,
@@ -1378,11 +1372,12 @@ impl<TGraphContainer: ModuleGraphContainer>
       Cow::Borrowed(original_source.as_ref())
     };
     let text = self
+      .shared
       .node_code_translator
       .translate_cjs_to_esm(specifier, Some(js_source))
       .await?;
     // at this point, we no longer need the parsed source in memory, so free it
-    self.parsed_source_cache.free(specifier);
+    self.shared.parsed_source_cache.free(specifier);
     Ok(ModuleCodeStringSource {
       code: match text {
         // perf: if the text is borrowed, that means it didn't make any changes
@@ -1731,7 +1726,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 #[derive(Debug)]
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
-  emitter: Arc<Emitter>,
+  emitter: Arc<CliEmitter>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
   graph_container: TGraphContainer,
