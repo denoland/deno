@@ -57,11 +57,64 @@ pub enum Error {
 static TUNNEL: OnceLock<crate::tunnel::TunnelListener> = OnceLock::new();
 
 pub fn set_tunnel(tunnel: crate::tunnel::TunnelListener) {
-  let _ = TUNNEL.set(tunnel);
+  if TUNNEL.set(tunnel).is_ok() {
+    setup_signal_handlers();
+  }
 }
 
 pub fn get_tunnel() -> Option<&'static crate::tunnel::TunnelListener> {
   TUNNEL.get()
+}
+
+#[cfg(unix)]
+fn setup_signal_handlers() {
+  use tokio::signal::unix::SignalKind;
+
+  let signals_to_handle = [
+    SignalKind::hangup(),
+    SignalKind::interrupt(),
+    SignalKind::terminate(),
+  ];
+
+  for signal_kind in signals_to_handle {
+    tokio::spawn(async move {
+      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
+        return;
+      };
+
+      loop {
+        signal_fut.recv().await;
+        if let Some(tunnel) = get_tunnel() {
+          tunnel.connection.close(1u32.into(), b"");
+        }
+      }
+    });
+  }
+}
+
+#[cfg(windows)]
+fn setup_signal_handlers() {
+  let handlers = [
+    tokio::signal::windows::ctrl_break,
+    tokio::signal::windows::ctrl_c,
+    tokio::signal::windows::ctrl_close,
+    tokio::signal::windows::ctrl_logoff,
+    tokio::signal::windows::ctrl_shutdown,
+  ];
+
+  for handler in handlers {
+    tokio::spawn(async {
+      let Ok(mut signal_fut) = handler() else {
+        return;
+      };
+      loop {
+        signal_fut.recv().await;
+        if let Some(tunnel) = get_tunnel() {
+          tunnel.connection.close(1u32.into(), b"");
+        }
+      }
+    });
+  }
 }
 
 /// Essentially a SocketAddr, except we prefer a human
@@ -95,6 +148,24 @@ pub struct Metadata {
   pub env: HashMap<String, String>,
 }
 
+#[derive(Debug)]
+pub struct Routed {
+  routed_rx: tokio::sync::oneshot::Receiver<()>,
+}
+
+impl std::future::Future for Routed {
+  type Output = Result<(), ()>;
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    // SAFETY: We are not moving.
+    unsafe { self.map_unchecked_mut(|t| &mut t.routed_rx) }
+      .poll(cx)
+      .map_err(|_| ())
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct TunnelListener {
   endpoint: quinn::Endpoint,
@@ -110,7 +181,7 @@ impl TunnelListener {
     token: String,
     org: String,
     app: String,
-  ) -> Result<(Self, Metadata), Error> {
+  ) -> Result<(Self, Metadata, Routed), Error> {
     let config = quinn::EndpointConfig::default();
     let socket = std::net::UdpSocket::bind(("::", 0))?;
     let endpoint = quinn::Endpoint::new(
@@ -145,38 +216,43 @@ impl TunnelListener {
 
     let connection = connecting.await?;
 
-    let (local_addr, metadata) = {
-      let mut control = connection.open_bi().await?;
-      control.0.write_u32_le(VERSION).await?;
-      if control.1.read_u32_le().await? != VERSION {
-        return Err(Error::UnsupportedVersion);
-      }
+    let mut control = connection.open_bi().await?;
+    control.0.write_u32_le(VERSION).await?;
+    if control.1.read_u32_le().await? != VERSION {
+      return Err(Error::UnsupportedVersion);
+    }
 
-      write_stream_header(
-        &mut control.0,
-        StreamHeader::ControlRequest { token, org, app },
-      )
+    write_message(&mut control.0, StreamHeader::Control { token, org, app })
       .await?;
 
-      let header = read_stream_header(&mut control.1).await?;
-      let StreamHeader::ControlResponse {
-        addr,
-        hostnames,
-        env,
-      } = header
-      else {
-        return Err(Error::UnexpectedHeader);
-      };
-
-      let local_addr = TunnelAddr {
-        socket: addr,
-        hostname: hostnames.first().cloned(),
-      };
-
-      let metadata = Metadata { hostnames, env };
-
-      (local_addr, metadata)
+    let ControlMessage::Authenticated {
+      addr,
+      hostnames,
+      env,
+      metadata,
+    } = read_message(&mut control.1).await?
+    else {
+      return Err(Error::UnexpectedHeader);
     };
+
+    let (routed_tx, routed_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+      let Ok(ControlMessage::Routed {}) = read_message(&mut control.1).await
+      else {
+        return;
+      };
+      let _ = routed_tx.send(());
+    });
+
+    log::debug!("tunnel connected: {metadata:?}");
+
+    let local_addr = TunnelAddr {
+      socket: addr,
+      hostname: hostnames.first().cloned(),
+    };
+
+    let metadata = Metadata { hostnames, env };
+    let routed = Routed { routed_rx };
 
     Ok((
       Self {
@@ -185,6 +261,7 @@ impl TunnelListener {
         local_addr,
       },
       metadata,
+      routed,
     ))
   }
 }
@@ -199,14 +276,10 @@ impl TunnelListener {
   ) -> Result<(TunnelStream, TunnelAddr), std::io::Error> {
     let (tx, mut rx) = self.connection.accept_bi().await?;
 
-    let header = read_stream_header(&mut rx)
-      .await
-      .map_err(std::io::Error::other)?;
-
     let StreamHeader::Stream {
-      local_addr,
       remote_addr,
-    } = header
+      local_addr,
+    } = read_message(&mut rx).await.map_err(std::io::Error::other)?
     else {
       return Err(std::io::Error::other(Error::UnexpectedHeader));
     };
@@ -227,7 +300,7 @@ impl TunnelListener {
 
   pub async fn create_stream(&self) -> Result<TunnelStream, Error> {
     let (mut tx, rx) = self.connection.open_bi().await?;
-    write_stream_header(&mut tx, StreamHeader::Agent {}).await?;
+    write_message(&mut tx, StreamHeader::Agent {}).await?;
     Ok(TunnelStream {
       tx,
       rx,
@@ -411,15 +484,10 @@ impl Resource for TunnelStreamResource {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum StreamHeader {
-  ControlRequest {
+  Control {
     token: String,
     org: String,
     app: String,
-  },
-  ControlResponse {
-    addr: SocketAddr,
-    hostnames: Vec<String>,
-    env: HashMap<String, String>,
   },
   Stream {
     local_addr: SocketAddr,
@@ -428,24 +496,35 @@ enum StreamHeader {
   Agent {},
 }
 
-async fn write_stream_header(
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+enum ControlMessage {
+  Authenticated {
+    metadata: HashMap<String, String>,
+    addr: SocketAddr,
+    hostnames: Vec<String>,
+    env: HashMap<String, String>,
+  },
+  Routed {},
+}
+
+async fn write_message<T: serde::Serialize>(
   tx: &mut quinn::SendStream,
-  header: StreamHeader,
+  message: T,
 ) -> Result<(), Error> {
-  let data = deno_core::serde_json::to_vec(&header)?;
+  let data = deno_core::serde_json::to_vec(&message)?;
   tx.write_u32_le(data.len() as _).await?;
   tx.write_all(&data).await?;
   Ok(())
 }
 
-async fn read_stream_header(
+async fn read_message<T: serde::de::DeserializeOwned>(
   rx: &mut quinn::RecvStream,
-) -> Result<StreamHeader, Error> {
+) -> Result<T, Error> {
   let length = rx.read_u32_le().await?;
   let mut data = vec![0; length as usize];
   rx.read_exact(&mut data).await?;
 
-  let header: StreamHeader = deno_core::serde_json::from_slice(&data)?;
+  let message = deno_core::serde_json::from_slice(&data)?;
 
-  Ok(header)
+  Ok(message)
 }

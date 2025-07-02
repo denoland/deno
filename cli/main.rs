@@ -805,7 +805,7 @@ async fn initialize_tunnel(
   let cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
-  let (tunnel, metadata) =
+  let (tunnel, metadata, routed) =
     deno_runtime::deno_net::tunnel::TunnelListener::connect(
       addr,
       hostname,
@@ -815,6 +815,12 @@ async fn initialize_tunnel(
       deploy_config.app,
     )
     .await?;
+
+  tokio::spawn(async move {
+    if routed.await.is_ok() {
+      eprintln!("{}", colors::green("Your endpoint is now routed!"),);
+    }
+  });
 
   for (k, v) in metadata.env {
     std::env::set_var(k, v);
@@ -828,9 +834,10 @@ async fn initialize_tunnel(
     format!("https://{}:{}", addr.hostname(), addr.port())
   };
   eprintln!(
-    "{}{}",
-    colors::green("Connected! Your endpoint is "),
-    colors::bold(colors::green(endpoint))
+    "{}{}{}",
+    colors::green("Endpoint assigned:"),
+    colors::bold(colors::green(endpoint)),
+    colors::green("\nRouting..."),
   );
 
   deno_runtime::deno_net::tunnel::set_tunnel(tunnel);

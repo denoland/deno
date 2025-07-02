@@ -169,7 +169,7 @@ pub async fn execute_script(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let mut env_vars = task_runner::real_env_vars();
-  
+
   if let Some(connected) = &flags.connected {
     env_vars.insert("DENO_CONNECTED".into(), connected.clone().into());
   }

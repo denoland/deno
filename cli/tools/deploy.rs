@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_path_util::ResolveUrlOrPathError;
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 
@@ -18,7 +18,7 @@ use crate::registry;
 pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
   flags.node_modules_dir = Some(NodeModulesDirMode::None);
   flags.no_lock = true;
-  
+
   if let Ok(url) = std::env::var("DENO_DEPLOY_URL") {
     let args = flags.argv;
     let mut new_args = vec![String::from("--endpoint"), url];
@@ -28,17 +28,18 @@ pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
 
   let mut factory = CliFactory::from_flags(Arc::new(flags));
 
-  let maybe_specifier_override = if let Ok(specifier) = std::env::var("DENO_DEPLOY_CLI_SPECIFIER") {
-    let specifier = Url::parse(&specifier).map_err(ResolveUrlOrPathError::UrlParse)?;
-    if let Ok(path) = specifier.to_file_path() {
-      factory.set_initial_cwd(path);
-    }
+  let maybe_specifier_override =
+    if let Ok(specifier) = std::env::var("DENO_DEPLOY_CLI_SPECIFIER") {
+      let specifier =
+        Url::parse(&specifier).map_err(ResolveUrlOrPathError::UrlParse)?;
+      if let Ok(path) = specifier.to_file_path() {
+        factory.set_initial_cwd(path);
+      }
 
-    Some(specifier)
-  } else {
-    None
-  };
-  
+      Some(specifier)
+    } else {
+      None
+    };
 
   let client = factory.http_client_provider().get_or_create()?;
   let registry_api_url = jsr_api_url();
@@ -46,23 +47,22 @@ pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
   let response =
     registry::get_package(&client, registry_api_url, "deno", "deploy").await?;
   let res = registry::parse_response::<registry::Package>(response).await?;
-  
+
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
-  
+
   let specifier = if let Some(specifier) = maybe_specifier_override {
     specifier
   } else {
-    Url::parse(&
-      format!(
-        "jsr:@deno/deploy@{}",
-        res
-          .latest_version
-          .expect("expected @deno/deploy to be published")
-      )
-    ).map_err(ResolveUrlOrPathError::UrlParse)?
+    Url::parse(&format!(
+      "jsr:@deno/deploy@{}",
+      res
+        .latest_version
+        .expect("expected @deno/deploy to be published")
+    ))
+    .map_err(ResolveUrlOrPathError::UrlParse)?
   };
-  
+
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Deploy,

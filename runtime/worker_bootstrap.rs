@@ -53,7 +53,7 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::ServeMain { .. }
       | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
-      WorkerExecutionMode::Deploy => 9
+      WorkerExecutionMode::Deploy => 9,
     }
   }
 }

@@ -19,7 +19,8 @@ deno_core::extension!(
 pub fn op_deploy_token_get() -> Result<Option<String>, JsErrorBox> {
   match get_token_entry()
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?
-    .get_password() {
+    .get_password()
+  {
     Ok(password) => Ok(Some(password)),
     Err(keyring::Error::NoEntry) => Ok(None),
     Err(e) => Err(JsErrorBox::type_error(e.to_string())),

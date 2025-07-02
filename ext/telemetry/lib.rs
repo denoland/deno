@@ -834,55 +834,25 @@ fn setup_signal_handlers() {
 
 #[cfg(windows)]
 fn setup_signal_handlers() {
-  tokio::spawn(async {
-    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_break() else {
-      return;
-    };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
-  });
+  let handlers = [
+    tokio::signal::windows::ctrl_break,
+    tokio::signal::windows::ctrl_c,
+    tokio::signal::windows::ctrl_close,
+    tokio::signal::windows::ctrl_logoff,
+    tokio::signal::windows::ctrl_shutdown,
+  ];
 
-  tokio::spawn(async {
-    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_c() else {
-      return;
-    };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
-  });
-
-  tokio::spawn(async {
-    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_close() else {
-      return;
-    };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
-  });
-
-  tokio::spawn(async {
-    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_logoff() else {
-      return;
-    };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
-  });
-
-  tokio::spawn(async {
-    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_shutdown() else {
-      return;
-    };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
-  });
+  for handler in handlers {
+    tokio::spawn(async {
+      let Ok(mut signal_fut) = handler() else {
+        return;
+      };
+      loop {
+        signal_fut.recv().await;
+        flush();
+      }
+    });
+  }
 }
 
 /// This function is called by the runtime whenever it is about to call

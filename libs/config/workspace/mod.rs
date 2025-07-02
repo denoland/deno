@@ -35,7 +35,6 @@ use thiserror::Error;
 use url::Url;
 
 use crate::deno_json;
-use crate::deno_json::{get_base_compiler_options_for_emit, DeployConfig};
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompilerOptionTypesDeserializeError;
 use crate::deno_json::CompilerOptions;
@@ -59,6 +58,7 @@ use crate::deno_json::TestConfig;
 use crate::deno_json::ToInvalidConfigError;
 use crate::deno_json::ToLockConfigError;
 use crate::deno_json::WorkspaceConfigParseError;
+use crate::deno_json::{get_base_compiler_options_for_emit, DeployConfig};
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternParseError;
@@ -1999,9 +1999,7 @@ impl WorkspaceDirectory {
     })
   }
 
-  pub fn to_deploy_config(
-    &self,
-  ) -> Result<DeployConfig, ToInvalidConfigError> {
+  pub fn to_deploy_config(&self) -> Result<DeployConfig, ToInvalidConfigError> {
     let config = if let Some(deno_json) = self.deno_json.as_ref() {
       if let Some(config) = deno_json.member.to_deploy_config()? {
         Some(config)
@@ -2014,7 +2012,7 @@ impl WorkspaceDirectory {
     } else {
       None
     };
-    
+
     Ok(config.unwrap())
   }
 
