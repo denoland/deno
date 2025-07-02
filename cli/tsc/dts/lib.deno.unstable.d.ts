@@ -9,6 +9,98 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  export type BundlePlatform = "browser" | "deno";
+
+  export type BundleFormat = "esm" | "cjs" | "iife";
+
+  export type SourceMapType = "linked" | "inline" | "external";
+
+  export type PackageHandling = "bundle" | "external";
+
+  export interface BundleOptions {
+    /**
+     * The entrypoints of the bundle.
+     */
+    entrypoints: string[];
+    /**
+     * Output file path.
+     */
+    outputPath?: string;
+    /**
+     * Output directory path.
+     */
+    outputDir?: string;
+    /**
+     * External modules to exclude from bundling.
+     */
+    external?: string[];
+    /**
+     * Bundle format.
+     */
+    format?: BundleFormat;
+    /**
+     * Whether to minify the output.
+     */
+    minify?: boolean;
+    /**
+     * Whether to enable code splitting.
+     */
+    codeSplitting?: boolean;
+    /**
+     * Whether to inline imports.
+     */
+    inlineImports?: boolean;
+    /**
+     * How to handle packages.
+     */
+    packages?: PackageHandling;
+    /**
+     * Source map configuration.
+     */
+    sourcemap?: SourceMapType;
+    /**
+     * Target platform.
+     */
+    platform?: BundlePlatform;
+    /**
+     * Whether to watch for changes.
+     */
+    watch?: boolean;
+  }
+
+  export interface BundleMessageLocation {
+    file: string;
+    namespace?: string;
+    line: number;
+    column: number;
+    length: number;
+    suggestion?: string;
+  }
+
+  export interface BundleMessageNote {
+    text: string;
+    location?: BundleMessageLocation;
+  }
+
+  export interface BundleMessage {
+    text: string;
+    location?: BundleMessageLocation;
+    notes?: BundleMessageNote[];
+  }
+
+  export interface BundleResult {
+    errors: BundleMessage[];
+    warnings: BundleMessage[];
+    success: boolean;
+    outputFiles?: {
+      path: string;
+      contents?: string;
+      hash: string;
+    }[];
+  }
+
+  export async function bundle(options: BundleOptions): Promise<BundleResult>;
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  Creates a presentable WebGPU surface from given window and
