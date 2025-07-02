@@ -34,6 +34,12 @@ use node_resolver::cache::NodeResolutionSys;
 use thiserror::Error;
 use url::Url;
 
+use crate::DefaultRawDenoResolverRc;
+use crate::DenoResolverOptions;
+use crate::NodeAndNpmResolvers;
+use crate::NpmCacheDirRc;
+use crate::RawDenoResolver;
+use crate::WorkspaceResolverRc;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirOptions;
 use crate::cache::DenoDirProvider;
