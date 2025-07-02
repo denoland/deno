@@ -514,6 +514,23 @@ pub struct CjsAnalysisCouldNotLoadError {
   source: JsErrorBox,
 }
 
+#[allow(clippy::disallowed_types)]
+pub type NodeCodeTranslatorRc<
+  TCjsCodeAnalyzer,
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
+
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
   TInNpmPackageChecker: InNpmPackageChecker,
@@ -531,9 +548,10 @@ pub struct NodeCodeTranslator<
   mode: NodeCodeTranslatorMode,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum NodeCodeTranslatorMode {
   Bundling,
+  #[default]
   ModuleLoader,
 }
 

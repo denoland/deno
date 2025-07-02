@@ -21,7 +21,7 @@ pub use deno_cache_dir::CACHE_PERM;
 pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
-pub use node::NodeAnalysisCache;
+pub use node::SqliteNodeAnalysisCache;
 
 use crate::sys::CliSys;
 

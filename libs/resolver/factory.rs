@@ -24,6 +24,9 @@ pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
+use node_resolver::analyze::CjsModuleExportAnalyzerRc;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::analyze::NodeCodeTranslatorRc;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -41,6 +44,9 @@ use crate::cache::DenoDirProviderRc;
 use crate::cache::DenoDirSys;
 use crate::cache::EmitCache;
 use crate::cache::EmitCacheRc;
+use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
+use crate::cjs::analyzer::NodeAnalysisCacheRc;
+use crate::cjs::analyzer::NullNodeAnalysisCache;
 use crate::cjs::CjsTracker;
 use crate::cjs::CjsTrackerRc;
 use crate::cjs::IsCjsResolutionMode;
@@ -93,6 +99,21 @@ type UrlRc = crate::sync::MaybeArc<Url>;
 pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
+
+pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
+  DenoCjsCodeAnalyzer<TSys>,
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  NpmResolver<TSys>,
+  TSys,
+>;
+pub type DenoNodeCodeTranslatorRc<TSys> = NodeCodeTranslatorRc<
+  DenoCjsCodeAnalyzer<TSys>,
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  NpmResolver<TSys>,
+  TSys,
+>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -639,9 +660,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 #[derive(Default)]
 pub struct ResolverFactoryOptions {
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
-  pub npm_system_info: NpmSystemInfo,
+  pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
+  pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
   pub node_resolver_options: NodeResolverOptions,
   pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
+  pub npm_system_info: NpmSystemInfo,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
@@ -656,6 +679,7 @@ pub struct ResolverFactoryOptions {
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
   sys: NodeResolutionSys<TSys>,
+  cjs_module_export_analyzer: Deferred<DenoCjsModuleExportAnalyzerRc<TSys>>,
   cjs_tracker: Deferred<CjsTrackerRc<DenoInNpmPackageChecker, TSys>>,
   compiler_options_resolver: Deferred<CompilerOptionsResolverRc>,
   #[cfg(feature = "graph")]
@@ -666,6 +690,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "graph")]
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
+  node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
       DenoInNpmPackageChecker,
@@ -702,6 +727,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         workspace_factory.sys.clone(),
         options.node_resolution_cache.clone(),
       ),
+      cjs_module_export_analyzer: Default::default(),
       cjs_tracker: Default::default(),
       compiler_options_resolver: Default::default(),
       raw_deno_resolver: Default::default(),
@@ -712,6 +738,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       #[cfg(feature = "graph")]
       found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
+      node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
@@ -757,6 +784,38 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
+  }
+
+  pub fn cjs_module_export_analyzer(
+    &self,
+  ) -> Result<&DenoCjsModuleExportAnalyzerRc<TSys>, anyhow::Error> {
+    self.cjs_module_export_analyzer.get_or_try_init(|| {
+      let code_analyzer = DenoCjsCodeAnalyzer::new(
+        self
+          .options
+          .node_analysis_cache
+          .clone()
+          .unwrap_or_else(|| new_rc(NullNodeAnalysisCache)),
+        self.cjs_tracker()?.clone(),
+        #[cfg(feature = "deno_ast")]
+        new_rc(crate::cjs::analyzer::DenoAstModuleExportAnalyzer::new(
+          self.parsed_source_cache().clone(),
+        )),
+        #[cfg(not(feature = "deno_ast"))]
+        new_rc(crate::cjs::analyzer::NotImplementedModuleExportAnalyzer),
+        self.workspace_factory.sys().clone(),
+      );
+      Ok(new_rc(
+        node_resolver::analyze::CjsModuleExportAnalyzer::new(
+          code_analyzer,
+          self.in_npm_package_checker()?.clone(),
+          self.node_resolver()?.clone(),
+          self.npm_resolver()?.clone(),
+          self.pkg_json_resolver().clone(),
+          self.workspace_factory.sys().clone(),
+        ),
+      ))
+    })
   }
 
   pub fn cjs_tracker(
@@ -844,6 +903,17 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
       Ok(DenoInNpmPackageChecker::new(options))
+    })
+  }
+
+  pub fn node_code_translator(
+    &self,
+  ) -> Result<&DenoNodeCodeTranslatorRc<TSys>, anyhow::Error> {
+    self.node_code_translator.get_or_try_init(|| {
+      Ok(new_rc(NodeCodeTranslator::new(
+        self.cjs_module_export_analyzer()?.clone(),
+        self.options.node_code_translator_mode,
+      )))
     })
   }
 

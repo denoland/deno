@@ -52,7 +52,6 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::FeatureChecker;
-use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -72,7 +71,7 @@ use crate::cache::CodeCache;
 use crate::cache::DenoDir;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
-use crate::cache::NodeAnalysisCache;
+use crate::cache::SqliteNodeAnalysisCache;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
@@ -86,9 +85,6 @@ use crate::module_loader::CliEmitter;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::EszipModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::node::CliCjsCodeAnalyzer;
-use crate::node::CliCjsModuleExportAnalyzer;
-use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmCache;
@@ -298,7 +294,6 @@ impl<T> Deferred<T> {
 struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
-  cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
   eszip_module_loader_provider: Deferred<Arc<EszipModuleLoaderProvider>>,
@@ -313,7 +308,6 @@ struct CliFactoryServices {
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
-  node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   npm_installer_factory: Deferred<CliNpmInstallerFactory>,
   permission_desc_parser:
     Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
@@ -675,64 +669,6 @@ impl CliFactory {
       .await
   }
 
-  pub async fn cjs_module_export_analyzer(
-    &self,
-  ) -> Result<&Arc<CliCjsModuleExportAnalyzer>, AnyError> {
-    self
-      .services
-      .cjs_module_export_analyzer
-      .get_or_try_init_async(async {
-        let node_resolver = self.node_resolver().await?.clone();
-        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
-
-        Ok(Arc::new(CliCjsModuleExportAnalyzer::new(
-          cjs_code_analyzer,
-          self.in_npm_pkg_checker()?.clone(),
-          node_resolver,
-          self.npm_resolver().await?.clone(),
-          self.pkg_json_resolver()?.clone(),
-          self.sys(),
-        )))
-      })
-      .await
-  }
-
-  pub async fn node_code_translator(
-    &self,
-  ) -> Result<&Arc<CliNodeCodeTranslator>, AnyError> {
-    self
-      .services
-      .node_code_translator
-      .get_or_try_init_async(
-        async {
-          let module_export_analyzer =
-            self.cjs_module_export_analyzer().await?;
-          Ok(Arc::new(NodeCodeTranslator::new(
-            module_export_analyzer.clone(),
-            match self.cli_options()?.sub_command() {
-              DenoSubcommand::Bundle(_) => {
-                node_resolver::analyze::NodeCodeTranslatorMode::Bundling
-              }
-              _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
-            },
-          )))
-        }
-        .boxed_local(),
-      )
-      .await
-  }
-
-  fn create_cjs_code_analyzer(&self) -> Result<CliCjsCodeAnalyzer, AnyError> {
-    let caches = self.caches()?;
-    let node_analysis_cache = NodeAnalysisCache::new(caches.node_analysis_db());
-    Ok(CliCjsCodeAnalyzer::new(
-      node_analysis_cache,
-      self.cjs_tracker()?.clone(),
-      self.fs().clone(),
-      Some(self.parsed_source_cache()?.clone()),
-    ))
-  }
-
   pub fn pkg_json_resolver(
     &self,
   ) -> Result<&Arc<CliPackageJsonResolver>, AnyError> {
@@ -917,7 +853,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
-      self.cjs_module_export_analyzer().await?,
+      self.resolver_factory()?.cjs_module_export_analyzer()?,
       self.cjs_tracker()?,
       self.cli_options()?,
       self.deno_dir()?,
@@ -976,10 +912,10 @@ impl CliFactory {
     let cli_options = self.cli_options()?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
-    let node_code_translator = self.node_code_translator().await?;
-    let cjs_tracker = self.cjs_tracker()?.clone();
     let workspace_factory = self.workspace_factory()?;
     let resolver_factory = self.resolver_factory()?;
+    let node_code_translator = resolver_factory.node_code_translator()?;
+    let cjs_tracker = self.cjs_tracker()?.clone();
     let npm_registry_permission_checker = {
       let mode = if resolver_factory.use_byonm()? {
         NpmRegistryReadPermissionCheckerMode::Byonm
@@ -1165,6 +1101,9 @@ impl CliFactory {
   pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
     self.services.resolver_factory.get_or_try_init(|| {
       let options = self.cli_options()?;
+      let caches = self.caches()?;
+      let node_analysis_cache =
+        Arc::new(SqliteNodeAnalysisCache::new(caches.node_analysis_db()));
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
@@ -1177,6 +1116,7 @@ impl CliFactory {
           } else {
             IsCjsResolutionMode::Disabled
           },
+          node_analysis_cache: Some(node_analysis_cache),
           node_resolver_options: NodeResolverOptions {
             conditions: NodeConditionOptions {
               conditions: options
@@ -1213,6 +1153,12 @@ impl CliFactory {
                 ..
               })
             ),
+          },
+          node_code_translator_mode: match options.sub_command() {
+            DenoSubcommand::Bundle(_) => {
+              node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+            }
+            _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),

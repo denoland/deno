@@ -25,7 +25,7 @@ async-trait.workspace = true
 base32.workspace = true
 boxed_error.workspace = true
 dashmap = { workspace = true, optional = true }
-deno_ast = { workspace = true, optional = true }
+deno_ast = { workspace = true, features = ["cjs"], optional = true }
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
