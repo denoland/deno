@@ -8,6 +8,7 @@ use deno_ast::ModuleExportsAndReExports;
 use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::ast::ParsedSourceStore;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -22,7 +23,6 @@ use serde::Serialize;
 
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
-use crate::cache::ParsedSourceCache;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
