@@ -7,10 +7,10 @@ use deno_resolver::cjs::analyzer::NodeAnalysisCache;
 use deno_resolver::cjs::analyzer::NodeAnalysisCacheSourceHash;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
+use super::CacheDBHash;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
-use super::CacheDBHash;
 
 pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   CacheDBConfiguration {
