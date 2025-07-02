@@ -874,7 +874,8 @@ impl DocumentModule {
       })
       .flatten();
     let compiler_options_key = compiler_options_resolver
-      .key_for_specifier(&specifier)
+      .for_specifier(&specifier)
+      .key()
       .to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(

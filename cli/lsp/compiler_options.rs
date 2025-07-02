@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use deno_config::deno_json::CompilerOptions;
+use deno_config::workspace::get_base_compiler_options_for_emit;
+use deno_config::workspace::CompilerOptionsType;
 use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
+use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 
 use crate::lsp::config::Config;
@@ -13,69 +15,84 @@ use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+pub struct LspCompilerOptionsData<'a> {
+  inner: &'a CompilerOptionsData,
+}
+
+impl LspCompilerOptionsData<'_> {
+  pub fn key(&self) -> &str {
+    self.source().map(|s| s.as_str()).unwrap_or(".")
+  }
+
+  pub fn source(&self) -> Option<&Url> {
+    self.inner.sources.last().map(|s| &s.specifier)
+  }
+
+  pub fn compiler_options(&self) -> Arc<CompilerOptions> {
+    self
+      .inner
+      .compiler_options_for_lib(TsTypeLib::DenoWindow)
+      .inspect_err(|err| {
+        lsp_warn!("{err:#}");
+      })
+      .ok()
+      .cloned()
+      .unwrap_or_else(|| {
+        Arc::new(get_base_compiler_options_for_emit(
+          CompilerOptionsType::Check {
+            lib: TsTypeLib::DenoWindow,
+          },
+          self.inner.source_kind,
+        ))
+      })
+  }
+}
+
+#[derive(Debug)]
 pub struct LspCompilerOptionsResolver {
   inner: CompilerOptionsResolver,
 }
 
+impl Default for LspCompilerOptionsResolver {
+  fn default() -> Self {
+    Self::from_inner(Default::default())
+  }
+}
+
 impl LspCompilerOptionsResolver {
   pub fn new(config: &Config, resolver: &LspResolver) -> Self {
-    Self {
-      inner: CompilerOptionsResolver::new_for_lsp(
-        &CliSys::default(),
-        config
-          .tree
-          .data_by_scope()
-          .iter()
-          .map(|(s, d)| (s.as_ref(), d.member_dir.as_ref()))
-          .collect(),
-        Box::new(|s| {
-          resolver
-            .get_scoped_resolver(Some(s))
-            .as_node_resolver()
-            .map(|r| r.as_ref())
-        }),
-      ),
+    Self::from_inner(CompilerOptionsResolver::new_for_lsp(
+      &CliSys::default(),
+      config
+        .tree
+        .data_by_scope()
+        .iter()
+        .map(|(s, d)| (s.as_ref(), d.member_dir.as_ref()))
+        .collect(),
+      Box::new(|s| {
+        resolver
+          .get_scoped_resolver(Some(s))
+          .as_node_resolver()
+          .map(|r| r.as_ref())
+      }),
+    ))
+  }
+
+  fn from_inner(inner: CompilerOptionsResolver) -> Self {
+    Self { inner }
+  }
+
+  pub fn for_specifier(&self, specifier: &Url) -> LspCompilerOptionsData<'_> {
+    LspCompilerOptionsData {
+      inner: self.inner.for_specifier(specifier),
     }
   }
 
-  pub fn key_for_specifier(&self, specifier: &Url) -> &str {
-    self
-      .inner
-      .for_specifier(specifier)
-      .sources
-      .last()
-      .map(|s| s.specifier.as_str())
-      .unwrap_or(".")
-  }
-
-  pub fn compiler_options_by_key(
-    &self,
-  ) -> BTreeMap<&str, &Arc<CompilerOptions>> {
+  pub fn all(&self) -> impl Iterator<Item = LspCompilerOptionsData<'_>> {
     self
       .inner
       .all()
-      .map(|d| {
-        let source = d
-          .sources
-          .last()
-          .map(|s| s.specifier.as_str())
-          .unwrap_or(".");
-        let compiler_options = d
-          .compiler_options_for_lib(TsTypeLib::DenoWindow)
-          .inspect_err(|err| {
-            lsp_warn!("{err:#}");
-          })
-          .ok()
-          .unwrap_or_else(|| {
-            self
-              .inner
-              .unscoped()
-              .compiler_options_for_lib(TsTypeLib::DenoWindow)
-              .expect("Unscoped compiler options should not error.")
-          });
-        (source, compiler_options)
-      })
-      .collect()
+      .map(|d| LspCompilerOptionsData { inner: d })
   }
 }

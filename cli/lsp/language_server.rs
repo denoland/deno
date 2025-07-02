@@ -3722,7 +3722,10 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let mut items_with_scopes = IndexMap::new();
-    for scope in self.document_modules.scopes() {
+    for compiler_options_data in self.compiler_options_resolver.all() {
+      let scope = compiler_options_data
+        .source()
+        .and_then(|s| self.config.tree.scope_for_specifier(s));
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
       }
@@ -3733,9 +3736,8 @@ impl Inner {
           params.query.clone(),
           // this matches vscode's hard coded result count
           Some(256),
-          // TODO(This PR): Implement.
-          ".",
-          scope.as_ref(),
+          compiler_options_data.key(),
+          scope,
           // TODO(nayeemrmn): Support notebook scopes here.
           None,
           token,
@@ -3745,11 +3747,11 @@ impl Inner {
           lsp_warn!(
             "Unable to get signature help items from TypeScript: {:#}\nScope: {}",
             err,
-            scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
+            scope.map(|s| s.as_str()).unwrap_or("null"),
           );
         })
         .unwrap_or_default();
-      items_with_scopes.extend(items.into_iter().map(|i| (i, scope.clone())));
+      items_with_scopes.extend(items.into_iter().map(|i| (i, scope)));
     }
     let symbol_information = items_with_scopes
       .into_iter()
@@ -3757,7 +3759,9 @@ impl Inner {
         if token.is_cancelled() {
           return Some(Err(LspError::request_cancelled()));
         }
-        Some(Ok(item.to_symbol_information(scope.as_deref(), self)?))
+        Some(Ok(
+          item.to_symbol_information(scope.map(|s| s.as_ref()), self)?,
+        ))
       })
       .collect::<Result<Vec<_>, _>>()?;
     let symbol_information = if symbol_information.is_empty() {

@@ -93,7 +93,7 @@ struct MemoizedValues {
 #[derive(Debug)]
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
-  source_kind: CompilerOptionsSourceKind,
+  pub source_kind: CompilerOptionsSourceKind,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
 }
@@ -722,10 +722,6 @@ impl CompilerOptionsResolver {
       workspace_configs,
       ts_configs: ts_config_collector.collect(),
     }
-  }
-
-  pub fn unscoped(&self) -> &CompilerOptionsData {
-    &self.workspace_configs.unscoped
   }
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
