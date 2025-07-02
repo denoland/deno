@@ -684,8 +684,8 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
-  #[cfg(feature = "graph")]
-  parsed_source_cache: crate::graph::ParsedSourceCacheRc,
+  #[cfg(feature = "deno_ast")]
+  parsed_source_cache: crate::cache::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
   raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
@@ -716,7 +716,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
-      #[cfg(feature = "graph")]
+      #[cfg(feature = "deno_ast")]
       parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
       workspace_factory,
@@ -784,7 +784,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
-  #[cfg(feature = "graph")]
+  #[cfg(feature = "deno_ast")]
   pub fn emitter(
     &self,
   ) -> Result<
@@ -939,8 +939,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
-  #[cfg(feature = "graph")]
-  pub fn parsed_source_cache(&self) -> &crate::graph::ParsedSourceCacheRc {
+  #[cfg(feature = "deno_ast")]
+  pub fn parsed_source_cache(&self) -> &crate::cache::ParsedSourceCacheRc {
     &self.parsed_source_cache
   }
 

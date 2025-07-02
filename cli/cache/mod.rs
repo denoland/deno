@@ -11,7 +11,6 @@ mod node;
 
 pub type DenoDir = deno_resolver::cache::DenoDir<CliSys>;
 pub type DenoDirProvider = deno_resolver::cache::DenoDirProvider<CliSys>;
-pub type EmitCache = deno_resolver::cache::EmitCache<CliSys>;
 
 pub use cache_db::CacheDBHash;
 pub use caches::Caches;

@@ -14,7 +14,7 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
-deno_ast = ["dep:deno_ast"]
+deno_ast = ["dep:deno_ast", "deno_graph/swc"]
 graph = ["deno_graph", "node_resolver/graph", "http", "deno_permissions"]
 sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
 

@@ -31,6 +31,7 @@ use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
@@ -38,7 +39,6 @@ use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
-use deno_resolver::graph::ParsedSourceCache;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -70,7 +70,6 @@ use crate::args::InstallFlags;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
-use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
@@ -631,10 +630,6 @@ impl CliFactory {
       .services
       .maybe_file_watcher_reporter
       .get_or_init(|| maybe_file_watcher_reporter)
-  }
-
-  pub fn emit_cache(&self) -> Result<&Arc<EmitCache>, AnyError> {
-    self.workspace_factory()?.emit_cache()
   }
 
   pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {

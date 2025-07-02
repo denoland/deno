@@ -3,6 +3,8 @@
 mod deno_dir;
 mod disk_cache;
 mod emit;
+#[cfg(feature = "deno_ast")]
+mod parsed_source;
 
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirOptions;
@@ -14,3 +16,9 @@ pub use disk_cache::DiskCacheSys;
 pub use emit::EmitCache;
 pub use emit::EmitCacheRc;
 pub use emit::EmitCacheSys;
+#[cfg(feature = "deno_ast")]
+pub use parsed_source::LazyGraphSourceParser;
+#[cfg(feature = "deno_ast")]
+pub use parsed_source::ParsedSourceCache;
+#[cfg(feature = "deno_ast")]
+pub use parsed_source::ParsedSourceCacheRc;

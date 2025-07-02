@@ -13,7 +13,7 @@ use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
-use deno_resolver::graph::ParsedSourceCache;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 

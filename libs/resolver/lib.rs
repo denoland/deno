@@ -57,7 +57,7 @@ pub mod import_map;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
-#[cfg(feature = "deno_ast")]
+#[cfg(all(feature = "deno_ast", feature = "sync"))]
 mod rt;
 mod sync;
 pub mod workspace;

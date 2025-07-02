@@ -24,11 +24,11 @@ use url::Url;
 
 use crate::cache::EmitCacheRc;
 use crate::cache::EmitCacheSys;
+use crate::cache::ParsedSourceCache;
+use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
-use crate::graph::ParsedSourceCache;
-use crate::graph::ParsedSourceCacheRc;
 
 #[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
 type ArcStr = std::sync::Arc<str>;
@@ -142,6 +142,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       PreEmitResult::NotCached { source_hash } => {
         let parsed_source_cache = self.parsed_source_cache.clone();
         let transpile_and_emit_options = transpile_and_emit_options.clone();
+        #[cfg(feature = "sync")]
         let transpiled_source = crate::rt::spawn_blocking({
           let specifier = specifier.clone();
           let source = source.clone();
@@ -160,6 +161,17 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         })
         .await
         .unwrap()?;
+        #[cfg(not(feature = "sync"))]
+        let transpiled_source = transpile(
+          &parsed_source_cache,
+          &specifier,
+          media_type,
+          module_kind,
+          source.clone(),
+          &transpile_and_emit_options.transpile,
+          &transpile_and_emit_options.emit,
+        )?
+        .text;
         helper.post_emit_parsed_source(
           specifier,
           &transpiled_source,
