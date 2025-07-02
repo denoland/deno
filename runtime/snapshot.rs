@@ -40,7 +40,10 @@ pub fn create_runtime_snapshot(
     deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
       deno_broadcast_channel::InMemoryBroadcastChannel,
     >(),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::lazy_init::<Permissions>(),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init::<Permissions>(),
     deno_tls::deno_tls::lazy_init(),
     deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler<Permissions>>(
