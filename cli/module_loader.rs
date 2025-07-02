@@ -15,6 +15,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use boxed_error::Boxed;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
@@ -30,7 +31,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
@@ -40,12 +40,8 @@ use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
-use deno_graph::JsModule;
-use deno_graph::JsonModule;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleGraphError;
 use deno_graph::WalkOptions;
-use deno_graph::WasmModule;
 use deno_lib::loader::module_type_from_media_type;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NpmModuleLoadError;
@@ -59,6 +55,9 @@ use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
+use deno_resolver::loader::LoadPreparedModuleError;
+use deno_resolver::loader::PreparedModuleOrAsset;
+use deno_resolver::loader::PreparedModuleSource;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
@@ -89,13 +88,10 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::enhance_graph_error;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
-use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliCjsCodeAnalyzer;
-use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
@@ -116,6 +112,8 @@ pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
 >;
 pub type CliEmitter =
   deno_resolver::emit::Emitter<DenoInNpmPackageChecker, CliSys>;
+pub type CliPreparedModuleLoader =
+  deno_resolver::loader::PreparedModuleLoader<DenoInNpmPackageChecker, CliSys>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {
@@ -337,12 +335,12 @@ struct SharedCliModuleLoaderState {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
   npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  prepared_module_loader: Arc<CliPreparedModuleLoader>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
@@ -399,13 +397,13 @@ impl CliModuleLoaderFactory {
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
-    node_code_translator: Arc<CliNodeCodeTranslator>,
     npm_module_loader: CliNpmModuleLoader,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
+    prepared_module_loader: Arc<CliPreparedModuleLoader>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
@@ -428,11 +426,11 @@ impl CliModuleLoaderFactory {
         in_npm_pkg_checker,
         main_module_graph_container,
         module_load_preparer,
-        node_code_translator,
         npm_module_loader,
         npm_registry_permission_checker,
         npm_resolver,
         parsed_source_cache,
+        prepared_module_loader,
         resolver,
         sys,
         in_flight_loads_tracker: InFlightModuleLoadsTracker {
@@ -539,44 +537,6 @@ pub struct LoadUnpreparedModuleError {
   maybe_referrer: Option<ModuleSpecifier>,
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("{message}")]
-#[class(inherit)]
-pub struct EnhancedGraphError {
-  #[inherit]
-  pub error: deno_graph::ModuleError,
-  pub message: String,
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadPreparedModuleError {
-  #[class(inherit)]
-  #[error(transparent)]
-  NpmModuleLoad(#[from] deno_resolver::emit::EmitParsedSourceHelperError),
-  #[class(inherit)]
-  #[error(transparent)]
-  LoadMaybeCjs(#[from] LoadMaybeCjsError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Graph(#[from] Box<EnhancedGraphError>),
-  #[class(inherit)]
-  #[error(transparent)]
-  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[from] JsErrorBox),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadMaybeCjsError {
-  #[class(inherit)]
-  #[error(transparent)]
-  NpmModuleLoad(#[from] deno_resolver::emit::EmitParsedSourceHelperError),
-  #[class(inherit)]
-  #[error(transparent)]
-  TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
-}
-
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
@@ -590,16 +550,9 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[derive(Debug, deno_error::JsError, Boxed)]
 #[class(inherit)]
-#[error(transparent)]
-pub struct LoadCodeSourceError(#[from] pub Box<LoadCodeSourceErrorKind>);
-
-impl LoadCodeSourceError {
-  pub fn from_err<E: Into<LoadCodeSourceErrorKind>>(err: E) -> Self {
-    Self(Box::new(err.into()))
-  }
-}
+pub struct LoadCodeSourceError(pub Box<LoadCodeSourceErrorKind>);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LoadCodeSourceErrorKind {
@@ -768,12 +721,67 @@ impl<TGraphContainer: ModuleGraphContainer>
     is_dynamic: bool,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
+    fn as_deno_resolver_requested_module_type(
+      value: &RequestedModuleType,
+    ) -> deno_resolver::loader::RequestedModuleType<'_> {
+      match value {
+        RequestedModuleType::None => {
+          deno_resolver::loader::RequestedModuleType::None
+        }
+        RequestedModuleType::Json => {
+          deno_resolver::loader::RequestedModuleType::Json
+        }
+        RequestedModuleType::Text => {
+          deno_resolver::loader::RequestedModuleType::Text
+        }
+        RequestedModuleType::Bytes => {
+          deno_resolver::loader::RequestedModuleType::Bytes
+        }
+        RequestedModuleType::Other(text) => {
+          deno_resolver::loader::RequestedModuleType::Other(text)
+        }
+      }
+    }
+
+    let graph = self.graph_container.graph();
     match self
-      .load_prepared_module(specifier, requested_module_type)
+      .shared
+      .prepared_module_loader
+      .load_prepared_module(
+        &graph,
+        specifier,
+        &as_deno_resolver_requested_module_type(requested_module_type),
+      )
       .await
-      .map_err(LoadCodeSourceError::from_err)?
+      .map_err(LoadCodeSourceError::from)?
     {
-      Some(code) => Ok(code),
+      Some(module_or_asset) => match module_or_asset {
+        PreparedModuleOrAsset::Module(prepared_module) => {
+          Ok(ModuleCodeStringSource {
+            code: match prepared_module.source {
+              PreparedModuleSource::ArcStr(text) => {
+                ModuleSourceCode::String(text.into())
+              }
+              PreparedModuleSource::ArcBytes(bytes) => {
+                ModuleSourceCode::Bytes(bytes.into())
+              }
+            },
+            found_url: prepared_module.specifier.clone(),
+            module_type: module_type_from_media_type(
+              prepared_module.media_type,
+            ),
+          })
+        }
+        PreparedModuleOrAsset::ExternalAsset { specifier } => {
+          self.load_asset(
+            specifier,
+            /* do not use dynamic import permissions because this was statically analyzable */ false,
+            requested_module_type
+          )
+          .await
+          .map_err(|err| LoadCodeSourceErrorKind::Fetch(err).into_box())
+        }
+      },
       None => {
         let specifier = if let Ok(reference) =
           NpmPackageReqReference::from_specifier(specifier)
@@ -787,7 +795,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             None => Cow::Owned(
               self
                 .resolve_referrer("")
-                .map_err(LoadCodeSourceError::from_err)?,
+                .map_err(LoadCodeSourceError::from)?,
             ),
           };
           Cow::Owned(
@@ -800,10 +808,10 @@ impl<TGraphContainer: ModuleGraphContainer>
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
               )
-              .map_err(LoadCodeSourceError::from_err)?
+              .map_err(LoadCodeSourceError::from)?
               .unwrap()
               .into_url()
-              .map_err(LoadCodeSourceError::from_err)?,
+              .map_err(LoadCodeSourceError::from)?,
           )
         } else {
           Cow::Borrowed(specifier)
@@ -814,15 +822,15 @@ impl<TGraphContainer: ModuleGraphContainer>
             .npm_module_loader
             .load(&specifier, maybe_referrer)
             .await
-            .map_err(LoadCodeSourceError::from_err);
+            .map_err(LoadCodeSourceError::from);
         }
 
         match requested_module_type {
           RequestedModuleType::Text | RequestedModuleType::Bytes => self
             .load_asset(&specifier, is_dynamic, requested_module_type)
             .await
-            .map_err(LoadCodeSourceError::from_err),
-          _ => Err(LoadCodeSourceError::from_err(LoadUnpreparedModuleError {
+            .map_err(LoadCodeSourceError::from),
+          _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
             specifier: specifier.into_owned(),
             maybe_referrer: maybe_referrer.cloned(),
           })),
@@ -1081,334 +1089,6 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     Ok(specifier)
   }
-
-  async fn load_prepared_module(
-    &self,
-    specifier: &ModuleSpecifier,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<Option<ModuleCodeStringSource>, LoadPreparedModuleError> {
-    // Note: keep this in sync with the sync version below
-    let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(
-      &graph,
-      specifier,
-      requested_module_type,
-    )? {
-      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
-      Some(CodeOrDeferredEmit::DeferredEmit {
-        specifier,
-        media_type,
-        source,
-      }) => {
-        let transpile_result = self
-          .shared
-          .emitter
-          .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
-          .await?;
-
-        // at this point, we no longer need the parsed source in memory, so free it
-        self.shared.parsed_source_cache.free(specifier);
-
-        Ok(Some(ModuleCodeStringSource {
-          // note: it's faster to provide a string if we know it's a string
-          code: ModuleSourceCode::String(transpile_result.into()),
-          found_url: specifier.clone(),
-          module_type: module_type_from_media_type(media_type),
-        }))
-      }
-      Some(CodeOrDeferredEmit::Cjs {
-        specifier,
-        media_type,
-        source,
-      }) => self
-        .load_maybe_cjs(specifier, media_type, source)
-        .await
-        .map(Some)
-        .map_err(LoadPreparedModuleError::LoadMaybeCjs),
-      Some(CodeOrDeferredEmit::ExternalAsset { specifier }) => {
-        self.load_asset(
-          specifier,
-          /* do not use dynamic import permissions because this was statically analyzable */ false,
-          requested_module_type
-        ).await
-        .map(Some)
-        .map_err(LoadPreparedModuleError::from)
-      }
-      None => Ok(None),
-    }
-  }
-
-  fn load_prepared_module_for_source_map_sync(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
-    // Note: keep this in sync with the async version above
-    let graph = self.graph_container.graph();
-    match self.load_prepared_module_or_defer_emit(
-      &graph,
-      specifier,
-      &RequestedModuleType::None,
-    )? {
-      Some(CodeOrDeferredEmit::Code(code_source)) => Ok(Some(code_source)),
-      Some(CodeOrDeferredEmit::DeferredEmit {
-        specifier,
-        media_type,
-        source,
-      }) => {
-        let transpile_result = self.shared.emitter.emit_parsed_source_sync(
-          specifier,
-          media_type,
-          ModuleKind::Esm,
-          source,
-        )?;
-
-        // at this point, we no longer need the parsed source in memory, so free it
-        self.shared.parsed_source_cache.free(specifier);
-
-        Ok(Some(ModuleCodeStringSource {
-          // note: it's faster to provide a string if we know it's a string
-          code: ModuleSourceCode::String(transpile_result.into()),
-          found_url: specifier.clone(),
-          module_type: module_type_from_media_type(media_type),
-        }))
-      }
-      Some(CodeOrDeferredEmit::Cjs { .. }) => {
-        self.shared.parsed_source_cache.free(specifier);
-
-        // todo(dsherret): to make this work, we should probably just
-        // rely on the CJS export cache. At the moment this is hard because
-        // cjs export analysis is only async
-        Ok(None)
-      }
-      Some(CodeOrDeferredEmit::ExternalAsset { .. }) | None => Ok(None),
-    }
-  }
-
-  fn load_prepared_module_or_defer_emit<'graph>(
-    &self,
-    graph: &'graph ModuleGraph,
-    specifier: &ModuleSpecifier,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
-    if specifier.scheme() == "node" {
-      // Node built-in modules should be handled internally.
-      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
-    }
-
-    let maybe_module = graph.try_get(specifier).map_err(|err| {
-      Box::new(EnhancedGraphError {
-        message: enhance_graph_error(
-          &self.shared.sys,
-          &ModuleGraphError::ModuleError(err.clone()),
-          EnhanceGraphErrorMode::ShowRange,
-        ),
-        error: err.clone(),
-      })
-    })?;
-
-    match maybe_module {
-      Some(deno_graph::Module::Json(JsonModule {
-        source,
-        media_type,
-        specifier,
-        ..
-      })) => match requested_module_type {
-        RequestedModuleType::Bytes => match source.try_get_original_bytes() {
-          Some(bytes) => {
-            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-              code: ModuleSourceCode::Bytes(bytes.into()),
-              found_url: specifier.clone(),
-              module_type: ModuleType::Bytes,
-            })))
-          }
-          None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
-        },
-        RequestedModuleType::Text => {
-          Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-            code: ModuleSourceCode::String(source.text.clone().into()),
-            found_url: specifier.clone(),
-            module_type: ModuleType::Text,
-          })))
-        }
-        _ => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code: ModuleSourceCode::String(source.text.clone().into()),
-          found_url: specifier.clone(),
-          module_type: module_type_from_media_type(*media_type),
-        }))),
-      },
-      Some(deno_graph::Module::Js(JsModule {
-        source,
-        media_type,
-        specifier,
-        is_script,
-        ..
-      })) => {
-        match requested_module_type {
-          RequestedModuleType::Bytes => match source.try_get_original_bytes() {
-            Some(bytes) => {
-              Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-                code: ModuleSourceCode::Bytes(bytes.into()),
-                found_url: specifier.clone(),
-                module_type: ModuleType::Bytes,
-              })))
-            }
-            None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
-          },
-          RequestedModuleType::Text => {
-            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-              code: ModuleSourceCode::String(source.text.clone().into()),
-              found_url: specifier.clone(),
-              module_type: ModuleType::Text,
-            })))
-          }
-          _ => {
-            if self
-              .shared
-              .cjs_tracker
-              .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
-              .map_err(JsErrorBox::from_err)?
-            {
-              return Ok(Some(CodeOrDeferredEmit::Cjs {
-                specifier,
-                media_type: *media_type,
-                source: &source.text,
-              }));
-            }
-            let code: ModuleCodeString = match media_type {
-              MediaType::JavaScript
-              | MediaType::Unknown
-              | MediaType::Mjs
-              | MediaType::Json => source.text.clone().into(),
-              MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-                Default::default()
-              }
-              MediaType::Cjs | MediaType::Cts => {
-                return Ok(Some(CodeOrDeferredEmit::Cjs {
-                  specifier,
-                  media_type: *media_type,
-                  source: &source.text,
-                }));
-              }
-              MediaType::TypeScript
-              | MediaType::Mts
-              | MediaType::Jsx
-              | MediaType::Tsx => {
-                return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
-                  specifier,
-                  media_type: *media_type,
-                  source: &source.text,
-                }));
-              }
-              MediaType::Css
-              | MediaType::Html
-              | MediaType::Sql
-              | MediaType::Wasm
-              | MediaType::SourceMap => {
-                panic!("Unexpected media type {media_type} for {specifier}")
-              }
-            };
-
-            // at this point, we no longer need the parsed source in memory, so free it
-            self.shared.parsed_source_cache.free(specifier);
-
-            Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-              code: ModuleSourceCode::String(code),
-              found_url: specifier.clone(),
-              module_type: module_type_from_media_type(*media_type),
-            })))
-          }
-        }
-      }
-      Some(deno_graph::Module::Wasm(WasmModule {
-        source, specifier, ..
-      })) => Ok(Some(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: ModuleSourceCode::Bytes(source.clone().into()),
-        found_url: specifier.clone(),
-        module_type: match requested_module_type {
-          RequestedModuleType::Bytes => ModuleType::Bytes,
-          RequestedModuleType::Text => ModuleType::Text, // nonsensical, but allowed
-          _ => ModuleType::Wasm,
-        },
-      }))),
-      Some(deno_graph::Module::External(module))
-        if matches!(
-          requested_module_type,
-          RequestedModuleType::Bytes | RequestedModuleType::Text
-        ) =>
-      {
-        Ok(Some(CodeOrDeferredEmit::ExternalAsset {
-          specifier: &module.specifier,
-        }))
-      }
-      Some(
-        deno_graph::Module::External(_)
-        | deno_graph::Module::Node(_)
-        | deno_graph::Module::Npm(_),
-      )
-      | None => Ok(None),
-    }
-  }
-
-  async fn load_maybe_cjs(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    original_source: &Arc<str>,
-  ) -> Result<ModuleCodeStringSource, LoadMaybeCjsError> {
-    let js_source = if media_type.is_emittable() {
-      Cow::Owned(
-        self
-          .shared
-          .emitter
-          .emit_parsed_source(
-            specifier,
-            media_type,
-            ModuleKind::Cjs,
-            original_source,
-          )
-          .await?,
-      )
-    } else {
-      Cow::Borrowed(original_source.as_ref())
-    };
-    let text = self
-      .shared
-      .node_code_translator
-      .translate_cjs_to_esm(specifier, Some(js_source))
-      .await?;
-    // at this point, we no longer need the parsed source in memory, so free it
-    self.shared.parsed_source_cache.free(specifier);
-    Ok(ModuleCodeStringSource {
-      code: match text {
-        // perf: if the text is borrowed, that means it didn't make any changes
-        // to the original source, so we can just provide that instead of cloning
-        // the borrowed text
-        Cow::Borrowed(_) => {
-          ModuleSourceCode::String(original_source.clone().into())
-        }
-        Cow::Owned(text) => ModuleSourceCode::String(text.into()),
-      },
-      found_url: specifier.clone(),
-      module_type: module_type_from_media_type(media_type),
-    })
-  }
-}
-
-enum CodeOrDeferredEmit<'a> {
-  Code(ModuleCodeStringSource),
-  DeferredEmit {
-    specifier: &'a ModuleSpecifier,
-    media_type: MediaType,
-    source: &'a Arc<str>,
-  },
-  Cjs {
-    specifier: &'a ModuleSpecifier,
-    media_type: MediaType,
-    source: &'a Arc<str>,
-  },
-  ExternalAsset {
-    specifier: &'a ModuleSpecifier,
-  },
 }
 
 #[derive(Clone)]
@@ -1640,11 +1320,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
+    let graph = self.0.graph_container.graph();
     let source = self
       .0
-      .load_prepared_module_for_source_map_sync(&specifier)
+      .shared
+      .prepared_module_loader
+      .load_prepared_module_for_source_map_sync(&graph, &specifier)
       .ok()??;
-    source_map_from_code(source.code.as_bytes()).map(Cow::Owned)
+    source_map_from_code(source.source.as_bytes()).map(Cow::Owned)
   }
 
   fn get_source_mapped_source_line(

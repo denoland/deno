@@ -3,7 +3,6 @@
 use deno_resolver::cjs::analyzer::DenoCjsCodeAnalyzer;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
-use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::npm::CliNpmResolver;
@@ -12,13 +11,6 @@ use crate::sys::CliSys;
 pub type CliCjsCodeAnalyzer = DenoCjsCodeAnalyzer<CliSys>;
 
 pub type CliCjsModuleExportAnalyzer = CjsModuleExportAnalyzer<
-  CliCjsCodeAnalyzer,
-  DenoInNpmPackageChecker,
-  DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
->;
-pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,

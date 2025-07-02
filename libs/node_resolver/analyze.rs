@@ -514,6 +514,9 @@ pub struct CjsAnalysisCouldNotLoadError {
   source: JsErrorBox,
 }
 
+#[sys_traits::auto_impl]
+pub trait NodeCodeTranslatorSys: FsCanonicalize + FsMetadata + FsRead {}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeCodeTranslatorRc<
   TCjsCodeAnalyzer,
@@ -536,7 +539,7 @@ pub struct NodeCodeTranslator<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeCodeTranslatorSys,
 > {
   module_export_analyzer: CjsModuleExportAnalyzerRc<
     TCjsCodeAnalyzer,
@@ -560,7 +563,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeCodeTranslatorSys,
   >
   NodeCodeTranslator<
     TCjsCodeAnalyzer,

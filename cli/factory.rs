@@ -948,7 +948,6 @@ impl CliFactory {
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
-      node_code_translator.clone(),
       NpmModuleLoader::new(
         self.cjs_tracker()?.clone(),
         node_code_translator.clone(),
@@ -957,6 +956,7 @@ impl CliFactory {
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
       resolver_factory.parsed_source_cache().clone(),
+      resolver_factory.prepared_module_loader()?.clone(),
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,

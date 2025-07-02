@@ -54,6 +54,7 @@ pub mod file_fetcher;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod import_map;
+pub mod loader;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
