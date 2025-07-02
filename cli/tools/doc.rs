@@ -109,7 +109,7 @@ pub async fn doc(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_info_cache = factory.module_info_cache()?;
-  let parsed_source_cache = factory.parsed_source_cache();
+  let parsed_source_cache = factory.parsed_source_cache()?;
   let capturing_parser = parsed_source_cache.as_capturing_parser();
   let analyzer = module_info_cache.as_module_analyzer();
 

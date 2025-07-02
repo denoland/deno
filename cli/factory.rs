@@ -31,10 +31,10 @@ use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
-use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
@@ -70,13 +70,9 @@ use crate::args::InstallFlags;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
-use crate::cache::DenoDirProvider;
-use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
-use crate::cache::ParsedSourceCache;
-use crate::emit::Emitter;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
@@ -86,6 +82,7 @@ use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
+use crate::module_loader::CliEmitter;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::EszipModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
@@ -249,9 +246,6 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
 }
 
 pub type CliWorkspaceFactory = deno_resolver::factory::WorkspaceFactory<CliSys>;
-pub type CliDenoDirPathProvider =
-  deno_resolver::factory::DenoDirPathProvider<CliSys>;
-
 pub type CliResolverFactory = deno_resolver::factory::ResolverFactory<CliSys>;
 
 pub struct Deferred<T>(once_cell::unsync::OnceCell<T>);
@@ -307,10 +301,6 @@ struct CliFactoryServices {
   cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
-  deno_dir_path_provider: Deferred<Arc<CliDenoDirPathProvider>>,
-  deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
-  emit_cache: Deferred<Arc<EmitCache>>,
-  emitter: Deferred<Arc<Emitter>>,
   eszip_module_loader_provider: Deferred<Arc<EszipModuleLoaderProvider>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
@@ -325,7 +315,6 @@ struct CliFactoryServices {
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   npm_installer_factory: Deferred<CliNpmInstallerFactory>,
-  parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
     Deferred<Arc<RuntimePermissionDescriptorParser<CliSys>>>,
   resolver_factory: Deferred<Arc<CliResolverFactory>>,
@@ -398,34 +387,21 @@ impl CliFactory {
     })
   }
 
-  pub fn deno_dir_path_provider(&self) -> &Arc<CliDenoDirPathProvider> {
-    self.services.deno_dir_path_provider.get_or_init(|| {
-      Arc::new(CliDenoDirPathProvider::new(
-        self.sys(),
-        DenoDirPathProviderOptions {
-          maybe_custom_root: self.flags.internal.cache_path.clone(),
-        },
-      ))
-    })
-  }
-
-  pub fn deno_dir_provider(&self) -> &Arc<DenoDirProvider> {
-    self.services.deno_dir_provider.get_or_init(|| {
-      Arc::new(DenoDirProvider::new(
-        self.sys(),
-        self.deno_dir_path_provider().clone(),
-      ))
-    })
-  }
-
   pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {
-    Ok(self.deno_dir_provider().get_or_create()?)
+    Ok(
+      self
+        .workspace_factory()?
+        .deno_dir_provider()
+        .get_or_create()?,
+    )
   }
 
   pub fn caches(&self) -> Result<&Arc<Caches>, AnyError> {
     self.services.caches.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
-      let caches = Arc::new(Caches::new(self.deno_dir_provider().clone()));
+      let caches = Arc::new(Caches::new(
+        self.workspace_factory()?.deno_dir_provider().clone(),
+      ));
       // Warm up the caches we know we'll likely need based on the CLI mode
       match cli_options.sub_command() {
         DenoSubcommand::Run(_)
@@ -623,11 +599,7 @@ impl CliFactory {
           .env_current_dir()
           .with_context(|| "Failed getting cwd.")?,
       };
-      let options = new_workspace_factory_options(
-        &initial_cwd,
-        &self.flags,
-        self.deno_dir_path_provider().clone(),
-      );
+      let options = new_workspace_factory_options(&initial_cwd, &self.flags);
       let mut factory =
         CliWorkspaceFactory::new(self.sys(), initial_cwd, options);
       if let Some(workspace_dir) = &self.overrides.workspace_directory {
@@ -660,17 +632,11 @@ impl CliFactory {
       .get_or_init(|| maybe_file_watcher_reporter)
   }
 
-  pub fn emit_cache(&self) -> Result<&Arc<EmitCache>, AnyError> {
-    self.services.emit_cache.get_or_try_init(|| {
-      Ok(Arc::new(EmitCache::new(self.deno_dir()?.gen_cache.clone())))
-    })
-  }
-
   pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {
     self.services.module_info_cache.get_or_try_init(|| {
       Ok(Arc::new(ModuleInfoCache::new(
         self.caches()?.dep_analysis_db(),
-        self.parsed_source_cache().clone(),
+        self.resolver_factory()?.parsed_source_cache().clone(),
       )))
     })
   }
@@ -681,22 +647,14 @@ impl CliFactory {
     })
   }
 
-  pub fn parsed_source_cache(&self) -> &Arc<ParsedSourceCache> {
-    self
-      .services
-      .parsed_source_cache
-      .get_or_init(Default::default)
+  pub fn parsed_source_cache(
+    &self,
+  ) -> Result<&Arc<ParsedSourceCache>, AnyError> {
+    Ok(self.resolver_factory()?.parsed_source_cache())
   }
 
-  pub fn emitter(&self) -> Result<&Arc<Emitter>, AnyError> {
-    self.services.emitter.get_or_try_init(|| {
-      Ok(Arc::new(Emitter::new(
-        self.cjs_tracker()?.clone(),
-        self.emit_cache()?.clone(),
-        self.parsed_source_cache().clone(),
-        self.compiler_options_resolver()?.clone(),
-      )))
-    })
+  pub fn emitter(&self) -> Result<&Arc<CliEmitter>, AnyError> {
+    self.resolver_factory()?.emitter()
   }
 
   pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
@@ -771,7 +729,7 @@ impl CliFactory {
       node_analysis_cache,
       self.cjs_tracker()?.clone(),
       self.fs().clone(),
-      Some(self.parsed_source_cache().clone()),
+      Some(self.parsed_source_cache()?.clone()),
     ))
   }
 
@@ -841,7 +799,7 @@ impl CliFactory {
             self.npm_graph_resolver().await?.clone(),
             self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
-            self.parsed_source_cache().clone(),
+            self.resolver_factory()?.parsed_source_cache().clone(),
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
@@ -1021,8 +979,9 @@ impl CliFactory {
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let workspace_factory = self.workspace_factory()?;
+    let resolver_factory = self.resolver_factory()?;
     let npm_registry_permission_checker = {
-      let mode = if self.resolver_factory()?.use_byonm()? {
+      let mode = if resolver_factory.use_byonm()? {
         NpmRegistryReadPermissionCheckerMode::Byonm
       } else if let Some(node_modules_dir) =
         workspace_factory.node_modules_dir_path()?
@@ -1061,7 +1020,7 @@ impl CliFactory {
       ),
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
-      self.parsed_source_cache().clone(),
+      resolver_factory.parsed_source_cache().clone(),
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,
@@ -1292,8 +1251,7 @@ impl CliFactory {
 fn new_workspace_factory_options(
   initial_cwd: &Path,
   flags: &Flags,
-  deno_dir_path_provider: Arc<CliDenoDirPathProvider>,
-) -> deno_resolver::factory::WorkspaceFactoryOptions<CliSys> {
+) -> deno_resolver::factory::WorkspaceFactoryOptions {
   deno_resolver::factory::WorkspaceFactoryOptions {
     additional_config_file_names: if matches!(
       flags.subcommand,
@@ -1316,7 +1274,10 @@ fn new_workspace_factory_options(
       }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
-    deno_dir_path_provider: Some(deno_dir_path_provider),
+    emit_cache_version: Cow::Borrowed(
+      deno_lib::version::DENO_VERSION_INFO.deno,
+    ),
+    maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
     // For `deno install/add/remove/init` we want to force the managed
     // resolver so it can set up the `node_modules/` directory.
     is_package_manager_subcommand: matches!(

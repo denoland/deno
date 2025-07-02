@@ -9,13 +9,13 @@ use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::analysis::ModuleInfo;
 use deno_graph::ast::ParserModuleAnalyzer;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::ParsedSourceCache;
 
 const SELECT_MODULE_INFO: &str = "
 SELECT

@@ -64,9 +64,9 @@ use crate::args::get_default_v8_flags;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::cache::DenoDir;
-use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
+use crate::module_loader::CliEmitter;
 use crate::node::CliCjsModuleExportAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
@@ -201,7 +201,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
-  emitter: &'a Emitter,
+  emitter: &'a CliEmitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
@@ -216,7 +216,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
-    emitter: &'a Emitter,
+    emitter: &'a CliEmitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,

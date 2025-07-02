@@ -9,24 +9,47 @@ use std::str;
 
 use deno_cache_dir::url_to_filename;
 use deno_cache_dir::CACHE_PERM;
-use deno_core::url::Host;
-use deno_core::url::Url;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use sys_traits::FsRead;
+use url::Host;
+use url::Url;
 
-use crate::sys::CliSys;
+#[sys_traits::auto_impl]
+pub trait DiskCacheSys:
+  deno_path_util::fs::AtomicWriteFileWithRetriesSys + FsRead
+{
+}
 
 #[derive(Debug, Clone)]
-pub struct DiskCache {
-  sys: CliSys,
+pub struct DiskCache<TSys: DiskCacheSys> {
+  sys: TSys,
   pub location: PathBuf,
 }
 
-impl DiskCache {
+impl<TSys: DiskCacheSys> DiskCache<TSys> {
   /// `location` must be an absolute path.
-  pub fn new(sys: CliSys, location: PathBuf) -> Self {
+  pub fn new(sys: TSys, location: PathBuf) -> Self {
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(location.is_absolute());
+
     Self { sys, location }
+  }
+
+  pub fn get_cache_filename_with_extension(
+    &self,
+    url: &Url,
+    extension: &str,
+  ) -> Option<PathBuf> {
+    let base = self.get_cache_filename(url)?;
+
+    match base.extension() {
+      None => Some(base.with_extension(extension)),
+      Some(ext) => {
+        let original_extension = OsStr::to_str(ext).unwrap();
+        let final_extension = format!("{original_extension}.{extension}");
+        Some(base.with_extension(final_extension))
+      }
+    }
   }
 
   fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
@@ -52,13 +75,16 @@ impl DiskCache {
       }
       "http" | "https" | "data" | "blob" => out = url_to_filename(url).ok()?,
       "file" => {
-        let path = match url.to_file_path() {
+        let path = match deno_path_util::url_to_file_path(url) {
           Ok(path) => path,
           Err(_) => return None,
         };
         let mut path_components = path.components();
 
-        if cfg!(target_os = "windows") {
+        if sys_traits::impls::is_windows() {
+          if url.path() == "/" {
+            return None; // not a valid windows path
+          }
           if let Some(Component::Prefix(prefix_component)) =
             path_components.next()
           {
@@ -95,23 +121,6 @@ impl DiskCache {
     };
 
     Some(out)
-  }
-
-  pub fn get_cache_filename_with_extension(
-    &self,
-    url: &Url,
-    extension: &str,
-  ) -> Option<PathBuf> {
-    let base = self.get_cache_filename(url)?;
-
-    match base.extension() {
-      None => Some(base.with_extension(extension)),
-      Some(ext) => {
-        let original_extension = OsStr::to_str(ext).unwrap();
-        let final_extension = format!("{original_extension}.{extension}");
-        Some(base.with_extension(final_extension))
-      }
-    }
   }
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
@@ -268,7 +277,7 @@ mod tests {
     for test_case in &test_cases {
       let cache_filename =
         cache.get_cache_filename(&Url::parse(test_case).unwrap());
-      assert_eq!(cache_filename, None);
+      assert_eq!(cache_filename, None, "Failed for {:?}", test_case);
     }
   }
 }
