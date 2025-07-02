@@ -2,15 +2,15 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use curve25519_dalek::montgomery::MontgomeryPoint;
-use deno_core::op2;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
-use rand::rngs::OsRng;
 use rand::RngCore;
-use spki::der::asn1::BitString;
+use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
+use spki::der::asn1::BitString;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X25519Error {

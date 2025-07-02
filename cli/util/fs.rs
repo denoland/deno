@@ -10,9 +10,9 @@ use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
 
 use crate::sys::CliSys;
 
@@ -288,14 +288,14 @@ mod tests {
     let result = collect_specifiers(
       FilePatterns {
         base: root_dir_path.to_path_buf(),
-        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
-          &format!(
+        include: Some(PathOrPatternSet::new(vec![
+          PathOrPattern::new(&format!(
             "{}{}",
             scheme,
             root_dir_path.join("child").to_string().replace('\\', "/")
-          ),
-        )
-        .unwrap()])),
+          ))
+          .unwrap(),
+        ])),
         exclude: Default::default(),
       },
       None,

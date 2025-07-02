@@ -193,8 +193,8 @@ fn clear_stdin(
   use winapi::um::wincontypes::INPUT_RECORD;
   use winapi::um::wincontypes::KEY_EVENT;
   use winapi::um::winnt::HANDLE;
-  use winapi::um::winuser::MapVirtualKeyW;
   use winapi::um::winuser::MAPVK_VK_TO_VSC;
+  use winapi::um::winuser::MapVirtualKeyW;
   use winapi::um::winuser::VK_RETURN;
 
   // SAFETY: winapi calls
@@ -334,9 +334,17 @@ impl PermissionPrompter for TtyPrompter {
 
     #[allow(clippy::print_stderr)]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
-      eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
-      eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
-      eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
+      eprintln!(
+        "❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
+        message.len(),
+        MAX_PERMISSION_PROMPT_LENGTH
+      );
+      eprintln!(
+        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests."
+      );
+      eprintln!(
+        "❌ Run again with --allow-{name} to bypass this check if this is really what you want to do."
+      );
       return PromptResponse::Deny;
     }
 
@@ -363,7 +371,9 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
-      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+      format!(
+        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
+      )
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
@@ -412,7 +422,9 @@ impl PermissionPrompter for TtyPrompter {
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       let msg = if crate::is_standalone() {
-        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+        format!(
+          "Specify the required permissions during compile time using `deno compile --allow-{name}`."
+        )
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")
       };

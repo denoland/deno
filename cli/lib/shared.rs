@@ -62,7 +62,7 @@ impl ReleaseChannel {
       "rc" => Self::Rc,
       "lts" => Self::Lts,
       unknown => {
-        return Err(UnrecognizedReleaseChannelError(unknown.to_string()))
+        return Err(UnrecognizedReleaseChannelError(unknown.to_string()));
       }
     })
   }

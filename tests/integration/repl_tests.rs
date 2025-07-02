@@ -776,7 +776,11 @@ fn eval_file_flag_http_input() {
 fn eval_file_flag_multiple_files() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec![
+      "repl",
+      "--allow-read",
+      "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js",
+    ],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,

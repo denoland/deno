@@ -8,15 +8,15 @@ use std::rc::Rc;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_net::raw::take_network_stream_listener_resource;
-use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
-use hyper::header::HOST;
+use deno_net::raw::take_network_stream_listener_resource;
+use deno_net::raw::take_network_stream_resource;
 use hyper::HeaderMap;
 use hyper::Uri;
+use hyper::header::HOST;
 
 // TODO(mmastrac): I don't like that we have to clone this, but it's one-time setup
 #[derive(Clone)]

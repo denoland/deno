@@ -30,18 +30,18 @@
 use std::cmp;
 use std::collections::BTreeMap;
 use std::env;
-use std::ffi::c_void;
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::ffi::c_void;
 use std::fmt;
 use std::io;
 use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::Foundation::TRUE;
-use windows_sys::Win32::Globalization::CompareStringOrdinal;
 use windows_sys::Win32::Globalization::CSTR_EQUAL;
 use windows_sys::Win32::Globalization::CSTR_GREATER_THAN;
 use windows_sys::Win32::Globalization::CSTR_LESS_THAN;
+use windows_sys::Win32::Globalization::CompareStringOrdinal;
 
 /// Stores a set of changes to an environment
 #[derive(Clone, Default)]

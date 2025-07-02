@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
-use crate::texture::GPUTextureViewDimension;
 use crate::Instance;
+use crate::texture::GPUTextureViewDimension;
 
 pub struct GPUBindGroupLayout {
   pub instance: Instance,

@@ -5,8 +5,8 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anyhow::bail;
 use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -20,6 +20,11 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::InNpmPackageChecker;
+use crate::IsBuiltInNodeModuleChecker;
+use crate::NpmPackageFolderResolver;
+use crate::PackageJsonResolverRc;
+use crate::PathClean;
 use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
@@ -54,11 +59,6 @@ use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::path::UrlOrPath;
 use crate::path::UrlOrPathRef;
-use crate::InNpmPackageChecker;
-use crate::IsBuiltInNodeModuleChecker;
-use crate::NpmPackageFolderResolver;
-use crate::PackageJsonResolverRc;
-use crate::PathClean;
 
 pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
@@ -292,11 +292,11 @@ pub struct NodeResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NodeResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NodeResolverSys,
+>
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -2407,9 +2407,9 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
 #[cfg(test)]
 mod tests {
   use serde_json::json;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 

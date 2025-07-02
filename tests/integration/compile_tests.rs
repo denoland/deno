@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use util::assert_not_contains;
-use util::testdata_path;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_not_contains;
+use util::testdata_path;
 
 #[test]
 fn compile_basic() {

@@ -8,10 +8,10 @@ use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
 use deno_path_util::url_to_file_path;
-use futures::future::LocalBoxFuture;
-use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,8 +20,6 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::errors::ModuleNotFoundError;
-use crate::resolution::NodeResolverRc;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
@@ -31,6 +29,8 @@ use crate::PathClean;
 use crate::ResolutionMode;
 use crate::UrlOrPath;
 use crate::UrlOrPathRef;
+use crate::errors::ModuleNotFoundError;
+use crate::resolution::NodeResolverRc;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -114,12 +114,12 @@ pub struct CjsModuleExportAnalyzer<
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+>
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -164,7 +164,7 @@ impl<
 
     let analysis = match analysis {
       CjsAnalysis::Esm(source, _) => {
-        return Ok(ResolvedCjsAnalysis::Esm(source))
+        return Ok(ResolvedCjsAnalysis::Esm(source));
       }
       CjsAnalysis::Cjs(analysis) => analysis,
     };
@@ -505,7 +505,9 @@ pub enum TranslateCjsToEsmError {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
-#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
+#[error(
+  "Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}"
+)]
 pub struct CjsAnalysisCouldNotLoadError {
   reexport: String,
   reexport_specifier: Url,
@@ -538,12 +540,12 @@ pub enum NodeCodeTranslatorMode {
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+>
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,

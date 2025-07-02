@@ -6,8 +6,8 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
@@ -236,7 +236,9 @@ struct LintReportFix {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LintReportError {
   #[class(type)]
-  #[error("Invalid range [{start}, {end}], the source has a range of [0, {source_end}]")]
+  #[error(
+    "Invalid range [{start}, {end}], the source has a range of [0, {source_end}]"
+  )]
   IncorrectRange {
     start: usize,
     end: usize,

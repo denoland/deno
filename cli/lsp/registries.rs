@@ -6,16 +6,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::ParseError;
 use deno_core::url::Position;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
@@ -25,8 +25,6 @@ use tower_lsp::lsp_types as lsp;
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
-use super::path_to_regex::parse;
-use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
 use super::path_to_regex::Key;
 use super::path_to_regex::MatchResult;
@@ -34,12 +32,14 @@ use super::path_to_regex::Matcher;
 use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
+use super::path_to_regex::parse;
+use super::path_to_regex::string_to_regex;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
 
@@ -322,7 +322,11 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         .map(|var| var.key.to_owned())
         .any(|x| x == *key_name)
       {
-        return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
+        return Err(anyhow!(
+          "Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".",
+          registry.schema,
+          key_name
+        ));
       }
     }
 
@@ -334,13 +338,27 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
       let limited_keys = key_names.get(0..key_index).unwrap();
       for v in replacement_variables {
         if variable.key == v && config.version == 1 {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.", variable.url, variable.key, registry.schema, v));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v
+          ));
         }
 
         let key_index = limited_keys.iter().position(|key| key == &v);
 
         if key_index.is_none() && variable.key != v {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".", variable.url, variable.key, registry.schema, v, v, variable.key));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v,
+            v,
+            variable.key
+          ));
         }
       }
     }
@@ -1113,11 +1131,13 @@ mod tests {
 
   #[test]
   fn test_validate_registry_configuration() {
-    assert!(validate_config(&RegistryConfigurationJson {
-      version: 3,
-      registries: vec![],
-    })
-    .is_err());
+    assert!(
+      validate_config(&RegistryConfigurationJson {
+        version: 3,
+        registries: vec![],
+      })
+      .is_err()
+    );
 
     let cfg = RegistryConfigurationJson {
       version: 1,

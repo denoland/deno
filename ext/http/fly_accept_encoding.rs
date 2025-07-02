@@ -124,9 +124,9 @@ fn encodings_iter_inner<'s>(
 
 #[cfg(test)]
 mod tests {
-  use http_v02::header::ACCEPT_ENCODING;
   use http_v02::HeaderMap;
   use http_v02::HeaderValue;
+  use http_v02::header::ACCEPT_ENCODING;
 
   use super::*;
 

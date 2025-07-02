@@ -4,26 +4,26 @@ use std::io::BufRead;
 use std::process::ChildStderr;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use anyhow::Error as AnyError;
+use anyhow::anyhow;
 use bytes::Bytes;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
-use hyper::body::Incoming;
-use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper::Response;
+use hyper::body::Incoming;
+use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use serde_json::json;
 use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
-use util::assert_contains;
-use util::assert_starts_with;
 use util::DenoChild;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_starts_with;
 
 struct SpawnExecutor;
 

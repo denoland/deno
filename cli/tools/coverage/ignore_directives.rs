@@ -2,9 +2,9 @@
 
 use std::collections::HashSet;
 
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::TextLines;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_core::url::Url;
 
 static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";

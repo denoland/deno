@@ -6,10 +6,10 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsFileMetadata;
 use sys_traits::FsFileSetPermissions;

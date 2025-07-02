@@ -24,8 +24,8 @@ pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
 use crate::ops::*;
-pub use crate::std_fs::open_options_with_access_check;
 pub use crate::std_fs::RealFs;
+pub use crate::std_fs::open_options_with_access_check;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;
 

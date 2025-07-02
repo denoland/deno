@@ -2,8 +2,8 @@
 
 use std::mem::MaybeUninit;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_permissions::PermissionCheckError;
 use sys_traits::EnvHomeDir;
 
@@ -139,8 +139,8 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   use std::os::windows::ffi::OsStringExt;
 
   use windows_sys::Win32::Foundation::CloseHandle;
-  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::HANDLE;
   use windows_sys::Win32::System::Threading::GetCurrentProcess;
   use windows_sys::Win32::System::Threading::OpenProcessToken;

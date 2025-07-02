@@ -10,9 +10,9 @@ use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
 
-use crate::path::UrlOrPath;
 use crate::NodeResolutionKind;
 use crate::ResolutionMode;
+use crate::path::UrlOrPath;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
@@ -1025,8 +1025,11 @@ mod test {
         subpath: "./jsx-runtime".to_string(),
         maybe_referrer: None,
         resolution_kind: NodeResolutionKind::Types
-      }.to_string(),
-      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
+      }
+      .to_string(),
+      format!(
+        "[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'"
+      )
     );
     assert_eq!(
       PackagePathNotExportedError {
@@ -1034,8 +1037,11 @@ mod test {
         subpath: ".".to_string(),
         maybe_referrer: None,
         resolution_kind: NodeResolutionKind::Types
-      }.to_string(),
-      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'")
+      }
+      .to_string(),
+      format!(
+        "[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'"
+      )
     );
   }
 }
