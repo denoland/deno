@@ -373,6 +373,15 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
+  deno_resolver: Arc<
+    deno_resolver::graph::DenoResolver<
+      DenoInNpmPackageChecker,
+      node_resolver::DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+  >,
+  graph_container: Arc<dyn deno_node::GraphContainer>,
   options: LibMainWorkerOptions,
 }
 
@@ -399,6 +408,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       node_resolver: self.node_resolver.clone(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       sys: self.sys.clone(),
+      resolver: self.deno_resolver.clone(),
+      graph_container: self.graph_container.clone(),
     }
   }
 
@@ -536,6 +547,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     storage_key_resolver: StorageKeyResolver,
     sys: TSys,
+    deno_resolver: Arc<
+      deno_resolver::graph::DenoResolver<
+        DenoInNpmPackageChecker,
+        node_resolver::DenoIsBuiltInNodeModuleChecker,
+        NpmResolver<TSys>,
+        TSys,
+      >,
+    >,
+    graph_container: Arc<dyn deno_node::GraphContainer>,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
   ) -> Self {
@@ -557,6 +577,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         shared_array_buffer_store: roots.shared_array_buffer_store,
         storage_key_resolver,
         sys,
+        deno_resolver,
+        graph_container,
         options,
       }),
     }

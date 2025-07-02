@@ -7,6 +7,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_core::op2;
 use deno_core::url::Url;
@@ -40,6 +41,7 @@ pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
+use sys_traits::BaseFsReadDir;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -238,6 +240,20 @@ fn op_node_load_env_file(
   Ok(())
 }
 
+pub trait GraphContainer: Send + Sync {
+  fn graph(&self) -> Arc<deno_graph::ModuleGraph>;
+}
+
+pub type DenoResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
+  Arc<
+    deno_resolver::graph::DenoResolver<
+      TInNpmPackageChecker,
+      node_resolver::DenoIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  >;
+
 #[derive(Clone)]
 pub struct NodeExtInitServices<
   TInNpmPackageChecker: InNpmPackageChecker,
@@ -249,7 +265,18 @@ pub struct NodeExtInitServices<
     NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
   pub sys: TSys,
+  pub resolver: Arc<
+    deno_resolver::graph::DenoResolver<
+      TInNpmPackageChecker,
+      node_resolver::DenoIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  >,
+  pub graph_container: Arc<dyn GraphContainer>,
 }
+
+pub struct GraphContainerWrapper(pub Arc<dyn GraphContainer>);
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
@@ -484,6 +511,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_resolve_exports<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<P, TSys>,
     ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_fallback_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
@@ -789,6 +817,8 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
+      state.put(init.resolver.clone());
+      state.put(GraphContainerWrapper(init.graph_container.clone()));
     }
 
     state.put(AsyncId::default());
@@ -917,6 +947,11 @@ pub trait ExtNodeSys:
   + sys_traits::BaseFsRead
   + sys_traits::EnvCurrentDir
   + Clone
+  + std::fmt::Debug
+  + Send
+  + Sync
+  + BaseFsReadDir
+  + 'static
 {
 }
 

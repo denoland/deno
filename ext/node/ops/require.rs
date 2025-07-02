@@ -18,6 +18,7 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::graph::ResolveWithGraphOptions;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
@@ -399,6 +400,53 @@ pub fn op_require_real_path<
     sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?,
   );
   Ok(canonicalized_path.to_string_lossy().into_owned())
+}
+
+#[op2]
+#[string]
+pub fn op_require_fallback_resolve<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
+  state: &mut OpState,
+  #[string] request: String,
+  #[string] parent_filename: Option<String>,
+) -> Result<String, RequireError> {
+  let resolver = state.borrow::<crate::DenoResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
+  let graph_container = state.borrow::<crate::GraphContainerWrapper>();
+  let graph = graph_container.0.graph();
+  let r = resolver
+    .resolve_with_graph(
+      &graph,
+      &request,
+      &parent_filename
+        .map(|p| Url::from_file_path(p).unwrap())
+        .unwrap_or_else(|| {
+          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
+        }),
+      deno_graph::Position {
+        line: 0,
+        character: 0,
+      },
+      ResolveWithGraphOptions {
+        kind: NodeResolutionKind::Execution,
+        maintain_npm_specifiers: false,
+        mode: ResolutionMode::Require,
+      },
+    )
+    .map_err(|e| {
+      // i don't feel like adding a new error kind
+      RequireError(Box::new(RequireErrorKind::Io(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+      ))))
+    })?;
+  Ok(r.to_string())
 }
 
 fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
