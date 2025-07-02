@@ -17,6 +17,7 @@ use crate::args::parallelism_count;
 use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
+use crate::args::WorkspaceMainModuleResolver;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;
@@ -51,7 +52,12 @@ pub async fn serve(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module()?;
+  let workspace_resolver = factory.workspace_resolver().await?.clone();
+  let node_resolver = factory.node_resolver().await?.clone();
+
+  let main_module = cli_options.resolve_main_module_with_resolver(Some(
+    &WorkspaceMainModuleResolver::new(workspace_resolver, node_resolver),
+  ))?;
 
   maybe_npm_install(&factory).await?;
 
