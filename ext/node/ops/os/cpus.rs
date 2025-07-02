@@ -73,7 +73,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       cpu_speed = 2_400_000_000;
     }
 
-    extern "C" {
+    unsafe extern "C" {
       fn mach_host_self() -> std::ffi::c_uint;
       static mut mach_task_self_: std::ffi::c_uint;
     }

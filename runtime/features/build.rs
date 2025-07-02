@@ -32,7 +32,7 @@ export const unstableIds = {
 use crate::structs::UnstableFeatureDefinition;
 use crate::structs::UnstableFeatureKind;
 
-pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
+pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
   );
 
   let mut descriptions = data::FEATURE_DESCRIPTIONS.to_vec();

@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use denort_helper::DenoRtNativeAddonLoaderRc;
@@ -18,12 +18,12 @@ use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 
+use crate::FfiPermissions;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
-use crate::FfiPermissions;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
@@ -129,13 +129,14 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
     let value = serde_value::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    if let Ok(res) = ForeignStatic::deserialize(
-      ValueDeserializer::<D::Error>::new(value.clone()),
-    ) {
-      Ok(ForeignSymbol::ForeignStatic(res))
-    } else {
-      ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
-        .map(ForeignSymbol::ForeignFunction)
+    match ForeignStatic::deserialize(ValueDeserializer::<D::Error>::new(
+      value.clone(),
+    )) {
+      Ok(res) => Ok(ForeignSymbol::ForeignStatic(res)),
+      _ => {
+        ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
+          .map(ForeignSymbol::ForeignFunction)
+      }
     }
   }
 }
@@ -361,9 +362,9 @@ pub(crate) fn format_error(
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
-      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
       use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
       use winapi::um::winnt::MAKELANGID;
       use winapi::um::winnt::SUBLANG_SYS_DEFAULT;

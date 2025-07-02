@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
+use deno_cache_dir::GlobalHttpCacheRc;
+use deno_cache_dir::GlobalHttpCacheSys;
+use deno_cache_dir::HttpCacheRc;
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::BlobStore;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -16,9 +19,6 @@ use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_cache_dir::file_fetcher::HttpClient;
 use deno_cache_dir::file_fetcher::TooManyRedirectsError;
 use deno_cache_dir::file_fetcher::UnsupportedSchemeError;
-use deno_cache_dir::GlobalHttpCacheRc;
-use deno_cache_dir::GlobalHttpCacheSys;
-use deno_cache_dir::HttpCacheRc;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_graph::source::CacheInfo;
@@ -170,10 +170,10 @@ pub struct PermissionedFileFetcher<
 }
 
 impl<
-    TBlobStore: BlobStore,
-    TSys: PermissionedFileFetcherSys,
-    THttpClient: HttpClient,
-  > PermissionedFileFetcher<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore,
+  TSys: PermissionedFileFetcherSys,
+  THttpClient: HttpClient,
+> PermissionedFileFetcher<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     blob_store: TBlobStore,

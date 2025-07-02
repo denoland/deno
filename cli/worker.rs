@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::Extension;
+use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
@@ -15,11 +17,11 @@ use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
-use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
@@ -417,53 +419,53 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = if let Ok(package_ref) =
-      NpmPackageReqReference::from_specifier(&main_module)
+    let main_module = match NpmPackageReqReference::from_specifier(&main_module)
     {
-      if let Some(npm_installer) = &self.npm_installer {
-        let reqs = &[package_ref.req().clone()];
-        npm_installer
-          .add_package_reqs(
-            reqs,
-            if matches!(
-              self.default_npm_caching_strategy,
-              NpmCachingStrategy::Lazy
-            ) {
-              PackageCaching::Only(reqs.into())
-            } else {
-              PackageCaching::All
-            },
-          )
-          .await
-          .map_err(CreateCustomWorkerError::NpmPackageReq)?;
+      Ok(package_ref) => {
+        if let Some(npm_installer) = &self.npm_installer {
+          let reqs = &[package_ref.req().clone()];
+          npm_installer
+            .add_package_reqs(
+              reqs,
+              if matches!(
+                self.default_npm_caching_strategy,
+                NpmCachingStrategy::Lazy
+              ) {
+                PackageCaching::Only(reqs.into())
+              } else {
+                PackageCaching::All
+              },
+            )
+            .await
+            .map_err(CreateCustomWorkerError::NpmPackageReq)?;
+        }
+
+        // use a fake referrer that can be used to discover the package.json if necessary
+        let referrer =
+          ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
+            .unwrap()
+            .join("package.json")?;
+        let package_folder =
+          self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            package_ref.req(),
+            &referrer,
+          )?;
+        let main_module =
+          self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
+            &package_folder,
+            package_ref.sub_path(),
+          )?;
+
+        if let Some(lockfile) = &self.maybe_lockfile {
+          // For npm binary commands, ensure that the lockfile gets updated
+          // so that we can re-use the npm resolution the next time it runs
+          // for better performance
+          lockfile.write_if_changed()?;
+        }
+
+        main_module
       }
-
-      // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer =
-        ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
-          .unwrap()
-          .join("package.json")?;
-      let package_folder =
-        self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
-          package_ref.req(),
-          &referrer,
-        )?;
-      let main_module =
-        self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
-          &package_folder,
-          package_ref.sub_path(),
-        )?;
-
-      if let Some(lockfile) = &self.maybe_lockfile {
-        // For npm binary commands, ensure that the lockfile gets updated
-        // so that we can re-use the npm resolution the next time it runs
-        // for better performance
-        lockfile.write_if_changed()?;
-      }
-
-      main_module
-    } else {
-      main_module
+      _ => main_module,
     };
 
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
@@ -509,8 +511,8 @@ impl CliMainWorkerFactory {
 mod tests {
   use std::rc::Rc;
 
-  use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
+  use deno_core::resolve_path;
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
