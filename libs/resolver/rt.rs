@@ -2,6 +2,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use deno_unsync::JoinHandle;
+
 #[cfg(target_arch = "wasm32")]
 pub type JoinHandle<T> =
   std::future::Ready<Result<T, std::convert::Infallible>>;

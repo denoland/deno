@@ -1478,7 +1478,9 @@ impl ConfigData {
         // anything other than resolving the lockfile at the moment
         is_cjs_resolution_mode: Default::default(),
         npm_system_info: Default::default(),
+        node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
+        node_analysis_cache: None,
         node_resolution_cache: None,
         package_json_cache: None,
         package_json_dep_resolution: None,

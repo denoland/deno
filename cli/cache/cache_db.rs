@@ -33,6 +33,10 @@ impl CacheDBHash {
         .finish(),
     )
   }
+
+  pub fn inner(&self) -> u64 {
+    self.0
+  }
 }
 
 impl rusqlite::types::ToSql for CacheDBHash {

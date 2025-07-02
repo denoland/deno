@@ -10,6 +10,8 @@ use url::Url;
 
 use crate::sync::MaybeDashMap;
 
+pub mod analyzer;
+
 #[allow(clippy::disallowed_types)]
 pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
   crate::sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
