@@ -119,6 +119,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   TscRequest,
+  String,
   Option<Arc<Url>>,
   Option<Arc<Uri>>,
   Arc<StateSnapshot>,
@@ -543,9 +544,14 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
   {
-    let Some((scope, notebook_uri)) = modules
-      .first()
-      .map(|m| (m.scope.as_ref(), m.notebook_uri.as_ref()))
+    let Some((compiler_options_key, scope, notebook_uri)) =
+      modules.first().map(|m| {
+        (
+          m.compiler_options_key.as_str(),
+          m.scope.as_ref(),
+          m.notebook_uri.as_ref(),
+        )
+      })
     else {
       return Ok(Default::default());
     };
@@ -559,6 +565,7 @@ impl TsServer {
       .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
         snapshot,
         req,
+        compiler_options_key,
         scope,
         notebook_uri,
         token,
@@ -582,7 +589,14 @@ impl TsServer {
     }
     let req = TscRequest::CleanupSemanticCache;
     self
-      .request::<()>(snapshot.clone(), req, None, None, &Default::default())
+      .request::<()>(
+        snapshot.clone(),
+        req,
+        ".",
+        None,
+        None,
+        &Default::default(),
+      )
       .await
       .map_err(|err| {
         log::error!("Failed to request to tsserver {}", err);
@@ -609,6 +623,7 @@ impl TsServer {
       .request::<Option<Vec<ReferencedSymbol>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -639,6 +654,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -653,7 +669,7 @@ impl TsServer {
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
     self
-      .request(snapshot, req, None, None, &Default::default())
+      .request(snapshot, req, ".", None, None, &Default::default())
       .await
       .map_err(|err| {
         log::error!("Unable to get fixable diagnostics: {}", err);
@@ -679,6 +695,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -718,6 +735,7 @@ impl TsServer {
       .request::<Vec<CodeFixAction>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -763,6 +781,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -806,6 +825,7 @@ impl TsServer {
       .request::<CombinedCodeActions>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -850,6 +870,7 @@ impl TsServer {
       .request::<RefactorEditInfo>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -892,6 +913,7 @@ impl TsServer {
       .request::<Vec<FileTextChanges>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -933,6 +955,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -958,6 +981,7 @@ impl TsServer {
       .request::<Option<DefinitionInfoAndBoundSpan>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -989,6 +1013,7 @@ impl TsServer {
       .request::<Option<Vec<DefinitionInfo>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1040,6 +1065,7 @@ impl TsServer {
       .request::<Option<CompletionInfo>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1088,6 +1114,7 @@ impl TsServer {
       .request::<Option<CompletionEntryDetails>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1119,6 +1146,7 @@ impl TsServer {
       .request::<Option<Vec<ImplementationLocation>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1149,6 +1177,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1174,6 +1203,7 @@ impl TsServer {
       .request::<Vec<CallHierarchyIncomingCall>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1205,6 +1235,7 @@ impl TsServer {
       .request::<Vec<CallHierarchyOutgoingCall>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1239,6 +1270,7 @@ impl TsServer {
       .request::<Option<OneOrMany<CallHierarchyItem>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1285,6 +1317,7 @@ impl TsServer {
       .request::<Option<Vec<RenameLocation>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1319,6 +1352,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1348,6 +1382,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1376,6 +1411,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1390,13 +1426,21 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     search: String,
     max_result_count: Option<u32>,
+    compiler_options_key: &str,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((search, max_result_count, None));
     self
-      .request::<Vec<NavigateToItem>>(snapshot, req, scope, notebook_uri, token)
+      .request::<Vec<NavigateToItem>>(
+        snapshot,
+        req,
+        compiler_options_key,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut items| {
         for item in &mut items {
@@ -1432,6 +1476,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1443,6 +1488,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
+    compiler_options_key: &str,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
@@ -1463,6 +1509,7 @@ impl TsServer {
       .sender
       .send((
         req,
+        compiler_options_key.to_string(),
         scope.cloned(),
         notebook_uri.cloned(),
         snapshot,
@@ -4560,6 +4607,7 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  last_compiler_options_key: String,
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
@@ -4583,6 +4631,7 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
+      last_compiler_options_key: ".".to_string(),
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
@@ -4790,6 +4839,7 @@ async fn op_poll_requests(
 
   let Some((
     request,
+    compiler_options_key,
     scope,
     notebook_uri,
     snapshot,
@@ -4810,6 +4860,7 @@ async fn op_poll_requests(
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
+  state.last_compiler_options_key = compiler_options_key;
   state.last_scope.clone_from(&scope);
   state.last_notebook_uri.clone_from(&notebook_uri);
   let mark = state
@@ -4868,6 +4919,7 @@ fn op_respond(
   let _span = super::logging::lsp_tracing_info_span!("op_respond").entered();
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
+  state.last_compiler_options_key = ".".to_string();
   state.last_scope = None;
   state.last_notebook_uri = None;
   let response = if !error.is_empty() {

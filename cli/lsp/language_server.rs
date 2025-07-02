@@ -3733,6 +3733,8 @@ impl Inner {
           params.query.clone(),
           // this matches vscode's hard coded result count
           Some(256),
+          // TODO(This PR): Implement.
+          ".",
           scope.as_ref(),
           // TODO(nayeemrmn): Support notebook scopes here.
           None,
