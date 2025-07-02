@@ -13,12 +13,12 @@ use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
-use crate::cache::ParsedSourceCache;
 
 pub struct GraphDiagnosticsCollector {
   parsed_source_cache: Arc<ParsedSourceCache>,

@@ -2,38 +2,50 @@
 
 use std::env;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_cache_dir::DenoDirResolutionError;
+use deno_cache_dir::ResolveDenoDirSys;
 
 use super::DiskCache;
-use crate::factory::CliDenoDirPathProvider;
-use crate::sys::CliSys;
+use super::DiskCacheSys;
+
+#[derive(Debug, Clone)]
+pub struct DenoDirOptions {
+  pub maybe_custom_root: Option<PathBuf>,
+}
+
+#[sys_traits::auto_impl]
+pub trait DenoDirSys: DiskCacheSys + ResolveDenoDirSys + Clone {}
+
+#[allow(clippy::disallowed_types)]
+pub type DenoDirProviderRc<TSys> = crate::sync::MaybeArc<DenoDirProvider<TSys>>;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
-pub struct DenoDirProvider {
-  deno_dir_path_provider: Arc<CliDenoDirPathProvider>,
-  sys: CliSys,
-  deno_dir: once_cell::sync::OnceCell<DenoDir>,
+pub struct DenoDirProvider<TSys: DenoDirSys> {
+  options: DenoDirOptions,
+  sys: TSys,
+  deno_dir_cell: once_cell::sync::OnceCell<DenoDir<TSys>>,
 }
 
-impl DenoDirProvider {
-  pub fn new(
-    sys: CliSys,
-    deno_dir_path_provider: Arc<CliDenoDirPathProvider>,
-  ) -> Self {
+impl<TSys: DenoDirSys> DenoDirProvider<TSys> {
+  pub fn new(sys: TSys, options: DenoDirOptions) -> Self {
     Self {
+      options,
       sys,
-      deno_dir_path_provider,
-      deno_dir: Default::default(),
+      deno_dir_cell: Default::default(),
     }
   }
 
-  pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
-    self.deno_dir.get_or_try_init(|| {
-      let path = self.deno_dir_path_provider.get_or_create()?;
-      Ok(DenoDir::new(self.sys.clone(), path.clone()))
+  pub fn get_or_create(
+    &self,
+  ) -> Result<&DenoDir<TSys>, DenoDirResolutionError> {
+    self.deno_dir_cell.get_or_try_init(|| {
+      let path = deno_cache_dir::resolve_deno_dir(
+        &self.sys,
+        self.options.maybe_custom_root.clone(),
+      )?;
+      Ok(DenoDir::new(self.sys.clone(), path))
     })
   }
 }
@@ -41,18 +53,19 @@ impl DenoDirProvider {
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Debug, Clone)]
-pub struct DenoDir {
+pub struct DenoDir<TSys: DiskCacheSys> {
   /// Example: /Users/rld/.deno/
   pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
-  pub gen_cache: DiskCache,
+  pub gen_cache: DiskCache<TSys>,
 }
 
-impl DenoDir {
-  pub fn new(sys: CliSys, root: PathBuf) -> Self {
+impl<TSys: DiskCacheSys> DenoDir<TSys> {
+  pub fn new(sys: TSys, root: PathBuf) -> Self {
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(root.is_absolute());
-    let gen_path = root.join("gen");
 
+    let gen_path = root.join("gen");
     Self {
       root,
       gen_cache: DiskCache::new(sys, gen_path),

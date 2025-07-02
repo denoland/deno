@@ -1,17 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_core::parking_lot::Mutex;
 use deno_graph::ast::CapturingEsParser;
 use deno_graph::ast::DefaultEsParser;
 use deno_graph::ast::EsParser;
-use deno_graph::ast::ParseOptions;
 use deno_graph::ast::ParsedSourceStore;
+use deno_media_type::MediaType;
+use url::Url;
 
 /// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
 /// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause
@@ -34,8 +29,8 @@ impl<'a> LazyGraphSourceParser<'a> {
   #[allow(clippy::result_large_err)]
   pub fn get_or_parse_source(
     &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<Option<deno_ast::ParsedSource>, deno_ast::ParseDiagnostic> {
+    module_specifier: &Url,
+  ) -> Result<Option<ParsedSource>, deno_ast::ParseDiagnostic> {
     let Some(deno_graph::Module::Js(module)) = self.graph.get(module_specifier)
     else {
       return Ok(None);
@@ -47,9 +42,15 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
+#[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
+type ArcStr = std::sync::Arc<str>;
+
+#[allow(clippy::disallowed_types)]
+pub type ParsedSourceCacheRc = crate::sync::MaybeArc<ParsedSourceCache>;
+
 #[derive(Debug, Default)]
 pub struct ParsedSourceCache {
-  sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,
+  sources: crate::sync::MaybeDashMap<Url, ParsedSource>,
 }
 
 impl ParsedSourceCache {
@@ -60,7 +61,7 @@ impl ParsedSourceCache {
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingEsParser
-    parser.parse_program(ParseOptions {
+    parser.parse_program(deno_graph::ast::ParseOptions {
       specifier: &module.specifier,
       source: module.source.text.clone(),
       media_type: module.media_type,
@@ -68,11 +69,11 @@ impl ParsedSourceCache {
     })
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, clippy::disallowed_types)]
   pub fn remove_or_parse_module(
     &self,
-    specifier: &ModuleSpecifier,
-    source: Arc<str>,
+    specifier: &Url,
+    source: ArcStr,
     media_type: MediaType,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     if let Some(parsed_source) = self.remove_parsed_source(specifier) {
@@ -84,7 +85,7 @@ impl ParsedSourceCache {
         return Ok(parsed_source);
       }
     }
-    let options = ParseOptions {
+    let options = deno_graph::ast::ParseOptions {
       specifier,
       source,
       media_type,
@@ -94,13 +95,13 @@ impl ParsedSourceCache {
   }
 
   /// Frees the parsed source from memory.
-  pub fn free(&self, specifier: &ModuleSpecifier) {
-    self.sources.lock().remove(specifier);
+  pub fn free(&self, specifier: &Url) {
+    self.sources.remove(specifier);
   }
 
   /// Fress all parsed sources from memory.
   pub fn free_all(&self) {
-    self.sources.lock().clear();
+    self.sources.clear();
   }
 
   /// Creates a parser that will reuse a ParsedSource from the store
@@ -109,9 +110,9 @@ impl ParsedSourceCache {
     CapturingEsParser::new(None, self)
   }
 
-  #[cfg(test)]
+  #[allow(clippy::len_without_is_empty)]
   pub fn len(&self) -> usize {
-    self.sources.lock().len()
+    self.sources.len()
   }
 }
 
@@ -120,43 +121,37 @@ impl ParsedSourceCache {
 /// and in LSP settings the concurrency will be enforced
 /// at a higher level to ensure this will have the latest
 /// parsed source.
-impl deno_graph::ast::ParsedSourceStore for ParsedSourceCache {
+impl ParsedSourceStore for ParsedSourceCache {
   fn set_parsed_source(
     &self,
-    specifier: ModuleSpecifier,
+    specifier: Url,
     parsed_source: ParsedSource,
   ) -> Option<ParsedSource> {
-    self.sources.lock().insert(specifier, parsed_source)
+    self.sources.insert(specifier, parsed_source)
   }
 
-  fn get_parsed_source(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ParsedSource> {
-    self.sources.lock().get(specifier).cloned()
+  fn get_parsed_source(&self, specifier: &Url) -> Option<ParsedSource> {
+    self.sources.get(specifier).map(|p| p.clone())
   }
 
-  fn remove_parsed_source(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ParsedSource> {
-    self.sources.lock().remove(specifier)
+  fn remove_parsed_source(&self, specifier: &Url) -> Option<ParsedSource> {
+    self.sources.remove(specifier).map(|(_, p)| p)
   }
 
   fn get_scope_analysis_parsed_source(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Option<ParsedSource> {
-    let mut sources = self.sources.lock();
-    let parsed_source = sources.get(specifier)?;
-    if parsed_source.has_scope_analysis() {
-      Some(parsed_source.clone())
-    } else {
-      // upgrade to have scope analysis
-      let parsed_source = sources.remove(specifier).unwrap();
-      let parsed_source = parsed_source.into_with_scope_analysis();
-      sources.insert(specifier.clone(), parsed_source.clone());
-      Some(parsed_source)
+    {
+      let parsed_source = self.sources.get(specifier)?;
+      if parsed_source.has_scope_analysis() {
+        return Some(parsed_source.clone());
+      }
     }
+    // upgrade to have scope analysis
+    let (specifier, parsed_source) = self.sources.remove(specifier)?;
+    let parsed_source = parsed_source.into_with_scope_analysis();
+    self.sources.insert(specifier, parsed_source.clone());
+    Some(parsed_source)
   }
 }
