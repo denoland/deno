@@ -72,7 +72,8 @@ use crate::tsc::DiagnosticCategory;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
-pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
+pub type AmbientModulesByKey =
+  HashMap<(String, Option<Arc<Url>>), MaybeAmbientModules>;
 
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
@@ -379,7 +380,7 @@ struct AmbientModules {
 #[derive(Debug, Default)]
 struct DeferredDiagnostics {
   diagnostics: Option<Vec<DeferredDiagnosticRecord>>,
-  ambient_modules_by_scope: HashMap<Option<Arc<Url>>, AmbientModules>,
+  ambient_modules_by_key: HashMap<(String, Option<Arc<Url>>), AmbientModules>,
 }
 
 impl DeferredDiagnostics {
@@ -387,14 +388,14 @@ impl DeferredDiagnostics {
     if let Some(diagnostics) = &mut self.diagnostics {
       diagnostics.retain(|d| !uris.contains(&d.uri.as_ref()));
     }
-    for ambient in self.ambient_modules_by_scope.values_mut() {
+    for ambient in self.ambient_modules_by_key.values_mut() {
       ambient.dirty = true;
     }
   }
 
   fn invalidate_all(&mut self) {
     self.diagnostics = None;
-    for ambient in self.ambient_modules_by_scope.values_mut() {
+    for ambient in self.ambient_modules_by_key.values_mut() {
       ambient.dirty = true;
     }
   }
@@ -402,8 +403,10 @@ impl DeferredDiagnostics {
   fn take_filtered_diagnostics(&mut self) -> Option<DiagnosticVec> {
     let diagnostics = self.diagnostics.take()?;
     for diagnostic in &diagnostics {
-      let Some(ambient) = self.ambient_modules_by_scope.get(&diagnostic.scope)
-      else {
+      let Some(ambient) = self.ambient_modules_by_key.get(&(
+        diagnostic.compiler_options_key.clone(),
+        diagnostic.scope.clone(),
+      )) else {
         self.diagnostics = Some(diagnostics);
         return None;
       };
@@ -418,8 +421,11 @@ impl DeferredDiagnostics {
         .into_iter()
         .map(|diagnostic| {
           let ambient = self
-            .ambient_modules_by_scope
-            .get(&diagnostic.scope)
+            .ambient_modules_by_key
+            .get(&(
+              diagnostic.compiler_options_key.clone(),
+              diagnostic.scope.clone(),
+            ))
             .unwrap(); // checked above, but gross
           let filtered = if let Some(regex) = &ambient.regex {
             diagnostic
@@ -448,9 +454,9 @@ impl DeferredDiagnostics {
     )
   }
 
-  fn update_ambient_modules(&mut self, new: ScopedAmbientModules) {
-    for (scope, value) in new {
-      let ambient = self.ambient_modules_by_scope.entry(scope).or_default();
+  fn update_ambient_modules(&mut self, new: AmbientModulesByKey) {
+    for (key, value) in new {
+      let ambient = self.ambient_modules_by_key.entry(key).or_default();
       ambient.dirty = false;
       if let Some(value) = value {
         if value.is_empty() {
@@ -614,7 +620,7 @@ impl DiagnosticsServer {
                   };
 
                   let mark = performance.mark("lsp.update_diagnostics_ts");
-                  let (diagnostics, ambient_modules_by_scope) =
+                  let (diagnostics, ambient_modules_by_key) =
                     generate_ts_diagnostics(
                       snapshot.clone(),
                       &config,
@@ -634,7 +640,7 @@ impl DiagnosticsServer {
                     .unwrap_or_default();
                   deferred_diagnostics_state
                     .lock()
-                    .update_ambient_modules(ambient_modules_by_scope);
+                    .update_ambient_modules(ambient_modules_by_key);
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
@@ -1050,11 +1056,10 @@ async fn generate_ts_diagnostics(
   config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
-) -> Result<(DiagnosticVec, ScopedAmbientModules), AnyError> {
+) -> Result<(DiagnosticVec, AmbientModulesByKey), AnyError> {
   let mut records = Vec::new();
-  // TODO(This PR): Group by compiler options key instead.
-  let mut ambient_modules_by_scope = HashMap::new();
-  let mut enabled_modules_by_scope = BTreeMap::<_, Vec<_>>::new();
+  let mut ambient_modules_by_key = HashMap::new();
+  let mut enabled_modules_by_key = BTreeMap::<_, Vec<_>>::new();
   let mut disabled_documents = Vec::new();
   for document in snapshot.document_modules.documents.open_docs() {
     if document.is_diagnosable() {
@@ -1063,8 +1068,12 @@ async fn generate_ts_diagnostics(
         .primary_module(&Document::Open(document.clone()))
       {
         if config.specifier_enabled(&module.specifier) {
-          enabled_modules_by_scope
-            .entry((module.scope.clone(), module.notebook_uri.clone()))
+          enabled_modules_by_key
+            .entry((
+              module.compiler_options_key.clone(),
+              module.scope.clone(),
+              module.notebook_uri.clone(),
+            ))
             .or_default()
             .push(module);
           continue;
@@ -1085,14 +1094,17 @@ async fn generate_ts_diagnostics(
     });
   }
   let mut enabled_modules_with_diagnostics = Vec::new();
-  for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
+  for ((compiler_options_key, scope, notebook_uri), enabled_modules) in
+    enabled_modules_by_key
+  {
     let (diagnostics_list, ambient_modules) = ts_server
       .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
     if notebook_uri.is_none() {
-      ambient_modules_by_scope.insert(scope, ambient_modules);
+      ambient_modules_by_key
+        .insert((compiler_options_key, scope), ambient_modules);
     }
   }
   for (module, mut diagnostics) in enabled_modules_with_diagnostics {
@@ -1120,7 +1132,7 @@ async fn generate_ts_diagnostics(
       },
     });
   }
-  Ok((records, ambient_modules_by_scope))
+  Ok((records, ambient_modules_by_key))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1858,6 +1870,7 @@ fn diagnose_dependency(
 struct DeferredDiagnosticRecord {
   uri: Arc<Uri>,
   version: i32,
+  compiler_options_key: String,
   scope: Option<Arc<Url>>,
   diagnostics: Vec<(String, lsp::Diagnostic)>,
 }
@@ -1908,6 +1921,7 @@ fn generate_deno_diagnostics(
     });
     deferred_diagnostics.push(DeferredDiagnosticRecord {
       uri: document.uri.clone(),
+      compiler_options_key: module.compiler_options_key.clone(),
       scope: module.scope.clone(),
       version: document.version,
       diagnostics: deferred,
