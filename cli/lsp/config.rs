@@ -1474,6 +1474,7 @@ impl ConfigData {
       member_dir.dir_path(),
       WorkspaceFactoryOptions {
         additional_config_file_names: &[],
+        compiler_options_overrides: Default::default(),
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
         maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
