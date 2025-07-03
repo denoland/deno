@@ -877,9 +877,14 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
-    let compiler_options_key = compiler_options_resolver
-      .for_specifier(&specifier)
-      .key()
+    let file_referrer = Some(specifier.as_ref())
+      .filter(|s| s.scheme() == "file")
+      .or(scope.as_deref());
+    let compiler_options_data =
+      file_referrer.map(|s| compiler_options_resolver.for_specifier(s));
+    let compiler_options_key = compiler_options_data
+      .map(|d| d.key())
+      .unwrap_or(".")
       .to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(
@@ -889,11 +894,6 @@ impl DocumentModule {
     );
     let (parsed_source, maybe_module, resolution_mode) =
       if media_type_is_diagnosable(media_type) {
-        let file_referrer = Some(specifier.as_ref())
-          .filter(|s| s.scheme() == "file")
-          .or(scope.as_deref());
-        let compiler_options_data =
-          file_referrer.map(|s| compiler_options_resolver.for_specifier(s));
         parse_and_analyze_module(
           specifier.as_ref().clone(),
           text.to_arc(),
