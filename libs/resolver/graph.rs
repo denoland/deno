@@ -4,7 +4,6 @@ use std::borrow::Cow;
 
 use boxed_error::Boxed;
 use deno_error::JsErrorClass;
-use deno_graph::source::ResolveError;
 use deno_graph::JsrLoadError;
 use deno_graph::Module;
 use deno_graph::ModuleError;
@@ -14,6 +13,7 @@ use deno_graph::ModuleLoadError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_graph::source::ResolveError;
 use deno_media_type::MediaType;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -32,8 +32,8 @@ use crate::RawDenoResolverRc;
 use crate::cjs::CjsTracker;
 use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
-use crate::workspace::sloppy_imports_resolve;
 use crate::workspace::MappedResolutionDiagnostic;
+use crate::workspace::sloppy_imports_resolve;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
@@ -577,7 +577,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let maybe_hint = if let Some(specifier) =
     get_resolution_error_bare_node_specifier(error)
   {
-    Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+    Some(format!(
+      "If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+    ))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
@@ -639,73 +641,61 @@ pub fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::Load {
       specifier,
-      err: ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
-        checksum_err,
-      )),
+      err:
+        ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(checksum_err)),
       ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed in package. The package may have been tampered with.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "If you modified your global cache, run again with the --reload flag to restore ",
-          "its state. If you want to modify dependencies locally run again with the ",
-          "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
-          "of the vendor/ folder."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
-    ModuleErrorKind::Load {
-      err: ModuleLoadError::Jsr(
-        JsrLoadError::PackageVersionManifestChecksumIntegrity(
-          package_nv,
-          checksum_err,
-        ),
+    } => Some(format!(
+      concat!(
+        "Integrity check failed in package. The package may have been tampered with.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "If you modified your global cache, run again with the --reload flag to restore ",
+        "its state. If you want to modify dependencies locally run again with the ",
+        "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+        "of the vendor/ folder."
       ),
-      ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Package: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
+    ModuleErrorKind::Load {
+      err:
+        ModuleLoadError::Jsr(
+          JsrLoadError::PackageVersionManifestChecksumIntegrity(
+            package_nv,
+            checksum_err,
+          ),
         ),
-        package_nv,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
+      ..
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Package: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      package_nv, checksum_err.actual, checksum_err.expected,
+    )),
     ModuleErrorKind::Load {
       specifier,
       err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
       ..
-    } => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
     _ => None,
   }
 }
@@ -867,11 +857,11 @@ pub fn format_deno_graph_error(err: &dyn std::error::Error) -> String {
 
 #[cfg(test)]
 mod test {
-  use deno_graph::source::ResolveError;
   use deno_graph::PositionRange;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
+  use deno_graph::source::ResolveError;
 
   use super::*;
 

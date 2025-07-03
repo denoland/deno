@@ -561,12 +561,12 @@ pub enum NodeCodeTranslatorMode {
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NodeCodeTranslatorSys,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NodeCodeTranslatorSys,
+>
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,

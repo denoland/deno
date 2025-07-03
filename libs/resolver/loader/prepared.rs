@@ -9,22 +9,22 @@ use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::analyze::NodeCodeTranslatorSys;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::InNpmPackageChecker;
 use thiserror::Error;
 use url::Url;
 
 use super::RequestedModuleType;
 use crate::cache::ParsedSourceCacheRc;
-use crate::cjs::analyzer::DenoCjsCodeAnalyzerSys;
 use crate::cjs::CjsTrackerRc;
+use crate::cjs::analyzer::DenoCjsCodeAnalyzerSys;
 use crate::emit::EmitParsedSourceHelperError;
 use crate::emit::EmitterRc;
 use crate::emit::EmitterSys;
 use crate::factory::DenoNodeCodeTranslatorRc;
-use crate::graph::enhance_graph_error;
 use crate::graph::EnhanceGraphErrorMode;
+use crate::graph::enhance_graph_error;
 use crate::npm::NpmResolverSys;
 
 #[allow(clippy::disallowed_types)]
@@ -135,10 +135,8 @@ pub struct PreparedModuleLoader<
   sys: TSys,
 }
 
-impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TSys: PreparedModuleLoaderSys,
-  > PreparedModuleLoader<TInNpmPackageChecker, TSys>
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
+  PreparedModuleLoader<TInNpmPackageChecker, TSys>
 {
   pub fn new(
     cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,

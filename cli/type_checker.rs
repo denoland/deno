@@ -33,6 +33,8 @@ use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::TypeCheckCache;
+use crate::graph_util::BuildFastCheckGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
 use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
