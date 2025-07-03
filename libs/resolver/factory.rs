@@ -198,9 +198,6 @@ pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
-  /// Version to use for the emit cache. This is something that
-  /// should change when the version of the underlying emit changes.
-  pub emit_cache_version: Cow<'static, str>,
   pub frozen_lockfile: Option<bool>,
   pub lock_arg: Option<String>,
   /// Whether to skip writing to the lockfile.
@@ -301,7 +298,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       Ok(new_rc(EmitCache::new(
         &self.sys,
         self.deno_dir()?.gen_cache.clone(),
-        self.options.emit_cache_version.clone(),
+        #[cfg(feature = "deno_ast")]
+        Cow::Borrowed(deno_ast::VERSION),
+        #[cfg(not(feature = "deno_ast"))]
+        Cow::Borrowed(env!("CARGO_PKG_VERSION")),
       )))
     })
   }
