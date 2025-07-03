@@ -185,7 +185,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
 
         Ok(Some(PreparedModuleOrAsset::Module(PreparedModule {
           // note: it's faster to provide a string to v8 if we know it's a string
-          source: PreparedModuleSource::ArcStr(transpile_result.into()),
+          source: PreparedModuleSource::ArcStr(transpile_result),
           specifier,
           media_type,
         })))
@@ -413,23 +413,21 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
     original_source: &ArcStr,
   ) -> Result<ArcStr, LoadMaybeCjsError> {
     let js_source = if media_type.is_emittable() {
-      Cow::Owned(
-        self
-          .emitter
-          .emit_parsed_source(
-            specifier,
-            media_type,
-            ModuleKind::Cjs,
-            original_source,
-          )
-          .await?,
-      )
+      self
+        .emitter
+        .emit_parsed_source(
+          specifier,
+          media_type,
+          ModuleKind::Cjs,
+          original_source,
+        )
+        .await?
     } else {
-      Cow::Borrowed(original_source.as_ref())
+      original_source.clone()
     };
     let text = self
       .node_code_translator
-      .translate_cjs_to_esm(specifier, Some(js_source))
+      .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))
       .await?;
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
@@ -437,7 +435,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
       // perf: if the text is borrowed, that means it didn't make any changes
       // to the original source, so we can just provide that instead of cloning
       // the borrowed text
-      Cow::Borrowed(_) => original_source.clone(),
+      Cow::Borrowed(_) => js_source.clone(),
       Cow::Owned(text) => text.into(),
     })
   }
