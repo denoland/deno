@@ -137,9 +137,9 @@ impl<'a, Sys: FsRead + FsMetadata> GitIgnoreTree<'a, Sys> {
 
 #[cfg(test)]
 mod test {
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 

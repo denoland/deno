@@ -2,12 +2,12 @@
 
 mod urlpattern;
 
-use deno_core::op2;
-use deno_core::url::form_urlencoded;
-use deno_core::url::quirks;
-use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::url::form_urlencoded;
+use deno_core::url::quirks;
 use deno_error::JsErrorBox;
 
 use crate::urlpattern::op_urlpattern_parse;

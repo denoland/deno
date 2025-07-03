@@ -3,27 +3,27 @@
 use std::io::BufReader;
 use std::io::Cursor;
 
-use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+// use image::codecs::webp::WebPDecoder;
+use image::DynamicImage;
+use image::ImageDecoder;
+use image::RgbaImage;
 use image::codecs::bmp::BmpDecoder;
 // use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
 use image::codecs::jpeg::JpegDecoder;
 use image::codecs::png::PngDecoder;
-// use image::codecs::webp::WebPDecoder;
-use image::imageops::overlay;
 use image::imageops::FilterType;
+use image::imageops::overlay;
 use image::metadata::Orientation;
-use image::DynamicImage;
-use image::ImageDecoder;
-use image::RgbaImage;
 
+use crate::CanvasError;
 use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
-use crate::CanvasError;
 
 #[derive(Debug, PartialEq)]
 enum ImageBitmapSource {

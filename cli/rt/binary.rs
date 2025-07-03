@@ -8,35 +8,35 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
+use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
-use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
+use deno_npm::NpmPackageId;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
-use deno_semver::package::PackageReq;
 use deno_semver::StackString;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use thiserror::Error;
 
@@ -372,7 +372,7 @@ impl StandaloneModules {
           match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
             Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
-              return Ok(None)
+              return Ok(None);
             }
             Err(err) => return Err(JsErrorBox::from_err(err)),
           }

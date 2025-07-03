@@ -6,8 +6,8 @@
 use std::fmt::Write as _;
 
 use deno_terminal::colors;
-use dissimilar::diff as difference;
 use dissimilar::Chunk;
+use dissimilar::diff as difference;
 
 /// Print diff of the same file_path, before and after formatting.
 ///

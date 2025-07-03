@@ -5,11 +5,11 @@ use std::cell::RefCell;
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
+use deno_core::GarbageCollected;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
 use deno_error::JsErrorBox;
 use wgpu_core::binding_model::BindingResource;
 use wgpu_core::pipeline::ProgrammableStageDescriptor;
@@ -25,6 +25,7 @@ use super::queue::GPUQueue;
 use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
+use crate::Instance;
 use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
@@ -33,7 +34,6 @@ use crate::query_set::GPUQuerySet;
 use crate::render_bundle::GPURenderBundleEncoder;
 use crate::render_pipeline::GPURenderPipeline;
 use crate::webidl::features_to_feature_names;
-use crate::Instance;
 
 pub struct GPUDevice {
   pub instance: Instance,
@@ -282,7 +282,9 @@ impl GPUDevice {
       .count();
 
       if n_entries != 1 {
-        return Err(JsErrorBox::type_error("Only one of 'buffer', 'sampler', 'texture' and 'storageTexture' may be specified"));
+        return Err(JsErrorBox::type_error(
+          "Only one of 'buffer', 'sampler', 'texture' and 'storageTexture' may be specified",
+        ));
       }
 
       let ty = if let Some(buffer) = entry.buffer {

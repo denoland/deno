@@ -323,7 +323,10 @@ impl ShellCommand for NodeGypCommand {
       .resolve_command_path(OsStr::new("node-gyp"))
       .is_err()
     {
-      log::warn!("{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("Warning"));
+      log::warn!(
+        "{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)",
+        crate::colors::yellow("Warning")
+      );
     }
     ExecutableCommand::new(
       "node-gyp".to_string(),
@@ -341,25 +344,28 @@ impl ShellCommand for NpxCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if let Some(first_arg) = context.args.first().cloned() {
-      if let Some(command) = context.state.resolve_custom_command(&first_arg) {
-        let context = ShellCommandContext {
-          args: context.args.into_iter().skip(1).collect::<Vec<_>>(),
-          ..context
-        };
-        command.execute(context)
-      } else {
-        // can't find the command, so fallback to running the real npx command
-        let npx_path =
-          match context.state.resolve_command_path(OsStr::new("npx")) {
-            Ok(npx) => npx,
-            Err(err) => {
-              let _ = context.stderr.write_line(&format!("{}", err));
-              return Box::pin(std::future::ready(
-                ExecuteResult::from_exit_code(err.exit_code()),
-              ));
-            }
+      match context.state.resolve_custom_command(&first_arg) {
+        Some(command) => {
+          let context = ShellCommandContext {
+            args: context.args.into_iter().skip(1).collect::<Vec<_>>(),
+            ..context
           };
-        ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
+          command.execute(context)
+        }
+        _ => {
+          // can't find the command, so fallback to running the real npx command
+          let npx_path =
+            match context.state.resolve_command_path(OsStr::new("npx")) {
+              Ok(npx) => npx,
+              Err(err) => {
+                let _ = context.stderr.write_line(&format!("{}", err));
+                return Box::pin(std::future::ready(
+                  ExecuteResult::from_exit_code(err.exit_code()),
+                ));
+              }
+            };
+          ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
+        }
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");

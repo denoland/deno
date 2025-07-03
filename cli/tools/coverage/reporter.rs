@@ -13,8 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use super::util;
 use super::CoverageReport;
+use super::util;
 use crate::args::CoverageType;
 use crate::colors;
 

@@ -7,27 +7,27 @@ use std::net::SocketAddr;
 use std::net::SocketAddrV6;
 use std::path::PathBuf;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use http::HeaderMap;
 use http::HeaderValue;
 use http_body_util::combinators::UnsyncBoxBody;
-use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper::body::Incoming;
 use sha2::Digest;
 
+use super::ServerKind;
+use super::ServerOptions;
 use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
 use super::string_body;
-use super::ServerKind;
-use super::ServerOptions;
 use crate::npm;
 use crate::root_path;
 

@@ -2,10 +2,10 @@
 
 use std::ptr;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::v8;
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;

@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_media_type::MediaType;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::ClosestPkgJsonError;
 use sys_traits::FsRead;
 use url::Url;
 

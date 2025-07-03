@@ -16,6 +16,9 @@ use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
 use futures::FutureExt;
 
+use crate::LifecycleScriptsConfig;
+use crate::NpmInstaller;
+use crate::Reporter;
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
 use crate::initializer::NpmResolutionInitializer;
@@ -23,9 +26,6 @@ use crate::initializer::NpmResolverManagedSnapshotOption;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::resolution::NpmResolutionInstaller;
-use crate::LifecycleScriptsConfig;
-use crate::NpmInstaller;
-use crate::Reporter;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 type Deferred<T> = once_cell::sync::OnceCell<T>;
@@ -80,10 +80,10 @@ pub struct NpmInstallerFactory<
 }
 
 impl<
-    TNpmCacheHttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: NpmInstallerFactorySys,
-  > NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: NpmInstallerFactorySys,
+> NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
 {
   pub fn new(
     resolver_factory: Arc<ResolverFactory<TSys>>,

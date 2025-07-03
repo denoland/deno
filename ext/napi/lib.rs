@@ -33,15 +33,15 @@ pub use std::ptr;
 use std::rc::Rc;
 use std::thread_local;
 
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
 use deno_permissions::PermissionCheckError;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
@@ -653,14 +653,19 @@ where
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
-  } else if let Ok(init) = unsafe {
-    library.get::<napi_register_module_v1>(b"napi_register_module_v1")
-  } {
-    // Initializer callback.
-    // SAFETY: we are going blind, calling the register function on the other side.
-    unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(NApiError::ModuleNotFound(path));
+    match unsafe {
+      library.get::<napi_register_module_v1>(b"napi_register_module_v1")
+    } {
+      Ok(init) => {
+        // Initializer callback.
+        // SAFETY: we are going blind, calling the register function on the other side.
+        unsafe { init(env_ptr, exports.into()) }
+      }
+      _ => {
+        return Err(NApiError::ModuleNotFound(path));
+      }
+    }
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());
