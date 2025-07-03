@@ -19,7 +19,6 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
@@ -1262,7 +1261,6 @@ pub struct ConfigData {
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub linter: Arc<CliLinter>,
-  pub compiler_options: Arc<LspCompilerOptions>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
@@ -1570,6 +1568,8 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
+    // TODO(This PR): Remove this, store lint config somewhere else and compute
+    // it using the compiler options resolver.
     let compiler_options = member_dir
       .to_raw_user_provided_compiler_options(&CliSys::default())
       .map(LspCompilerOptions::new)
@@ -1829,7 +1829,6 @@ impl ConfigData {
       test_config,
       linter,
       exclude_files,
-      compiler_options: Arc::new(compiler_options),
       byonm,
       node_modules_dir,
       vendor_dir,
@@ -1849,16 +1848,6 @@ impl ConfigData {
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
-  }
-
-  pub fn maybe_jsx_import_source_config(
-    &self,
-  ) -> Option<JsxImportSourceConfig> {
-    self
-      .member_dir
-      .to_maybe_jsx_import_source_config()
-      .ok()
-      .flatten()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {

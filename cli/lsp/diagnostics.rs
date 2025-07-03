@@ -1055,6 +1055,7 @@ async fn generate_ts_diagnostics(
   token: CancellationToken,
 ) -> Result<(DiagnosticVec, ScopedAmbientModules), AnyError> {
   let mut records = Vec::new();
+  // TODO(This PR): Group by compiler options key instead.
   let mut ambient_modules_by_scope = HashMap::new();
   let mut enabled_modules_by_scope = BTreeMap::<_, Vec<_>>::new();
   let mut disabled_documents = Vec::new();
@@ -1984,6 +1985,7 @@ mod tests {
         project_version: 0,
         document_modules,
         config: Arc::new(config),
+        compiler_options_resolver,
         resolver,
       },
     )

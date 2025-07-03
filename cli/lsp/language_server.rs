@@ -184,6 +184,7 @@ pub struct LanguageServer {
 pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
+  pub compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
 }
@@ -690,6 +691,7 @@ impl Inner {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
+      compiler_options_resolver: self.compiler_options_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
     })
@@ -3785,11 +3787,9 @@ impl Inner {
       &documents,
       matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
-          .config
-          .tree
-          .data_by_scope()
-          .iter()
-          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
+          .compiler_options_resolver
+          .all()
+          .map(|d| (d.key().to_string(), d.compiler_options()))
           .collect()
       }),
       matches!(
@@ -3803,10 +3803,11 @@ impl Inner {
           .cells_by_notebook_uri()
           .keys()
           .map(|u| {
-            (
-              u.clone(),
-              self.document_modules.primary_scope(u).flatten().cloned(),
-            )
+            let compiler_options_key = self
+              .compiler_options_resolver
+              .for_specifier(&uri_to_url(u))
+              .key();
+            (u.clone(), compiler_options_key.to_string())
           })
           .collect()
       }),

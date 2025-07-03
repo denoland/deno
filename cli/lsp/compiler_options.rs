@@ -5,27 +5,27 @@ use std::sync::Arc;
 use deno_config::deno_json::CompilerOptions;
 use deno_config::workspace::get_base_compiler_options_for_emit;
 use deno_config::workspace::CompilerOptionsType;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 
 use crate::lsp::config::Config;
-use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct LspCompilerOptionsData<'a> {
   inner: &'a CompilerOptionsData,
 }
 
-impl LspCompilerOptionsData<'_> {
-  pub fn key(&self) -> &str {
+impl<'a> LspCompilerOptionsData<'a> {
+  pub fn key(&self) -> &'a str {
     self.source().map(|s| s.as_str()).unwrap_or(".")
   }
 
-  pub fn source(&self) -> Option<&Url> {
+  pub fn source(&self) -> Option<&'a Url> {
     self.inner.sources.last().map(|s| &s.specifier)
   }
 
@@ -33,9 +33,10 @@ impl LspCompilerOptionsData<'_> {
     self
       .inner
       .compiler_options_for_lib(TsTypeLib::DenoWindow)
-      .inspect_err(|err| {
-        lsp_warn!("{err:#}");
-      })
+      // TODO(nayeemrmn): Only show this once.
+      // .inspect_err(|err| {
+      //   lsp_warn!("{err:#}");
+      // })
       .ok()
       .cloned()
       .unwrap_or_else(|| {
@@ -46,6 +47,24 @@ impl LspCompilerOptionsData<'_> {
           self.inner.source_kind,
         ))
       })
+  }
+
+  pub fn compiler_options_types(&self) -> &'a Arc<Vec<(Url, Vec<String>)>> {
+    self.inner.compiler_options_types()
+  }
+
+  pub fn jsx_import_source_config(
+    &self,
+  ) -> Option<&'a Arc<JsxImportSourceConfig>> {
+    self
+      .inner
+      .jsx_import_source_config()
+      // TODO(nayeemrmn): Only show this once.
+      // .inspect_err(|err| {
+      //   lsp_warn!("{err:#}");
+      // })
+      .ok()
+      .flatten()
   }
 }
 

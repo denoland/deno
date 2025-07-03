@@ -18,6 +18,7 @@ use std::thread;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_config::deno_json::CompilerOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
@@ -40,6 +41,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_graph::source::Resolver;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
@@ -72,7 +74,6 @@ use tower_lsp::lsp_types as lsp;
 use super::code_lens;
 use super::code_lens::CodeLensData;
 use super::config;
-use super::config::LspCompilerOptions;
 use super::documents::DocumentModule;
 use super::documents::DocumentText;
 use super::language_server;
@@ -94,6 +95,7 @@ use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::resolver::SingleReferrerGraphResolver;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
@@ -297,9 +299,9 @@ impl Serialize for ChangeKind {
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
-  pub new_compiler_options_by_scope:
-    Option<BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>>,
-  pub new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+  pub new_compiler_options_by_key:
+    Option<BTreeMap<String, Arc<CompilerOptions>>>,
+  pub new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -322,36 +324,31 @@ impl<'a> ToV8<'a> for PendingChange {
     };
     let project_version =
       v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
-    let new_compiler_options_by_scope =
-      if let Some(new_compiler_options_by_scope) =
-        self.new_compiler_options_by_scope
-      {
-        serde_v8::to_v8(
-          scope,
-          new_compiler_options_by_scope
-            .into_iter()
-            .collect::<Vec<_>>(),
-        )
+    let new_compiler_options_by_key = if let Some(new_compiler_options_by_key) =
+      self.new_compiler_options_by_key
+    {
+      serde_v8::to_v8(
+        scope,
+        new_compiler_options_by_key.into_iter().collect::<Vec<_>>(),
+      )
+      .unwrap_or_else(|err| {
+        lsp_warn!("Couldn't serialize ts configs: {err}");
+        v8::null(scope).into()
+      })
+    } else {
+      v8::null(scope).into()
+    };
+    let new_notebook_keys = if let Some(new_notebook_keys) =
+      self.new_notebook_keys
+    {
+      serde_v8::to_v8(scope, new_notebook_keys.into_iter().collect::<Vec<_>>())
         .unwrap_or_else(|err| {
           lsp_warn!("Couldn't serialize ts configs: {err}");
           v8::null(scope).into()
         })
-      } else {
-        v8::null(scope).into()
-      };
-    let new_notebook_scopes =
-      if let Some(new_notebook_scopes) = self.new_notebook_scopes {
-        serde_v8::to_v8(
-          scope,
-          new_notebook_scopes.into_iter().collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|err| {
-          lsp_warn!("Couldn't serialize ts configs: {err}");
-          v8::null(scope).into()
-        })
-      } else {
-        v8::null(scope).into()
-      };
+    } else {
+      v8::null(scope).into()
+    };
 
     Ok(
       v8::Array::new_with_elements(
@@ -359,8 +356,8 @@ impl<'a> ToV8<'a> for PendingChange {
         &[
           modified_scripts,
           project_version,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         ],
       )
       .into(),
@@ -373,18 +370,16 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_compiler_options_by_scope: Option<
-      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
-    >,
-    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+    new_compiler_options_by_key: Option<BTreeMap<String, Arc<CompilerOptions>>>,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
-    if let Some(new_compiler_options_by_scope) = new_compiler_options_by_scope {
-      self.new_compiler_options_by_scope = Some(new_compiler_options_by_scope);
+    if let Some(new_compiler_options_by_key) = new_compiler_options_by_key {
+      self.new_compiler_options_by_key = Some(new_compiler_options_by_key);
     }
-    if let Some(new_notebook_scopes) = new_notebook_scopes {
-      self.new_notebook_scopes = Some(new_notebook_scopes);
+    if let Some(new_notebook_keys) = new_notebook_keys {
+      self.new_notebook_keys = Some(new_notebook_keys);
     }
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
@@ -501,10 +496,8 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     documents: &[(Document, ChangeKind)],
-    new_compiler_options_by_scope: Option<
-      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
-    >,
-    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+    new_compiler_options_by_key: Option<BTreeMap<String, Arc<CompilerOptions>>>,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
   ) {
     let modified_scripts = documents
       .iter()
@@ -520,16 +513,16 @@ impl TsServer {
         pending_change.coalesce(
           snapshot.project_version,
           modified_scripts,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         );
       }
       pending => {
         let pending_change = PendingChange {
           modified_scripts,
           project_version: snapshot.project_version,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         };
         *pending = Some(pending_change);
       }
@@ -4786,7 +4779,7 @@ fn op_resolve(
 
 struct TscRequestArray {
   request: TscRequest,
-  scope: Option<Arc<Url>>,
+  compiler_options_key: String,
   notebook_uri: Option<Arc<Uri>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
@@ -4808,7 +4801,8 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .unwrap()
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
-    let scope_url = serde_v8::to_v8(scope, self.scope)?;
+    let compiler_options_key =
+      serde_v8::to_v8(scope, self.compiler_options_key)?;
     let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
@@ -4816,7 +4810,14 @@ impl<'a> ToV8<'a> for TscRequestArray {
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[id, method_name, args, scope_url, notebook_uri, change],
+        &[
+          id,
+          method_name,
+          args,
+          compiler_options_key,
+          notebook_uri,
+          change,
+        ],
       )
       .into(),
     )
@@ -4860,8 +4861,10 @@ async fn op_poll_requests(
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
-  state.last_compiler_options_key = compiler_options_key;
-  state.last_scope.clone_from(&scope);
+  state
+    .last_compiler_options_key
+    .clone_from(&compiler_options_key);
+  state.last_scope = scope;
   state.last_notebook_uri.clone_from(&notebook_uri);
   let mark = state
     .performance
@@ -4871,7 +4874,7 @@ async fn op_poll_requests(
 
   Some(TscRequestArray {
     request,
-    scope,
+    compiler_options_key,
     notebook_uri,
     id: Smi(id),
     change: change.into(),
@@ -5003,8 +5006,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
-  unscoped: IndexSet<String>,
-  by_scope: BTreeMap<Arc<Url>, IndexSet<String>>,
+  by_compiler_options_key: BTreeMap<String, IndexSet<String>>,
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
@@ -5016,15 +5018,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let mut result = ScriptNames {
-    unscoped: IndexSet::new(),
-    by_scope: BTreeMap::from_iter(
-      state
-        .state_snapshot
-        .document_modules
-        .scopes()
-        .into_iter()
-        .filter_map(|s| Some((s?, IndexSet::new()))),
-    ),
+    by_compiler_options_key: Default::default(),
     by_notebook_uri: Default::default(),
   };
 
@@ -5032,44 +5026,78 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .state_snapshot
     .document_modules
     .scopes_with_node_specifier();
-  if scopes_with_node_specifier.contains(&None) {
-    result
-      .unscoped
-      .insert("asset:///node_types.d.ts".to_string());
-  }
-  for (scope, script_names) in &mut result.by_scope {
-    if scopes_with_node_specifier.contains(&Some(scope.clone())) {
+
+  // Insert global scripts.
+  for compiler_options_data in
+    state.state_snapshot.compiler_options_resolver.all()
+  {
+    let compiler_options_key = compiler_options_data.key();
+    let script_names = result
+      .by_compiler_options_key
+      .entry(compiler_options_key.to_string())
+      .or_default();
+    let scope = compiler_options_data
+      .source()
+      .and_then(|s| state.state_snapshot.config.tree.scope_for_specifier(s))
+      .cloned();
+    if scopes_with_node_specifier.contains(&scope) {
       script_names.insert("asset:///node_types.d.ts".to_string());
     }
-  }
-
-  // inject these next because they're global
-  for (scope, script_names) in &mut result.by_scope {
     let scoped_resolver = state
       .state_snapshot
       .resolver
-      .get_scoped_resolver(Some(scope));
-    for (_, specifiers) in scoped_resolver.graph_imports_by_referrer() {
-      for specifier in specifiers {
-        let mut specifier = Cow::Borrowed(specifier);
+      .get_scoped_resolver(scope.as_deref());
+    let jsx_import_source_config =
+      compiler_options_data.jsx_import_source_config();
+    // TODO(This PR): Include tsconfig `files` here.
+    for (referrer, types) in
+      compiler_options_data.compiler_options_types().iter()
+    {
+      let resolver = SingleReferrerGraphResolver {
+        valid_referrer: referrer,
+        module_resolution_mode: ResolutionMode::Import,
+        cli_resolver: scoped_resolver.as_cli_resolver(),
+        jsx_import_source_config: jsx_import_source_config.map(|c| c.as_ref()),
+      };
+      for typ in types {
+        let Ok(mut type_specifier) = resolver
+          .resolve(
+            typ,
+            &deno_graph::Range {
+              specifier: referrer.clone(),
+              range: deno_graph::PositionRange::zeroed(),
+              resolution_mode: None,
+            },
+            deno_graph::source::ResolutionKind::Types,
+          )
+          .inspect_err(|err| {
+            lsp_warn!(
+              "Failed to resolve {typ} from `compilerOptions.types`: {err:#}"
+            );
+          })
+        else {
+          continue;
+        };
         if let Ok(req_ref) =
-          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
+          deno_semver::npm::NpmPackageReqReference::from_specifier(
+            &type_specifier,
+          )
         {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
-            scope,
+            referrer,
             NodeResolutionKind::Types,
             ResolutionMode::Import,
           ) else {
-            lsp_log!("failed to resolve {req_ref} to file URL");
+            lsp_log!("Failed to resolve {req_ref} to a file URL.");
             continue;
           };
-          specifier = Cow::Owned(resolved);
+          type_specifier = resolved;
         }
         let Some(module) = state
           .state_snapshot
           .document_modules
-          .module_for_specifier(&specifier, Some(scope.as_ref()))
+          .module_for_specifier(&type_specifier, scope.as_deref())
         else {
           continue;
         };
@@ -5095,12 +5123,18 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .document_modules
       .primary_scope(notebook_uri)
       .flatten();
+    let compiler_options_key = state
+      .state_snapshot
+      .compiler_options_resolver
+      .for_specifier(&uri_to_url(notebook_uri))
+      .key();
 
     // Copy over the globals from the containing regular scopes.
-    let global_script_names = scope
-      .and_then(|s| result.by_scope.get(s))
-      .unwrap_or(&result.unscoped);
-    script_names.extend(global_script_names.iter().cloned());
+    if let Some(global_script_names) =
+      result.by_compiler_options_key.get(compiler_options_key)
+    {
+      script_names.extend(global_script_names.iter().cloned());
+    }
 
     // Add the cells as roots.
     script_names.extend(cell_uris.iter().filter_map(|u| {
@@ -5122,15 +5156,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for (scope, modules) in state
+  for modules in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
+    .into_values()
   {
-    let script_names = scope
-      .as_deref()
-      .and_then(|s| result.by_scope.get_mut(s))
-      .unwrap_or(&mut result.unscoped);
     for module in modules {
       let is_open = module.open_data.is_some();
       let types_entry = (|| {
@@ -5146,6 +5177,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           module.scope.as_deref(),
         )
       })();
+      let script_names = result
+        .by_compiler_options_key
+        .entry(module.compiler_options_key.clone())
+        .or_default();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some((types_specifier, types_media_type)) = &types_entry {
@@ -6006,6 +6041,7 @@ mod tests {
       project_version: 0,
       document_modules,
       config: Arc::new(config),
+      compiler_options_resolver,
       resolver,
     });
     let performance = Arc::new(Performance::default());
@@ -6015,11 +6051,9 @@ mod tests {
       &[],
       Some(
         snapshot
-          .config
-          .tree
-          .data_by_scope()
-          .iter()
-          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
+          .compiler_options_resolver
+          .all()
+          .map(|d| (d.key().to_string(), d.compiler_options()))
           .collect(),
       ),
       None,
@@ -6927,8 +6961,8 @@ mod tests {
     fn change<S: AsRef<str>>(
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
-      new_compiler_options_by_scope: Option<
-        BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+      new_compiler_options_by_key: Option<
+        BTreeMap<String, Arc<CompilerOptions>>,
       >,
     ) -> PendingChange {
       PendingChange {
@@ -6937,8 +6971,8 @@ mod tests {
           .into_iter()
           .map(|(s, c)| (s.as_ref().into(), c))
           .collect(),
-        new_compiler_options_by_scope,
-        new_notebook_scopes: None,
+        new_compiler_options_by_key,
+        new_notebook_keys: None,
       }
     }
     let cases = [

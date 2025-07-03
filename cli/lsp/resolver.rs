@@ -15,7 +15,6 @@ use deno_config::workspace::JsxImportSourceConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
@@ -63,7 +62,6 @@ use super::documents::DocumentModule;
 use super::jsr::JsrCacheResolver;
 use crate::args::CliLockfile;
 use crate::factory::Deferred;
-use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
@@ -101,7 +99,6 @@ pub struct LspScopedResolver {
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   redirect_resolver: Option<Arc<RedirectResolver>>,
-  graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
   configured_dep_resolutions: Arc<ConfiguredDepResolutions>,
   config_data: Option<Arc<ConfigData>>,
@@ -123,7 +120,6 @@ impl Default for LspScopedResolver {
       npm_pkg_req_resolver: None,
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       redirect_resolver: None,
-      graph_imports: Default::default(),
       dep_info: Default::default(),
       configured_dep_resolutions: Default::default(),
       config_data: None,
@@ -156,34 +152,6 @@ impl LspScopedResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let maybe_jsx_import_source_config =
-      config_data.and_then(|d| d.maybe_jsx_import_source_config());
-    let graph_imports = config_data
-      .and_then(|d| d.member_dir.to_compiler_option_types().ok())
-      .map(|imports| {
-        Arc::new(
-          imports
-            .into_iter()
-            .map(|(referrer, imports)| {
-              let resolver = SingleReferrerGraphResolver {
-                valid_referrer: &referrer,
-                module_resolution_mode: ResolutionMode::Import,
-                cli_resolver: &cli_resolver,
-                jsx_import_source_config: maybe_jsx_import_source_config
-                  .as_ref(),
-              };
-              let graph_import = GraphImport::new(
-                &referrer,
-                imports,
-                &CliJsrUrlProvider,
-                Some(&resolver),
-              );
-              (referrer, graph_import)
-            })
-            .collect(),
-        )
-      })
-      .unwrap_or_default();
     let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
       Some(Arc::new(ConfiguredDepResolutions::new(
@@ -207,7 +175,6 @@ impl LspScopedResolver {
       node_resolver,
       pkg_json_resolver,
       redirect_resolver,
-      graph_imports,
       dep_info: Default::default(),
       configured_dep_resolutions,
       config_data: config_data.cloned(),
@@ -281,7 +248,6 @@ impl LspScopedResolver {
       node_resolver: factory.node_resolver().cloned(),
       redirect_resolver: self.redirect_resolver.clone(),
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
-      graph_imports: self.graph_imports.clone(),
       dep_info: self.dep_info.clone(),
       configured_dep_resolutions: self.configured_dep_resolutions.clone(),
       config_data: self.config_data.clone(),
@@ -300,10 +266,6 @@ impl LspScopedResolver {
     self.is_cjs_resolver.as_ref()
   }
 
-  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
-    self.config_data.as_ref()
-  }
-
   pub fn as_node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
     self.node_resolver.as_ref()
   }
@@ -316,24 +278,6 @@ impl LspScopedResolver {
 
   pub fn as_pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {
     &self.pkg_json_resolver
-  }
-
-  pub fn graph_imports_by_referrer(
-    &self,
-  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
-    self
-      .graph_imports
-      .iter()
-      .map(|(s, i)| {
-        (
-          s,
-          i.dependencies
-            .values()
-            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
-            .collect(),
-        )
-      })
-      .collect()
   }
 
   pub fn jsr_to_resource_url(

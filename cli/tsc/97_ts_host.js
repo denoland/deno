@@ -134,10 +134,6 @@ export const SCRIPT_VERSION_CACHE = new Map();
 /** @type {Map<string, boolean>} */
 export const IS_NODE_SOURCE_FILE_CACHE = new Map();
 
-// Maps asset specifiers to the first scope that the asset was loaded into.
-/** @type {Map<string, string | null>} */
-export const ASSET_SCOPES = new Map();
-
 /** @type {number | null} */
 let projectVersionCache = null;
 export const PROJECT_VERSION_CACHE = {
@@ -157,11 +153,11 @@ export const LAST_REQUEST_METHOD = {
 };
 
 /** @type {string | null} */
-let lastRequestScope = null;
-export const LAST_REQUEST_SCOPE = {
-  get: () => lastRequestScope,
-  set: (scope) => {
-    lastRequestScope = scope;
+let lastRequestCompilerOptionsKey = null;
+export const LAST_REQUEST_COMPILER_OPTIONS_KEY = {
+  get: () => lastRequestCompilerOptionsKey,
+  set: (key) => {
+    lastRequestCompilerOptionsKey = key;
   },
 };
 
@@ -379,15 +375,15 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
+/** @type {{ unscoped: LanguageServiceEntry, byCompilerOptionsKey: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
   // @ts-ignore Will be set later.
   unscoped: null,
-  byScope: new Map(),
+  byCompilerOptionsKey: new Map(),
   byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
+/** @type {{ byCompilerOptionsKey: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -676,9 +672,12 @@ const hostImpl = {
     if (logDebug) {
       debug("host.getCompilationSettings()");
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? LANGUAGE_SERVICE_ENTRIES.byScope.get(lastRequestScope)
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
+    return (lastRequestCompilerOptionsKey
+      ? LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+        lastRequestCompilerOptionsKey,
+      )
         ?.compilerOptions
       : null) ?? LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
   },
@@ -687,22 +686,24 @@ const hostImpl = {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
+      const { byCompilerOptionsKey, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
-        unscoped,
-        byScope: new Map(Object.entries(byScope)),
+        byCompilerOptionsKey: new Map(Object.entries(byCompilerOptionsKey)),
         byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
     const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
     return (lastRequestNotebookUri
       ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
       : null) ??
-      (lastRequestScope
-        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+      (lastRequestCompilerOptionsKey
+        ? SCRIPT_NAMES_CACHE.byCompilerOptionsKey.get(
+          lastRequestCompilerOptionsKey,
+        )
         : null) ??
-      SCRIPT_NAMES_CACHE.unscoped;
+      [];
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -730,9 +731,6 @@ const hostImpl = {
         ts.ScriptTarget.ESNext,
       );
       if (sourceFile) {
-        if (!ASSET_SCOPES.has(specifier)) {
-          ASSET_SCOPES.set(specifier, LAST_REQUEST_SCOPE.get());
-        }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }

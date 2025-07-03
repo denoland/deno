@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -890,7 +889,10 @@ impl DocumentModule {
           text.to_arc(),
           headers.as_ref(),
           media_type,
-          scope.as_deref(),
+          Some(specifier.as_ref())
+            .filter(|s| s.scheme() == "file")
+            .or(scope.as_deref()),
+          compiler_options_resolver,
           resolver,
         )
       } else {
@@ -1441,16 +1443,6 @@ impl DocumentModules {
     }
   }
 
-  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    self
-      .modules_by_scope
-      .keys()
-      .cloned()
-      .map(Some)
-      .chain([None])
-      .collect()
-  }
-
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
     if let Some(modules) = self.modules_for_scope(scope) {
       if modules.contains_specifier(specifier) {
@@ -1929,6 +1921,7 @@ fn parse_and_analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   file_referrer: Option<&ModuleSpecifier>,
+  compiler_options_resolver: &LspCompilerOptionsResolver,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1941,6 +1934,7 @@ fn parse_and_analyze_module(
     &parsed_source_result,
     maybe_headers,
     file_referrer,
+    compiler_options_resolver,
     resolver,
   );
   (
@@ -1971,6 +1965,7 @@ fn analyze_module(
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   file_referrer: Option<&ModuleSpecifier>,
+  compiler_options_resolver: &LspCompilerOptionsResolver,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
@@ -1978,10 +1973,12 @@ fn analyze_module(
       let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
-      let config_data = scoped_resolver.as_config_data();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config =
-        config_data.and_then(|d| d.maybe_jsx_import_source_config());
+      let jsx_import_source_config = file_referrer.and_then(|s| {
+        compiler_options_resolver
+          .for_specifier(s)
+          .jsx_import_source_config()
+      });
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
@@ -1990,7 +1987,7 @@ fn analyze_module(
         valid_referrer: &valid_referrer,
         module_resolution_mode,
         cli_resolver,
-        jsx_import_source_config: jsx_import_source_config.as_ref(),
+        jsx_import_source_config: jsx_import_source_config.map(|c| c.as_ref()),
       };
       (
         Ok(deno_graph::parse_module_from_ast(
