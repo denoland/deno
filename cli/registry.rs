@@ -55,6 +55,12 @@ pub struct PublishingTask {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Package {
+  pub latest_version: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiError {
   pub code: String,
   pub message: String,

@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_bench_util::bencher::Bencher;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::benchmark_main;
-use deno_bench_util::bencher::Bencher;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspClientBuilder;
 

@@ -66,7 +66,7 @@ pub fn mapped_specifier_for_tsc(
       && specifier
         .path()
         .split('/')
-        .last()
+        .next_back()
         .map(|last| last.contains(".d."))
         .unwrap_or(false)
     {

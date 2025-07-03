@@ -50,30 +50,20 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // The Deno and Node specific globals are stored in a struct in a context slot.
 //
 // These are the globals that are handled:
-// - Buffer (node only)
-// - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
-// - global (node only)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
-// - setImmediate (node only)
 // - setInterval (both, but different implementation)
 // - setTimeout (both, but different implementation)
 // - window (deno only)
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 12] = [
-  &str_to_utf16::<6>("Buffer"),
-  &str_to_utf16::<17>("WorkerGlobalScope"),
-  &str_to_utf16::<14>("clearImmediate"),
+const MANAGED_GLOBALS: [&[u16]; 6] = [
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
-  &str_to_utf16::<6>("global"),
   &str_to_utf16::<7>("process"),
-  &str_to_utf16::<4>("self"),
-  &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
   &str_to_utf16::<6>("window"),
@@ -258,11 +248,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   }
   let is_node = host_defined_options.get(scope, 0).is_true();
-  if is_node {
-    Mode::Node
-  } else {
-    Mode::Deno
-  }
+  if is_node { Mode::Node } else { Mode::Deno }
 }
 
 pub fn getter<'s>(
@@ -280,7 +266,9 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -313,7 +301,9 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -340,7 +330,9 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -372,7 +364,9 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -401,7 +395,9 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -435,7 +431,9 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -469,7 +467,9 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

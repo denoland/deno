@@ -6,25 +6,25 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::ParseError;
 use deno_core::url::Position;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use log::error;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
-use super::path_to_regex::parse;
-use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
 use super::path_to_regex::Key;
 use super::path_to_regex::MatchResult;
@@ -32,12 +32,14 @@ use super::path_to_regex::Matcher;
 use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
+use super::path_to_regex::parse;
+use super::path_to_regex::string_to_regex;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
 
@@ -320,7 +322,11 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         .map(|var| var.key.to_owned())
         .any(|x| x == *key_name)
       {
-        return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
+        return Err(anyhow!(
+          "Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".",
+          registry.schema,
+          key_name
+        ));
       }
     }
 
@@ -332,13 +338,27 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
       let limited_keys = key_names.get(0..key_index).unwrap();
       for v in replacement_variables {
         if variable.key == v && config.version == 1 {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.", variable.url, variable.key, registry.schema, v));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v
+          ));
         }
 
         let key_index = limited_keys.iter().position(|key| key == &v);
 
         if key_index.is_none() && variable.key != v {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".", variable.url, variable.key, registry.schema, v, v, variable.key));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v,
+            v,
+            variable.key
+          ));
         }
       }
     }
@@ -432,15 +452,17 @@ impl ModuleRegistry {
     // the http cache should always be the global one for registry completions
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       http_cache.clone().into(),
       http_client_provider,
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::RespectHeaders,
-      super::logging::lsp_log_level(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::RespectHeaders,
+        download_log_level: super::logging::lsp_log_level(),
+        progress_bar: None,
+      },
     );
 
     Self {
@@ -479,6 +501,7 @@ impl ModuleRegistry {
         specifier,
         FetchPermissionsOptionRef::AllowAll,
         FetchOptions {
+          local: Default::default(),
           maybe_auth: None,
           maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
           maybe_cache_setting: None,
@@ -1108,11 +1131,13 @@ mod tests {
 
   #[test]
   fn test_validate_registry_configuration() {
-    assert!(validate_config(&RegistryConfigurationJson {
-      version: 3,
-      registries: vec![],
-    })
-    .is_err());
+    assert!(
+      validate_config(&RegistryConfigurationJson {
+        version: 3,
+        registries: vec![],
+      })
+      .is_err()
+    );
 
     let cfg = RegistryConfigurationJson {
       version: 1,

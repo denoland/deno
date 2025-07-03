@@ -2,15 +2,15 @@
 
 use std::rc::Rc;
 
+use deno_core::CancelFuture;
+use deno_core::OpState;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::futures::TryStreamExt;
 use deno_core::url::Url;
-use deno_core::CancelFuture;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
-use deno_fs::open_options_with_access_check;
 use deno_fs::OpenOptions;
+use deno_fs::open_options_with_access_check;
 use deno_permissions::PermissionsContainer;
 use http::StatusCode;
 use http_body_util::BodyExt;

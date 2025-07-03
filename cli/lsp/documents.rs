@@ -16,19 +16,19 @@ use std::sync::Weak;
 use std::time::SystemTime;
 
 use dashmap::DashMap;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Position;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
@@ -38,17 +38,17 @@ use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
 use weak_table::WeakValueHashMap;
 
-use super::cache::calculate_fs_version_at_path;
 use super::cache::LspCache;
+use super::cache::calculate_fs_version_at_path;
 use super::config::Config;
 use super::logging::lsp_warn;
 use super::resolver::LspResolver;
@@ -59,12 +59,12 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
+use super::urls::COMPONENT;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use super::urls::COMPONENT;
 use crate::graph_util::CliJsrUrlProvider;
 
 #[derive(Debug)]
@@ -197,7 +197,7 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
+  let hash = deno_lib::util::checksum::r#gen(&[file_name_str.as_bytes()]);
   Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
     .inspect_err(|err| {
       lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
@@ -410,7 +410,7 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
       .map(|(k, v)| {
-        let doc = Arc::new(ServerDocument::asset(k, v.as_str()));
+        let doc = Arc::new(ServerDocument::asset(k, v.source.as_str()));
         let uri = doc.uri.clone();
         (uri, doc)
       })
@@ -702,12 +702,16 @@ impl Documents {
     if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(&uri) {
-      doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
-      ServerDocument::data_url(&uri, data_url.value().clone())?
-    } else {
-      return None;
+    let doc = match ServerDocument::load(&uri) {
+      Some(doc) => doc,
+      _ => match self.data_urls_by_uri.get(&uri) {
+        Some(data_url) => {
+          ServerDocument::data_url(&uri, data_url.value().clone())?
+        }
+        _ => {
+          return None;
+        }
+      },
     };
     let doc = Arc::new(doc);
     self.server.insert(uri.into_owned(), doc.clone());
@@ -1221,12 +1225,11 @@ impl DocumentModules {
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
+    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
+      Ok(jsr_req_ref) => {
+        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
+      }
+      _ => Cow::Borrowed(specifier),
     };
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let document =
@@ -1322,12 +1325,11 @@ impl DocumentModules {
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
+    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
+      Ok(jsr_req_ref) => {
+        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
+      }
+      _ => Cow::Borrowed(specifier),
     };
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let modules = self.modules_for_scope(scope)?;
@@ -1354,6 +1356,7 @@ impl DocumentModules {
 
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
+  // TODO(nayeemrmn): Support notebook scopes here.
   pub fn inspect_or_temp_modules_by_scope(
     &self,
     document: &Document,
@@ -1405,11 +1408,18 @@ impl DocumentModules {
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1593,21 +1603,26 @@ impl DocumentModules {
         } else {
           results.push(None);
         }
-      } else if let Ok(specifier) = scoped_resolver.as_cli_resolver().resolve(
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        resolution_mode,
-        NodeResolutionKind::Types,
-      ) {
-        results.push(self.resolve_dependency(
-          &specifier,
-          referrer,
-          resolution_mode,
-          scope,
-        ));
       } else {
-        results.push(None);
+        match scoped_resolver.as_cli_resolver().resolve(
+          raw_specifier,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
+        ) {
+          Ok(specifier) => {
+            results.push(self.resolve_dependency(
+              &specifier,
+              referrer,
+              resolution_mode,
+              scope,
+            ));
+          }
+          _ => {
+            results.push(None);
+          }
+        }
       }
     }
     results
@@ -1876,6 +1891,7 @@ impl OpenDocumentsGraphLoader<'_> {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
             content: Arc::from(doc.text.as_bytes().to_owned()),
+            mtime: None,
             specifier: doc.specifier.as_ref().clone(),
             maybe_headers: None,
           })))
@@ -1897,21 +1913,6 @@ impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
       Some(fut) => fut,
       None => self.inner_loader.load(specifier, options),
     }
-  }
-
-  fn cache_module_info(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    self.inner_loader.cache_module_info(
-      specifier,
-      media_type,
-      source,
-      module_info,
-    )
   }
 }
 
@@ -1942,6 +1943,7 @@ fn parse_and_analyze_module(
   )
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -1989,6 +1991,7 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
@@ -2000,9 +2003,14 @@ fn analyze_module(
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleErrorKind::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+        }
+        .into_box(),
       )),
       ResolutionMode::Import,
     ),

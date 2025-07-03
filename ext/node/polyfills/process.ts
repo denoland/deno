@@ -18,6 +18,7 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
+import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   validateNumber,
   validateObject,
@@ -83,7 +84,6 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-import { setProcess } from "ext:deno_node/_events.mjs";
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
@@ -325,7 +325,8 @@ memoryUsage.rss = function (): number {
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
-    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
+    // the windows implementation is ported from libuv, so the error numbers already match libuv and don't need mapping
+    res === 0 ? res : isWindows ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
@@ -996,12 +997,6 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
-
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
@@ -1025,6 +1020,16 @@ internals.__bootstrapNodeProcess = function (
 
     initializeDebugEnv(nodeDebug);
 
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
+
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals
@@ -1045,7 +1050,5 @@ internals.__bootstrapNodeProcess = function (
     );
   }
 };
-
-setProcess(process);
 
 export default process;

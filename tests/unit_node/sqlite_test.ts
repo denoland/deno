@@ -96,12 +96,12 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   session.close();
 
   // Use after close shoud throw.
-  assertThrows(() => session.changeset(), Error, "Session is already closed");
+  assertThrows(() => session.changeset(), Error, "session is not open");
   // Close after close should throw.
-  assertThrows(() => session.close(), Error, "Session is already closed");
+  assertThrows(() => session.close(), Error, "session is not open");
 
   db.close();
-  assertThrows(() => session.close(), Error, "Database is already closed");
+  assertThrows(() => session.close(), Error, "database is not open");
 });
 
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
@@ -216,7 +216,7 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT)`);
   db.exec(
-    `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
+    `INSERT INTO one (variable1, variable2, variable3) VALUES ('test', 1 , 2);`,
   );
 
   const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";

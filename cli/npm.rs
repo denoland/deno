@@ -12,23 +12,25 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
 use deno_npm_cache::NpmCacheHttpClientResponse;
-use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use deno_npm_installer::lifecycle_scripts::PackageWithScript;
-use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::BinEntries;
 use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
+use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
@@ -179,18 +181,8 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      if let Some(dist_tag) = req.version_req.tag() {
-        let version = package_info.dist_tags.get(dist_tag)?.clone();
-        return Some(PackageNv { name, version });
-      }
-      // Find the first matching version of the package.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
-      let version = versions
-        .into_iter()
-        .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
+      let version =
+        version_from_package_info(&package_info, &req.version_req)?.clone();
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
@@ -231,6 +223,22 @@ impl NpmFetchResolver {
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
+}
+
+pub fn version_from_package_info<'a>(
+  package_info: &'a NpmPackageInfo,
+  version_req: &VersionReq,
+) -> Option<&'a Version> {
+  if let Some(dist_tag) = version_req.tag() {
+    return package_info.dist_tags.get(dist_tag);
+  }
+  // Find the first matching version of the package.
+  let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+  versions.sort();
+  versions
+    .into_iter()
+    .rev()
+    .find(|v| version_req.tag().is_none() && version_req.matches(v))
 }
 
 pub static NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
@@ -277,7 +285,8 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
     options: LifecycleScriptsExecutorOptions<'_>,
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
-    let mut bin_entries = BinEntries::new();
+    let sys = CliSys::default();
+    let mut bin_entries = BinEntries::new(&sys);
     // get custom commands for each bin available in the node_modules dir (essentially
     // the scripts that are in `node_modules/.bin`)
     let base = self
@@ -335,7 +344,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
       for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(script) = scripts.get(script_name) {
           if script_name == "install"
-            && is_broken_default_install_script(script, package_folder)
+            && is_broken_default_install_script(&sys, script, package_folder)
           {
             continue;
           }
@@ -445,7 +454,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   async fn resolve_baseline_custom_commands<'a>(
     &self,
     extra_info_provider: &CachedNpmPackageExtraInfoProvider,
-    bin_entries: &mut BinEntries<'a>,
+    bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
   ) -> crate::task_runner::TaskCustomCommands {
@@ -488,7 +497,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
   >(
     &self,
     extra_info_provider: &CachedNpmPackageExtraInfoProvider,
-    bin_entries: &mut BinEntries<'a>,
+    bin_entries: &mut BinEntries<'a, CliSys>,
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
@@ -544,7 +553,8 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
   ) -> crate::task_runner::TaskCustomCommands {
-    let mut bin_entries = BinEntries::new();
+    let sys = CliSys::default();
+    let mut bin_entries = BinEntries::new(&sys);
     self
       .resolve_custom_commands_from_packages(
         extra_info_provider,

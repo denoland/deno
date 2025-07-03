@@ -8,12 +8,6 @@ use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_core::error::AnyError;
-use deno_core::error::ModuleLoaderError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::url::Url;
-use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
@@ -21,15 +15,21 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::error::AnyError;
+use deno_core::error::ModuleLoaderError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::url::Url;
+use deno_core::v8_set_flags;
 use deno_error::JsErrorBox;
-use deno_lib::args::get_root_cert_store;
-use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::CaData;
 use deno_lib::args::RootCertStoreLoadError;
+use deno_lib::args::get_root_cert_store;
+use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::loader::NpmModuleLoader;
-use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::from_utf8_lossy_cow;
@@ -44,11 +44,9 @@ use deno_media_type::MediaType;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
+use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cjs::CjsTracker;
 use deno_resolver::cjs::IsCjsResolutionMode;
-use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
-use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
-use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -56,34 +54,36 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceResolver;
-use deno_resolver::DenoResolveErrorKind;
-use deno_runtime::code_cache::CodeCache;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::create_host_defined_options;
-use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
+use deno_runtime::code_cache::CodeCache;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::NodeRequireLoader;
+use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::analyze::CjsModuleExportAnalyzer;
-use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::cache::NodeResolutionSys;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
+use node_resolver::errors::ClosestPkgJsonError;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -242,6 +242,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .into(),
         ),
+        PackageJsonDepValue::JsrReq(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -365,7 +371,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &Url,
     maybe_referrer: Option<&Url>,
     _is_dynamic: bool,
-    _requested_module_type: RequestedModuleType,
+    requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
       let data_url_text =
@@ -405,10 +411,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             code_source.code.as_bytes(),
           );
           Ok(deno_core::ModuleSource::new_with_redirect(
-            match code_source.media_type {
-              MediaType::Json => ModuleType::Json,
-              _ => ModuleType::JavaScript,
-            },
+            code_source.module_type,
             code_source.code,
             &original_specifier,
             &code_source.found_url,
@@ -421,6 +424,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
+        match requested_module_type {
+          RequestedModuleType::Text | RequestedModuleType::Bytes => {
+            let module_source = DenoCompileModuleSource::Bytes(module.data);
+            return deno_core::ModuleLoadResponse::Sync(Ok(
+              deno_core::ModuleSource::new_with_redirect(
+                match requested_module_type {
+                  RequestedModuleType::Text => ModuleType::Text,
+                  RequestedModuleType::Bytes => ModuleType::Bytes,
+                  _ => unreachable!(),
+                },
+                match requested_module_type {
+                  RequestedModuleType::Text => module_source.into_for_v8(),
+                  RequestedModuleType::Bytes => {
+                    ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
+                  }
+                  _ => unreachable!(),
+                },
+                original_specifier,
+                module.specifier,
+                None,
+              ),
+            ));
+          }
+          RequestedModuleType::Other(_)
+          | RequestedModuleType::None
+          | RequestedModuleType::Json => {
+            // ignore
+          }
+        }
+
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
@@ -545,7 +578,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if line_number >= lines.len() {
       Some(format!(
         "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"), line_number + 1,
+        crate::colors::yellow("Warning"),
+        line_number + 1,
       ))
     } else {
       Some(lines[line_number].to_string())
@@ -816,8 +850,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
-  let node_code_translator =
-    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_module_export_analyzer,
+    node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+  ));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -856,7 +892,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
-          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          is_link: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),
@@ -951,11 +987,12 @@ pub async fn run(
     strace_ops: None,
     is_inspecting: false,
     is_standalone: true,
+    auto_serve: false,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string())
       .or(std::env::args().next()),
     node_debug: std::env::var("NODE_DEBUG").ok(),
     origin_data_folder_path: None,
@@ -968,6 +1005,7 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    enable_raw_imports: metadata.unstable_config.raw_imports,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
@@ -1016,6 +1054,8 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
+    // TODO(bartlomieju): support preload modules in `deno compile`
+    vec![],
   )?;
 
   let exit_code = worker.run().await?;

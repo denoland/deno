@@ -2,8 +2,8 @@
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -79,6 +79,7 @@ pub fn op_query_permission(
     "sys" => permissions.query_sys(args.kind.as_deref())?,
     "run" => permissions.query_run(args.command.as_deref())?,
     "ffi" => permissions.query_ffi(args.path.as_deref())?,
+    "import" => permissions.query_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
@@ -99,6 +100,7 @@ pub fn op_revoke_permission(
     "sys" => permissions.revoke_sys(args.kind.as_deref())?,
     "run" => permissions.revoke_run(args.command.as_deref())?,
     "ffi" => permissions.revoke_ffi(args.path.as_deref())?,
+    "import" => permissions.revoke_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
@@ -119,6 +121,7 @@ pub fn op_request_permission(
     "sys" => permissions.request_sys(args.kind.as_deref())?,
     "run" => permissions.request_run(args.command.as_deref())?,
     "ffi" => permissions.request_ffi(args.path.as_deref())?,
+    "import" => permissions.request_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))

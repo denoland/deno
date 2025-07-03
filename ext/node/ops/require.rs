@@ -7,26 +7,25 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use boxed_error::Boxed;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::FastString;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
-use node_resolver::REQUIRE_CONDITIONS;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::errors::ClosestPkgJsonError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -534,7 +533,7 @@ pub fn op_require_try_self<
       exports,
       Some(&referrer),
       ResolutionMode::Require,
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(r)?))
@@ -641,7 +640,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    REQUIRE_CONDITIONS,
+    node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))
@@ -720,7 +719,7 @@ pub fn op_require_package_imports_resolve<
       Some(&UrlOrPathRef::from_path(&referrer_path)),
       ResolutionMode::Require,
       Some(&pkg),
-      REQUIRE_CONDITIONS,
+      node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))

@@ -11,6 +11,11 @@ use std::rc::Rc;
 use std::task::Poll;
 use std::thread;
 
+use deno_core::InspectorMsg;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
+use deno_core::InspectorSessionProxy;
+use deno_core::JsRuntime;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -20,15 +25,10 @@ use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_core::InspectorMsg;
-use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
-use deno_core::InspectorSessionProxy;
-use deno_core::JsRuntime;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -264,30 +264,34 @@ async fn server(
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let mut register_inspector_handler = pin!(register_inspector_rx
-    .map(|info| {
-      log::info!(
-        "Debugger listening on {}",
-        info.get_websocket_debugger_url(&info.host.to_string())
-      );
-      log::info!("Visit chrome://inspect to connect to the debugger.");
-      if info.wait_for_session {
-        log::info!("Deno is waiting for debugger to connect.");
-      }
-      if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
-        panic!("Inspector UUID already in map");
-      }
-    })
-    .collect::<()>());
+  let mut register_inspector_handler = pin!(
+    register_inspector_rx
+      .map(|info| {
+        log::info!(
+          "Debugger listening on {}",
+          info.get_websocket_debugger_url(&info.host.to_string())
+        );
+        log::info!("Visit chrome://inspect to connect to the debugger.");
+        if info.wait_for_session {
+          log::info!("Deno is waiting for debugger to connect.");
+        }
+        if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
+          panic!("Inspector UUID already in map");
+        }
+      })
+      .collect::<()>()
+  );
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let mut deregister_inspector_handler = pin!(future::poll_fn(|cx| {
-    inspector_map
-      .borrow_mut()
-      .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
-    Poll::<Never>::Pending
-  })
-  .fuse());
+  let mut deregister_inspector_handler = pin!(
+    future::poll_fn(|cx| {
+      inspector_map
+        .borrow_mut()
+        .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
+      Poll::<Never>::Pending
+    })
+    .fuse()
+  );
 
   let json_version_response = json!({
     "Browser": name,
@@ -304,7 +308,8 @@ async fn server(
     }
   };
 
-  let mut server_handler = pin!(deno_core::unsync::spawn(async move {
+  let mut server_handler =
+    pin!(deno_core::unsync::spawn(async move {
     loop {
       let mut rx = shutdown_server_rx.resubscribe();
       let mut shutdown_rx = pin!(rx.recv());
@@ -498,9 +503,9 @@ impl InspectorInfo {
 
   fn get_frontend_url(&self, host: &str) -> String {
     format!(
-        "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
-        host, &self.uuid
-      )
+      "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
+      host, &self.uuid
+    )
   }
 
   fn get_title(&self) -> String {

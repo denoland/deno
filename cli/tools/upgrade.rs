@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -26,8 +26,8 @@ use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::Flags;
-use crate::args::UpgradeFlags;
 use crate::args::UPGRADE_USAGE;
+use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -158,10 +158,8 @@ struct UpdateChecker<
   maybe_file: Option<CheckVersionFile>,
 }
 
-impl<
-    TEnvironment: UpdateCheckerEnvironment,
-    TVersionProvider: VersionProvider,
-  > UpdateChecker<TEnvironment, TVersionProvider>
+impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
+  UpdateChecker<TEnvironment, TVersionProvider>
 {
   pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
     let maybe_file = CheckVersionFile::parse(env.read_check_file());
@@ -996,11 +994,14 @@ fn set_exe_permissions(
   if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
     && !nix::unistd::Uid::effective().is_root()
   {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    bail!(
+      concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ),
+      output_exe_path.display()
+    );
   }
   Ok(permissions)
 }

@@ -6,7 +6,7 @@ throw new Error("uncaught");
   "spans": [],
   "logs": [
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
@@ -20,7 +20,7 @@ throw new Error("uncaught");
       "spanId": ""
     },
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 17,
       "severityText": "ERROR",

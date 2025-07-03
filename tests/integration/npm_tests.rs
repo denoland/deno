@@ -1,15 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use test_util as util;
 use test_util::itest;
 use url::Url;
+use util::TestContextBuilder;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
-use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
@@ -353,11 +353,13 @@ fn node_modules_dir_cache() {
   assert!(output.status.success());
 
   let node_modules = deno_dir.path().join("node_modules");
-  assert!(node_modules
-    .join(
-      ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
-    )
-    .exists());
+  assert!(
+    node_modules
+      .join(
+        ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
+      )
+      .exists()
+  );
   assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
 
   // now try deleting the folder with the package source in the npm cache dir
@@ -1194,15 +1196,21 @@ fn binary_package_with_optional_dependencies() {
       output.assert_matches_text(
         "[WILDCARD]Hello from binary package on windows[WILDCARD]",
       );
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());
@@ -1221,15 +1229,21 @@ fn binary_package_with_optional_dependencies() {
         "[WILDCARD]Hello from binary package on mac[WILDCARD]",
       );
 
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());
@@ -1247,15 +1261,21 @@ fn binary_package_with_optional_dependencies() {
       output.assert_matches_text(
         "[WILDCARD]Hello from binary package on linux[WILDCARD]",
       );
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());
@@ -1387,88 +1407,6 @@ fn top_level_install_package_json_explicit_opt_in() {
 
 #[test]
 fn byonm_cjs_esm_packages() {
-  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
-  let dir = test_context.temp_dir();
-
-  test_context.run_npm("init -y");
-  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
-
-  dir.write(
-    "main.ts",
-    r#"
-import { getValue, setValue } from "@denotest/esm-basic";
-
-setValue(2);
-console.log(getValue());
-
-import cjsDefault from "@denotest/cjs-default-export";
-console.log(cjsDefault.default());
-console.log(cjsDefault.named());
-
-import { getKind } from "@denotest/dual-cjs-esm";
-console.log(getKind());
-
-
-"#,
-  );
-  let output = test_context.new_command().args("run --check main.ts").run();
-  output
-    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
-
-  // should not have created the .deno directory
-  assert!(!dir.path().join("node_modules/.deno").exists());
-
-  // try chai
-  dir.write(
-    "chai.ts",
-    r#"import { expect } from "chai";
-
-    const timeout = setTimeout(() => {}, 0);
-    expect(timeout).to.be.a("number");
-    clearTimeout(timeout);"#,
-  );
-  test_context.new_command().args("run chai.ts").run();
-
-  // try chalk cjs
-  dir.write(
-    "chalk.ts",
-    "import chalk from 'chalk'; console.log(chalk.green('chalk cjs loads'));",
-  );
-  let output = test_context
-    .new_command()
-    .args("run --allow-read chalk.ts")
-    .run();
-  output.assert_matches_text("chalk cjs loads\n");
-
-  // try using an npm specifier for chalk that matches the version we installed
-  dir.write(
-    "chalk.ts",
-    "import chalk from 'npm:chalk@4'; console.log(chalk.green('chalk cjs loads'));",
-  );
-  let output = test_context
-    .new_command()
-    .args("run --allow-read chalk.ts")
-    .run();
-  output.assert_matches_text("chalk cjs loads\n");
-
-  // try with one that doesn't match the package.json
-  dir.write(
-    "chalk.ts",
-    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk cjs loads'));",
-  );
-  let output = test_context
-    .new_command()
-    .args("run --allow-read chalk.ts")
-    .run();
-  output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `"nodeModulesDir": "auto"` in your deno.json file.
-    at file:///[WILDCARD]chalk.ts:1:19
-"#);
-  output.assert_exit_code(1);
-}
-
-#[test]
-fn future_byonm_cjs_esm_packages() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
 

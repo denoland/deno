@@ -8,20 +8,20 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionsContainer;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use node_resolver::errors::ClosestPkgJsonError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -31,19 +31,19 @@ pub mod ops;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
-pub use node_resolver::PathClean;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
+pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
-pub use ops::vm::create_v8_context;
-pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
 
+pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
-pub use crate::global::GlobalsStorage;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -223,6 +223,7 @@ enum DotEnvLoadErr {
 }
 
 #[op2(fast)]
+#[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
@@ -280,6 +281,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_auth_tag,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -290,6 +292,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_fill_random,
     ops::crypto::op_node_gen_prime_async,
     ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_get_hash_size,
     ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_hash_clone,
     ops::crypto::op_node_hash_digest_hex,
@@ -300,6 +303,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_hkdf,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_pbkdf2_validate,
     ops::crypto::op_node_private_decrypt,
     ops::crypto::op_node_private_encrypt,
     ops::crypto::op_node_public_encrypt,
@@ -310,6 +314,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_sign_ed25519,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_verify_ed25519,
+    ops::crypto::op_node_verify_spkac,
+    ops::crypto::op_node_cert_export_public_key,
+    ops::crypto::op_node_cert_export_challenge,
     ops::crypto::keys::op_node_create_private_key,
     ops::crypto::keys::op_node_create_ed_raw,
     ops::crypto::keys::op_node_create_rsa_jwk,
@@ -369,6 +376,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lchmod_sync<P>,
+    ops::fs::op_node_lchmod<P>,
     ops::fs::op_node_lchown_sync<P>,
     ops::fs::op_node_lchown<P>,
     ops::fs::op_node_lutimes_sync<P>,
@@ -478,6 +487,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
+    ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
@@ -503,7 +513,8 @@ deno_core::extension!(deno_node,
     ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync
+    ops::sqlite::StatementSync,
+    ops::crypto::digest::Hasher,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -522,14 +533,16 @@ deno_core::extension!(deno_node,
     "_fs/_fs_copy.ts",
     "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
-    "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",
+    "_fs/_fs_fchmod.ts",
     "_fs/_fs_fchown.ts",
     "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
     "_fs/_fs_fsync.ts",
     "_fs/_fs_ftruncate.ts",
     "_fs/_fs_futimes.ts",
+    "_fs/_fs_glob.ts",
+    "_fs/_fs_lchmod.ts",
     "_fs/_fs_lchown.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
@@ -595,6 +608,7 @@ deno_core::extension!(deno_node,
     "internal_binding/string_decoder.ts",
     "internal_binding/symbols.ts",
     "internal_binding/tcp_wrap.ts",
+    "internal_binding/tty_wrap.ts",
     "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
@@ -640,6 +654,7 @@ deno_core::extension!(deno_node,
     "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
+    "internal/http2/util.ts",
     "internal/idna.ts",
     "internal/net.ts",
     "internal/normalize_encoding.mjs",
@@ -647,6 +662,7 @@ deno_core::extension!(deno_node,
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
+    "internal/process/warning.ts",
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -658,7 +674,6 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.js",
     "internal/streams/compose.js",
     "internal/streams/destroy.js",
-    "internal/streams/duplex.js",
     "internal/streams/duplexify.js",
     "internal/streams/duplexpair.js",
     "internal/streams/end-of-stream.js",
@@ -666,13 +681,9 @@ deno_core::extension!(deno_node,
     "internal/streams/lazy_transform.js",
     "internal/streams/legacy.js",
     "internal/streams/operators.js",
-    "internal/streams/passthrough.js",
     "internal/streams/pipeline.js",
-    "internal/streams/readable.js",
     "internal/streams/state.js",
-    "internal/streams/transform.js",
     "internal/streams/utils.js",
-    "internal/streams/writable.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -761,6 +772,10 @@ deno_core::extension!(deno_node,
     "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
+  ],
+  lazy_loaded_esm = [
+    dir "polyfills",
+    "deps/minimatch.js",
   ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,

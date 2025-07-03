@@ -2,12 +2,6 @@
 
 use std::sync::Arc;
 
-use deno_ast::diagnostics::Diagnostic;
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::ecma_visit::noop_visit_type;
-use deno_ast::swc::ecma_visit::Visit;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -16,23 +10,30 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_ast::diagnostics::Diagnostic;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
-use deno_graph::SpecifierWithRange;
+use deno_graph::analysis::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -42,7 +43,6 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
@@ -50,15 +50,15 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventReceiver;
-use crate::tools::test::TestFailureFormatOptions;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -194,7 +194,7 @@ impl ReplSession {
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     resolver: Arc<CliResolver>,
-    tsconfig_resolver: &TsConfigResolver,
+    compiler_options_resolver: &CompilerOptionsResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -226,13 +226,15 @@ impl ReplSession {
         let execution_context_created = serde_json::from_value::<
           cdp::ExecutionContextCreated,
         >(notification.params)?;
-        assert!(execution_context_created
-          .context
-          .aux_data
-          .get("isDefault")
-          .unwrap()
-          .as_bool()
-          .unwrap());
+        assert!(
+          execution_context_created
+            .context
+            .aux_data
+            .get("isDefault")
+            .unwrap()
+            .as_bool()
+            .unwrap()
+        );
         context_id = execution_context_created.context.id;
         break;
       }
@@ -250,8 +252,9 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let experimental_decorators = tsconfig_resolver
-      .transpile_and_emit_options(&cwd_url)?
+    let experimental_decorators = compiler_options_resolver
+      .for_specifier(&cwd_url)
+      .transpile_options()?
       .transpile
       .use_ts_decorators;
     let mut repl_session = ReplSession {
@@ -644,13 +647,14 @@ impl ReplSession {
       match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
         Ok(parsed) => parsed,
         Err(err) => {
-          if let Ok(parsed) = parse_source_as(
+          match parse_source_as(
             expression.to_string(),
             deno_ast::MediaType::TypeScript,
           ) {
-            parsed
-          } else {
-            return Err(err);
+            Ok(parsed) => parsed,
+            _ => {
+              return Err(err);
+            }
           }
         }
       };

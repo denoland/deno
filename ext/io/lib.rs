@@ -15,14 +15,12 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
 
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
-use deno_core::unsync::TaskQueue;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -37,7 +35,13 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::TaskQueue;
+use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -65,18 +69,18 @@ mod winpipe;
 
 mod bi_pipe;
 
-pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
 pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
-pub use pipe::pipe;
+pub use bi_pipe::bi_pipe_pair_raw;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
 pub use pipe::RawPipeHandle;
+pub use pipe::pipe;
 
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
@@ -562,7 +566,7 @@ impl StdFileResourceInner {
   fn with_blocking_task<F, R: 'static + Send>(
     &self,
     action: F,
-  ) -> impl Future<Output = R>
+  ) -> impl Future<Output = R> + use<F, R>
   where
     F: FnOnce() -> R + Send + 'static,
   {
@@ -1036,13 +1040,13 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 

@@ -1,6 +1,0 @@
-{
-  "unstable": ["npm-patch"],
-  "patch": [
-    "../cowsay"
-  ]
-}

@@ -90,6 +90,7 @@ impl MainModuleGraphContainer {
           permissions: self.root_permissions.clone(),
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;

@@ -1,14 +1,28 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  ObjectFreeze,
+  ReflectApply,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  SafeSet,
+  SetPrototypeEntries,
+  SetPrototypeValues,
+  StringPrototypeReplace,
+  Symbol,
+  SymbolIterator,
+} = primordials;
 
 const kInternal = Symbol("internal properties");
 
-const replaceUnderscoresRegex = /_/g;
-const leadingDashesRegex = /^--?/;
-const trailingValuesRegex = /=.*$/;
+const replaceUnderscoresRegex = new SafeRegExp(/_/g);
+const leadingDashesRegex = new SafeRegExp(/^--?/);
+const trailingValuesRegex = new SafeRegExp(/=.*$/);
 
 // This builds the initial process.allowedNodeEnvironmentFlags
 // from data in the config binding.
@@ -194,12 +208,19 @@ export function buildAllowedFlags() {
   }
   */
 
-  const trimLeadingDashes = (flag) => flag.replace(leadingDashesRegex, "");
+  const trimLeadingDashes = (flag) =>
+    StringPrototypeReplace(flag, leadingDashesRegex, "");
 
   // Save these for comparison against flags provided to
   // process.allowedNodeEnvironmentFlags.has() which lack leading dashes.
-  const nodeFlags = allowedNodeEnvironmentFlags.map(trimLeadingDashes);
+  const nodeFlags = ArrayPrototypeMap(
+    allowedNodeEnvironmentFlags,
+    trimLeadingDashes,
+  );
 
+  // Ignoring primordial lint. Extending from SafeSet prevents augmenting `keys`
+  // and [SymbolIterator] instance methods.
+  // deno-lint-ignore prefer-primordials
   class NodeEnvironmentFlagsSet extends Set {
     constructor(array) {
       super();
@@ -229,24 +250,25 @@ export function buildAllowedFlags() {
       // on a dummy option set and see whether it rejects the argument or
       // not.
       if (typeof key === "string") {
-        key = key.replace(replaceUnderscoresRegex, "-");
-        if (leadingDashesRegex.test(key)) {
-          key = key.replace(trailingValuesRegex, "");
-          return this[kInternal].array.includes(key);
+        key = StringPrototypeReplace(key, replaceUnderscoresRegex, "-");
+        if (RegExpPrototypeTest(leadingDashesRegex, key)) {
+          key = StringPrototypeReplace(key, trailingValuesRegex, "");
+          return ArrayPrototypeIncludes(this[kInternal].array, key);
         }
-        return nodeFlags.includes(key);
+        return ArrayPrototypeIncludes(nodeFlags, key);
       }
       return false;
     }
 
     entries() {
-      this[kInternal].set ??= new Set(this[kInternal].array);
-      return this[kInternal].set.entries();
+      this[kInternal].set ??= new SafeSet(this[kInternal].array);
+      return SetPrototypeEntries(this[kInternal].set);
     }
 
     forEach(callback, thisArg = undefined) {
-      this[kInternal].array.forEach((v) =>
-        Reflect.apply(callback, thisArg, [v, v, this])
+      ArrayPrototypeForEach(
+        this[kInternal].array,
+        (v) => ReflectApply(callback, thisArg, [v, v, this]),
       );
     }
 
@@ -255,19 +277,19 @@ export function buildAllowedFlags() {
     }
 
     values() {
-      this[kInternal].set ??= new Set(this[kInternal].array);
-      return this[kInternal].set.values();
+      this[kInternal].set ??= new SafeSet(this[kInternal].array);
+      return SetPrototypeValues(this[kInternal].set);
     }
   }
   NodeEnvironmentFlagsSet.prototype.keys =
     NodeEnvironmentFlagsSet
-      .prototype[Symbol.iterator] =
+      .prototype[SymbolIterator] =
       NodeEnvironmentFlagsSet.prototype.values;
 
-  Object.freeze(NodeEnvironmentFlagsSet.prototype.constructor);
-  Object.freeze(NodeEnvironmentFlagsSet.prototype);
+  ObjectFreeze(NodeEnvironmentFlagsSet.prototype.constructor);
+  ObjectFreeze(NodeEnvironmentFlagsSet.prototype);
 
-  return Object.freeze(
+  return ObjectFreeze(
     new NodeEnvironmentFlagsSet(
       allowedNodeEnvironmentFlags,
     ),

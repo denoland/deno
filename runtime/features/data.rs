@@ -131,7 +131,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "node-globals",
     help_text: "Expose Node globals everywhere",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
@@ -161,12 +161,28 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    name: "raw-imports",
+    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_RAW_IMPORTS"),
+  },
+  UnstableFeatureDescription {
     name: "sloppy-imports",
     help_text: "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
     show_in_help: true,
     kind: UnstableFeatureKind::Cli,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: Some("DENO_UNSTABLE_SLOPPY_IMPORTS"),
+  },
+  UnstableFeatureDescription {
+    name: "subdomain-wildcards",
+    help_text: "Enable subdomain wildcards support for the `--allow-net` flag",
+    show_in_help: false,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_SUBDOMAIN_WILDCARDS"),
   },
   UnstableFeatureDescription {
     name: "temporal",

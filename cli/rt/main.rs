@@ -60,13 +60,21 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
-      std::env::set_var(env_var.0, env_var.1);
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::set_var(env_var.0, env_var.1)
+      };
     }
   })
 }
 
 fn main() {
   deno_runtime::deno_permissions::mark_standalone();
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
+
   let args: Vec<_> = env::args_os().collect();
   let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {

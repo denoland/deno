@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::op2;
 
 deno_core::extension!(
   deno_runtime,
@@ -40,9 +40,9 @@ pub fn op_ppid() -> i64 {
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
     use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
+    use winapi::um::tlhelp32::PROCESSENTRY32;
     use winapi::um::tlhelp32::Process32First;
     use winapi::um::tlhelp32::Process32Next;
-    use winapi::um::tlhelp32::PROCESSENTRY32;
     use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
     // SAFETY: winapi calls
     unsafe {

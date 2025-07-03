@@ -1,4 +1,0 @@
-This crate is very much a work in progress.
-
-- Use MaybeArc in some places
-- Use sys_traits

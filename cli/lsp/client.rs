@@ -12,8 +12,8 @@ use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
-use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
+use super::config::WorkspaceSettings;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
 use crate::lsp::repl::get_repl_workspace_settings;

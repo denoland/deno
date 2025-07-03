@@ -9,15 +9,15 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_graph::ModuleSpecifier;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use deno_semver::Version;
 use serde::Deserialize;
 
 use super::config::ConfigData;
@@ -26,8 +26,8 @@ use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
 
 #[derive(Debug)]
 struct WorkspacePackage {
@@ -57,34 +57,28 @@ impl JsrCacheResolver {
     let info_by_name = DashMap::new();
     let mut workspace_packages_by_name = HashMap::new();
     if let Some(config_data) = config_data {
-      for jsr_pkg_config in config_data.member_dir.workspace.jsr_packages() {
-        let Some(exports) = &jsr_pkg_config.config_file.json.exports else {
-          continue;
-        };
+      for jsr_package in config_data.resolver.jsr_packages() {
+        let exports = deno_core::serde_json::json!(&jsr_package.exports);
         let version_info = Arc::new(JsrPackageVersionInfo {
           exports: exports.clone(),
           module_graph_1: None,
           module_graph_2: None,
           manifest: Default::default(),
+          lockfile_checksum: None,
         });
+        let name = StackString::from_str(&jsr_package.name);
         workspace_packages_by_name.insert(
-          StackString::from_str(&jsr_pkg_config.name),
+          name.clone(),
           WorkspacePackage {
-            dir_url: Url::from_directory_path(
-              jsr_pkg_config.config_file.dir_path(),
-            )
-            .unwrap(),
+            dir_url: jsr_package.base.clone(),
             version_info: version_info.clone(),
           },
         );
-        let Some(version) = &jsr_pkg_config.config_file.json.version else {
-          continue;
-        };
-        let Ok(version) = Version::parse_standard(version) else {
+        let Some(version) = &jsr_package.version else {
           continue;
         };
         let nv = PackageNv {
-          name: jsr_pkg_config.name.as_str().into(),
+          name,
           version: version.clone(),
         };
         info_by_name.insert(

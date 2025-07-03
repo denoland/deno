@@ -4,8 +4,8 @@ use std::future::poll_fn;
 use std::io;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
-use std::task::ready;
 use std::task::Poll;
+use std::task::ready;
 
 use bytes::Bytes;
 use tokio::io::AsyncRead;

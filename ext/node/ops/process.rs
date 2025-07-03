@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 
 #[cfg(unix)]
@@ -16,32 +16,9 @@ fn kill(pid: i32, sig: i32) -> i32 {
 
 #[cfg(not(unix))]
 fn kill(pid: i32, _sig: i32) -> i32 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::errhandlingapi::GetLastError;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::OpenProcess;
-  use winapi::um::processthreadsapi::TerminateProcess;
-  use winapi::um::winnt::PROCESS_TERMINATE;
-
-  // SAFETY: FFI call to winapi
-  unsafe {
-    let p_hnd = if pid == 0 {
-      GetCurrentProcess()
-    } else {
-      OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD)
-    };
-
-    if p_hnd.is_null() {
-      return GetLastError() as i32;
-    }
-
-    if TerminateProcess(p_hnd, 1) == TRUE {
-      return 0;
-    }
-
-    GetLastError() as i32
+  match deno_subprocess_windows::process_kill(pid, _sig) {
+    Ok(_) => 0,
+    Err(e) => e.as_uv_error(),
   }
 }
 

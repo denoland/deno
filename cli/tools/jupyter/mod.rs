@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -12,29 +12,29 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-use jupyter_runtime::jupyter::ConnectionInfo;
-use jupyter_runtime::messaging::StreamContent;
+use jupyter_protocol::messaging::StreamContent;
+use jupyter_runtime::ConnectionInfo;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+use crate::CliFactory;
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
 use crate::lsp::ReplCompletionItem;
 use crate::ops;
 use crate::tools::repl;
-use crate::tools::test::create_single_test_event_channel;
-use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
 use crate::tools::test::TestFailureFormatOptions;
-use crate::CliFactory;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
 
 mod install;
 pub mod server;
@@ -73,7 +73,7 @@ pub async fn kernel(
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -100,6 +100,8 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
+      // `deno jupyter` doesn't support preloading modules
+      vec![],
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
@@ -124,7 +126,7 @@ pub async fn kernel(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module,
     test_event_receiver,

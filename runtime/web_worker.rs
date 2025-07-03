@@ -3,10 +3,10 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -14,16 +14,6 @@ use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::CoreError;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::stream::StreamExt;
-use deno_core::futures::task::AtomicWaker;
-use deno_core::located_script_name;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json::json;
-use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
@@ -36,6 +26,16 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::error::CoreError;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::stream::StreamExt;
+use deno_core::futures::task::AtomicWaker;
+use deno_core::located_script_name;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -48,29 +48,28 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::create_entangled_message_port;
-use deno_web::serialize_transferables;
 use deno_web::BlobStore;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
+use deno_web::create_entangled_message_port;
+use deno_web::serialize_transferables;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
+use crate::BootstrapOptions;
+use crate::FeatureChecker;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::worker::create_op_metrics;
-use crate::worker::import_meta_resolve_callback;
-use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 #[cfg(target_os = "linux")]
 use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 #[cfg(target_os = "linux")]
 use crate::worker::SIGUSR2_RX;
-use crate::BootstrapOptions;
-use crate::FeatureChecker;
+use crate::worker::create_op_metrics;
+use crate::worker::create_validate_import_attributes_callback;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -100,13 +99,35 @@ impl Default for WorkerId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum WebWorkerType {
+pub enum WorkerThreadType {
+  // Used only for testing
   Classic,
+  // Regular Web Worker
   Module,
+  // `node:worker_threads` worker, technically
+  // not a web worker, will be cleaned up in the future.
+  Node,
 }
 
+impl<'s> WorkerThreadType {
+  pub fn to_v8(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::String> {
+    v8::String::new(
+      scope,
+      match self {
+        WorkerThreadType::Classic => "classic",
+        WorkerThreadType::Module => "module",
+        WorkerThreadType::Node => "node",
+      },
+    )
+    .unwrap()
+  }
+}
 /// Events that are sent to host from child
 /// worker.
+#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError),
   Close,
@@ -162,11 +183,12 @@ pub struct WebWorkerInternalHandle {
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
 }
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
+  #[allow(clippy::result_large_err)]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -310,7 +332,7 @@ impl WebWorkerHandle {
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -378,12 +400,13 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
 
@@ -397,7 +420,7 @@ pub struct WebWorker {
   pub name: String,
   close_on_idle: bool,
   internal_handle: WebWorkerInternalHandle,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
@@ -624,21 +647,20 @@ impl WebWorker {
       extension_transpiler: None,
       inspector: true,
       op_metrics_factory_fn,
-      import_meta_resolve_callback: Some(Box::new(
-        import_meta_resolve_callback,
-      )),
-      validate_import_attributes_cb: Some(Box::new(
-        validate_import_attributes_callback,
-      )),
+      validate_import_attributes_cb: Some(
+        create_validate_import_attributes_callback(options.enable_raw_imports),
+      ),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-      maybe_op_stack_trace_callback: if options.enable_stack_trace_arg_in_ops {
-        Some(Box::new(|stack| {
-          deno_permissions::prompter::set_current_stacktrace(stack)
-        }))
-      } else {
-        None
-      },
-      ..Default::default()
+      maybe_op_stack_trace_callback: options
+        .enable_stack_trace_arg_in_ops
+        .then(crate::worker::create_permissions_stack_trace_callback),
+      extension_code_cache: None,
+      skip_op_registration: false,
+      v8_platform: None,
+      is_main: false,
+      wait_for_inspector_disconnect_callback: None,
+      custom_module_evaluation_cb: None,
+      eval_context_code_cache_cbs: None,
     });
 
     if let Some(op_summary_metrics) = op_summary_metrics {
@@ -750,11 +772,13 @@ impl WebWorker {
           .into();
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
+      let worker_type: v8::Local<v8::Value> =
+        self.worker_type.to_v8(scope).into();
       bootstrap_fn
         .call(
           scope,
           undefined.into(),
-          &[args, name_str, id_str, id, worker_data],
+          &[args, name_str, id_str, id, worker_type, worker_data],
         )
         .unwrap();
 
@@ -829,6 +853,7 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,
@@ -939,7 +964,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        if self.worker_type == WebWorkerType::Module {
+        if self.worker_type == WorkerThreadType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );

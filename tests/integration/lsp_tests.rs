@@ -6,17 +6,17 @@ use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
+use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
+use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
-use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;
-use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 use url::Url;
 
@@ -228,9 +228,11 @@ fn unadded_dependency_message_with_import_map() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -289,9 +291,11 @@ fn unadded_dependency_message() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -424,11 +428,12 @@ fn lsp_import_map_data_url() {
   }));
 
   // This indicates that the import map is applied correctly.
-  assert!(diagnostics.all().iter().any(|diagnostic| diagnostic.code
-    == Some(lsp::NumberOrString::String("no-cache".to_string()))
-    && diagnostic
-      .message
-      .contains("https://deno.land/x/example/mod.ts")));
+  assert!(diagnostics.all().iter().any(|diagnostic| {
+    diagnostic.code == Some(lsp::NumberOrString::String("no-cache".to_string()))
+      && diagnostic
+        .message
+        .contains("https://deno.land/x/example/mod.ts")
+  }));
   client.shutdown();
 }
 
@@ -5992,6 +5997,74 @@ fn lsp_jsr_auto_import_completion_workspace_member() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_jsr_auto_import_completion_patch() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@org/package": "jsr:@org/package"
+      },
+      "links": ["package"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package/deno.json",
+    json!({
+      "name": "@org/package",
+      "exports": "./mod.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write("package/mod.ts", "export const someValue = 1;\n");
+  temp_dir.write("other.ts", "import \"@org/package\";\n");
+  let file = temp_dir.source_file("file.ts", "someValue;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "someValue")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "someValue",
+        "labelDetails": { "description": "@org/package" },
+        "kind": 6,
+        "detail": "Add import from \"@org/package\"\n\nconst someValue: 1",
+        "documentation": { "kind": "markdown", "value": "" },
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { someValue } from \"@org/package\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6508,6 +6581,36 @@ fn lsp_npm_managed_no_export_diagnostic() {
       },
     ]),
   );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/29548.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_type_only_export_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:@minecraft/common\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 
@@ -8991,13 +9094,15 @@ fn lsp_npm_reexport_from_non_export() {
     .filter(|i| i.label == "getValue")
     .collect::<Vec<_>>();
   assert_eq!(
-    json!(items
-      .iter()
-      .map(|i| i
-        .label_details
-        .as_ref()
-        .and_then(|d| d.description.as_ref()))
-      .collect::<Vec<_>>()),
+    json!(
+      items
+        .iter()
+        .map(|i| i
+          .label_details
+          .as_ref()
+          .and_then(|d| d.description.as_ref()))
+        .collect::<Vec<_>>()
+    ),
     json!(["npm:@denotest/reexport-from-non-export"]),
   );
   client.shutdown();
@@ -10327,6 +10432,69 @@ fn lsp_auto_import_npm_export_node_modules_dir_manual() {
   client.shutdown();
 }
 
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "preact": "npm:preact",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
+  );
+  let file = temp_dir.source_file("file.ts", "useEffect;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test]
 #[timeout(300_000)]
@@ -11438,8 +11606,10 @@ fn lsp_diagnostics_refresh_dependents() {
     }
   }));
   assert_eq!(
-    json!(diagnostics
-      .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")),
+    json!(
+      diagnostics
+        .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")
+    ),
     json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
@@ -11666,8 +11836,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 466, "character": 12 },
-                    "end": { "line": 466, "character": 16 },
+                    "start": { "line": 598, "character": 12 },
+                    "end": { "line": 598, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -11824,6 +11994,68 @@ fn lsp_jupyter_completions() {
     }),
   );
 
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_jupyter_tsx() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "npm:preact@^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+
+  // TODO(nayeemrmn): `deno install` should work here, it doesn't as of writing.
+  temp_dir.write("main.tsx", "");
+  context.run_deno("check main.tsx");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.notebook_did_open(
+    url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
+    1,
+    vec![
+      json!({
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "<div></div>;\n",
+      }),
+    ],
+  );
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()) },
+      "position": { "line": 0, "character": 1 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```typescript\n(property) JSXInternal.IntrinsicElements.div: preact.JSX.HTMLAttributes<HTMLDivElement>\n```",
+      },
+      "range": {
+        "start": { "line": 0, "character": 1 },
+        "end": { "line": 0, "character": 4 },
+      },
+    }),
+  );
   client.shutdown();
 }
 
@@ -12589,7 +12821,10 @@ fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}\n");
-  let scss_file = source_file(temp_dir.path().join("file.scss"), "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n");
+  let scss_file = source_file(
+    temp_dir.path().join("file.scss"),
+    "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n",
+  );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
     "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
@@ -15037,19 +15272,23 @@ fn lsp_vendor_dir() {
     ]
   );
 
-  assert!(!temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    !temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // now cache
   cache(&mut client);
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
-  assert!(temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // the declaration should be found in the vendor directory
   let res = client.write_request(
@@ -15708,7 +15947,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_deno_json_scopes_ts_config() {
+fn lsp_deno_json_scopes_compiler_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -17962,7 +18201,9 @@ fn lsp_ts_code_fix_any_param() {
     }
   }
 
-  panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+  panic!(
+    "failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}"
+  );
 }
 
 #[test]
@@ -18412,6 +18653,7 @@ fn definitely_typed_fallback() {
 #[timeout(300_000)]
 fn do_not_auto_import_from_definitely_typed() {
   for node_modules_dir in ["none", "auto", "manual"] {
+    eprintln!("node_modules_dir: {node_modules_dir}");
     let context = TestContextBuilder::for_npm().use_temp_cwd().build();
     let mut client = context.new_lsp_command().build();
     let temp = context.temp_dir();
@@ -18432,22 +18674,6 @@ fn do_not_auto_import_from_definitely_typed() {
       },
       "nodeModulesDir": node_modules_dir
     });
-    if node_modules_dir == "manual" {
-      // TODO: there's a (pre-existing) bug that prevents auto-imports
-      // from working with nodeModuleDir "manual" w/o a package.json
-      temp.write(
-        "package.json",
-        json!({
-          "dependencies": {
-            "@denotest/index-export-no-types": "1.0.0",
-          },
-          "devDependencies": {
-            "@types/denotest__index-export-no-types": "1.0.0",
-          }
-        })
-        .to_string(),
-      );
-    }
     temp.write("deno.json", deno_json.to_string());
     context.run_deno("install");
 
@@ -18472,26 +18698,36 @@ fn do_not_auto_import_from_definitely_typed() {
         "triggerKind": 2,
       }),
     );
-    let item = completions
+    let items = completions
       .items
       .iter()
-      .find(|it| it.label == "foo")
-      .unwrap();
-    eprintln!("item: {item:#?}");
-    let res = client.write_request("completionItem/resolve", json!(item));
-    eprintln!("resolved: {res}");
-    assert_json_subset(
-      res,
-      json!({
-        "label": "foo",
-        "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
-        "additionalTextEdits": [json!({
-          "range": source.range_of("{}"),
-          "newText": "{ foo }"
-        })]
-      }),
+      .filter(|i| i.label == "foo")
+      .map(|i| client.write_request("completionItem/resolve", json!(i)))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      json!(items),
+      json!([
+        {
+          "label": "foo",
+          "labelDetails": {
+            "description": "@denotest/index-export-no-types",
+          },
+          "kind": 3,
+          "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
+          "documentation": { "kind": "markdown", "value": "" },
+          "sortText": "\u{ffff}16_0",
+          "additionalTextEdits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 13 },
+                "end": { "line": 1, "character": 15 },
+              },
+              "newText": "{ foo }",
+            },
+          ],
+        },
+      ]),
     );
-
-    client.did_close_file(&source);
+    client.shutdown();
   }
 }

@@ -24,8 +24,8 @@ pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
 use crate::ops::*;
-pub use crate::std_fs::open_options_with_access_check;
 pub use crate::std_fs::RealFs;
+pub use crate::std_fs::open_options_with_access_check;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;
 
@@ -305,6 +305,8 @@ deno_core::extension!(deno_fs,
     op_fs_file_sync_async,
     op_fs_file_stat_sync,
     op_fs_file_stat_async,
+    op_fs_fchmod_async,
+    op_fs_fchmod_sync,
     op_fs_fchown_async,
     op_fs_fchown_sync,
     op_fs_flock_async,

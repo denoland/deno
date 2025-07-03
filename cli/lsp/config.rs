@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -10,13 +11,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_config::deno_json::CompilerOptions;
+use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
-use deno_config::deno_json::TsConfig;
-use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::JsxImportSourceConfig;
@@ -27,27 +28,27 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
-use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::factory::ConfigDiscoveryOption;
@@ -703,7 +704,9 @@ impl WorkspaceSettings {
       let inlay_hints: InlayHintsSettings =
         parse_or_default(inlay_hints, "settings under \"deno.inlayHints\"");
       if inlay_hints.parameter_names.enabled != Default::default() {
-        lsp_warn!("\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_names.enabled =
           inlay_hints.parameter_names.enabled.clone();
         settings.typescript.inlay_hints.parameter_names.enabled =
@@ -713,7 +716,9 @@ impl WorkspaceSettings {
         .parameter_names
         .suppress_when_argument_matches_name
       {
-        lsp_warn!("\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -730,21 +735,27 @@ impl WorkspaceSettings {
           .suppress_when_argument_matches_name;
       }
       if inlay_hints.parameter_types.enabled {
-        lsp_warn!("\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
         settings.typescript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
       }
       if inlay_hints.variable_types.enabled {
-        lsp_warn!("\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
         settings.typescript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
       }
       if !inlay_hints.variable_types.suppress_when_type_matches_name {
-        lsp_warn!("\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -759,7 +770,9 @@ impl WorkspaceSettings {
           inlay_hints.variable_types.suppress_when_type_matches_name;
       }
       if inlay_hints.property_declaration_types.enabled {
-        lsp_warn!("\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -772,7 +785,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.property_declaration_types.enabled;
       }
       if inlay_hints.function_like_return_types.enabled {
-        lsp_warn!("\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -785,7 +800,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.function_like_return_types.enabled;
       }
       if inlay_hints.enum_member_values.enabled {
-        lsp_warn!("\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\"."
+        );
         settings.javascript.inlay_hints.enum_member_values.enabled =
           inlay_hints.enum_member_values.enabled;
         settings.typescript.inlay_hints.enum_member_values.enabled =
@@ -796,24 +813,32 @@ impl WorkspaceSettings {
       let suggest: CompletionSettings =
         parse_or_default(suggest, "settings under \"deno.suggest\"");
       if suggest.complete_function_calls {
-        lsp_warn!("\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\".");
+        lsp_warn!(
+          "\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\"."
+        );
         settings.javascript.suggest.complete_function_calls =
           suggest.complete_function_calls;
         settings.typescript.suggest.complete_function_calls =
           suggest.complete_function_calls;
       }
       if !suggest.names {
-        lsp_warn!("\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\".");
+        lsp_warn!(
+          "\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\"."
+        );
         settings.javascript.suggest.names = suggest.names;
         settings.typescript.suggest.names = suggest.names;
       }
       if !suggest.paths {
-        lsp_warn!("\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\".");
+        lsp_warn!(
+          "\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\"."
+        );
         settings.javascript.suggest.paths = suggest.paths;
         settings.typescript.suggest.paths = suggest.paths;
       }
       if !suggest.auto_imports {
-        lsp_warn!("\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\".");
+        lsp_warn!(
+          "\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\"."
+        );
         settings.javascript.suggest.auto_imports = suggest.auto_imports;
         settings.typescript.suggest.auto_imports = suggest.auto_imports;
       }
@@ -964,7 +989,7 @@ impl Config {
     let mut folders = vec![];
     for root_url in root_urls {
       let root_uri = url_to_uri(&root_url).unwrap();
-      let name = root_url.path_segments().and_then(|s| s.last());
+      let name = root_url.path_segments().and_then(|mut s| s.next_back());
       let name = name.unwrap_or_default().to_string();
       folders.push((
         Arc::new(root_url),
@@ -1199,15 +1224,15 @@ impl Config {
 }
 
 #[derive(Debug, Serialize)]
-pub struct LspTsConfig {
+pub struct LspCompilerOptions {
   #[serde(flatten)]
-  inner: TsConfig,
+  inner: CompilerOptions,
 }
 
-impl Default for LspTsConfig {
+impl Default for LspCompilerOptions {
   fn default() -> Self {
     Self {
-      inner: TsConfig::new(json!({
+      inner: CompilerOptions::new(json!({
         "allowJs": true,
         "esModuleInterop": true,
         "experimentalDecorators": false,
@@ -1229,14 +1254,16 @@ impl Default for LspTsConfig {
   }
 }
 
-impl LspTsConfig {
-  pub fn new(raw_ts_config: TsConfigWithIgnoredOptions) -> Self {
-    let mut base_ts_config = Self::default();
-    for ignored_options in &raw_ts_config.ignored_options {
+impl LspCompilerOptions {
+  pub fn new(raw_compiler_options: CompilerOptionsWithIgnoredOptions) -> Self {
+    let mut base_compiler_options = Self::default();
+    for ignored_options in &raw_compiler_options.ignored_options {
       lsp_warn!("{}", ignored_options)
     }
-    base_ts_config.inner.merge_mut(raw_ts_config.ts_config);
-    base_ts_config
+    base_compiler_options
+      .inner
+      .merge_mut(raw_compiler_options.compiler_options);
+    base_compiler_options
   }
 }
 
@@ -1260,7 +1287,7 @@ pub struct ConfigData {
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub linter: Arc<CliLinter>,
-  pub ts_config: Arc<LspTsConfig>,
+  pub compiler_options: Arc<LspCompilerOptions>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
@@ -1449,8 +1476,11 @@ impl ConfigData {
       WorkspaceFactoryOptions {
         additional_config_file_names: &[],
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
-        deno_dir_path_provider: None,
+        maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
+        emit_cache_version: Cow::Borrowed(
+          deno_lib::version::DENO_VERSION_INFO.deno,
+        ),
         frozen_lockfile: None,
         lock_arg: None,
         lockfile_skip_write: false,
@@ -1472,7 +1502,9 @@ impl ConfigData {
         // anything other than resolving the lockfile at the moment
         is_cjs_resolution_mode: Default::default(),
         npm_system_info: Default::default(),
+        node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
+        node_analysis_cache: None,
         node_resolution_cache: None,
         package_json_cache: None,
         package_json_dep_resolution: None,
@@ -1568,17 +1600,21 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = member_dir
-      .to_raw_user_provided_tsconfig(&CliSys::default())
-      .map(LspTsConfig::new)
+    let compiler_options = member_dir
+      .to_raw_user_provided_compiler_options(&CliSys::default())
+      .map(LspCompilerOptions::new)
       .unwrap_or_default();
 
     let deno_lint_config =
-      if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")
+      if compiler_options.inner.0.get("jsx").and_then(|v| v.as_str())
+        == Some("react")
       {
-        let default_jsx_factory =
-          ts_config.inner.0.get("jsxFactory").and_then(|v| v.as_str());
-        let default_jsx_fragment_factory = ts_config
+        let default_jsx_factory = compiler_options
+          .inner
+          .0
+          .get("jsxFactory")
+          .and_then(|v| v.as_str());
+        let default_jsx_fragment_factory = compiler_options
           .inner
           .0
           .get("jsxFragmentFactory")
@@ -1691,7 +1727,7 @@ impl ConfigData {
           .fetch_bypass_permissions(import_map_url)
           .await;
 
-        let value_result = fetch_result.and_then(|f| {
+        let value_result = fetch_result.map_err(AnyError::from).and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
         });
         match value_result {
@@ -1823,7 +1859,7 @@ impl ConfigData {
       test_config,
       linter,
       exclude_files,
-      ts_config: Arc::new(ts_config),
+      compiler_options: Arc::new(compiler_options),
       byonm,
       node_modules_dir,
       vendor_dir,
@@ -2026,11 +2062,14 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_url, ws_settings) in
-      settings.by_workspace_folder.iter().chain([(
-        &Arc::new(Url::parse("file:///").unwrap()),
-        &Some(settings.unscoped.clone()),
-      )])
+    let fs_root_url = std::fs::canonicalize("/")
+      .ok()
+      .and_then(|p| Url::from_directory_path(p).ok())
+      .unwrap_or_else(|| Url::parse("file:///").unwrap());
+    for (folder_url, ws_settings) in settings
+      .by_workspace_folder
+      .iter()
+      .chain([(&Arc::new(fs_root_url), &Some(settings.unscoped.clone()))])
     {
       let mut ws_settings = ws_settings.as_ref();
       if Some(folder_url) == settings.first_folder.as_ref() {

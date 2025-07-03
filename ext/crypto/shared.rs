@@ -6,9 +6,9 @@ use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
+use rsa::RsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
-use rsa::RsaPrivateKey;
 use serde::Deserialize;
 use serde::Serialize;
 

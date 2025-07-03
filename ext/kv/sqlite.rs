@@ -14,8 +14,8 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
+use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;

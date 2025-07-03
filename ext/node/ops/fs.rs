@@ -3,8 +3,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_fs::FileSystemRc;
 use serde::Serialize;
 
@@ -355,5 +355,42 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.lchown_async(path, uid, gid).await?;
+  Ok(())
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_node_lchmod_sync<P>(
+  state: &mut OpState,
+  #[string] path: String,
+  #[smi] mode: u32,
+) -> Result<(), FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = state
+    .borrow_mut::<P>()
+    .check_write_with_api_name(&path, Some("node:fs.lchmodSync"))?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.lchmod_sync(&path, mode)?;
+  Ok(())
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_node_lchmod<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[smi] mode: u32,
+) -> Result<(), FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state
+      .borrow_mut::<P>()
+      .check_write_with_api_name(&path, Some("node:fs.lchmod"))?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+  fs.lchmod_async(path, mode).await?;
   Ok(())
 }

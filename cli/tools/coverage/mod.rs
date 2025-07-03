@@ -15,14 +15,14 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::anyhow::anyhow;
+use deno_core::LocalInspectorSession;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
 use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
@@ -576,8 +576,10 @@ fn filter_coverages(
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
+        || e.url.starts_with("data:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
+        || e.url.ends_with("$deno$stdin.mts")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())

@@ -3,12 +3,12 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
 
 use crate::io::TcpStreamResource;
@@ -85,6 +85,7 @@ macro_rules! network_stream {
   ( $([$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
+    #[allow(clippy::large_enum_variant)]
     pub enum NetworkStream {
       $( $i (#[pin] $stream), )*
     }

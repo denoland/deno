@@ -12,8 +12,6 @@ use std::path::StripPrefixError;
 use std::rc::Rc;
 
 use boxed_error::Boxed;
-use deno_core::error::ResourceError;
-use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
@@ -21,22 +19,24 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
 use deno_permissions::PermissionCheckError;
+use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use rand::Rng;
 use serde::Serialize;
 
+use crate::FsPermissions;
+use crate::OpenOptions;
 use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
-use crate::FsPermissions;
-use crate::OpenOptions;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
@@ -109,7 +109,9 @@ impl From<FsError> for FsOpsError {
 
 fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
   if standalone {
-    format!("specify the required permissions during compilation using `deno compile --allow-{err}`")
+    format!(
+      "specify the required permissions during compilation using `deno compile --allow-{err}`"
+    )
   } else {
     format!("run again with the --allow-{err} flag")
   }
@@ -379,6 +381,30 @@ where
   fs.chown_async(path.clone(), uid, gid)
     .await
     .context_path("chown", &path)?;
+  Ok(())
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_fs_fchmod_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_fs_fchmod_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  mode: u32,
+) -> Result<(), FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  file.chmod_async(mode).await?;
   Ok(())
 }
 
@@ -1268,7 +1294,7 @@ fn tmp_name(
   // before hitting a 50% chance. We also base32-encode this value so the entire
   // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
   // value.
-  let unique = rng.gen::<u64>();
+  let unique = rng.r#gen::<u64>();
   base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 

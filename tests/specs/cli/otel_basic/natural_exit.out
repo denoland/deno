@@ -2,7 +2,7 @@
   "spans": [],
   "logs": [
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",

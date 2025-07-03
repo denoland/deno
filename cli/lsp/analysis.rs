@@ -10,6 +10,7 @@ use std::sync::Arc;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -18,13 +19,15 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_npm::NpmPackageId;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::deno_node::PathClean;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -32,9 +35,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::SmallStackString;
-use deno_semver::StackString;
-use deno_semver::Version;
 use import_map::ImportMap;
 use lsp_types::Uri;
 use node_resolver::InNpmPackageChecker;
@@ -316,6 +316,12 @@ impl<'a> TsResponseImportMapper<'a> {
     let scoped_resolver =
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
+    if let Some(dep_name) =
+      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+    {
+      return Some(dep_name);
+    }
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -461,10 +467,6 @@ impl<'a> TsResponseImportMapper<'a> {
       if let Some(result) = match_specifier() {
         return Some(result);
       }
-    } else if let Some(dep_name) =
-      scoped_resolver.file_url_to_package_json_dep(specifier)
-    {
-      return Some(dep_name);
     }
 
     if let Some(bare_package_specifier) =
@@ -630,11 +632,7 @@ fn maybe_reverse_definitely_typed(
     .filter_map(|(req, nv)| (*nv.name == package_name).then_some(req))
     .collect::<Vec<_>>();
 
-  if reqs.is_empty() {
-    None
-  } else {
-    Some(reqs)
-  }
+  if reqs.is_empty() { None } else { Some(reqs) }
 }
 
 fn try_reverse_map_package_json_exports(

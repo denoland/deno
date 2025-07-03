@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use lsp_types::Uri;
-use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
+use test_util::lsp::LspClientBuilder;
 use tower_lsp::lsp_types as lsp;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");

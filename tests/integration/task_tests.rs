@@ -32,7 +32,7 @@ use util::TestContextBuilder;
 //   http_server: true,
 // });
 
-#[test]
+#[flaky_test::flaky_test]
 fn deno_task_ansi_escape_codes() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -56,7 +56,7 @@ fn deno_task_ansi_escape_codes() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn deno_task_control_chars() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

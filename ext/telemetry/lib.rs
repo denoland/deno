@@ -11,9 +11,9 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
@@ -21,22 +21,27 @@ use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::InstrumentationScope;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
@@ -57,32 +62,27 @@ use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
-use opentelemetry::InstrumentationScope;
-pub use opentelemetry::Key;
-pub use opentelemetry::KeyValue;
-pub use opentelemetry::StringValue;
-pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
 use opentelemetry_sdk::logs::LogRecord;
-use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
-use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
-use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -501,19 +501,19 @@ mod hyper_client {
   use std::task::Poll;
   use std::task::{self};
 
-  use deno_tls::create_client_config;
-  use deno_tls::load_certs;
-  use deno_tls::load_private_keys;
   use deno_tls::SocketUse;
   use deno_tls::TlsKey;
   use deno_tls::TlsKeys;
+  use deno_tls::create_client_config;
+  use deno_tls::load_certs;
+  use deno_tls::load_private_keys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
   use hyper::body::Body as HttpBody;
   use hyper::body::Frame;
   use hyper_rustls::HttpsConnector;
-  use hyper_util::client::legacy::connect::HttpConnector;
   use hyper_util::client::legacy::Client;
+  use hyper_util::client::legacy::connect::HttpConnector;
   use opentelemetry_http::Bytes;
   use opentelemetry_http::HttpError;
   use opentelemetry_http::Request;
@@ -770,7 +770,85 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
+  setup_signal_handlers();
   Ok(())
+}
+
+#[cfg(unix)]
+fn setup_signal_handlers() {
+  use tokio::signal::unix::SignalKind;
+
+  let signals_to_handle = [
+    SignalKind::hangup(),
+    SignalKind::interrupt(),
+    SignalKind::terminate(),
+  ];
+
+  for signal_kind in signals_to_handle {
+    tokio::spawn(async move {
+      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
+        return;
+      };
+
+      loop {
+        signal_fut.recv().await;
+        flush();
+      }
+    });
+  }
+}
+
+#[cfg(windows)]
+fn setup_signal_handlers() {
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_break() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_c() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_close() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_logoff() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
+
+  tokio::spawn(async {
+    let Ok(mut signal_fut) = tokio::signal::windows::ctrl_shutdown() else {
+      return;
+    };
+    loop {
+      signal_fut.recv().await;
+      flush();
+    }
+  });
 }
 
 /// This function is called by the runtime whenever it is about to call
@@ -804,7 +882,9 @@ pub fn handle_log(record: &log::Record) {
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_severity_number(match record.level() {
     Level::Error => Severity::Error,
     Level::Warn => Severity::Warn,
@@ -1046,7 +1126,9 @@ fn op_otel_log<'s>(
   };
 
   let mut log_record = LogRecord::default();
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   let Ok(message) = message.try_cast() else {
     return;
   };
@@ -1110,7 +1192,9 @@ fn op_otel_log_foreign(
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_body(message.into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
@@ -2270,11 +2354,12 @@ async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
       .expect("mutex poisoned")
       .push(tx);
   }
-  if let Ok(done) = rx.await {
-    state.borrow_mut().put(ObservationDone(done));
-    true
-  } else {
-    false
+  match rx.await {
+    Ok(done) => {
+      state.borrow_mut().put(ObservationDone(done));
+      true
+    }
+    _ => false,
   }
 }
 

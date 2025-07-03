@@ -31,7 +31,7 @@ performance.nodeTiming = {};
 performance.timerify = () => notImplemented("timerify from performance");
 
 // TODO(bartlomieju):
-performance.timerify = () => {};
+performance.markResourceTiming = () => {};
 
 function monitorEventLoopDelay(options = {}) {
   const { resolution = 10 } = options;

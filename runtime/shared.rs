@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
-use deno_core::extension;
 use deno_core::Extension;
+use deno_core::extension;
 
 extension!(runtime,
   deps = [

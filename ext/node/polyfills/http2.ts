@@ -68,6 +68,13 @@ import {
   ERR_STREAM_WRITE_AFTER_END,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "node:_http_common";
+import {
+  kAuthority,
+  kProtocol,
+  kProxySocket,
+  kRequest,
+  kSocket,
+} from "ext:deno_node/internal/http2/util.ts";
 const {
   StringPrototypeTrim,
   FunctionPrototypeBind,
@@ -83,21 +90,17 @@ const {
 const kSession = Symbol("session");
 const kOptions = Symbol("options");
 const kAlpnProtocol = Symbol("alpnProtocol");
-const kAuthority = Symbol("authority");
 const kEncrypted = Symbol("encrypted");
 const kID = Symbol("id");
 const kInit = Symbol("init");
 const kInfoHeaders = Symbol("sent-info-headers");
 const kOrigin = Symbol("origin");
 const kPendingRequestCalls = Symbol("kPendingRequestCalls");
-const kProtocol = Symbol("protocol");
 const kSentHeaders = Symbol("sent-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kState = Symbol("state");
 const kType = Symbol("type");
 const kTimeout = Symbol("timeout");
-const kSocket = Symbol("socket");
-const kProxySocket = Symbol("proxySocket");
 
 const kDenoResponse = Symbol("kDenoResponse");
 const kDenoRid = Symbol("kDenoRid");
@@ -1038,7 +1041,7 @@ export class ClientHttp2Stream extends Duplex {
       data = ENCODER.encode(chunk);
     } else if (encoding === "buffer") {
       this.#encoding = encoding;
-      data = chunk.buffer;
+      data = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     }
 
     this.#requestPromise
@@ -2181,7 +2184,6 @@ const kRawTrailers = Symbol("rawTrailers");
 const kSetHeader = Symbol("setHeader");
 const kAppendHeader = Symbol("appendHeader");
 const kAborted = Symbol("aborted");
-const kRequest = Symbol("request");
 
 const streamProxySocketHandler = {
   has(stream, prop) {

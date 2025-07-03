@@ -66,6 +66,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
+    ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/ffi/tests/test.js",
@@ -121,6 +122,7 @@ async function dlintPreferPrimordials() {
     "ext/**/*.ts",
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
+    ":!:ext/node/polyfills/deps/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -233,7 +235,7 @@ async function ensureNoNewITests() {
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 18,
+    "run_tests.rs": 17,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 2,
     "test_tests.rs": 0,
