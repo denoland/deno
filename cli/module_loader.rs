@@ -19,6 +19,7 @@ use boxed_error::Boxed;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
+use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
@@ -472,6 +473,7 @@ impl CliModuleLoaderFactory {
         .shared
         .npm_registry_permission_checker
         .clone(),
+      parsed_soure_cache: self.shared.parsed_source_cache.clone(),
     });
     CreateModuleLoaderResult {
       module_loader,
@@ -1413,6 +1415,7 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
+  parsed_soure_cache: Arc<ParsedSourceCache>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
@@ -1438,7 +1441,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox> {
+  ) -> Result<FastString, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
     let text = self
@@ -1453,9 +1456,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           specifier,
         }));
       }
-      self
+      let text = self
         .emitter
-        .emit_parsed_source_sync(
+        .maybe_emit_source_sync(
           &specifier,
           media_type,
           // this is probably not super accurate due to require esm, but probably ok.
@@ -1464,10 +1467,14 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           ModuleKind::Cjs,
           &text.into(),
         )
-        .map(Cow::Owned)
-        .map_err(JsErrorBox::from_err)
+        .map_err(JsErrorBox::from_err)?;
+      self.parsed_soure_cache.free(&specifier);
+      Ok(text.into())
     } else {
-      Ok(text)
+      Ok(match text {
+        Cow::Borrowed(s) => FastString::from_static(s),
+        Cow::Owned(s) => s.into(),
+      })
     }
   }
 
@@ -1596,7 +1603,7 @@ mod tests {
     let source = "const a = 'hello';";
     let parsed_source_cache = Arc::new(ParsedSourceCache::default());
     let parsed_source = parsed_source_cache
-      .remove_or_parse_module(&specifier, source.into(), MediaType::JavaScript)
+      .remove_or_parse_module(&specifier, MediaType::JavaScript, source.into())
       .unwrap();
     parsed_source_cache.set_parsed_source(specifier, parsed_source);
 

@@ -558,10 +558,6 @@ where
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
-    .map(|s| match s {
-      Cow::Borrowed(s) => FastString::from_static(s),
-      Cow::Owned(s) => s.into(),
-    })
     .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 

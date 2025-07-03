@@ -59,12 +59,26 @@ impl ParsedSourceCache {
     &self,
     module: &deno_graph::JsModule,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
+    self.get_matching_parsed_source(
+      &module.specifier,
+      module.media_type,
+      module.source.text.clone(),
+    )
+  }
+
+  #[allow(clippy::result_large_err)]
+  pub fn get_matching_parsed_source(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+    source: ArcStr,
+  ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingEsParser
     parser.parse_program(deno_graph::ast::ParseOptions {
-      specifier: &module.specifier,
-      source: module.source.text.clone(),
-      media_type: module.media_type,
+      specifier,
+      source,
+      media_type,
       scope_analysis: false,
     })
   }
@@ -73,8 +87,8 @@ impl ParsedSourceCache {
   pub fn remove_or_parse_module(
     &self,
     specifier: &Url,
-    source: ArcStr,
     media_type: MediaType,
+    source: ArcStr,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     if let Some(parsed_source) = self.remove_parsed_source(specifier) {
       if parsed_source.media_type() == media_type
