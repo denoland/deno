@@ -30,6 +30,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::source::ResolveError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -60,8 +61,6 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::sys::CliSys;
@@ -1197,7 +1196,9 @@ impl DenoDiagnostic {
       Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
       Self::ResolutionError(err) => {
-        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
+        if deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
+          .is_some()
+        {
           "import-node-prefix-missing"
         } else {
           match err {
@@ -1465,7 +1466,7 @@ impl DenoDiagnostic {
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
-        graph_util::get_resolution_error_bare_node_specifier(err)
+        deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
       )},
       Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
