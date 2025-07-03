@@ -264,11 +264,6 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
     specifier: &Url,
     requested_module_type: &RequestedModuleType,
   ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
-    if specifier.scheme() == "node" {
-      // Node built-in modules should be handled internally.
-      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
-    }
-
     let maybe_module =
       graph.try_get(specifier).map_err(|err| EnhancedGraphError {
         message: enhance_graph_error(
