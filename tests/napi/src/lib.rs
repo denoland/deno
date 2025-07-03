@@ -35,15 +35,21 @@ pub mod uv;
 
 #[macro_export]
 macro_rules! cstr {
-  ($s: literal) => {{
-    std::ffi::CString::new($s).unwrap().into_raw()
-  }};
+  ($s: literal) => {{ std::ffi::CString::new($s).unwrap().into_raw() }};
 }
 
 #[macro_export]
 macro_rules! assert_napi_ok {
   ($call: expr) => {{
-    assert_eq!(unsafe { $call }, napi_sys::Status::napi_ok);
+    assert_eq!(
+      {
+        #[allow(unused_unsafe)]
+        unsafe {
+          $call
+        }
+      },
+      napi_sys::Status::napi_ok
+    );
   }};
 }
 
@@ -131,15 +137,17 @@ pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
   ));
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   _: napi_value,
 ) -> napi_value {
   #[cfg(windows)]
   {
-    napi_sys::setup();
-    libuv_sys_lite::setup();
+    unsafe {
+      napi_sys::setup();
+      libuv_sys_lite::setup();
+    }
   }
 
   // We create a fresh exports object and leave the passed

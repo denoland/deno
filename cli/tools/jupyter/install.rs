@@ -5,8 +5,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;

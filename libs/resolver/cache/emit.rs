@@ -1,19 +1,28 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::path::PathBuf;
 
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::unsync::sync::AtomicFlag;
-use deno_lib::version::DENO_VERSION_INFO;
+use anyhow::Error as AnyError;
+use anyhow::anyhow;
+use deno_unsync::sync::AtomicFlag;
+use url::Url;
 
 use super::DiskCache;
+use super::DiskCacheSys;
+
+#[allow(clippy::disallowed_types)]
+pub type EmitCacheRc<TSys> = crate::sync::MaybeArc<EmitCache<TSys>>;
+
+#[sys_traits::auto_impl]
+pub trait EmitCacheSys: DiskCacheSys + sys_traits::EnvVar {}
 
 /// The cache that stores previously emitted files.
 #[derive(Debug)]
-pub struct EmitCache {
-  disk_cache: DiskCache,
+pub struct EmitCache<TSys: EmitCacheSys> {
+  disk_cache: DiskCache<TSys>,
   emit_failed_flag: AtomicFlag,
   file_serializer: EmitFileSerializer,
   mode: Mode,
@@ -25,9 +34,14 @@ enum Mode {
   Disable,
 }
 
-impl EmitCache {
-  pub fn new(disk_cache: DiskCache) -> Self {
-    let mode = match std::env::var("DENO_EMIT_CACHE_MODE")
+impl<TSys: EmitCacheSys> EmitCache<TSys> {
+  pub fn new(
+    sys: &TSys,
+    disk_cache: DiskCache<TSys>,
+    cache_version: Cow<'static, str>,
+  ) -> Self {
+    let mode = match sys
+      .env_var("DENO_EMIT_CACHE_MODE")
       .unwrap_or_default()
       .as_str()
     {
@@ -42,9 +56,7 @@ impl EmitCache {
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),
-      file_serializer: EmitFileSerializer {
-        cli_version: DENO_VERSION_INFO.deno,
-      },
+      file_serializer: EmitFileSerializer { cache_version },
       mode,
     }
   }
@@ -59,7 +71,7 @@ impl EmitCache {
   /// or emits that do not match the source.
   pub fn get_emit_code(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     expected_source_hash: u64,
   ) -> Option<String> {
     if matches!(self.mode, Mode::Disable) {
@@ -74,12 +86,7 @@ impl EmitCache {
   }
 
   /// Sets the emit code in the cache.
-  pub fn set_emit_code(
-    &self,
-    specifier: &ModuleSpecifier,
-    source_hash: u64,
-    code: &[u8],
-  ) {
+  pub fn set_emit_code(&self, specifier: &Url, source_hash: u64, code: &[u8]) {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // might error in cases such as a readonly file system
       log::debug!("Error saving emit data ({}): {}", specifier, err);
@@ -90,7 +97,7 @@ impl EmitCache {
 
   fn set_emit_code_result(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
@@ -108,7 +115,7 @@ impl EmitCache {
     Ok(())
   }
 
-  fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  fn get_emit_filename(&self, specifier: &Url) -> Option<PathBuf> {
     self
       .disk_cache
       .get_cache_filename_with_extension(specifier, "js")
@@ -119,7 +126,7 @@ const LAST_LINE_PREFIX: &str = "\n// denoCacheMetadata=";
 
 #[derive(Debug)]
 struct EmitFileSerializer {
-  cli_version: &'static str,
+  cache_version: Cow<'static, str>,
 }
 
 impl EmitFileSerializer {
@@ -172,11 +179,11 @@ impl EmitFileSerializer {
     // it's ok to use an insecure hash here because
     // if someone can change the emit source then they
     // can also change the version hash
-    deno_lib::util::hash::FastInsecureHasher::new_without_deno_version() // use cli_version property instead
-      .write(bytes)
-      // emit should not be re-used between cli versions
-      .write_str(self.cli_version)
-      .finish()
+    let mut hasher = twox_hash::XxHash64::default();
+    bytes.hash(&mut hasher);
+    // emit should not be re-used between cli versions
+    self.cache_version.hash(&mut hasher);
+    hasher.finish()
   }
 }
 
@@ -185,28 +192,29 @@ mod test {
   use test_util::TempDir;
 
   use super::*;
-  use crate::sys::CliSys;
 
   #[test]
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
     let disk_cache =
-      DiskCache::new(CliSys::default(), temp_dir.path().to_path_buf());
+      DiskCache::new(sys_traits::impls::RealSys, temp_dir.path().to_path_buf());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {
-        cli_version: "1.0.0",
+        cache_version: "1.0.0".into(),
       },
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
     };
 
-    let specifier1 =
-      ModuleSpecifier::from_file_path(temp_dir.path().join("file1.ts"))
-        .unwrap();
-    let specifier2 =
-      ModuleSpecifier::from_file_path(temp_dir.path().join("file2.ts"))
-        .unwrap();
+    let specifier1 = deno_path_util::url_from_file_path(
+      temp_dir.path().join("file1.ts").as_path(),
+    )
+    .unwrap();
+    let specifier2 = deno_path_util::url_from_file_path(
+      temp_dir.path().join("file2.ts").as_path(),
+    )
+    .unwrap();
     assert_eq!(cache.get_emit_code(&specifier1, 1), None);
     let emit_code1 = "text1".to_string();
     let emit_code2 = "text2".to_string();
@@ -225,7 +233,7 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {
-        cli_version: "2.0.0",
+        cache_version: "2.0.0".into(),
       },
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
@@ -237,7 +245,7 @@ mod test {
     let cache = EmitCache {
       disk_cache,
       file_serializer: EmitFileSerializer {
-        cli_version: "2.0.0",
+        cache_version: "2.0.0".into(),
       },
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,

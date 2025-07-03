@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -14,16 +13,17 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
+use crate::NetPermissions;
 use crate::io::UnixStreamResource;
 use crate::ops::NetError;
 use crate::raw::NetworkListenerResource;
-use crate::NetPermissions;
 
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, NetError> {

@@ -5,12 +5,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_runtime::tokio_util::create_basic_runtime;
 use tokio::sync::mpsc;
 use tower_lsp::jsonrpc::Error as LspError;

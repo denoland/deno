@@ -1,22 +1,22 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
-use deno_core::op2;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::der::Decode;
-use rsa::pkcs8::der::asn1::UintRef;
 use rsa::pkcs8::der::Encode;
+use rsa::pkcs8::der::asn1::UintRef;
 use serde::Deserialize;
 use serde::Serialize;
-use spki::der::asn1;
-use spki::der::asn1::BitString;
 use spki::AlgorithmIdentifier;
 use spki::AlgorithmIdentifierOwned;
+use spki::der::asn1;
+use spki::der::asn1::BitString;
 
 use crate::shared::*;
 

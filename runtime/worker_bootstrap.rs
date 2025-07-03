@@ -3,8 +3,8 @@
 use std::cell::RefCell;
 use std::thread;
 
-use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::v8;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use serde::Serialize;

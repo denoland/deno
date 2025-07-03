@@ -14,8 +14,8 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -39,19 +39,19 @@ use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
 use regex::Regex;
-use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de;
+use serde_json::Value;
 use serde_json::json;
 use serde_json::to_value;
-use serde_json::Value;
 use url::Url;
 
 use super::TempDir;
+use crate::PathRef;
 use crate::deno_exe_path;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
-use crate::PathRef;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");

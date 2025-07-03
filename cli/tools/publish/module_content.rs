@@ -11,6 +11,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_resolver::cache::LazyGraphSourceParser;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
@@ -21,8 +23,6 @@ use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
-use crate::cache::LazyGraphSourceParser;
-use crate::cache::ParsedSourceCache;
 use crate::sys::CliSys;
 
 struct JsxFolderOptions<'a> {
@@ -291,15 +291,15 @@ mod test {
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_resolver::npm::NpmResolverCreateOptions;
   use deno_resolver::workspace::WorkspaceResolver;
-  use node_resolver::cache::NodeResolutionSys;
   use node_resolver::DenoIsBuiltInNodeModuleChecker;
   use node_resolver::NodeResolver;
   use node_resolver::NodeResolverOptions;
   use node_resolver::PackageJsonResolver;
+  use node_resolver::cache::NodeResolutionSys;
   use pretty_assertions::assert_eq;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
   use crate::npm::CliNpmResolver;
@@ -326,22 +326,30 @@ mod test {
     }"#,
         None,
       ),
-      ("/package-b/deno.json", r#"{
+      (
+        "/package-b/deno.json",
+        r#"{
         "compilerOptions": { "jsx": "react-jsx" },
         "imports": {
           "react": "npm:react"
           "@types/react": "npm:@types/react"
         }
-      }"#, None),
+      }"#,
+        None,
+      ),
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+        ),
       ),
       (
         "/package-b/main.tsx",
         "export const componentB = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;",
+        ),
       ),
       (
         "/package-a/other.tsx",
@@ -352,13 +360,13 @@ mod test {
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
         Some(
-        "/** @jsxImportSource npm:preact */
+          "/** @jsxImportSource npm:preact */
         /** @jsxFragmentFactory h1 */
         /** @jsxImportSourceTypes npm:@types/example */
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
-        )
+        ),
       ),
     ]);
   }

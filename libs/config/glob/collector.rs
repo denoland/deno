@@ -13,11 +13,11 @@ use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
 use super::FilePatterns;
-use crate::glob::gitignore::DirGitIgnores;
-use crate::glob::gitignore::GitIgnoreTree;
 use crate::glob::FilePatternsMatch;
 use crate::glob::PathKind;
 use crate::glob::PathOrPattern;
+use crate::glob::gitignore::DirGitIgnores;
+use crate::glob::gitignore::GitIgnoreTree;
 
 #[derive(Debug, Clone)]
 pub struct WalkEntry<'a> {

@@ -1041,7 +1041,7 @@ export class ClientHttp2Stream extends Duplex {
       data = ENCODER.encode(chunk);
     } else if (encoding === "buffer") {
       this.#encoding = encoding;
-      data = chunk.buffer;
+      data = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     }
 
     this.#requestPromise

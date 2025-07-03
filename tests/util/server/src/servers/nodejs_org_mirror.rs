@@ -15,16 +15,16 @@ use std::sync::LazyLock;
 use bytes::Bytes;
 use http::Response;
 use http::StatusCode;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Full;
+use http_body_util::combinators::UnsyncBoxBody;
 use parking_lot::Mutex;
 
-use crate::servers::hyper_utils::run_server;
+use crate::PathRef;
 use crate::servers::hyper_utils::ServerKind;
 use crate::servers::hyper_utils::ServerOptions;
+use crate::servers::hyper_utils::run_server;
 use crate::servers::string_body;
 use crate::testdata_path;
-use crate::PathRef;
 
 /// a little helper extension trait to log errors but convert to option
 trait OkWarn<T, E> {

@@ -57,7 +57,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
           false => {
             return Err(JsErrorBox::type_error(
               "Struct must have at least one field",
-            ))
+            ));
           }
         })
       }

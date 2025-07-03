@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_error::JsErrorBox;
+use deno_graph::Range;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
-use deno_graph::Range;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintDocsUrl;

@@ -277,7 +277,7 @@ impl<'a> DenoRtDeserializable<'a> for MediaType {
         return Err(std::io::Error::new(
           std::io::ErrorKind::InvalidData,
           format!("Unknown media type value: {value}"),
-        ))
+        ));
       }
     };
     Ok((input, value))

@@ -13,10 +13,10 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
@@ -25,15 +25,18 @@ use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::File;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
-use deno_core::futures::future;
-use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future;
+use deno_core::futures::stream;
 use deno_core::located_script_name;
 use deno_core::serde_v8;
 use deno_core::stats::RuntimeActivity;
@@ -46,11 +49,9 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -59,13 +60,12 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
-use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
+use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
-use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use tokio::signal;
@@ -97,11 +97,11 @@ mod channel;
 pub mod fmt;
 pub mod reporters;
 
-pub use channel::create_single_test_event_channel;
-pub use channel::create_test_event_channel;
 pub use channel::TestEventReceiver;
 pub use channel::TestEventSender;
 pub use channel::TestEventWorkerSender;
+pub use channel::create_single_test_event_channel;
+pub use channel::create_test_event_channel;
 use fmt::format_sanitizer_diff;
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
@@ -343,12 +343,12 @@ impl TestFailure {
       TestFailure::FailedSteps(n) => {
         Cow::Owned(format!("{} test steps failed.", n))
       }
-      TestFailure::IncompleteSteps => {
-        Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
-      }
-      TestFailure::Incomplete => {
-        Cow::Borrowed("Didn't complete before parent. Await step with `await t.step(...)`.")
-      }
+      TestFailure::IncompleteSteps => Cow::Borrowed(
+        "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
+      ),
+      TestFailure::Incomplete => Cow::Borrowed(
+        "Didn't complete before parent. Await step with `await t.step(...)`.",
+      ),
       TestFailure::Leaked(details, trailer_notes) => {
         let mut f = String::new();
         write!(f, "Leaks detected:").ok();

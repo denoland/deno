@@ -19,9 +19,9 @@ use super::util::napi_set_last_error;
 use super::util::v8_name_from_property_descriptor;
 use crate::check_arg;
 use crate::check_env;
+use crate::function::CallbackInfo;
 use crate::function::create_function;
 use crate::function::create_function_template;
-use crate::function::CallbackInfo;
 use crate::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2354,9 +2354,11 @@ fn napi_wrap(
   }
 
   let external = v8::External::new(&mut env.scope(), reference);
-  assert!(obj
-    .set_private(&mut env.scope(), napi_wrap, external.into())
-    .unwrap());
+  assert!(
+    obj
+      .set_private(&mut env.scope(), napi_wrap, external.into())
+      .unwrap()
+  );
 
   napi_ok
 }
@@ -2396,9 +2398,11 @@ fn unwrap(
   }
 
   if !keep {
-    assert!(obj
-      .delete_private(&mut env.scope(), napi_wrap)
-      .unwrap_or(false));
+    assert!(
+      obj
+        .delete_private(&mut env.scope(), napi_wrap)
+        .unwrap_or(false)
+    );
     unsafe { Reference::remove(reference) };
   }
 
@@ -2869,12 +2873,10 @@ fn napi_get_and_clear_last_exception(
   let env = check_env!(env_ptr);
   check_arg!(env, result);
 
-  let ex: v8::Local<v8::Value> =
-    if let Some(last_exception) = env.last_exception.take() {
-      v8::Local::new(&mut env.scope(), last_exception)
-    } else {
-      v8::undefined(&mut env.scope()).into()
-    };
+  let ex: v8::Local<v8::Value> = match env.last_exception.take() {
+    Some(last_exception) => v8::Local::new(&mut env.scope(), last_exception),
+    _ => v8::undefined(&mut env.scope()).into(),
+  };
 
   unsafe {
     *result = ex.into();
