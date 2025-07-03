@@ -862,10 +862,10 @@ impl DocumentModule {
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
+    compiler_options_data: LspCompilerOptionsData<'_>,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
-    compiler_options_resolver: &LspCompilerOptionsResolver,
     cache: &LspCache,
   ) -> Self {
     let text = document.text();
@@ -877,13 +877,6 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
-    let compiler_options_data = compiler_options_resolver.for_specifier(
-      if specifier.scheme() != "file" && scope.is_some() {
-        scope.as_deref().unwrap()
-      } else {
-        &specifier
-      },
-    );
     let compiler_options_key = compiler_options_data.key().to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(
@@ -1214,13 +1207,20 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
+    let compiler_options_data = self.compiler_options_resolver.for_specifier(
+      if specifier.scheme() != "file" && scope.is_some() {
+        scope.unwrap()
+      } else {
+        &specifier
+      },
+    );
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
+      compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
       &self.config,
-      &self.compiler_options_resolver,
       &self.cache,
     ));
     self.resolver.did_create_module(&module);
@@ -1379,28 +1379,38 @@ impl DocumentModules {
     document: &Document,
   ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
     let mut result = BTreeMap::new();
+    let specifier = Arc::new(uri_to_url(document.uri()));
     for (scope, modules) in self.modules_by_scope.iter() {
       let module = modules.get(document).unwrap_or_else(|| {
+        let compiler_options_data = self
+          .compiler_options_resolver
+          .for_specifier(if specifier.scheme() != "file" {
+            scope
+          } else {
+            &specifier
+          });
         Arc::new(DocumentModule::new(
           document,
-          Arc::new(uri_to_url(document.uri())),
+          specifier.clone(),
+          compiler_options_data,
           Some(scope.clone()),
           &self.resolver,
           &self.config,
-          &self.compiler_options_resolver,
           &self.cache,
         ))
       });
       result.insert(Some(scope.clone()), module);
     }
     let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
+      let compiler_options_data =
+        self.compiler_options_resolver.for_specifier(&specifier);
       Arc::new(DocumentModule::new(
         document,
-        Arc::new(uri_to_url(document.uri())),
+        specifier,
+        compiler_options_data,
         None,
         &self.resolver,
         &self.config,
-        &self.compiler_options_resolver,
         &self.cache,
       ))
     });
