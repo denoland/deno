@@ -537,7 +537,14 @@ mod tunnel_client {
       OtelSharedRuntime.spawn(Box::pin(async move {
         let _ = c.await;
       }));
-      let (parts, body) = request.into_parts();
+      let (mut parts, body) = request.into_parts();
+      if !parts.headers.contains_key("host") {
+        if let Some(host) = parts.uri.host() {
+          if let Ok(host) = hyper::header::HeaderValue::from_str(host) {
+            parts.headers.insert("host", host);
+          }
+        }
+      }
       let request = Request::from_parts(parts, Full::<Bytes>::from(body));
       let response = send_request.send_request(request).await?;
       let (parts, body) = response.into_parts();

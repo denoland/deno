@@ -22,6 +22,7 @@ use deno_tls::rustls::RootCertStore;
 use deno_tls::SocketUse;
 use deno_tls::TlsKeys;
 use quinn::crypto::rustls::QuicClientConfig;
+use quinn::ConnectionError;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
@@ -50,8 +51,10 @@ pub enum Error {
 
   #[error("Unexpected header")]
   UnexpectedHeader,
-  #[error("UnsupportedVersion")]
+  #[error("Unsupported version")]
   UnsupportedVersion,
+  #[error("Invalid authorization token")]
+  InvalidToken,
 }
 
 static TUNNEL: OnceLock<crate::tunnel::TunnelListener> = OnceLock::new();
@@ -520,7 +523,20 @@ async fn write_message<T: serde::Serialize>(
 async fn read_message<T: serde::de::DeserializeOwned>(
   rx: &mut quinn::RecvStream,
 ) -> Result<T, Error> {
-  let length = rx.read_u32_le().await?;
+  let length = rx.read_u32_le().await.map_err(|e| {
+    if let Some(custom_error) = e.get_ref() {
+      if let Some(quinn::ReadError::ConnectionLost(
+        ConnectionError::ApplicationClosed(err),
+      )) = custom_error.downcast_ref::<quinn::ReadError>()
+      {
+        if err.reason == b"invalid token".as_slice() {
+          return Error::InvalidToken;
+        }
+      }
+    }
+
+    e.into()
+  })?;
   let mut data = vec![0; length as usize];
   rx.read_exact(&mut data).await?;
 

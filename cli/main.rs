@@ -749,17 +749,14 @@ fn wait_for_start(
   })
 }
 
-async fn auth_tunnel(
-  flags: &Flags,
-) -> Result<String, deno_core::anyhow::Error> {
-  let mut deploy_flags = flags.clone();
-  deploy_flags.subcommand = DenoSubcommand::Deploy;
+async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
+  let mut child = tokio::process::Command::new(std::env::current_exe()?)
+    .args(["deploy", "tunnel-login"])
+    .spawn()?;
+  let out = child.wait().await?;
 
-  deploy_flags.argv = vec!["tunnel-login".to_string()];
-
-  if let Err(err) = tools::deploy::deploy(deploy_flags).await {
-    init_logging(None, None);
-    exit_for_error(err);
+  if !out.success() {
+    deno_runtime::exit(1);
   }
 
   Ok(keyring::Entry::new("Deno Deploy Token", "Deno Deploy")?.get_password()?)
@@ -774,7 +771,7 @@ async fn initialize_tunnel(
 
   let token = match tools::deploy::get_token_entry()?.get_password() {
     Ok(token) => token,
-    Err(keyring::Error::NoEntry) => auth_tunnel(flags).await?,
+    Err(keyring::Error::NoEntry) => auth_tunnel().await?,
     Err(e) => {
       init_logging(None, None);
       exit_for_error(e.into());
@@ -806,15 +803,33 @@ async fn initialize_tunnel(
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
   let (tunnel, metadata, routed) =
-    deno_runtime::deno_net::tunnel::TunnelListener::connect(
+    match deno_runtime::deno_net::tunnel::TunnelListener::connect(
       addr,
       hostname,
-      Some(root_cert_store),
+      Some(root_cert_store.clone()),
       token,
-      deploy_config.org,
-      deploy_config.app,
+      deploy_config.org.clone(),
+      deploy_config.app.clone(),
     )
-    .await?;
+    .await
+    {
+      Ok(res) => res,
+      Err(deno_runtime::deno_net::tunnel::Error::InvalidToken) => {
+        tools::deploy::get_token_entry()?.delete_credential()?;
+
+        let token = auth_tunnel().await?;
+        deno_runtime::deno_net::tunnel::TunnelListener::connect(
+          addr,
+          hostname,
+          Some(root_cert_store),
+          token,
+          deploy_config.org,
+          deploy_config.app,
+        )
+        .await?
+      }
+      Err(e) => return Err(e.into()),
+    };
 
   tokio::spawn(async move {
     if routed.await.is_ok() {
@@ -835,7 +850,7 @@ async fn initialize_tunnel(
   };
   eprintln!(
     "{}{}{}",
-    colors::green("Endpoint assigned:"),
+    colors::green("Endpoint assigned: "),
     colors::bold(colors::green(endpoint)),
     colors::green("\nRouting..."),
   );
