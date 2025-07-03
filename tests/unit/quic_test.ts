@@ -210,6 +210,14 @@ Deno.test("0rtt", async () => {
 
   await c1.closed;
 
+  console.log("0rtt", {
+    hostname: "localhost",
+    port: sEndpoint.addr.port,
+    caCerts,
+    alpnProtocols: ["deno-test"],
+    zeroRtt: true,
+    endpoint,
+  });
   const c2 = Deno.connectQuic({
     hostname: "localhost",
     port: sEndpoint.addr.port,
