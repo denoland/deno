@@ -877,15 +877,14 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
-    let file_referrer = Some(specifier.as_ref())
-      .filter(|s| s.scheme() == "file")
-      .or(scope.as_deref());
-    let compiler_options_data =
-      file_referrer.map(|s| compiler_options_resolver.for_specifier(s));
-    let compiler_options_key = compiler_options_data
-      .map(|d| d.key())
-      .unwrap_or(".")
-      .to_string();
+    let compiler_options_data = compiler_options_resolver.for_specifier(
+      if specifier.scheme() != "file" && scope.is_some() {
+        scope.as_deref().unwrap()
+      } else {
+        &specifier
+      },
+    );
+    let compiler_options_key = compiler_options_data.key().to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(
       &specifier,
@@ -899,7 +898,7 @@ impl DocumentModule {
           text.to_arc(),
           headers.as_ref(),
           media_type,
-          file_referrer,
+          scope.as_deref(),
           compiler_options_data,
           resolver,
         )
@@ -1931,8 +1930,8 @@ fn parse_and_analyze_module(
   text: Arc<str>,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
-  file_referrer: Option<&ModuleSpecifier>,
-  compiler_options_data: Option<LspCompilerOptionsData<'_>>,
+  scope: Option<&Url>,
+  compiler_options_data: LspCompilerOptionsData<'_>,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1944,7 +1943,7 @@ fn parse_and_analyze_module(
     specifier,
     &parsed_source_result,
     maybe_headers,
-    file_referrer,
+    scope,
     compiler_options_data,
     resolver,
   );
@@ -1975,18 +1974,18 @@ fn analyze_module(
   specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
-  file_referrer: Option<&ModuleSpecifier>,
-  compiler_options_data: Option<LspCompilerOptionsData<'_>>,
+  scope: Option<&Url>,
+  compiler_options_data: LspCompilerOptionsData<'_>,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
+      let scoped_resolver = resolver.get_scoped_resolver(scope);
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let valid_referrer = specifier.clone();
       let jsx_import_source_config =
-        compiler_options_data.and_then(|d| d.jsx_import_source_config());
+        compiler_options_data.jsx_import_source_config();
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
