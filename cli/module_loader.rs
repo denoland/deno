@@ -770,7 +770,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         PreparedModuleOrAsset::ExternalAsset { specifier } => {
           self.load_asset(
             specifier,
-            /* do not use dynamic import permissions because this was statically analyzable */ false,
+            /* do not use dynamic import permissions because this was statically analyzable */ CheckSpecifierKind::Static,
             requested_module_type
           )
           .await
@@ -822,7 +822,11 @@ impl<TGraphContainer: ModuleGraphContainer>
 
         match requested_module_type {
           RequestedModuleType::Text | RequestedModuleType::Bytes => self
-            .load_asset(&specifier, true, requested_module_type)
+            .load_asset(
+              &specifier,
+              /* force using permissions because this was not statically analyzable */ CheckSpecifierKind::Dynamic,
+              requested_module_type
+            )
             .await
             .map_err(LoadCodeSourceError::from),
           _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
@@ -837,7 +841,7 @@ impl<TGraphContainer: ModuleGraphContainer>
   async fn load_asset(
     &self,
     specifier: &ModuleSpecifier,
-    require_read_permission: bool,
+    check_specifier_kind: CheckSpecifierKind,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, deno_resolver::file_fetcher::FetchError>
   {
@@ -847,16 +851,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       .fetch_with_options(
         specifier,
         FetchPermissionsOptionRef::Restricted(
-          if require_read_permission {
-            &self.permissions
-          } else {
-            &self.parent_permissions
+          match check_specifier_kind {
+            CheckSpecifierKind::Static => &self.permissions,
+            CheckSpecifierKind::Dynamic => &self.parent_permissions,
           },
-          if require_read_permission {
-            CheckSpecifierKind::Dynamic
-          } else {
-            CheckSpecifierKind::Static
-          },
+          check_specifier_kind,
         ),
         FetchOptions {
           local: FetchLocalOptions {
