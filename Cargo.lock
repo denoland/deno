@@ -1636,9 +1636,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.48.0"
+version = "0.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f883bd8eae4dfc8019d925ec3dd04b634b6af9346a5168acc259d55f5f5021d"
+checksum = "0ced09fdb8884e29716cc0691e8510f9c655762bbb9da3111dacc0a2ef6e8960"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
