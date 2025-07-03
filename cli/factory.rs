@@ -1220,9 +1220,7 @@ fn new_workspace_factory_options(
       }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
-    emit_cache_version: Cow::Borrowed(
-      deno_lib::version::DENO_VERSION_INFO.deno,
-    ),
+    emit_cache_version: Cow::Borrowed(deno_ast::VERSION),
     maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
     // For `deno install/add/remove/init` we want to force the managed
     // resolver so it can set up the `node_modules/` directory.

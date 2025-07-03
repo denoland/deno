@@ -1478,9 +1478,7 @@ impl ConfigData {
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
         maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
-        emit_cache_version: Cow::Borrowed(
-          deno_lib::version::DENO_VERSION_INFO.deno,
-        ),
+        emit_cache_version: Cow::Borrowed(deno_ast::VERSION),
         frozen_lockfile: None,
         lock_arg: None,
         lockfile_skip_write: false,
