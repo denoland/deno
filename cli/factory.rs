@@ -33,6 +33,7 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsOverrides;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::NpmProcessStateOptions;
@@ -1206,6 +1207,9 @@ fn new_workspace_factory_options(
       &["jsr.json", "jsr.jsonc"]
     } else {
       &[]
+    },
+    compiler_options_overrides: CompilerOptionsOverrides {
+      preserve_jsx: false,
     },
     config_discovery: match &flags.config_flag {
       ConfigFlag::Discover => {

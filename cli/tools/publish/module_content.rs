@@ -284,6 +284,7 @@ mod test {
 
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_file_path;
+  use deno_resolver::deno_json::CompilerOptionsOverrides;
   use deno_resolver::factory::ConfigDiscoveryOption;
   use deno_resolver::factory::WorkspaceDirectoryProvider;
   use deno_resolver::npm::ByonmNpmResolverCreateOptions;
@@ -445,6 +446,7 @@ mod test {
       &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
       &node_resolver,
       &ConfigDiscoveryOption::DiscoverCwd,
+      &CompilerOptionsOverrides::default(),
     ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

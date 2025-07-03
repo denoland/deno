@@ -57,6 +57,7 @@ use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
 use crate::collections::FolderScopedMap;
+use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
@@ -196,6 +197,7 @@ pub struct NpmProcessStateOptions {
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
+  pub compiler_options_overrides: CompilerOptionsOverrides,
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
@@ -845,6 +847,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.workspace_factory.workspace_directory_provider()?,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
+        &self.workspace_factory.options.compiler_options_overrides,
       )))
     })
   }
