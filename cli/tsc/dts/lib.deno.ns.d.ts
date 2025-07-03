@@ -3809,6 +3809,20 @@ declare namespace Deno {
      *
      * @default {false} */
     windowsRawArguments?: boolean;
+
+    /** Whether to detach the spawned process from the current process.
+     * This allows the spawned process to continue running after the current
+     * process exits.
+     *
+     * Note: In order to allow the current process to exit, you need to ensure
+     * you call `unref()` on the child process.
+     *
+     * In addition, the stdio streams – if inherited or piped – may keep the
+     * current process from exiting until the streams are closed.
+     *
+     * @default {false}
+     */
+    detached?: boolean;
   }
 
   /**
@@ -4069,6 +4083,21 @@ declare namespace Deno {
     path?: string | URL;
   }
 
+  /** The permission descriptor for the `allow-import` and `deny-import` permissions, which controls
+   * access to importing from remote hosts via the network. The option `host` allows scoping the
+   * permission for outbound connection to a specific host and port.
+   *
+   * @category Permissions */
+  export interface ImportPermissionDescriptor {
+    name: "import";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
+  }
+
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
@@ -4084,7 +4113,8 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor;
+    | FfiPermissionDescriptor
+    | ImportPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.

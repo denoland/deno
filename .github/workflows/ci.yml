@@ -163,7 +163,7 @@ jobs:
         if: '!(matrix.skip) && (matrix.wpt)'
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
@@ -188,8 +188,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '63-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '63-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '64-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '64-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -391,7 +391,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '63-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '64-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -419,9 +419,6 @@ jobs:
       - name: jsdoc_checker.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
-      - name: node_compat/setup.ts --check
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Check tracing build
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
         run: cargo check -p deno --features=lsp-tracing
@@ -780,7 +777,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '63-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '64-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:

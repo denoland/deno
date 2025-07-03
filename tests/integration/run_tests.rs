@@ -16,13 +16,13 @@ use rustls::ClientConnection;
 use rustls_tokio_stream::TlsStream;
 use serde_json::json;
 use test_util as util;
-use test_util::itest;
 use test_util::TempDir;
-use util::assert_contains;
-use util::assert_not_contains;
+use test_util::itest;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
 
@@ -460,8 +460,7 @@ fn permissions_trace() {
 }
 
 itest!(lock_write_fetch {
-  args:
-    "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
+  args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
   http_server: true,
   exit_code: 0,
@@ -879,8 +878,7 @@ itest!(error_013_missing_script {
 
 // We have an allow-import flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args:
-    "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
+  args: "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
   output: "run/error_016_dynamic_import_permissions2.out",
   exit_code: 1,
   http_server: true,
@@ -1391,11 +1389,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1404,11 +1402,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1417,11 +1415,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1430,11 +1428,33 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+      None,
+      None,
+      true,
+    );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_deny_cidr() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      false,
+      "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://192.168.1.128:4545/",
+      None,
+      None,
+      false,
+    );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+
+    let (_, err) = util::run_and_collect_output(
+      true,
+      "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://127.0.0.1:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1443,11 +1463,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1456,11 +1476,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1469,11 +1489,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1482,11 +1502,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1495,11 +1515,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1508,11 +1528,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
+      None,
+      None,
+      false,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1521,11 +1541,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
+      None,
+      None,
+      false,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1534,11 +1554,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
+      None,
+      None,
+      false,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1549,11 +1569,11 @@ mod permissions {
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost run/complex_permissions_test.ts netListen localhost:4600",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost run/complex_permissions_test.ts netListen localhost:4600",
+      None,
+      None,
+      false,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -2200,8 +2220,10 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{stderr_str}");
 
-  assert!(stderr_str
-    .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\"."));
+  assert!(
+    stderr_str
+      .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\".")
+  );
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -2231,11 +2253,11 @@ async fn test_resolve_dns() {
   use std::sync::Arc;
   use std::time::Duration;
 
+  use hickory_server::ServerFuture;
   use hickory_server::authority::Catalog;
   use hickory_server::authority::ZoneType;
   use hickory_server::proto::rr::Name;
   use hickory_server::store::in_memory::InMemoryAuthority;
-  use hickory_server::ServerFuture;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;

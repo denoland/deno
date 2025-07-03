@@ -11,16 +11,6 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::ResourceError;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::op2;
-use deno_core::serde::Serialize;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -33,6 +23,16 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::serde::Serialize;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
@@ -41,12 +41,12 @@ use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_permissions::PermissionCheckError;
+use http::Method;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_LENGTH;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
-use http::header::AUTHORIZATION;
-use http::header::CONTENT_LENGTH;
-use http::Method;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper::body::Incoming;
@@ -186,54 +186,61 @@ where
         tokio::task::spawn(async move { conn.with_upgrades().await }),
         sender,
       )
-    } else if let Ok(resource_rc) = state
-      .resource_table
-      .take::<TcpStreamResource>(conn_rid)
-      .map_err(ConnError::Resource)
-    {
-      let resource =
-        Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
-      let (read_half, write_half) = resource.into_inner();
-      let tcp_stream = read_half.reunite(write_half)?;
-      let io = TokioIo::new(tcp_stream);
-      drop(state);
-      let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-
-      // Spawn a task to poll the connection, driving the HTTP state
-      (
-        tokio::task::spawn(async move {
-          conn.with_upgrades().await?;
-          Ok::<_, _>(())
-        }),
-        sender,
-      )
     } else {
-      #[cfg(unix)]
+      match state
+        .resource_table
+        .take::<TcpStreamResource>(conn_rid)
+        .map_err(ConnError::Resource)
       {
-        let resource_rc = state
-          .resource_table
-          .take::<deno_net::io::UnixStreamResource>(conn_rid)
-          .map_err(ConnError::Resource)?;
-        let resource =
-          Rc::try_unwrap(resource_rc).map_err(|_| ConnError::TcpStreamBusy)?;
-        let (read_half, write_half) = resource.into_inner();
-        let tcp_stream = read_half.reunite(write_half)?;
-        let io = TokioIo::new(tcp_stream);
-        drop(state);
-        let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+        Ok(resource_rc) => {
+          let resource = Rc::try_unwrap(resource_rc)
+            .map_err(|_| ConnError::TcpStreamBusy)?;
+          let (read_half, write_half) = resource.into_inner();
+          let tcp_stream = read_half.reunite(write_half)?;
+          let io = TokioIo::new(tcp_stream);
+          drop(state);
+          let (sender, conn) =
+            hyper::client::conn::http1::handshake(io).await?;
 
-        // Spawn a task to poll the connection, driving the HTTP state
-        (
-          tokio::task::spawn(async move {
-            conn.with_upgrades().await?;
-            Ok::<_, _>(())
-          }),
-          sender,
-        )
+          // Spawn a task to poll the connection, driving the HTTP state
+          (
+            tokio::task::spawn(async move {
+              conn.with_upgrades().await?;
+              Ok::<_, _>(())
+            }),
+            sender,
+          )
+        }
+        _ => {
+          #[cfg(unix)]
+          {
+            let resource_rc = state
+              .resource_table
+              .take::<deno_net::io::UnixStreamResource>(conn_rid)
+              .map_err(ConnError::Resource)?;
+            let resource = Rc::try_unwrap(resource_rc)
+              .map_err(|_| ConnError::TcpStreamBusy)?;
+            let (read_half, write_half) = resource.into_inner();
+            let tcp_stream = read_half.reunite(write_half)?;
+            let io = TokioIo::new(tcp_stream);
+            drop(state);
+            let (sender, conn) =
+              hyper::client::conn::http1::handshake(io).await?;
+
+            // Spawn a task to poll the connection, driving the HTTP state
+            (
+              tokio::task::spawn(async move {
+                conn.with_upgrades().await?;
+                Ok::<_, _>(())
+              }),
+              sender,
+            )
+          }
+
+          #[cfg(not(unix))]
+          return Err(ConnError::Resource(ResourceError::BadResourceId));
+        }
       }
-
-      #[cfg(not(unix))]
-      return Err(ConnError::Resource(ResourceError::BadResourceId));
     }
   };
 
@@ -697,8 +704,8 @@ impl Stream for NodeHttpResourceToBodyAdapter {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let this = self.get_mut();
-    if let Some(mut fut) = this.1.take() {
-      match fut.poll_unpin(cx) {
+    match this.1.take() {
+      Some(mut fut) => match fut.poll_unpin(cx) {
         Poll::Pending => {
           this.1 = Some(fut);
           Poll::Pending
@@ -712,9 +719,8 @@ impl Stream for NodeHttpResourceToBodyAdapter {
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },
-      }
-    } else {
-      Poll::Ready(None)
+      },
+      _ => Poll::Ready(None),
     }
   }
 }

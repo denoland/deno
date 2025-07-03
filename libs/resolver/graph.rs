@@ -3,9 +3,9 @@
 use std::borrow::Cow;
 
 use boxed_error::Boxed;
-use deno_graph::source::ResolveError;
 use deno_graph::Module;
 use deno_graph::Resolution;
+use deno_graph::source::ResolveError;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -17,13 +17,13 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
 use url::Url;
 
-use crate::cjs::CjsTracker;
-use crate::npm;
-use crate::workspace::MappedResolutionDiagnostic;
-use crate::workspace::ScopedJsxImportSourceConfig;
 use crate::DenoResolveError;
 use crate::DenoResolverSys;
 use crate::RawDenoResolverRc;
+use crate::cjs::CjsTracker;
+use crate::deno_json::JsxImportSourceConfigResolver;
+use crate::npm;
+use crate::workspace::MappedResolutionDiagnostic;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
@@ -180,11 +180,11 @@ pub struct DenoResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > std::fmt::Debug
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> std::fmt::Debug
   for DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -198,11 +198,11 @@ impl<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+>
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -289,23 +289,24 @@ impl<
       None => {
         if options.maintain_npm_specifiers {
           specifier.into_owned()
-        } else if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(&specifier)
-        {
-          if let Some(url) =
-            self.resolver.resolve_non_workspace_npm_req_ref_to_file(
-              &reference,
-              referrer,
-              options.mode,
-              options.kind,
-            )?
-          {
-            url.into_url()?
-          } else {
-            specifier.into_owned()
-          }
         } else {
-          specifier.into_owned()
+          match NpmPackageReqReference::from_specifier(&specifier) {
+            Ok(reference) => {
+              if let Some(url) =
+                self.resolver.resolve_non_workspace_npm_req_ref_to_file(
+                  &reference,
+                  referrer,
+                  options.mode,
+                  options.kind,
+                )?
+              {
+                url.into_url()?
+              } else {
+                specifier.into_owned()
+              }
+            }
+            _ => specifier.into_owned(),
+          }
         }
       }
     };
@@ -405,7 +406,7 @@ impl<
   pub fn as_graph_resolver<'a>(
     &'a self,
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
-    scoped_jsx_import_source_config: &'a ScopedJsxImportSourceConfig,
+    jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -416,7 +417,7 @@ impl<
     DenoGraphResolverAdapter {
       cjs_tracker,
       resolver: self,
-      scoped_jsx_import_source_config,
+      jsx_import_source_config_resolver,
     }
   }
 }
@@ -435,15 +436,15 @@ pub struct DenoGraphResolverAdapter<
     TNpmPackageFolderResolver,
     TSys,
   >,
-  scoped_jsx_import_source_config: &'a ScopedJsxImportSourceConfig,
+  jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > std::fmt::Debug
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> std::fmt::Debug
   for DenoGraphResolverAdapter<
     '_,
     TInNpmPackageChecker,
@@ -458,11 +459,11 @@ impl<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > deno_graph::source::Resolver
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> deno_graph::source::Resolver
   for DenoGraphResolverAdapter<
     '_,
     TInNpmPackageChecker,
@@ -473,22 +474,22 @@ impl<
 {
   fn default_jsx_import_source(&self, referrer: &Url) -> Option<String> {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn default_jsx_import_source_types(&self, referrer: &Url) -> Option<String> {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn jsx_import_source_module(&self, referrer: &Url) -> &str {
     self
-      .scoped_jsx_import_source_config
-      .resolve_by_referrer(referrer)
+      .jsx_import_source_config_resolver
+      .for_specifier(referrer)
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }

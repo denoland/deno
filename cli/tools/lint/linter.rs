@@ -26,11 +26,11 @@ use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::tokio_util;
 
+use super::ConfiguredRules;
 use super::plugins;
 use super::plugins::PluginHostProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
-use super::ConfiguredRules;
 use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
 use crate::util::text_encoding::Utf16Map;

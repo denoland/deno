@@ -4,23 +4,25 @@ mod esbuild;
 mod externals;
 mod transform;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json::TsTypeLib;
+use deno_config::workspace::TsTypeLib;
+use deno_core::RequestedModuleType;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
@@ -29,15 +31,15 @@ use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_client::protocol;
-use esbuild_client::protocol::BuildResponse;
 use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
+use esbuild_client::protocol;
+use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
-use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::PackageSubpathResolveError;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
@@ -158,16 +160,11 @@ pub async fn bundle(
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
-    process_result(&response, *DISABLE_HACK)?;
+    let metafile = metafile_from_response(&response)?;
+    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      log::info!(
-        "{}",
-        deno_terminal::colors::green(format!(
-          "bundled in {}",
-          crate::display::human_elapsed(start.elapsed().as_millis()),
-        ))
-      );
+      print_finished_message(&metafile, &output_infos, start.elapsed())?;
     }
   }
 
@@ -176,6 +173,16 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+fn metafile_from_response(
+  response: &BuildResponse,
+) -> Result<esbuild_client::Metafile, AnyError> {
+  Ok(serde_json::from_str::<esbuild_client::Metafile>(
+    response.metafile.as_deref().ok_or_else(|| {
+      deno_core::anyhow::anyhow!("expected a metafile to be present")
+    })?,
+  )?)
 }
 
 async fn bundle_watch(
@@ -217,14 +224,10 @@ async fn bundle_watch(
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
-          process_result(&response, *DISABLE_HACK)?;
-          log::info!(
-            "{}",
-            deno_terminal::colors::green(format!(
-              "bundled in {}",
-              crate::display::human_elapsed(start.elapsed().as_millis()),
-            ))
-          );
+          let metafile = metafile_from_response(&response)?;
+          let output_infos =
+            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+          print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
           *current_roots.borrow_mut() = new_watched.clone();
@@ -444,6 +447,8 @@ fn requested_type_from_map(
   let type_ = map.get("type").map(|s| s.as_str());
   match type_ {
     Some("json") => RequestedModuleType::Json,
+    Some("bytes") => RequestedModuleType::Bytes,
+    Some("text") => RequestedModuleType::Text,
     Some(other) => RequestedModuleType::Other(other.to_string().into()),
     None => RequestedModuleType::None,
   }
@@ -635,10 +640,10 @@ impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
     match self {
       BundleLoadError::CliModuleLoader(
-        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(ref e)),
+        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
       ) => match &**e {
         LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(ref e),
+          LoadPreparedModuleError::Graph(e),
         ) => matches!(
           e.error.as_kind(),
           ModuleErrorKind::UnsupportedMediaType { .. },
@@ -789,7 +794,19 @@ impl DenoPluginHandler {
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
     let (specifier, media_type, loader) =
-      if let Some((specifier, media_type, loader)) =
+      if let RequestedModuleType::Bytes = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Binary,
+        )
+      } else if let RequestedModuleType::Text = requested_type {
+        (
+          specifier,
+          MediaType::Unknown,
+          esbuild_client::BuiltinLoader::Text,
+        )
+      } else if let Some((specifier, media_type, loader)) =
         self.specifier_and_type_from_graph(&specifier)?
       {
         (specifier, media_type, loader)
@@ -1024,19 +1041,20 @@ fn resolve_roots(
   let mut roots = Vec::with_capacity(entrypoints.len());
 
   for url in entrypoints {
-    let root = if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
-      let referrer =
-        ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+    let root = match NpmPackageReqReference::from_specifier(&url) {
+      Ok(v) => {
+        let referrer =
+          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+            .unwrap();
+        let package_folder = npm_resolver
+          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-      let package_folder = npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
-        .unwrap();
-      let main_module = node_resolver
-        .resolve_binary_export(&package_folder, v.sub_path())
-        .unwrap();
-      Url::from_file_path(&main_module).unwrap()
-    } else {
-      url
+        let main_module = node_resolver
+          .resolve_binary_export(&package_folder, v.sub_path())
+          .unwrap();
+        Url::from_file_path(&main_module).unwrap()
+      }
+      _ => url,
     };
     roots.push(root)
   }
@@ -1072,7 +1090,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
-    .bundle(bundle_flags.one_file)
+    .bundle(bundle_flags.inline_imports)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
@@ -1100,9 +1118,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   } else if let Some(output_path) = bundle_flags.output_path.clone() {
     builder.outfile(output_path);
   }
-  if bundle_flags.watch {
-    builder.metafile(true);
-  }
+  builder.metafile(true);
 
   match bundle_flags.platform {
     crate::args::BundlePlatform::Browser => {
@@ -1135,38 +1151,116 @@ fn handle_esbuild_errors_and_warnings(
   }
 }
 
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
+struct OutputFileInfo {
+  relative_path: PathBuf,
+  size: usize,
+  is_js: bool,
+}
 fn process_result(
   response: &BuildResponse,
-  // init_cwd: &Path,
+  cwd: &Path,
   should_replace_require_shim: bool,
-) -> Result<(), AnyError> {
-  if let Some(output_files) = response.output_files.as_ref() {
-    let mut exists_cache = std::collections::HashSet::new();
-    for file in output_files.iter() {
+) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let mut exists_cache = std::collections::HashSet::new();
+  let output_files = response
+    .output_files
+    .as_ref()
+    .map(Cow::Borrowed)
+    .unwrap_or_default();
+  let mut output_infos = Vec::new();
+  for file in output_files.iter() {
+    let path = Path::new(&file.path);
+    let relative_path =
+      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
+    let is_js = is_js(path);
+    let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
         replace_require_shim(&string)
       } else {
         string
       };
+      Cow::Owned(string.into_bytes())
+    } else {
+      Cow::Borrowed(&file.contents)
+    };
 
-      if file.path == "<stdout>" {
-        crate::display::write_to_stdout_ignore_sigpipe(string.as_bytes())?;
-        continue;
-      }
-      let path = PathBuf::from(&file.path);
-
-      if let Some(parent) = path.parent() {
-        if !exists_cache.contains(parent) {
-          if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-          }
-          exists_cache.insert(parent.to_path_buf());
-        }
-      }
-
-      std::fs::write(&file.path, string)?;
+    if file.path.ends_with("<stdout>") {
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      continue;
     }
+
+    if let Some(parent) = path.parent() {
+      if !exists_cache.contains(parent) {
+        if !parent.exists() {
+          std::fs::create_dir_all(parent)?;
+        }
+        exists_cache.insert(parent.to_path_buf());
+      }
+    }
+
+    output_infos.push(OutputFileInfo {
+      relative_path,
+      size: bytes.len(),
+      is_js,
+    });
+
+    std::fs::write(path, bytes.as_ref())?;
   }
+  Ok(output_infos)
+}
+
+fn print_finished_message(
+  metafile: &esbuild_client::Metafile,
+  output_infos: &[OutputFileInfo],
+  duration: Duration,
+) -> Result<(), AnyError> {
+  let mut output = String::new();
+  output.push_str(&format!(
+    "{} {} module{} in {}",
+    deno_terminal::colors::green("Bundled"),
+    metafile.inputs.len(),
+    if metafile.inputs.len() == 1 { "" } else { "s" },
+    crate::display::human_elapsed(duration.as_millis()),
+  ));
+
+  let longest = output_infos
+    .iter()
+    .map(|info| info.relative_path.to_string_lossy().len())
+    .max()
+    .unwrap_or(0);
+  for info in output_infos {
+    output.push_str(&format!(
+      "\n  {} {}",
+      if info.is_js {
+        deno_terminal::colors::cyan(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      } else {
+        deno_terminal::colors::magenta(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      },
+      deno_terminal::colors::gray(
+        crate::display::human_size(info.size as f64,)
+      )
+    ));
+  }
+  output.push('\n');
+  log::info!("{}", output);
+
   Ok(())
 }

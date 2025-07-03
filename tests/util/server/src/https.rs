@@ -7,10 +7,10 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use futures::Stream;
 use futures::StreamExt;
+use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::rustls;
 use rustls_tokio_stream::rustls::pki_types::CertificateDer;
 use rustls_tokio_stream::rustls::pki_types::PrivateKeyDer;
-use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 
 use crate::get_tcp_listener_stream;

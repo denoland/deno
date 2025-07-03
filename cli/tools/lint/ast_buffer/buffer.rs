@@ -2,8 +2,8 @@
 
 use std::fmt::Display;
 
-use deno_ast::swc::common::Span;
 use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::common::Span;
 use indexmap::IndexMap;
 
 use crate::util::text_encoding::Utf16Map;

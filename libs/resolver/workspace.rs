@@ -11,11 +11,8 @@ use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_media_type::MediaType;
 use deno_npm::registry::NpmPackageVersionInfo;
@@ -27,21 +24,21 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::package::PackageName;
-use deno_semver::package::PackageReq;
 use deno_semver::RangeSetOrTag;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageName;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
-use import_map::specifier::SpecifierError;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
 use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
+use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
 use serde::Deserialize;
@@ -52,8 +49,8 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-use crate::sync::new_rc;
 use crate::sync::MaybeDashMap;
+use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
 type UrlRc = crate::sync::MaybeArc<Url>;
@@ -271,7 +268,9 @@ where
 pub enum WorkspaceResolvePkgJsonFolderErrorKind {
   #[error("Could not find package.json with name '{0}' in workspace.")]
   NotFound(String),
-  #[error("Found package.json in workspace, but version '{1}' didn't satisy constraint '{0}'.")]
+  #[error(
+    "Found package.json in workspace, but version '{1}' didn't satisy constraint '{0}'."
+  )]
   VersionNotSatisfied(VersionReq, Version),
 }
 
@@ -657,10 +656,22 @@ pub enum CompilerOptionsRootDirsDiagnostic {
 impl fmt::Display for CompilerOptionsRootDirsDiagnostic {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      Self::InvalidType(s) => write!(f, "Invalid value for \"compilerOptions.rootDirs\" (\"{s}\"). Expected a string."),
-      Self::InvalidEntryType(s, i) => write!(f, "Invalid value for \"compilerOptions.rootDirs[{i}]\" (\"{s}\"). Expected a string."),
-      Self::UnexpectedError(s, message) => write!(f, "Unexpected error while parsing \"compilerOptions.rootDirs\" (\"{s}\"): {message}"),
-      Self::UnexpectedEntryError(s, i, message) => write!(f, "Unexpected error while parsing \"compilerOptions.rootDirs[{i}]\" (\"{s}\"): {message}"),
+      Self::InvalidType(s) => write!(
+        f,
+        "Invalid value for \"compilerOptions.rootDirs\" (\"{s}\"). Expected a string."
+      ),
+      Self::InvalidEntryType(s, i) => write!(
+        f,
+        "Invalid value for \"compilerOptions.rootDirs[{i}]\" (\"{s}\"). Expected a string."
+      ),
+      Self::UnexpectedError(s, message) => write!(
+        f,
+        "Unexpected error while parsing \"compilerOptions.rootDirs\" (\"{s}\"): {message}"
+      ),
+      Self::UnexpectedEntryError(s, i, message) => write!(
+        f,
+        "Unexpected error while parsing \"compilerOptions.rootDirs[{i}]\" (\"{s}\"): {message}"
+      ),
     }
   }
 }
@@ -1530,25 +1541,28 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
         match version_req.inner() {
           RangeSetOrTag::RangeSet(set) => {
-            if let Some(version) = pkg_json
+            match pkg_json
               .version
               .as_ref()
               .and_then(|v| Version::parse_from_npm(v).ok())
             {
-              if set.satisfies(&version) {
-                Ok(pkg_json.dir_path())
-              } else {
-                Err(
+              Some(version) => {
+                if set.satisfies(&version) {
+                  Ok(pkg_json.dir_path())
+                } else {
+                  Err(
                   WorkspaceResolvePkgJsonFolderErrorKind::VersionNotSatisfied(
                     version_req.clone(),
                     version,
                   )
                   .into(),
                 )
+                }
               }
-            } else {
-              // just match it
-              Ok(pkg_json.dir_path())
+              _ => {
+                // just match it
+                Ok(pkg_json.dir_path())
+              }
             }
           }
           RangeSetOrTag::Tag(_) => {
@@ -1643,41 +1657,6 @@ impl BaseUrl<'_> {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct ScopedJsxImportSourceConfig {
-  unscoped: Option<JsxImportSourceConfig>,
-  by_scope: BTreeMap<UrlRc, Option<JsxImportSourceConfig>>,
-}
-
-impl ScopedJsxImportSourceConfig {
-  pub fn from_workspace_dir(
-    start_dir: &WorkspaceDirectory,
-  ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
-    let unscoped = start_dir.to_maybe_jsx_import_source_config()?;
-    let mut by_scope = BTreeMap::default();
-    for (dir_url, _) in start_dir.workspace.config_folders() {
-      let dir = start_dir.workspace.resolve_member_dir(dir_url);
-      let jsx_import_source_config_unscoped =
-        dir.to_maybe_jsx_import_source_config()?;
-      by_scope.insert(dir_url.clone(), jsx_import_source_config_unscoped);
-    }
-    Ok(Self { unscoped, by_scope })
-  }
-
-  /// Resolves the `JsxImportSourceConfig` to use for the provided referrer.
-  pub fn resolve_by_referrer(
-    &self,
-    referrer: &Url,
-  ) -> Option<&JsxImportSourceConfig> {
-    self
-      .by_scope
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, c)| c.as_ref())
-      .unwrap_or(self.unscoped.as_ref())
-  }
-}
-
 #[allow(clippy::disallowed_types)] // ok, because definition
 pub type WorkspaceNpmLinkPackagesRc =
   crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
@@ -1694,10 +1673,10 @@ impl WorkspaceNpmLinkPackages {
     for pkg_json in workspace.link_pkg_jsons() {
       let Some(name) = pkg_json.name.as_ref() else {
         log::warn!(
-        "{} Link package ignored because package.json was missing name field.\n    at {}",
-        colors::yellow("Warning"),
-        pkg_json.path.display(),
-      );
+          "{} Link package ignored because package.json was missing name field.\n    at {}",
+          colors::yellow("Warning"),
+          pkg_json.path.display(),
+        );
         continue;
       };
       match pkg_json_to_version_info(pkg_json) {
@@ -1725,7 +1704,9 @@ enum PkgJsonToVersionInfoError {
     "Linked package ignored because package.json was missing version field."
   )]
   VersionMissing,
-  #[error("Linked package ignored because package.json version field could not be parsed.")]
+  #[error(
+    "Linked package ignored because package.json version field could not be parsed."
+  )]
   VersionInvalid {
     #[source]
     source: deno_semver::npm::NpmVersionParseError,
@@ -1803,8 +1784,8 @@ mod test {
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
   use serde_json::json;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCanonicalize;
+  use sys_traits::impls::InMemorySys;
   use url::Url;
 
   use super::*;
@@ -2931,11 +2912,11 @@ mod test {
 
     let diagnostics = workspace.workspace.diagnostics();
     assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics
-      .first()
-      .unwrap()
-      .to_string()
-      .starts_with(r#"Invalid workspace member name "@deno-test/libs/math"."#));
+    assert!(
+      diagnostics.first().unwrap().to_string().starts_with(
+        r#"Invalid workspace member name "@deno-test/libs/math"."#
+      )
+    );
   }
 
   fn create_resolver(

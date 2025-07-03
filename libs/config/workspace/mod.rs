@@ -17,30 +17,30 @@ use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use deno_semver::RangeSetOrTag;
 use deno_semver::Version;
 use deno_semver::VersionReq;
-use discovery::discover_workspace_config_files;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use discovery::ConfigFileDiscovery;
 use discovery::ConfigFolder;
 use discovery::DenoOrPkgJson;
+use discovery::discover_workspace_config_files;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use serde_json::json;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use crate::UrlToFilePathError;
 use crate::deno_json;
-use crate::deno_json::get_base_compiler_options_for_emit;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompilerOptionTypesDeserializeError;
 use crate::deno_json::CompilerOptions;
 use crate::deno_json::CompilerOptionsParseError;
-use crate::deno_json::CompilerOptionsType;
 use crate::deno_json::CompilerOptionsWithIgnoredOptions;
 use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
@@ -64,7 +64,6 @@ use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternParseError;
 use crate::glob::PathOrPatternSet;
 use crate::sync::new_rc;
-use crate::UrlToFilePathError;
 
 mod discovery;
 
@@ -126,11 +125,17 @@ pub struct WorkspaceLintConfig {
 #[derive(Debug, Error, JsError)]
 #[class(type)]
 pub enum ToMaybeJsxImportSourceConfigError {
-  #[error("'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}")]
+  #[error(
+    "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}"
+  )]
   InvalidJsxImportSourceValue(Url),
-  #[error("'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}")]
+  #[error(
+    "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}"
+  )]
   InvalidJsxImportSourceTypesValue(Url),
-  #[error("Unsupported 'jsx' compiler option value '{value}'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'precompile'\n  at {specifier}")]
+  #[error(
+    "Unsupported 'jsx' compiler option value '{value}'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'precompile'\n  at {specifier}"
+  )]
   InvalidJsxCompilerOption { value: String, specifier: Url },
 }
 
@@ -154,24 +159,34 @@ pub enum WorkspaceDiagnosticKind {
     "\"{0}\" field can only be specified in the workspace root deno.json file."
   )]
   RootOnlyOption(&'static str),
-  #[error("\"{0}\" field can only be specified in a workspace member deno.json file and not the workspace root file.")]
+  #[error(
+    "\"{0}\" field can only be specified in a workspace member deno.json file and not the workspace root file."
+  )]
   MemberOnlyOption(&'static str),
   #[error("\"workspaces\" field was ignored. Use \"workspace\" instead.")]
   InvalidWorkspacesOption,
   #[error("\"exports\" field should be specified when specifying a \"name\".")]
   MissingExports,
-  #[error("\"importMap\" field is ignored when \"imports\" or \"scopes\" are specified in the config file.")]
+  #[error(
+    "\"importMap\" field is ignored when \"imports\" or \"scopes\" are specified in the config file."
+  )]
   ImportMapReferencingImportMap,
-  #[error("\"imports\" and \"scopes\" field is ignored when \"importMap\" is specified in the root config file.")]
+  #[error(
+    "\"imports\" and \"scopes\" field is ignored when \"importMap\" is specified in the root config file."
+  )]
   MemberImportsScopesIgnored,
-  #[error("`\"nodeModulesDir\": {previous}` is deprecated in Deno 2.0. Use `\"nodeModulesDir\": \"{suggestion}\"` instead.")]
+  #[error(
+    "`\"nodeModulesDir\": {previous}` is deprecated in Deno 2.0. Use `\"nodeModulesDir\": \"{suggestion}\"` instead."
+  )]
   DeprecatedNodeModulesDirOption {
     previous: bool,
     suggestion: NodeModulesDirMode,
   },
   #[error("\"patch\" property was renamed to \"links\".")]
   DeprecatedPatch,
-  #[error("Invalid workspace member name \"{name}\". Ensure the name is in the format '@scope/name'.")]
+  #[error(
+    "Invalid workspace member name \"{name}\". Ensure the name is in the format '@scope/name'."
+  )]
   InvalidMemberName { name: String },
 }
 
@@ -237,11 +252,15 @@ pub enum ResolveWorkspaceMemberErrorKind {
   NotFoundPackageJson { dir_url: Url },
   #[error("Could not find config file for workspace member in '{}'. Ensure you specify the directory and not the configuration file in the workspace member.", .dir_url)]
   NotFoundMaybeSpecifiedFile { dir_url: Url },
-  #[error("Workspace member must be nested in a directory under the workspace.\n  Member: {member_url}\n  Workspace: {workspace_url}")]
+  #[error(
+    "Workspace member must be nested in a directory under the workspace.\n  Member: {member_url}\n  Workspace: {workspace_url}"
+  )]
   NonDescendant { workspace_url: Url, member_url: Url },
   #[error("Cannot specify a workspace member twice ('{}').", .member)]
   Duplicate { member: String },
-  #[error("The '{name}' package ('{deno_json_url}') cannot have the same name as the package at '{other_deno_json_url}'.")]
+  #[error(
+    "The '{name}' package ('{deno_json_url}') cannot have the same name as the package at '{other_deno_json_url}'."
+  )]
   DuplicatePackageName {
     name: String,
     deno_json_url: Url,
@@ -323,7 +342,9 @@ pub enum WorkspaceDiscoverErrorKind {
     source: ResolveWorkspaceLinkError,
   },
   #[class(type)]
-  #[error("Command resolved to multiple config files. Ensure all specified paths are within the same workspace.\n  First: {base_workspace_url}\n  Second: {other_workspace_url}")]
+  #[error(
+    "Command resolved to multiple config files. Ensure all specified paths are within the same workspace.\n  First: {base_workspace_url}\n  Second: {other_workspace_url}"
+  )]
   MultipleWorkspaces {
     base_workspace_url: Url,
     other_workspace_url: Url,
@@ -335,7 +356,9 @@ pub enum WorkspaceDiscoverErrorKind {
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(type)]
-  #[error("Config file must be a member of the workspace.\n  Config: {config_url}\n  Workspace: {workspace_url}")]
+  #[error(
+    "Config file must be a member of the workspace.\n  Config: {config_url}\n  Workspace: {workspace_url}"
+  )]
   ConfigNotWorkspaceMember { workspace_url: Url, config_url: Url },
 }
 
@@ -1120,6 +1143,118 @@ pub struct WorkspaceDirLintConfig {
   pub files: FilePatterns,
 }
 
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub enum TsTypeLib {
+  DenoWindow,
+  DenoWorker,
+}
+
+impl Default for TsTypeLib {
+  fn default() -> Self {
+    Self::DenoWindow
+  }
+}
+
+/// An enum that represents the base tsc configuration to return.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerOptionsType {
+  /// Return a configuration for bundling, using swc to emit the bundle. This is
+  /// independent of type checking.
+  Bundle,
+  /// Return a configuration to use tsc to type check. This
+  /// is independent of either bundling or emitting via swc.
+  Check { lib: TsTypeLib },
+  /// Return a configuration to use swc to emit single module files.
+  Emit,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CompilerOptionsSourceKind {
+  DenoJson,
+  TsConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompilerOptionsSource {
+  pub specifier: Url,
+  pub compiler_options: Option<CompilerOptions>,
+}
+
+/// For a given configuration type get the starting point CompilerOptions
+/// used that can then be merged with user specified options.
+pub fn get_base_compiler_options_for_emit(
+  config_type: CompilerOptionsType,
+  source_kind: CompilerOptionsSourceKind,
+) -> CompilerOptions {
+  match config_type {
+    CompilerOptionsType::Bundle => CompilerOptions::new(json!({
+      "allowImportingTsExtensions": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": true,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": false,
+      "inlineSources": false,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+    })),
+    CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
+      "allowJs": true,
+      "allowImportingTsExtensions": true,
+      "allowSyntheticDefaultImports": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": false,
+      "incremental": true,
+      "jsx": "react",
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "isolatedModules": true,
+      "lib": match (lib, source_kind) {
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
+      },
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "moduleDetection": "force",
+      "noEmit": true,
+      "noImplicitOverride": true,
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
+      "useDefineForClassFields": true,
+    })),
+    CompilerOptionsType::Emit => CompilerOptions::new(json!({
+      "allowImportingTsExtensions": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": false,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "resolveJsonModule": true,
+    })),
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceDirectory {
   pub workspace: WorkspaceRc,
@@ -1422,8 +1557,10 @@ impl WorkspaceDirectory {
     sys: &TSys,
     config_type: CompilerOptionsType,
   ) -> Result<CompilerOptionsWithIgnoredOptions, CompilerOptionsParseError> {
-    let mut base_compiler_options =
-      get_base_compiler_options_for_emit(config_type);
+    let mut base_compiler_options = get_base_compiler_options_for_emit(
+      config_type,
+      CompilerOptionsSourceKind::DenoJson,
+    );
     let CompilerOptionsWithIgnoredOptions {
       compiler_options,
       ignored_options,
@@ -1447,6 +1584,38 @@ impl WorkspaceDirectory {
         .as_ref()
         .map(|p| p.root.is_none())
         .unwrap_or(true)
+  }
+
+  /// Gets a list of raw compiler options that the user provided, in a vec of
+  /// size 0-2 based on `[maybe_root, maybe_member].flatten()`.
+  pub fn to_configured_compiler_options_sources(
+    &self,
+  ) -> Vec<CompilerOptionsSource> {
+    let Some(deno_json) = self.deno_json.as_ref() else {
+      return Vec::new();
+    };
+    let root = deno_json.root.as_ref().map(|d| CompilerOptionsSource {
+      specifier: d.specifier.clone(),
+      compiler_options: d
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
+    });
+    let member = CompilerOptionsSource {
+      specifier: deno_json.member.specifier.clone(),
+      compiler_options: deno_json
+        .member
+        .json
+        .compiler_options
+        .as_ref()
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(CompilerOptions),
+    };
+    root.into_iter().chain([member]).collect()
   }
 
   /// Gets the combined compiler options that the user provided, without any of
@@ -1481,10 +1650,13 @@ impl WorkspaceDirectory {
       // root first
       if let Some(root) = &config.root {
         // read from root deno.json
-        if let Some(compiler_options) = root.to_compiler_options()? {
-          merge(compiler_options, &mut result);
-        } else {
-          try_merge_from_ts_config(&root.dir_path(), &mut result);
+        match root.to_compiler_options()? {
+          Some(compiler_options) => {
+            merge(compiler_options, &mut result);
+          }
+          _ => {
+            try_merge_from_ts_config(&root.dir_path(), &mut result);
+          }
         }
       } else if let Some(pkg_json) = &self.pkg_json {
         // if root deno.json doesn't exist, but package.json does, try read from
@@ -1495,11 +1667,16 @@ impl WorkspaceDirectory {
       }
 
       // then read from member deno.json
-      if let Some(compiler_options) = config.member.to_compiler_options()? {
-        merge(compiler_options, &mut result);
-      } else if self.is_config_at_root() {
-        // config is root, so try to discover tsconfig
-        try_merge_from_ts_config(&config.member.dir_path(), &mut result);
+      match config.member.to_compiler_options()? {
+        Some(compiler_options) => {
+          merge(compiler_options, &mut result);
+        }
+        _ => {
+          if self.is_config_at_root() {
+            // config is root, so try to discover tsconfig
+            try_merge_from_ts_config(&config.member.dir_path(), &mut result);
+          }
+        }
       }
     } else if let Some(pkg_json) = &self.pkg_json {
       if let Some(pkg_json) = &pkg_json.root {
@@ -1620,7 +1797,7 @@ impl WorkspaceDirectory {
                 .unwrap_or_else(|| config.member.specifier.clone())
             },
           },
-        )
+        );
       }
     };
     Ok(Some(JsxImportSourceConfig {
@@ -2558,7 +2735,9 @@ pub mod test {
 
       assert_contains!(
         workspace_config_err.to_string(),
-        &format!("Remove the reference to the current config file (\"{reference}\") in \"workspaces\".")
+        &format!(
+          "Remove the reference to the current config file (\"{reference}\") in \"workspaces\"."
+        )
       );
     }
   }
@@ -3019,7 +3198,7 @@ pub mod test {
         .to_resolved_compiler_options(
           &sys,
           CompilerOptionsType::Check {
-            lib: deno_json::TsTypeLib::DenoWindow
+            lib: TsTypeLib::DenoWindow
           }
         )
         .unwrap(),
@@ -3389,9 +3568,11 @@ pub mod test {
     );
 
     // will match because it was unexcluded in the member
-    assert!(lint_config
-      .files
-      .matches_path(&root_dir().join("member/vendor"), PathKind::Directory))
+    assert!(
+      lint_config
+        .files
+        .matches_path(&root_dir().join("member/vendor"), PathKind::Directory)
+    )
   }
 
   #[test]
@@ -4523,7 +4704,12 @@ pub mod test {
     );
     // no deno.json in this folder, so should error
     let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
-    assert_eq!(err.to_string(), normalize_err_text("Could not find config file for workspace member in '[ROOT_DIR_URL]/member/'."));
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find config file for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
   }
 
   #[test]
@@ -4537,10 +4723,13 @@ pub mod test {
     );
     // no deno.json in this folder and the name was deno.json so give an error
     let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
-    assert_eq!(err.to_string(), normalize_err_text(concat!(
-      "Could not find config file for workspace member in '[ROOT_DIR_URL]/member/deno.json/'. ",
-      "Ensure you specify the directory and not the configuration file in the workspace member."
-    )));
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(concat!(
+        "Could not find config file for workspace member in '[ROOT_DIR_URL]/member/deno.json/'. ",
+        "Ensure you specify the directory and not the configuration file in the workspace member."
+      ))
+    );
   }
 
   #[test]
@@ -4739,7 +4928,12 @@ pub mod test {
     // no package.json in this folder, so should error
     sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
     let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
-    assert_eq!(err.to_string(), normalize_err_text("Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."));
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
   }
 
   #[test]
@@ -4753,7 +4947,12 @@ pub mod test {
     );
     // no package.json in this folder, so should error
     let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
-    assert_eq!(err.to_string(), normalize_err_text("Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."));
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
   }
 
   #[test]
@@ -4985,8 +5184,8 @@ pub mod test {
   }
 
   #[test]
-  fn test_npm_workspace_start_deno_json_part_of_workspace_sub_folder_other_deno_json(
-  ) {
+  fn test_npm_workspace_start_deno_json_part_of_workspace_sub_folder_other_deno_json()
+   {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("package.json"),
@@ -6140,11 +6339,18 @@ pub mod test {
     );
     let deno_json = member.workspace.root_deno_json().unwrap();
     assert_eq!(
-      member.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
-      format!(concat!(
-        "Unsupported 'jsx' compiler option value 'preserve'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'precompile'\n",
-        "  at {}",
-      ), deno_json.specifier),
+      member
+        .to_maybe_jsx_import_source_config()
+        .err()
+        .unwrap()
+        .to_string(),
+      format!(
+        concat!(
+          "Unsupported 'jsx' compiler option value 'preserve'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'precompile'\n",
+          "  at {}",
+        ),
+        deno_json.specifier
+      ),
     );
   }
 
@@ -6159,11 +6365,18 @@ pub mod test {
       );
       let deno_json = member.workspace.root_deno_json().unwrap();
       assert_eq!(
-        member.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
-        format!(concat!(
-          "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
-          "  at {}",
-        ), deno_json.specifier),
+        member
+          .to_maybe_jsx_import_source_config()
+          .err()
+          .unwrap()
+          .to_string(),
+        format!(
+          concat!(
+            "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+            "  at {}",
+          ),
+          deno_json.specifier
+        ),
       );
     }
     {
@@ -6175,11 +6388,18 @@ pub mod test {
       );
       let deno_json = member.workspace.root_deno_json().unwrap();
       assert_eq!(
-        member.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
-        format!(concat!(
-          "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
-          "  at {}",
-        ), deno_json.specifier),
+        member
+          .to_maybe_jsx_import_source_config()
+          .err()
+          .unwrap()
+          .to_string(),
+        format!(
+          concat!(
+            "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+            "  at {}",
+          ),
+          deno_json.specifier
+        ),
       );
     }
   }
@@ -6195,11 +6415,18 @@ pub mod test {
       );
       let deno_json = member.workspace.root_deno_json().unwrap();
       assert_eq!(
-        member.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
-        format!(concat!(
-          "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
-          "  at {}",
-        ), deno_json.specifier),
+        member
+          .to_maybe_jsx_import_source_config()
+          .err()
+          .unwrap()
+          .to_string(),
+        format!(
+          concat!(
+            "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+            "  at {}",
+          ),
+          deno_json.specifier
+        ),
       );
     }
     {
@@ -6211,11 +6438,18 @@ pub mod test {
       );
       let deno_json = member.workspace.root_deno_json().unwrap();
       assert_eq!(
-        member.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
-        format!(concat!(
-          "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
-          "  at {}",
-        ), deno_json.specifier),
+        member
+          .to_maybe_jsx_import_source_config()
+          .err()
+          .unwrap()
+          .to_string(),
+        format!(
+          concat!(
+            "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+            "  at {}",
+          ),
+          deno_json.specifier
+        ),
       );
     }
   }

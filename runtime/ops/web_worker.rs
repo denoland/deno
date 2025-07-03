@@ -5,9 +5,9 @@ mod sync_fetch;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 pub use sync_fetch::SyncFetchError;

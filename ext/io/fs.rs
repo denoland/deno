@@ -9,12 +9,12 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::ResourceError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;

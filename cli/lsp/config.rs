@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -27,27 +28,27 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
-use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::factory::ConfigDiscoveryOption;
@@ -703,7 +704,9 @@ impl WorkspaceSettings {
       let inlay_hints: InlayHintsSettings =
         parse_or_default(inlay_hints, "settings under \"deno.inlayHints\"");
       if inlay_hints.parameter_names.enabled != Default::default() {
-        lsp_warn!("\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_names.enabled =
           inlay_hints.parameter_names.enabled.clone();
         settings.typescript.inlay_hints.parameter_names.enabled =
@@ -713,7 +716,9 @@ impl WorkspaceSettings {
         .parameter_names
         .suppress_when_argument_matches_name
       {
-        lsp_warn!("\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -730,21 +735,27 @@ impl WorkspaceSettings {
           .suppress_when_argument_matches_name;
       }
       if inlay_hints.parameter_types.enabled {
-        lsp_warn!("\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
         settings.typescript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
       }
       if inlay_hints.variable_types.enabled {
-        lsp_warn!("\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
         settings.typescript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
       }
       if !inlay_hints.variable_types.suppress_when_type_matches_name {
-        lsp_warn!("\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -759,7 +770,9 @@ impl WorkspaceSettings {
           inlay_hints.variable_types.suppress_when_type_matches_name;
       }
       if inlay_hints.property_declaration_types.enabled {
-        lsp_warn!("\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -772,7 +785,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.property_declaration_types.enabled;
       }
       if inlay_hints.function_like_return_types.enabled {
-        lsp_warn!("\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -785,7 +800,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.function_like_return_types.enabled;
       }
       if inlay_hints.enum_member_values.enabled {
-        lsp_warn!("\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\"."
+        );
         settings.javascript.inlay_hints.enum_member_values.enabled =
           inlay_hints.enum_member_values.enabled;
         settings.typescript.inlay_hints.enum_member_values.enabled =
@@ -796,24 +813,32 @@ impl WorkspaceSettings {
       let suggest: CompletionSettings =
         parse_or_default(suggest, "settings under \"deno.suggest\"");
       if suggest.complete_function_calls {
-        lsp_warn!("\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\".");
+        lsp_warn!(
+          "\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\"."
+        );
         settings.javascript.suggest.complete_function_calls =
           suggest.complete_function_calls;
         settings.typescript.suggest.complete_function_calls =
           suggest.complete_function_calls;
       }
       if !suggest.names {
-        lsp_warn!("\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\".");
+        lsp_warn!(
+          "\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\"."
+        );
         settings.javascript.suggest.names = suggest.names;
         settings.typescript.suggest.names = suggest.names;
       }
       if !suggest.paths {
-        lsp_warn!("\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\".");
+        lsp_warn!(
+          "\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\"."
+        );
         settings.javascript.suggest.paths = suggest.paths;
         settings.typescript.suggest.paths = suggest.paths;
       }
       if !suggest.auto_imports {
-        lsp_warn!("\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\".");
+        lsp_warn!(
+          "\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\"."
+        );
         settings.javascript.suggest.auto_imports = suggest.auto_imports;
         settings.typescript.suggest.auto_imports = suggest.auto_imports;
       }
@@ -1451,8 +1476,11 @@ impl ConfigData {
       WorkspaceFactoryOptions {
         additional_config_file_names: &[],
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
-        deno_dir_path_provider: None,
+        maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
+        emit_cache_version: Cow::Borrowed(
+          deno_lib::version::DENO_VERSION_INFO.deno,
+        ),
         frozen_lockfile: None,
         lock_arg: None,
         lockfile_skip_write: false,
@@ -1474,7 +1502,9 @@ impl ConfigData {
         // anything other than resolving the lockfile at the moment
         is_cjs_resolution_mode: Default::default(),
         npm_system_info: Default::default(),
+        node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
+        node_analysis_cache: None,
         node_resolution_cache: None,
         package_json_cache: None,
         package_json_dep_resolution: None,

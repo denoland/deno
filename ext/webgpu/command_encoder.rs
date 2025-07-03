@@ -3,14 +3,15 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use deno_core::cppgc::Ptr;
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::cppgc::Ptr;
+use deno_core::op2;
 use deno_error::JsErrorBox;
 use wgpu_core::command::PassChannel;
 use wgpu_types::TexelCopyBufferInfo;
 
+use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
 use crate::compute_pass::GPUComputePassEncoder;
@@ -18,7 +19,6 @@ use crate::queue::GPUTexelCopyTextureInfo;
 use crate::render_pass::GPULoadOp;
 use crate::render_pass::GPURenderPassEncoder;
 use crate::webidl::GPUExtent3D;
-use crate::Instance;
 
 pub struct GPUCommandEncoder {
   pub instance: Instance,

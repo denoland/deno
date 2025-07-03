@@ -7,11 +7,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_features::FeatureChecker;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;

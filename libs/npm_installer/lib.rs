@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
+use deno_npm::NpmSystemInfo;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
-use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
