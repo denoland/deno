@@ -1592,6 +1592,14 @@ impl WorkspaceDirectory {
     &self,
   ) -> Vec<CompilerOptionsSource> {
     let Some(deno_json) = self.deno_json.as_ref() else {
+      // This is a hack to make `LspCompilerOptionsData::source()` return a
+      // value in more cases.
+      if let Some(package_json) = self.pkg_json.as_ref() {
+        return vec![CompilerOptionsSource {
+          compiler_options: None,
+          specifier: package_json.member.specifier(),
+        }];
+      }
       return Vec::new();
     };
     let root = deno_json.root.as_ref().map(|d| CompilerOptionsSource {
