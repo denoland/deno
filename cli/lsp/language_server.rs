@@ -3724,7 +3724,7 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let mut items_with_scopes = IndexMap::new();
-    for compiler_options_data in self.compiler_options_resolver.all() {
+    for (compiler_options_data, _) in self.compiler_options_resolver.all() {
       let scope = compiler_options_data
         .source()
         .and_then(|s| self.config.tree.scope_for_specifier(s));
@@ -3789,7 +3789,7 @@ impl Inner {
         self
           .compiler_options_resolver
           .all()
-          .map(|d| (d.key().to_string(), d.compiler_options()))
+          .map(|(d, _)| (d.key().to_string(), d.compiler_options()))
           .collect()
       }),
       matches!(

@@ -5028,7 +5028,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .scopes_with_node_specifier();
 
   // Insert global scripts.
-  for compiler_options_data in
+  for (compiler_options_data, maybe_files) in
     state.state_snapshot.compiler_options_resolver.all()
   {
     let compiler_options_key = compiler_options_data.key();
@@ -5049,9 +5049,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .get_scoped_resolver(scope.as_deref());
     let jsx_import_source_config =
       compiler_options_data.jsx_import_source_config();
-    // TODO(This PR): Include tsconfig `files` here.
-    for (referrer, types) in
-      compiler_options_data.compiler_options_types().iter()
+    for (referrer, relative_specifiers) in maybe_files
+      .into_iter()
+      .map(|(r, f)| {
+        let relative_specifiers =
+          Box::new(f.iter().map(|f| &f.relative_specifier))
+            as Box<dyn Iterator<Item = &String>>;
+        (r, relative_specifiers)
+      })
+      .chain(
+        compiler_options_data
+          .compiler_options_types()
+          .iter()
+          .map(|(r, t)| (r, Box::new(t.iter()) as _)),
+      )
     {
       let resolver = SingleReferrerGraphResolver {
         valid_referrer: referrer,
@@ -5059,10 +5070,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         cli_resolver: scoped_resolver.as_cli_resolver(),
         jsx_import_source_config: jsx_import_source_config.map(|c| c.as_ref()),
       };
-      for typ in types {
-        let Ok(mut type_specifier) = resolver
+      for relative_specifier in relative_specifiers {
+        let Ok(mut specifier) = resolver
           .resolve(
-            typ,
+            relative_specifier,
             &deno_graph::Range {
               specifier: referrer.clone(),
               range: deno_graph::PositionRange::zeroed(),
@@ -5072,16 +5083,14 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           )
           .inspect_err(|err| {
             lsp_warn!(
-              "Failed to resolve {typ} from `compilerOptions.types`: {err:#}"
+              "Failed to resolve {relative_specifier} from `compilerOptions.types`: {err:#}"
             );
           })
         else {
           continue;
         };
         if let Ok(req_ref) =
-          deno_semver::npm::NpmPackageReqReference::from_specifier(
-            &type_specifier,
-          )
+          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
         {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
@@ -5092,12 +5101,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
             lsp_log!("Failed to resolve {req_ref} to a file URL.");
             continue;
           };
-          type_specifier = resolved;
+          specifier = resolved;
         }
         let Some(module) = state
           .state_snapshot
           .document_modules
-          .module_for_specifier(&type_specifier, scope.as_deref())
+          .module_for_specifier(&specifier, scope.as_deref())
         else {
           continue;
         };
@@ -6053,7 +6062,7 @@ mod tests {
         snapshot
           .compiler_options_resolver
           .all()
-          .map(|d| (d.key().to_string(), d.compiler_options()))
+          .map(|(d, _)| (d.key().to_string(), d.compiler_options()))
           .collect(),
       ),
       None,

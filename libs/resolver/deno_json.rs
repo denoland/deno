@@ -735,20 +735,24 @@ impl CompilerOptionsResolver {
     self.workspace_configs.get_for_specifier(specifier)
   }
 
-  pub fn all(&self) -> impl Iterator<Item = &CompilerOptionsData> {
+  pub fn all(
+    &self,
+  ) -> impl Iterator<Item = (&CompilerOptionsData, Option<(&Url, &Vec<TsConfigFile>)>)>
+  {
     self
       .workspace_configs
       .entries()
-      .map(|(_, r)| r)
-      .chain(self.ts_configs.iter().map(|t| &t.compiler_options))
+      .map(|(_, r)| (r, None))
+      .chain(
+        self
+          .ts_configs
+          .iter()
+          .map(|t| (&t.compiler_options, t.files())),
+      )
   }
 
   pub fn size(&self) -> usize {
     self.workspace_configs.count() + self.ts_configs.len()
-  }
-
-  pub fn ts_configs(&self) -> &Vec<TsConfigData> {
-    &self.ts_configs
   }
 
   pub fn new_for_lsp<TSys: FsRead, NSys: NpmResolverSys>(

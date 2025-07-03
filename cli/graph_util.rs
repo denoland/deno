@@ -862,26 +862,23 @@ impl ModuleGraphBuilder {
           let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
             self.compiler_options_resolver.size(),
           );
-          for (referrer, files) in self
-            .compiler_options_resolver
-            .ts_configs()
-            .iter()
-            .filter_map(|t| t.files())
+          for (compiler_options_data, maybe_files) in
+            self.compiler_options_resolver.all()
           {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(files.iter().map(|f| f.relative_specifier.clone()));
-          }
-          for (referrer, types) in self
-            .compiler_options_resolver
-            .all()
-            .flat_map(|d| d.compiler_options_types().as_ref())
-          {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(types.clone());
+            if let Some((referrer, files)) = maybe_files {
+              imports_by_referrer
+                .entry(referrer)
+                .or_default()
+                .extend(files.iter().map(|f| f.relative_specifier.clone()));
+            }
+            for (referrer, types) in
+              compiler_options_data.compiler_options_types().as_ref()
+            {
+              imports_by_referrer
+                .entry(referrer)
+                .or_default()
+                .extend(types.iter().cloned());
+            }
           }
           imports_by_referrer
             .into_iter()

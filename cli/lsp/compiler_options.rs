@@ -10,6 +10,7 @@ use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::TsConfigFile;
 
 use crate::lsp::config::Config;
 use crate::lsp::resolver::LspResolver;
@@ -108,10 +109,17 @@ impl LspCompilerOptionsResolver {
     }
   }
 
-  pub fn all(&self) -> impl Iterator<Item = LspCompilerOptionsData<'_>> {
+  pub fn all(
+    &self,
+  ) -> impl Iterator<
+    Item = (
+      LspCompilerOptionsData<'_>,
+      Option<(&Url, &Vec<TsConfigFile>)>,
+    ),
+  > {
     self
       .inner
       .all()
-      .map(|d| LspCompilerOptionsData { inner: d })
+      .map(|(d, f)| (LspCompilerOptionsData { inner: d }, f))
   }
 }
