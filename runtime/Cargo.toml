@@ -37,11 +37,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 name = "deno_runtime"
 path = "lib.rs"
 
-[[example]]
-name = "extension"
-path = "examples/extension/main.rs"
-required-features = ["transpile"]
-
 [dependencies]
 deno_ast = { workspace = true, optional = true }
 deno_broadcast_channel.workspace = true
