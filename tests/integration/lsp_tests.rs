@@ -136,7 +136,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
   client.change_configuration(json!({
     "deno": {
       "enable": true,
-      "config": "sub_dir/types/tsconfig.json",
+      "config": "sub_dir/types.tsconfig.json",
       // Avoid finding the declaration file when walking the workspace.
       "disablePaths": ["sub_dir/a.d.ts"],
     },
