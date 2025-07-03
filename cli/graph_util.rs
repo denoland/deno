@@ -870,7 +870,7 @@ impl ModuleGraphBuilder {
           {
             if let Some((referrer, files)) = maybe_files {
               imports_by_referrer
-                .entry(referrer)
+                .entry(referrer.as_ref())
                 .or_default()
                 .extend(files.iter().map(|f| f.relative_specifier.clone()));
             }

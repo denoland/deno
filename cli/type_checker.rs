@@ -314,7 +314,7 @@ fn resolve_graph_imports_for_compiler_options_data(
     .sources
     .iter()
     .map(|s| &s.specifier)
-    .filter_map(|s| graph.imports.get(s))
+    .filter_map(|s| graph.imports.get(s.as_ref()))
     .flat_map(|i| i.dependencies.values())
     .filter_map(|d| Some(graph.resolve(d.get_type().or_else(|| d.get_code())?)))
     .cloned()

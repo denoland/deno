@@ -1179,7 +1179,7 @@ pub enum CompilerOptionsSourceKind {
 
 #[derive(Debug, Clone)]
 pub struct CompilerOptionsSource {
-  pub specifier: Url,
+  pub specifier: UrlRc,
   pub compiler_options: Option<CompilerOptions>,
 }
 
@@ -1592,18 +1592,10 @@ impl WorkspaceDirectory {
     &self,
   ) -> Vec<CompilerOptionsSource> {
     let Some(deno_json) = self.deno_json.as_ref() else {
-      // This is a hack to make `LspCompilerOptionsData::source()` return a
-      // value in more cases.
-      if let Some(package_json) = self.pkg_json.as_ref() {
-        return vec![CompilerOptionsSource {
-          compiler_options: None,
-          specifier: package_json.member.specifier(),
-        }];
-      }
       return Vec::new();
     };
     let root = deno_json.root.as_ref().map(|d| CompilerOptionsSource {
-      specifier: d.specifier.clone(),
+      specifier: new_rc(d.specifier.clone()),
       compiler_options: d
         .json
         .compiler_options
@@ -1613,7 +1605,7 @@ impl WorkspaceDirectory {
         .map(CompilerOptions),
     });
     let member = CompilerOptionsSource {
-      specifier: deno_json.member.specifier.clone(),
+      specifier: new_rc(deno_json.member.specifier.clone()),
       compiler_options: deno_json
         .member
         .json

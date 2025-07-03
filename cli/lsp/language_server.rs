@@ -3745,7 +3745,7 @@ impl Inner {
     let mut items_with_scopes = IndexMap::new();
     for (compiler_options_data, _) in self.compiler_options_resolver.all() {
       let scope = compiler_options_data
-        .source()
+        .workspace_dir_or_source_url()
         .and_then(|s| self.config.tree.scope_for_specifier(s));
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());

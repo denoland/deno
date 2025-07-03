@@ -50,6 +50,8 @@ use crate::npm::NpmResolverSys;
 use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
+type UrlRc = crate::sync::MaybeArc<Url>;
+#[allow(clippy::disallowed_types)]
 type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
@@ -94,6 +96,7 @@ struct MemoizedValues {
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
   pub source_kind: CompilerOptionsSourceKind,
+  workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
 }
@@ -102,11 +105,13 @@ impl CompilerOptionsData {
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
+    workspace_dir_url: Option<UrlRc>,
     logged_warnings: LoggedWarningsRc,
   ) -> Self {
     Self {
       sources,
       source_kind,
+      workspace_dir_url,
       memoized: Default::default(),
       logged_warnings,
     }
@@ -153,10 +158,11 @@ impl CompilerOptionsData {
         };
         let object = serde_json::from_value(compiler_options.0.clone())
           .map_err(|err| CompilerOptionsParseError {
-            specifier: source.specifier.clone(),
+            specifier: source.specifier.as_ref().clone(),
             source: err,
           })?;
-        let parsed = parse_compiler_options(object, Some(&source.specifier));
+        let parsed =
+          parse_compiler_options(object, Some(source.specifier.as_ref()));
         result.compiler_options.merge_object_mut(parsed.options);
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
@@ -180,9 +186,13 @@ impl CompilerOptionsData {
       )
       .map(new_rc)
       .map_err(|source| CompilerOptionsParseError {
-        specifier: self.sources.last().map(|s| s.specifier.clone()).expect(
-          "Compiler options parse errors must come from a user source.",
-        ),
+        specifier: self
+          .sources
+          .last()
+          .map(|s| s.specifier.as_ref().clone())
+          .expect(
+            "Compiler options parse errors must come from a user source.",
+          ),
         source,
       })
     })
@@ -204,7 +214,7 @@ impl CompilerOptionsData {
             .iter()
             .filter_map(|v| Some(v.as_str()?.to_string()))
             .collect();
-          Some((s.specifier.clone(), types))
+          Some((s.specifier.as_ref().clone(), types))
         })
         .collect();
       new_rc(types)
@@ -224,21 +234,21 @@ impl CompilerOptionsData {
       let import_source = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
           specifier: s.compiler_options.as_ref()?.0.as_object()?.get("jsxImportSource")?.as_str()?.to_string(),
-          base: s.specifier.clone()
+          base: s.specifier.as_ref().clone()
         })
       }).or_else(|| {
         if !is_jsx_automatic {
           return None;
         }
         Some(JsxImportSourceSpecifierConfig {
-          base: self.sources.last()?.specifier.clone(),
+          base: self.sources.last()?.specifier.as_ref().clone(),
           specifier: "react".to_string()
         })
       });
       let import_source_types = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
           specifier: s.compiler_options.as_ref()?.0.as_object()?.get("jsxImportSourceTypes")?.as_str()?.to_string(),
-          base: s.specifier.clone()
+          base: s.specifier.as_ref().clone()
         })
       }).or_else(|| import_source.clone());
       let module = match jsx {
@@ -266,7 +276,7 @@ impl CompilerOptionsData {
           return Err(
             ToMaybeJsxImportSourceConfigError::InvalidJsxCompilerOption {
               value: setting.to_string(),
-              specifier: setting_source.clone(),
+              specifier: setting_source.as_ref().clone(),
             },
           )
         }
@@ -295,6 +305,13 @@ impl CompilerOptionsData {
         })
         .unwrap_or(false)
     })
+  }
+
+  pub fn workspace_dir_or_source_url(&self) -> Option<&UrlRc> {
+    self
+      .workspace_dir_url
+      .as_ref()
+      .or_else(|| self.sources.last().map(|s| &s.specifier))
   }
 }
 
@@ -333,7 +350,7 @@ struct TsConfigFileFilter {
   // Note that `files`, `include` and `exclude` are overwritten, not merged,
   // when using `extends`. So we only need to store one referrer for `files`.
   // See: https://www.typescriptlang.org/tsconfig/#extends.
-  files: Option<(Url, Vec<TsConfigFile>)>,
+  files: Option<(UrlRc, Vec<TsConfigFile>)>,
   include: Option<PathOrPatternSet>,
   exclude: Option<PathOrPatternSet>,
   dir_path: PathBuf,
@@ -374,12 +391,12 @@ pub struct TsConfigData {
 }
 
 impl TsConfigData {
-  pub fn files(&self) -> Option<(&Url, &Vec<TsConfigFile>)> {
+  pub fn files(&self) -> Option<(&UrlRc, &Vec<TsConfigFile>)> {
     let (referrer, files) = self.filter.files.as_ref()?;
     Some((referrer, files))
   }
 
-  fn specifier(&self) -> &Url {
+  fn specifier(&self) -> &UrlRc {
     &self
       .compiler_options
       .sources
@@ -408,7 +425,7 @@ type GetNodeResolverFn<'a, NSys> =
 
 struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
   roots: BTreeSet<PathBuf>,
-  collected: IndexMap<Url, Rc<TsConfigData>>,
+  collected: IndexMap<UrlRc, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
@@ -532,9 +549,11 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
     let warn = |err: &dyn std::fmt::Display| {
       log::warn!("Failed reading {}: {}", path.display(), err);
     };
-    let specifier = url_from_file_path(path)
-      .inspect_err(|e| warn(e))
-      .map_err(|err| std::io::Error::new(ErrorKind::InvalidInput, err))?;
+    let specifier = new_rc(
+      url_from_file_path(path)
+        .inspect_err(|e| warn(e))
+        .map_err(|err| std::io::Error::new(ErrorKind::InvalidInput, err))?,
+    );
     let text = self.sys.fs_read_to_string(path).inspect_err(|e| {
       if e.kind() != ErrorKind::NotFound && !is_maybe_directory_error(e) {
         warn(e)
@@ -649,6 +668,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       compiler_options: CompilerOptionsData::new(
         sources,
         CompilerOptionsSourceKind::TsConfig,
+        None,
         self.logged_warnings.clone(),
       ),
       filter: new_rc(TsConfigFileFilter {
@@ -674,6 +694,7 @@ impl Default for CompilerOptionsResolver {
       workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
         Vec::new(),
         CompilerOptionsSourceKind::DenoJson,
+        None,
         Default::default(),
       )),
       ts_configs: Vec::new(),
@@ -696,6 +717,7 @@ impl CompilerOptionsResolver {
     let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
       root_dir.to_configured_compiler_options_sources(),
       CompilerOptionsSourceKind::DenoJson,
+      Some(root_dir.dir_url().clone()),
       logged_warnings.clone(),
     ));
     let mut ts_config_collector = TsConfigCollector::new(
@@ -713,6 +735,7 @@ impl CompilerOptionsResolver {
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
+            Some(dir_url.clone()),
             logged_warnings.clone(),
           ),
         );
@@ -737,8 +760,9 @@ impl CompilerOptionsResolver {
 
   pub fn all(
     &self,
-  ) -> impl Iterator<Item = (&CompilerOptionsData, Option<(&Url, &Vec<TsConfigFile>)>)>
-  {
+  ) -> impl Iterator<
+    Item = (&CompilerOptionsData, Option<(&UrlRc, &Vec<TsConfigFile>)>),
+  > {
     self
       .workspace_configs
       .entries()
@@ -757,26 +781,28 @@ impl CompilerOptionsResolver {
 
   pub fn new_for_lsp<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
-    dirs: BTreeMap<&Url, &WorkspaceDirectory>,
+    dirs_by_scope: BTreeMap<&UrlRc, &WorkspaceDirectory>,
     get_node_resolver: GetNodeResolverFn<'_, NSys>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
       Vec::new(),
       CompilerOptionsSourceKind::DenoJson,
+      None,
       logged_warnings.clone(),
     ));
     let mut ts_config_collector =
       TsConfigCollector::new(sys, get_node_resolver, &logged_warnings);
-    for dir in dirs.values() {
+    for (scope, dir) in dirs_by_scope {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
       workspace_configs.insert(
-        dir.dir_url().clone(),
+        scope.clone(),
         CompilerOptionsData::new(
           dir.to_configured_compiler_options_sources(),
           CompilerOptionsSourceKind::DenoJson,
+          Some(scope.clone()),
           logged_warnings.clone(),
         ),
       );

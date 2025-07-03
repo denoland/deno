@@ -5037,7 +5037,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .entry(compiler_options_key.to_string())
       .or_default();
     let scope = compiler_options_data
-      .source()
+      .workspace_dir_or_source_url()
       .and_then(|s| state.state_snapshot.config.tree.scope_for_specifier(s))
       .cloned();
     if scopes_with_node_specifier.contains(&scope) {
@@ -5055,7 +5055,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let relative_specifiers =
           Box::new(f.iter().map(|f| &f.relative_specifier))
             as Box<dyn Iterator<Item = &String>>;
-        (r, relative_specifiers)
+        (r.as_ref(), relative_specifiers)
       })
       .chain(
         compiler_options_data

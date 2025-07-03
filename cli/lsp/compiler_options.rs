@@ -23,11 +23,14 @@ pub struct LspCompilerOptionsData<'a> {
 
 impl<'a> LspCompilerOptionsData<'a> {
   pub fn key(&self) -> &'a str {
-    self.source().map(|s| s.as_str()).unwrap_or(".")
+    self
+      .workspace_dir_or_source_url()
+      .map(|s| s.as_str())
+      .unwrap_or(".")
   }
 
-  pub fn source(&self) -> Option<&'a Url> {
-    self.inner.sources.last().map(|s| &s.specifier)
+  pub fn workspace_dir_or_source_url(&self) -> Option<&'a Arc<Url>> {
+    self.inner.workspace_dir_or_source_url()
   }
 
   pub fn compiler_options(&self) -> Arc<CompilerOptions> {
@@ -88,7 +91,7 @@ impl LspCompilerOptionsResolver {
         .tree
         .data_by_scope()
         .iter()
-        .map(|(s, d)| (s.as_ref(), d.member_dir.as_ref()))
+        .map(|(s, d)| (s, d.member_dir.as_ref()))
         .collect(),
       Box::new(|s| {
         resolver
@@ -109,12 +112,13 @@ impl LspCompilerOptionsResolver {
     }
   }
 
+  #[allow(clippy::type_complexity)]
   pub fn all(
     &self,
   ) -> impl Iterator<
     Item = (
       LspCompilerOptionsData<'_>,
-      Option<(&Url, &Vec<TsConfigFile>)>,
+      Option<(&Arc<Url>, &Vec<TsConfigFile>)>,
     ),
   > {
     self
