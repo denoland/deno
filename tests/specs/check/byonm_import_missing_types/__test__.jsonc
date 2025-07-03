@@ -1,4 +1,4 @@
 {
   "args": "check main.ts",
-"output": "check.out"
+  "output": "check.out"
 }

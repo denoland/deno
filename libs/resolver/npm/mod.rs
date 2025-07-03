@@ -467,7 +467,7 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if err.as_types_not_found().is_some() {
+        if let Some(err) = err.as_types_not_found() {
           let maybe_definitely_typed_req =
             if let Some(npm_resolver) = self.npm_resolver.as_managed() {
               let snapshot = npm_resolver.resolution().snapshot();
@@ -501,6 +501,7 @@ impl<
               return Ok(resolved);
             }
           }
+          return Ok(err.0.code_specifier.clone());
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
@@ -536,6 +537,11 @@ impl<
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();
+        if let Some(err) = err.as_types_not_found() {
+          return Ok(Some(NodeResolution::Module(
+            err.0.code_specifier.clone(),
+          )));
+        }
         match err {
           NodeResolveErrorKind::RelativeJoin(_)
           | NodeResolveErrorKind::PackageImportsResolve(_)
