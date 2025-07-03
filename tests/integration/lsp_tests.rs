@@ -113,34 +113,32 @@ fn lsp_tsconfig_types() {
 fn lsp_tsconfig_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "sub_dir/types.tsconfig.json",
-    json!({
-      "compilerOptions": {
-        "types": ["./a.d.ts"],
-      },
-      "lint": {
-        "rules": { "tags": [] },
-      },
-    })
-    .to_string(),
+
+  let sub_dir = temp_dir.path().join("sub_dir");
+  sub_dir.create_dir_all();
+  sub_dir.join("types.tsconfig.json").write(
+    r#"{
+  "compilerOptions": {
+    "types": ["./a.d.ts"]
+  },
+  "lint": {
+    "rules": {
+      "tags": []
+    }
+  }
+}"#,
   );
-  temp_dir.write(
-    "sub_dir/a.d.ts",
-    "// deno-lint-ignore-file no-var\ndeclare var a: string;\n",
-  );
-  temp_dir.write("deno.json", json!({}).to_string());
+  let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
+  sub_dir.join("a.d.ts").write(a_dts);
+  temp_dir.write("deno.json", "{}");
 
   let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.change_configuration(json!({
-    "deno": {
-      "enable": true,
-      "config": "sub_dir/types.tsconfig.json",
-      // Avoid finding the declaration file when walking the workspace.
-      "disablePaths": ["sub_dir/a.d.ts"],
-    },
-  }));
+  client.initialize(|builder| {
+    builder
+      .set_config("sub_dir/types.tsconfig.json")
+      // avoid finding the declaration file via the document preload
+      .set_preload_limit(0);
+  });
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
