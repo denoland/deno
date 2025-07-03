@@ -5,9 +5,9 @@ use std::marker::PhantomData;
 use bytes::Bytes;
 use bytes::BytesMut;
 use httparse::Status;
+use hyper::Response;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
-use hyper::Response;
 use once_cell::sync::OnceCell;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

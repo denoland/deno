@@ -295,13 +295,13 @@ impl SystemPty for std::fs::File {}
 
 #[cfg(unix)]
 fn setup_pty(fd: i32) {
-  use nix::fcntl::fcntl;
   use nix::fcntl::FcntlArg;
   use nix::fcntl::OFlag;
+  use nix::fcntl::fcntl;
   use nix::sys::termios;
+  use nix::sys::termios::SetArg;
   use nix::sys::termios::tcgetattr;
   use nix::sys::termios::tcsetattr;
-  use nix::sys::termios::SetArg;
 
   // SAFETY: Nix crate requires value to implement the AsFd trait
   let as_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
@@ -396,8 +396,8 @@ mod unix {
 
   impl Drop for UnixPty {
     fn drop(&mut self) {
-      use nix::sys::signal::kill;
       use nix::sys::signal::Signal;
+      use nix::sys::signal::kill;
       kill(self.pid, Signal::SIGTERM).unwrap()
     }
   }
@@ -458,9 +458,9 @@ mod windows {
   use winapi::um::processthreadsapi::DeleteProcThreadAttributeList;
   use winapi::um::processthreadsapi::GetCurrentProcess;
   use winapi::um::processthreadsapi::InitializeProcThreadAttributeList;
-  use winapi::um::processthreadsapi::UpdateProcThreadAttribute;
   use winapi::um::processthreadsapi::LPPROC_THREAD_ATTRIBUTE_LIST;
   use winapi::um::processthreadsapi::PROCESS_INFORMATION;
+  use winapi::um::processthreadsapi::UpdateProcThreadAttribute;
   use winapi::um::synchapi::WaitForSingleObject;
   use winapi::um::winbase::CREATE_UNICODE_ENVIRONMENT;
   use winapi::um::winbase::EXTENDED_STARTUPINFO_PRESENT;

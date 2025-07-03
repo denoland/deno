@@ -17,12 +17,12 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
+use deno_core::RequestedModuleType;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
@@ -32,15 +32,15 @@ use deno_resolver::loader::LoadPreparedModuleError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_client::protocol;
-use esbuild_client::protocol::BuildResponse;
 use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
+use esbuild_client::protocol;
+use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
-use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::PackageSubpathResolveError;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
@@ -640,10 +640,10 @@ impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
     match self {
       BundleLoadError::CliModuleLoader(
-        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(ref e)),
+        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
       ) => match &**e {
         LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(ref e),
+          LoadPreparedModuleError::Graph(e),
         ) => matches!(
           e.error.as_kind(),
           ModuleErrorKind::UnsupportedMediaType { .. },
@@ -1041,19 +1041,20 @@ fn resolve_roots(
   let mut roots = Vec::with_capacity(entrypoints.len());
 
   for url in entrypoints {
-    let root = if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
-      let referrer =
-        ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+    let root = match NpmPackageReqReference::from_specifier(&url) {
+      Ok(v) => {
+        let referrer =
+          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+            .unwrap();
+        let package_folder = npm_resolver
+          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-      let package_folder = npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
-        .unwrap();
-      let main_module = node_resolver
-        .resolve_binary_export(&package_folder, v.sub_path())
-        .unwrap();
-      Url::from_file_path(&main_module).unwrap()
-    } else {
-      url
+        let main_module = node_resolver
+          .resolve_binary_export(&package_folder, v.sub_path())
+          .unwrap();
+        Url::from_file_path(&main_module).unwrap()
+      }
+      _ => url,
     };
     roots.push(root)
   }

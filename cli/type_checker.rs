@@ -35,8 +35,6 @@ use crate::cache::Caches;
 use crate::cache::TypeCheckCache;
 use crate::graph_util::module_error_for_tsc_diagnostic;
 use crate::graph_util::resolution_error_for_tsc_diagnostic;
-use crate::graph_util::BuildFastCheckGraphOptions;
-use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
@@ -673,8 +671,8 @@ impl<'a> GraphWalker<'a> {
   pub fn add_config_import(&mut self, specifier: &'a Url, referrer: &Url) {
     let specifier = self.graph.resolve(specifier);
     if self.seen.insert(specifier) {
-      if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
-        match self.resolve_npm_nv_ref(&nv_ref, referrer) {
+      match NpmPackageNvReference::from_specifier(specifier) {
+        Ok(nv_ref) => match self.resolve_npm_nv_ref(&nv_ref, referrer) {
           Some(resolved) => {
             let mt = MediaType::from_specifier(&resolved);
             self.roots.push((resolved, mt));
@@ -688,10 +686,11 @@ impl<'a> GraphWalker<'a> {
                 maybe_additional_sloppy_imports_message(self.sys, specifier),
               ));
           }
+        },
+        _ => {
+          self.pending.push_back((specifier, false));
+          self.resolve_pending();
         }
-      } else {
-        self.pending.push_back((specifier, false));
-        self.resolve_pending();
       }
     }
   }

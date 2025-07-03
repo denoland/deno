@@ -8,8 +8,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::NpmRc;
-use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 

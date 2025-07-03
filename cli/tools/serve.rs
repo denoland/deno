@@ -4,20 +4,20 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::ModuleSpecifier;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::UnconfiguredRuntime;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
-use crate::args::parallelism_count;
 use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::args::WorkspaceMainModuleResolver;
+use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;

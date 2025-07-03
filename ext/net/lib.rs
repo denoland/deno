@@ -18,8 +18,8 @@ use std::sync::Arc;
 use deno_core::OpState;
 use deno_features::FeatureChecker;
 use deno_permissions::PermissionCheckError;
-use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::rustls::RootCertStore;
 pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";

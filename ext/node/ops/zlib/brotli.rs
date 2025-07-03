@@ -2,21 +2,21 @@
 use std::cell::RefCell;
 use std::io::Read;
 
+use brotli::BrotliDecompressStream;
+use brotli::BrotliResult;
+use brotli::BrotliState;
+use brotli::Decompressor;
 use brotli::enc::backward_references::BrotliEncoderMode;
 use brotli::enc::encode::BrotliEncoderCompress;
 use brotli::enc::encode::BrotliEncoderOperation;
 use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
-use brotli::BrotliDecompressStream;
-use brotli::BrotliResult;
-use brotli::BrotliState;
-use brotli::Decompressor;
-use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BrotliError {
@@ -102,11 +102,7 @@ fn max_compressed_size(input_size: usize) -> usize {
   let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
   let result = input_size + overhead;
 
-  if result < input_size {
-    0
-  } else {
-    result
-  }
+  if result < input_size { 0 } else { result }
 }
 
 #[op2(async)]

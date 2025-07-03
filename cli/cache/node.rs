@@ -7,10 +7,10 @@ use deno_resolver::cjs::analyzer::NodeAnalysisCache;
 use deno_resolver::cjs::analyzer::NodeAnalysisCacheSourceHash;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
+use super::CacheDBHash;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
-use super::CacheDBHash;
 
 pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   CacheDBConfiguration {
@@ -156,10 +156,12 @@ mod test {
     let conn = CacheDB::in_memory(&NODE_ANALYSIS_CACHE_DB, "1.0.0");
     let cache = NodeAnalysisCacheInner::new(conn);
 
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(2))
-      .unwrap()
-      .is_none());
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(2))
+        .unwrap()
+        .is_none()
+    );
     let cjs_analysis = DenoCjsAnalysis::Cjs(ModuleExportsAndReExports {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
@@ -167,10 +169,12 @@ mod test {
     cache
       .set_cjs_analysis("file.js", CacheDBHash::new(2), &cjs_analysis)
       .unwrap();
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(3))
-      .unwrap()
-      .is_none()); // different hash
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(3))
+        .unwrap()
+        .is_none()
+    ); // different hash
     let actual_cjs_analysis = cache
       .get_cjs_analysis("file.js", CacheDBHash::new(2))
       .unwrap()
@@ -194,9 +198,11 @@ mod test {
     // now changing the cli version should clear it
     let conn = cache.conn.recreate_with_version("2.0.0");
     let cache = NodeAnalysisCacheInner::new(conn);
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(2))
-      .unwrap()
-      .is_none());
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(2))
+        .unwrap()
+        .is_none()
+    );
   }
 }

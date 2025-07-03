@@ -10,14 +10,14 @@ use std::ffi::c_void;
 ))]
 use std::ptr::NonNull;
 
+use deno_core::FromV8;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Local;
 use deno_core::v8::Value;
-use deno_core::FromV8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 
 use crate::surface::GPUCanvasContext;
@@ -25,7 +25,9 @@ use crate::surface::GPUCanvasContext;
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
   #[class(type)]
-  #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
+  #[error(
+    "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
+  )]
   WebGPUNotInitiated,
   #[class(type)]
   #[error("Invalid parameters")]
@@ -215,7 +217,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
       _ => {
         return Err(JsErrorBox::type_error(format!(
           "Invalid system kind '{s}'"
-        )))
+        )));
       }
     };
 

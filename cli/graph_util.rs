@@ -9,14 +9,12 @@ use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveError;
 use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
@@ -28,8 +26,10 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::WorkspaceFastCheckOption;
-use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_graph::source::Loader;
+use deno_graph::source::ResolveError;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
@@ -40,16 +40,16 @@ use deno_resolver::graph::format_deno_graph_error;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::SmallStackString;
+use deno_semver::jsr::JsrDepPackageReq;
 use indexmap::IndexMap;
 use sys_traits::FsMetadata;
 
-use crate::args::config_to_deno_graph_workspace_member;
-use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
+use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::jsr_url;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -110,17 +110,18 @@ pub fn graph_valid(
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
-  if let Some(error) = errors.next() {
-    Err(error)
-  } else {
-    // finally surface the npm resolution result
-    if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(JsErrorBox::new(
-        err.get_class(),
-        format_deno_graph_error(err),
-      ));
+  match errors.next() {
+    Some(error) => Err(error),
+    _ => {
+      // finally surface the npm resolution result
+      if let Err(err) = &graph.npm_dep_graph_result {
+        return Err(JsErrorBox::new(
+          err.get_class(),
+          format_deno_graph_error(err),
+        ));
+      }
+      Ok(())
     }
-    Ok(())
   }
 }
 
@@ -615,7 +616,9 @@ pub enum BuildGraphWithNpmResolutionError {
   #[error(transparent)]
   Other(#[from] JsErrorBox),
   #[class(generic)]
-  #[error("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead")]
+  #[error(
+    "Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead"
+  )]
   UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 

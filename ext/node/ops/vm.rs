@@ -5,11 +5,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use deno_core::JsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use deno_core::JsBuffer;
 
 use crate::create_host_defined_options;
 

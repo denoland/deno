@@ -4,9 +4,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::Extension;
 use deno_core::snapshot::*;
 use deno_core::v8;
-use deno_core::Extension;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 

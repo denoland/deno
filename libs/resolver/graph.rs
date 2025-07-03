@@ -26,14 +26,14 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
 use url::Url;
 
+use crate::DenoResolveError;
+use crate::DenoResolverSys;
+use crate::RawDenoResolverRc;
 use crate::cjs::CjsTracker;
 use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
 use crate::workspace::sloppy_imports_resolve;
 use crate::workspace::MappedResolutionDiagnostic;
-use crate::DenoResolveError;
-use crate::DenoResolverSys;
-use crate::RawDenoResolverRc;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
@@ -190,11 +190,11 @@ pub struct DenoResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > std::fmt::Debug
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> std::fmt::Debug
   for DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -208,11 +208,11 @@ impl<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+>
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -299,23 +299,24 @@ impl<
       None => {
         if options.maintain_npm_specifiers {
           specifier.into_owned()
-        } else if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(&specifier)
-        {
-          if let Some(url) =
-            self.resolver.resolve_non_workspace_npm_req_ref_to_file(
-              &reference,
-              referrer,
-              options.mode,
-              options.kind,
-            )?
-          {
-            url.into_url()?
-          } else {
-            specifier.into_owned()
-          }
         } else {
-          specifier.into_owned()
+          match NpmPackageReqReference::from_specifier(&specifier) {
+            Ok(reference) => {
+              if let Some(url) =
+                self.resolver.resolve_non_workspace_npm_req_ref_to_file(
+                  &reference,
+                  referrer,
+                  options.mode,
+                  options.kind,
+                )?
+              {
+                url.into_url()?
+              } else {
+                specifier.into_owned()
+              }
+            }
+            _ => specifier.into_owned(),
+          }
         }
       }
     };
@@ -449,11 +450,11 @@ pub struct DenoGraphResolverAdapter<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > std::fmt::Debug
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> std::fmt::Debug
   for DenoGraphResolverAdapter<
     '_,
     TInNpmPackageChecker,
@@ -468,11 +469,11 @@ impl<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  > deno_graph::source::Resolver
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+> deno_graph::source::Resolver
   for DenoGraphResolverAdapter<
     '_,
     TInNpmPackageChecker,

@@ -5,8 +5,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::path::PathBuf;
 
-use anyhow::anyhow;
 use anyhow::Error as AnyError;
+use anyhow::anyhow;
 use deno_unsync::sync::AtomicFlag;
 use url::Url;
 

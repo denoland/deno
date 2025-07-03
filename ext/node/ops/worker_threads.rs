@@ -4,9 +4,9 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;

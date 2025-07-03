@@ -7,12 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::Error as AnyError;
 use deno_error::JsErrorBox;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_semver::package::PackageNv;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;

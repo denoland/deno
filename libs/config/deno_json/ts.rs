@@ -48,9 +48,18 @@ impl fmt::Display for IgnoredCompilerOptions {
     let mut codes = self.items.clone();
     codes.sort_unstable();
     if let Some(specifier) = &self.maybe_specifier {
-      write!(f, "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}", specifier, codes.join(", "))
+      write!(
+        f,
+        "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}",
+        specifier,
+        codes.join(", ")
+      )
     } else {
-      write!(f, "Unsupported compiler options provided.\n  The following options were ignored:\n    {}", codes.join(", "))
+      write!(
+        f,
+        "Unsupported compiler options provided.\n  The following options were ignored:\n    {}",
+        codes.join(", ")
+      )
     }
   }
 }

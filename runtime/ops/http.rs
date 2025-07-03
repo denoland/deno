@@ -2,10 +2,10 @@
 
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
