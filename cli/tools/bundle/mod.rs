@@ -730,7 +730,7 @@ impl DenoPluginHandler {
       Position::new(0, 0),
       ResolveWithGraphOptions {
         mode: import_kind_to_resolution_mode(kind),
-        kind: NodeResolutionKind::Execution,
+        kind: NodeResolutionKind::Bundling,
         maintain_npm_specifiers: false,
       },
     );
