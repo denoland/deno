@@ -65,6 +65,7 @@ use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsData;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 
 #[derive(Debug)]
@@ -888,15 +889,18 @@ impl DocumentModule {
     );
     let (parsed_source, maybe_module, resolution_mode) =
       if media_type_is_diagnosable(media_type) {
+        let file_referrer = Some(specifier.as_ref())
+          .filter(|s| s.scheme() == "file")
+          .or(scope.as_deref());
+        let compiler_options_data =
+          file_referrer.map(|s| compiler_options_resolver.for_specifier(s));
         parse_and_analyze_module(
           specifier.as_ref().clone(),
           text.to_arc(),
           headers.as_ref(),
           media_type,
-          Some(specifier.as_ref())
-            .filter(|s| s.scheme() == "file")
-            .or(scope.as_deref()),
-          compiler_options_resolver,
+          file_referrer,
+          compiler_options_data,
           resolver,
         )
       } else {
@@ -1928,7 +1932,7 @@ fn parse_and_analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   file_referrer: Option<&ModuleSpecifier>,
-  compiler_options_resolver: &LspCompilerOptionsResolver,
+  compiler_options_data: Option<LspCompilerOptionsData<'_>>,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1941,7 +1945,7 @@ fn parse_and_analyze_module(
     &parsed_source_result,
     maybe_headers,
     file_referrer,
-    compiler_options_resolver,
+    compiler_options_data,
     resolver,
   );
   (
@@ -1972,7 +1976,7 @@ fn analyze_module(
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   file_referrer: Option<&ModuleSpecifier>,
-  compiler_options_resolver: &LspCompilerOptionsResolver,
+  compiler_options_data: Option<LspCompilerOptionsData<'_>>,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
@@ -1981,11 +1985,8 @@ fn analyze_module(
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config = file_referrer.and_then(|s| {
-        compiler_options_resolver
-          .for_specifier(s)
-          .jsx_import_source_config()
-      });
+      let jsx_import_source_config =
+        compiler_options_data.and_then(|d| d.jsx_import_source_config());
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
