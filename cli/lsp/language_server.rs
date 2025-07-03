@@ -2622,7 +2622,7 @@ impl Inner {
     let mut locations = IndexSet::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_scope(&document)
+      .inspect_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3015,7 +3015,7 @@ impl Inner {
     let mut implementations_with_modules = IndexMap::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_scope(&document)
+      .inspect_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3145,7 +3145,7 @@ impl Inner {
     let mut incoming_calls_with_modules = IndexMap::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_scope(&document)
+      .inspect_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3354,9 +3354,10 @@ impl Inner {
       return Ok(None);
     };
     let mut locations_with_modules = IndexMap::new();
-    for (scope, module) in self
+    for module in self
       .document_modules
-      .inspect_or_temp_modules_by_scope(&document)
+      .inspect_or_temp_modules_by_compiler_options_key(&document)
+      .into_values()
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3377,7 +3378,7 @@ impl Inner {
             lsp_warn!(
               "Unable to get rename locations from TypeScript: {:#}\nScope: {}",
               err,
-              scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
+              module.scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
             );
           }
         })
@@ -3684,9 +3685,10 @@ impl Inner {
       else {
         continue;
       };
-      for (scope, module) in self
+      for module in self
         .document_modules
-        .inspect_or_temp_modules_by_scope(&document)
+        .inspect_or_temp_modules_by_compiler_options_key(&document)
+        .into_values()
       {
         if token.is_cancelled() {
           return Err(LspError::request_cancelled());
@@ -3717,7 +3719,7 @@ impl Inner {
             lsp_warn!(
               "Unable to get edits for file rename from TypeScript: {:#}\nScope: {}",
               err,
-              scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
+              module.scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
             );
             LspError::internal_error()
           }

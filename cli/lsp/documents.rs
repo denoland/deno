@@ -1209,6 +1209,7 @@ impl DocumentModules {
       .or_else(|| self.infer_specifier(document))?;
     let compiler_options_data = self.compiler_options_resolver.for_specifier(
       if specifier.scheme() != "file" && scope.is_some() {
+        #[allow(clippy::unnecessary_unwrap)]
         scope.unwrap()
       } else {
         &specifier
@@ -1372,49 +1373,35 @@ impl DocumentModules {
   }
 
   /// This will not store any module entries, only retrieve existing entries or
-  /// create temporary entries for scopes where one doesn't exist.
+  /// create temporary entries for other keys.
   // TODO(nayeemrmn): Support notebook scopes here.
-  pub fn inspect_or_temp_modules_by_scope(
+  pub fn inspect_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+  ) -> BTreeMap<String, Arc<DocumentModule>> {
+    let Some(primary_module) = self.primary_module(document) else {
+      return Default::default();
+    };
     let mut result = BTreeMap::new();
-    let specifier = Arc::new(uri_to_url(document.uri()));
-    for (scope, modules) in self.modules_by_scope.iter() {
-      let module = modules.get(document).unwrap_or_else(|| {
-        let compiler_options_data = self
-          .compiler_options_resolver
-          .for_specifier(if specifier.scheme() != "file" {
-            scope
-          } else {
-            &specifier
-          });
+    for (compiler_options_data, _) in self.compiler_options_resolver.all() {
+      let key = compiler_options_data.key();
+      if key == primary_module.compiler_options_key {
+        continue;
+      }
+      result.insert(
+        key.to_string(),
         Arc::new(DocumentModule::new(
           document,
-          specifier.clone(),
+          primary_module.specifier.clone(),
           compiler_options_data,
-          Some(scope.clone()),
+          primary_module.scope.clone(),
           &self.resolver,
           &self.config,
           &self.cache,
-        ))
-      });
-      result.insert(Some(scope.clone()), module);
+        )),
+      );
     }
-    let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
-      let compiler_options_data =
-        self.compiler_options_resolver.for_specifier(&specifier);
-      Arc::new(DocumentModule::new(
-        document,
-        specifier,
-        compiler_options_data,
-        None,
-        &self.resolver,
-        &self.config,
-        &self.cache,
-      ))
-    });
-    result.insert(None, module);
+    result.insert(primary_module.compiler_options_key.clone(), primary_module);
     result
   }
 
