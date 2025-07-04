@@ -790,10 +790,10 @@ fn setup_signal_handlers() {
         return;
       };
 
-      loop {
-        signal_fut.recv().await;
-        flush();
-      }
+      signal_fut.recv().await;
+      eprintln!("Received signal, exiting...");
+      flush();
+      std::process::exit(0);
     });
   }
 }
@@ -804,50 +804,50 @@ fn setup_signal_handlers() {
     let Ok(mut signal_fut) = tokio::signal::windows::ctrl_break() else {
       return;
     };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
+    signal_fut.recv().await;
+    eprintln!("Received signal, exiting...");
+    flush();
+    std::process::exit(0);
   });
 
   tokio::spawn(async {
     let Ok(mut signal_fut) = tokio::signal::windows::ctrl_c() else {
       return;
     };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
+    signal_fut.recv().await;
+    eprintln!("Received signal, exiting...");
+    flush();
+    std::process::exit(0);
   });
 
   tokio::spawn(async {
     let Ok(mut signal_fut) = tokio::signal::windows::ctrl_close() else {
       return;
     };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
+    signal_fut.recv().await;
+    eprintln!("Received signal, exiting...");
+    flush();
+    std::process::exit(0);
   });
 
   tokio::spawn(async {
     let Ok(mut signal_fut) = tokio::signal::windows::ctrl_logoff() else {
       return;
     };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
+    signal_fut.recv().await;
+    eprintln!("Received signal, exiting...");
+    flush();
+    std::process::exit(0);
   });
 
   tokio::spawn(async {
     let Ok(mut signal_fut) = tokio::signal::windows::ctrl_shutdown() else {
       return;
     };
-    loop {
-      signal_fut.recv().await;
-      flush();
-    }
+    signal_fut.recv().await;
+    eprintln!("Received signal, exiting...");
+    flush();
+    std::process::exit(0);
   });
 }
 
