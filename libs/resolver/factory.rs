@@ -197,7 +197,6 @@ pub struct NpmProcessStateOptions {
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
-  pub compiler_options_overrides: CompilerOptionsOverrides,
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
@@ -661,6 +660,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
 #[derive(Default)]
 pub struct ResolverFactoryOptions {
+  pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
@@ -847,7 +847,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.workspace_factory.workspace_directory_provider()?,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
-        &self.workspace_factory.options.compiler_options_overrides,
+        &self.options.compiler_options_overrides,
       )))
     })
   }

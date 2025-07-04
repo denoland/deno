@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::FastString;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -164,10 +165,8 @@ pub trait NodeRequireLoader {
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
-  fn load_text_file_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox>;
+  fn load_text_file_lossy(&self, path: &Path)
+  -> Result<FastString, JsErrorBox>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
