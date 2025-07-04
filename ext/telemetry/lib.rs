@@ -791,7 +791,7 @@ fn setup_signal_handlers() {
       };
 
       signal_fut.recv().await;
-      eprintln!("Received signal, exiting...");
+      log::error!("Received signal, exiting...");
       flush();
       std::process::exit(0);
     });
