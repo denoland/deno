@@ -33,3 +33,7 @@ pin-project.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tower-service.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true
