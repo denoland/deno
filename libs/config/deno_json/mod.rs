@@ -34,10 +34,7 @@ mod ts;
 
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
-pub use ts::IgnoredCompilerOptions;
-pub use ts::ParsedCompilerOptions;
 pub use ts::RawJsxCompilerOptions;
-pub use ts::parse_compiler_options;
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -900,19 +897,7 @@ pub trait DenoJsonCache {
 }
 
 #[derive(Debug, Error, JsError)]
-#[class(type)]
-#[error("compilerOptions should be an object at '{specifier}'")]
-pub struct CompilerOptionsParseError {
-  pub specifier: Url,
-  #[source]
-  pub source: serde_json::Error,
-}
-
-#[derive(Debug, Error, JsError)]
 pub enum ConfigFileError {
-  #[class(inherit)]
-  #[error(transparent)]
-  CompilerOptionsParseError(CompilerOptionsParseError),
   #[class(type)]
   #[error(
     "Only file: specifiers are supported for security reasons in import maps stored in a deno.json. To use a remote import map, use the --import-map flag and \"deno.importMap\" in the language server config"
@@ -1232,34 +1217,6 @@ impl ConfigFile {
       .parent()
       .unwrap()
       .to_path_buf()
-  }
-
-  /// Returns if the configuration indicates that JavaScript should be
-  /// type checked, otherwise None if not set.
-  pub fn check_js(&self) -> Option<bool> {
-    self
-      .json
-      .compiler_options
-      .as_ref()
-      .and_then(|co| co.get("checkJs").and_then(|v| v.as_bool()))
-  }
-
-  /// Parse `compilerOptions` and return a serde `Value`.
-  /// The result also contains any options that were ignored.
-  pub fn to_compiler_options(
-    &self,
-  ) -> Result<Option<ParsedCompilerOptions>, CompilerOptionsParseError> {
-    let Some(compiler_options) = self.json.compiler_options.clone() else {
-      return Ok(None);
-    };
-    let options: serde_json::Map<String, Value> =
-      serde_json::from_value(compiler_options).map_err(|source| {
-        CompilerOptionsParseError {
-          specifier: self.specifier.clone(),
-          source,
-        }
-      })?;
-    Ok(Some(parse_compiler_options(options, Some(&self.specifier))))
   }
 
   pub fn to_import_map_specifier(
@@ -1804,48 +1761,6 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_compiler_option_types(
-    &self,
-  ) -> Result<Option<(Url, Vec<String>)>, CompilerOptionTypesDeserializeError>
-  {
-    let Some(compiler_options_value) = self.json.compiler_options.as_ref()
-    else {
-      return Ok(None);
-    };
-    let Some(types) = compiler_options_value.get("types") else {
-      return Ok(None);
-    };
-    let imports: Vec<String> =
-      serde_json::from_value(types.clone()).map_err(|source| {
-        CompilerOptionTypesDeserializeError {
-          specifier: self.specifier.clone(),
-          source,
-        }
-      })?;
-    if !imports.is_empty() {
-      let referrer = self.specifier.clone();
-      Ok(Some((referrer, imports)))
-    } else {
-      Ok(None)
-    }
-  }
-
-  /// Based on the compiler options in the configuration file, return the
-  /// JSX import source configuration.
-  pub fn to_raw_jsx_compiler_options(&self) -> RawJsxCompilerOptions {
-    self
-      .json
-      .compiler_options
-      .as_ref()
-      .and_then(|compiler_options_value| {
-        serde_json::from_value::<RawJsxCompilerOptions>(
-          compiler_options_value.clone(),
-        )
-        .ok()
-      })
-      .unwrap_or_default()
-  }
-
   pub fn resolve_tasks_config(
     &self,
   ) -> Result<IndexMap<String, TaskDefinition>, ResolveTaskConfigError> {
@@ -1910,12 +1825,6 @@ impl ConfigFile {
       }
     }
   }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompilerOptionsWithIgnoredOptions {
-  pub compiler_options: CompilerOptions,
-  pub ignored_options: Vec<IgnoredCompilerOptions>,
 }
 
 #[cfg(test)]
@@ -2030,22 +1939,6 @@ mod tests {
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file =
       ConfigFile::new(config_text, config_specifier.clone()).unwrap();
-    let ParsedCompilerOptions {
-      options,
-      maybe_ignored,
-    } = config_file
-      .to_compiler_options()
-      .unwrap()
-      .unwrap_or_default();
-    assert!(options.contains_key("strict"));
-    assert_eq!(options.len(), 1);
-    assert_eq!(
-      maybe_ignored,
-      Some(IgnoredCompilerOptions {
-        items: vec!["build".to_string()],
-        maybe_specifier: Some(config_specifier),
-      }),
-    );
 
     let config_dir_path = url_to_file_path(&config_dir).unwrap();
     assert_eq!(
@@ -2205,16 +2098,14 @@ mod tests {
   fn test_parse_config_with_empty_file() {
     let config_text = "";
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    config_file.to_compiler_options().unwrap(); // no panic
+    ConfigFile::new(config_text, config_specifier).unwrap(); // no panic
   }
 
   #[test]
   fn test_parse_config_with_commented_file() {
     let config_text = r#"//{"foo":"bar"}"#;
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    config_file.to_compiler_options().unwrap(); // no panic
+    ConfigFile::new(config_text, config_specifier).unwrap(); // no panic
   }
 
   #[test]
@@ -2228,8 +2119,6 @@ mod tests {
     }"#;
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-
-    config_file.to_compiler_options().unwrap(); // no panic
 
     let test_config = config_file.to_test_config().unwrap();
     assert_eq!(test_config.files.include, None);
@@ -2261,8 +2150,6 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
-    config_file.to_compiler_options().unwrap(); // no panic
-
     let publish_config = config_file.to_publish_config().unwrap();
     assert_eq!(publish_config.files.include, None);
     assert_eq!(
@@ -2282,8 +2169,6 @@ mod tests {
     }"#;
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-
-    config_file.to_compiler_options().unwrap(); // no panic
 
     let files_config = config_file.to_exclude_files_config().unwrap();
     assert_eq!(files_config.include, None);

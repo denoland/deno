@@ -2703,6 +2703,7 @@ dependencies = [
  "node_resolver",
  "once_cell",
  "parking_lot",
+ "phf",
  "serde",
  "serde_json",
  "sys_traits",

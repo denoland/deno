@@ -10,9 +10,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_config::deno_json::CompilerOptions;
-use deno_config::deno_json::CompilerOptionsParseError;
-use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
-use deno_config::deno_json::parse_compiler_options;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::CompilerOptionsSourceKind;
@@ -23,6 +20,7 @@ use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::get_base_compiler_options_for_emit;
+use deno_error::JsError;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -38,7 +36,10 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
 use once_cell::unsync::OnceCell;
+use serde::Serialize;
+use serde::Serializer;
 use sys_traits::FsRead;
+use thiserror::Error;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
@@ -56,6 +57,142 @@ type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
   crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
+
+/// A structure that represents a set of options that were ignored and the
+/// path those options came from.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct IgnoredCompilerOptions {
+  pub items: Vec<String>,
+  pub maybe_specifier: Option<Url>,
+}
+
+impl std::fmt::Display for IgnoredCompilerOptions {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    let mut codes = self.items.clone();
+    codes.sort_unstable();
+    if let Some(specifier) = &self.maybe_specifier {
+      write!(
+        f,
+        "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}",
+        specifier,
+        codes.join(", ")
+      )
+    } else {
+      write!(
+        f,
+        "Unsupported compiler options provided.\n  The following options were ignored:\n    {}",
+        codes.join(", ")
+      )
+    }
+  }
+}
+
+impl Serialize for IgnoredCompilerOptions {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.items, serializer)
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompilerOptionsWithIgnoredOptions {
+  pub compiler_options: CompilerOptions,
+  pub ignored_options: Vec<IgnoredCompilerOptions>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ParsedCompilerOptions {
+  pub options: serde_json::Map<String, serde_json::Value>,
+  pub maybe_ignored: Option<IgnoredCompilerOptions>,
+}
+
+/// A set of all the compiler options that should be allowed;
+static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
+  "allowUnreachableCode",
+  "allowUnusedLabels",
+  "checkJs",
+  "erasableSyntaxOnly",
+  "emitDecoratorMetadata",
+  "exactOptionalPropertyTypes",
+  "experimentalDecorators",
+  "isolatedDeclarations",
+  "jsx",
+  "jsxFactory",
+  "jsxFragmentFactory",
+  "jsxImportSource",
+  "jsxPrecompileSkipElements",
+  "lib",
+  "noErrorTruncation",
+  "noFallthroughCasesInSwitch",
+  "noImplicitAny",
+  "noImplicitOverride",
+  "noImplicitReturns",
+  "noImplicitThis",
+  "noPropertyAccessFromIndexSignature",
+  "noUncheckedIndexedAccess",
+  "noUnusedLocals",
+  "noUnusedParameters",
+  "rootDirs",
+  "strict",
+  "strictBindCallApply",
+  "strictBuiltinIteratorReturn",
+  "strictFunctionTypes",
+  "strictNullChecks",
+  "strictPropertyInitialization",
+  "types",
+  "useUnknownInCatchVariables",
+  "verbatimModuleSyntax",
+};
+
+pub fn parse_compiler_options(
+  compiler_options: serde_json::Map<String, serde_json::Value>,
+  maybe_specifier: Option<&Url>,
+) -> ParsedCompilerOptions {
+  let mut allowed: serde_json::Map<String, serde_json::Value> =
+    serde_json::Map::with_capacity(compiler_options.len());
+  let mut ignored: Vec<String> = Vec::new(); // don't pre-allocate because it's rare
+
+  for (key, value) in compiler_options {
+    // We don't pass "types" entries to typescript via the compiler
+    // options and instead provide those to tsc as "roots". This is
+    // because our "types" behavior is at odds with how TypeScript's
+    // "types" works.
+    // We also don't pass "jsxImportSourceTypes" to TypeScript as it doesn't
+    // know about this option. It will still take this option into account
+    // because the graph resolves the JSX import source to the types for TSC.
+    if key != "types" && key != "jsxImportSourceTypes" {
+      if ALLOWED_COMPILER_OPTIONS.contains(key.as_str()) {
+        allowed.insert(key, value.to_owned());
+      } else {
+        ignored.push(key);
+      }
+    }
+  }
+  let maybe_ignored = if !ignored.is_empty() {
+    Some(IgnoredCompilerOptions {
+      items: ignored,
+      maybe_specifier: maybe_specifier.cloned(),
+    })
+  } else {
+    None
+  };
+
+  ParsedCompilerOptions {
+    options: allowed,
+    maybe_ignored,
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("compilerOptions should be an object at '{specifier}'")]
+pub struct CompilerOptionsParseError {
+  pub specifier: Url,
+  #[source]
+  pub source: serde_json::Error,
+}
 
 #[cfg(feature = "deno_ast")]
 #[derive(Debug)]

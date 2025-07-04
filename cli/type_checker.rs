@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -16,6 +15,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
+use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
@@ -76,7 +76,7 @@ pub enum CheckError {
   CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
   #[class(inherit)]
   #[error(transparent)]
-  CompilerOptionsParse(#[from] deno_json::CompilerOptionsParseError),
+  CompilerOptionsParse(#[from] CompilerOptionsParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
