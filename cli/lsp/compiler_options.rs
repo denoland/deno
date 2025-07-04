@@ -3,14 +3,14 @@
 use std::sync::Arc;
 
 use deno_config::deno_json::CompilerOptions;
-use deno_config::workspace::CompilerOptionsType;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::TsTypeLib;
-use deno_config::workspace::get_base_compiler_options_for_emit;
 use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::CompilerOptionsType;
+use deno_resolver::deno_json::JsxImportSourceConfig;
 use deno_resolver::deno_json::TsConfigFile;
+use deno_resolver::deno_json::get_base_compiler_options_for_emit;
 
 use crate::lsp::config::Config;
 use crate::lsp::resolver::LspResolver;

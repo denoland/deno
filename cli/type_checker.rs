@@ -17,6 +17,7 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
@@ -65,9 +66,7 @@ pub enum CheckError {
   FailedTypeChecking(#[from] FailedTypeCheckingError),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_config::workspace::ToMaybeJsxImportSourceConfigError,
-  ),
+  ToMaybeJsxImportSourceConfig(#[from] ToMaybeJsxImportSourceConfigError),
   #[class(inherit)]
   #[error(transparent)]
   TscExec(#[from] tsc::ExecError),

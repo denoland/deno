@@ -26,7 +26,6 @@ use discovery::DenoOrPkgJson;
 use discovery::discover_workspace_config_files;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use serde_json::json;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
@@ -114,36 +113,6 @@ impl NpmPackageConfig {
 #[derive(Clone, Debug, Default, Hash, PartialEq)]
 pub struct WorkspaceLintConfig {
   pub report: Option<String>,
-}
-
-#[derive(Debug, Error, JsError)]
-#[class(type)]
-pub enum ToMaybeJsxImportSourceConfigError {
-  #[error(
-    "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}"
-  )]
-  InvalidJsxImportSourceValue(Url),
-  #[error(
-    "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {0}"
-  )]
-  InvalidJsxImportSourceTypesValue(Url),
-  #[error(
-    "Unsupported 'jsx' compiler option value '{value}'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'precompile'\n  at {specifier}"
-  )]
-  InvalidJsxCompilerOption { value: String, specifier: Url },
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct JsxImportSourceSpecifierConfig {
-  pub specifier: String,
-  pub base: Url,
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct JsxImportSourceConfig {
-  pub module: String,
-  pub import_source: Option<JsxImportSourceSpecifierConfig>,
-  pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
 }
 
 #[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
@@ -1152,101 +1121,10 @@ impl Default for TsTypeLib {
   }
 }
 
-/// An enum that represents the base tsc configuration to return.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CompilerOptionsType {
-  /// Return a configuration for bundling, using swc to emit the bundle. This is
-  /// independent of type checking.
-  Bundle,
-  /// Return a configuration to use tsc to type check. This
-  /// is independent of either bundling or emitting via swc.
-  Check { lib: TsTypeLib },
-  /// Return a configuration to use swc to emit single module files.
-  Emit,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum CompilerOptionsSourceKind {
-  DenoJson,
-  TsConfig,
-}
-
 #[derive(Debug, Clone)]
 pub struct CompilerOptionsSource {
   pub specifier: UrlRc,
   pub compiler_options: Option<CompilerOptions>,
-}
-
-/// For a given configuration type get the starting point CompilerOptions
-/// used that can then be merged with user specified options.
-pub fn get_base_compiler_options_for_emit(
-  config_type: CompilerOptionsType,
-  source_kind: CompilerOptionsSourceKind,
-) -> CompilerOptions {
-  match config_type {
-    CompilerOptionsType::Bundle => CompilerOptions::new(json!({
-      "allowImportingTsExtensions": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": true,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
-      "inlineSources": false,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-    })),
-    CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
-      "allowJs": true,
-      "allowImportingTsExtensions": true,
-      "allowSyntheticDefaultImports": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": false,
-      "incremental": true,
-      "jsx": "react",
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "isolatedModules": true,
-      "lib": match (lib, source_kind) {
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
-      },
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "sourceMap": false,
-      "strict": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "internal:///.tsbuildinfo",
-      "useDefineForClassFields": true,
-    })),
-    CompilerOptionsType::Emit => CompilerOptions::new(json!({
-      "allowImportingTsExtensions": true,
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "experimentalDecorators": false,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "resolveJsonModule": true,
-    })),
-  }
 }
 
 #[derive(Debug, Clone)]
