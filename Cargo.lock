@@ -2716,6 +2716,7 @@ dependencies = [
 name = "deno_runtime"
 version = "0.217.0"
 dependencies = [
+ "async-trait",
  "color-print",
  "deno_ast",
  "deno_broadcast_channel",
@@ -2756,6 +2757,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
+ "indexmap 2.9.0",
  "libc",
  "log",
  "nix 0.27.1",

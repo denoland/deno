@@ -2,7 +2,10 @@
 
 mod esbuild;
 mod externals;
+mod provider;
 mod transform;
+
+pub use provider::CliBundleProvider;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -68,10 +71,10 @@ use crate::util::file_watcher::WatcherRestartMode;
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
-pub async fn bundle(
+pub async fn bundle_init(
   mut flags: Arc<Flags>,
-  bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+  bundle_flags: &BundleFlags,
+) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
@@ -110,7 +113,6 @@ pub async fn bundle(
     },
     on_end_tx,
   });
-  let start = std::time::Instant::now();
 
   let resolved_entrypoints =
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
@@ -151,7 +153,24 @@ pub async fn bundle(
     esbuild_flags,
     entries,
   );
+
+  Ok(bundler)
+}
+
+pub async fn bundle(
+  mut flags: Arc<Flags>,
+  bundle_flags: BundleFlags,
+) -> Result<(), AnyError> {
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.unstable_config.sloppy_imports = true;
+  }
+  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let init_cwd = bundler.cwd.clone();
+  let start = std::time::Instant::now();
   let response = bundler.build().await?;
+  let end = std::time::Instant::now();
+  let duration = end.duration_since(start);
 
   if bundle_flags.watch {
     return bundle_watch(flags, bundler).await;
@@ -164,7 +183,7 @@ pub async fn bundle(
     let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      print_finished_message(&metafile, &output_infos, start.elapsed())?;
+      print_finished_message(&metafile, &output_infos, duration)?;
     }
   }
 
@@ -1162,12 +1181,12 @@ fn is_js(path: &Path) -> bool {
   }
 }
 
-struct OutputFileInfo {
+pub struct OutputFileInfo {
   relative_path: PathBuf,
   size: usize,
   is_js: bool,
 }
-fn process_result(
+pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
