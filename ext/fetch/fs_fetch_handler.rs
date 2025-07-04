@@ -25,9 +25,7 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl deno_fs::AccessCheckFn + 'a {
-  move |path, _options, _resolve| {
-    permissions.check_read(path, api_name, _resolve)
-  }
+  move |path, _options| permissions.check_read(path, api_name)
 }
 
 /// An implementation which tries to read file URLs from the file system via

@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_path_util::normalize_path;
 use deno_permissions::AllowRunDescriptor;
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
@@ -11,40 +11,43 @@ use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
 use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
+use deno_permissions::NormalizedPermissionPath;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PathResolveError;
 use deno_permissions::ReadDescriptor;
 use deno_permissions::RunDescriptorParseError;
 use deno_permissions::RunQueryDescriptor;
+use deno_permissions::SpecialFilePathDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::SysDescriptorParseError;
 use deno_permissions::WriteDescriptor;
 
+#[sys_traits::auto_impl]
+pub trait RuntimePermissionDescriptorParserSys:
+  deno_permissions::which::WhichSys + sys_traits::FsCanonicalize + Send + Sync
+{
+}
+
 #[derive(Debug)]
 pub struct RuntimePermissionDescriptorParser<
-  TSys: deno_permissions::which::WhichSys + Send + Sync,
+  TSys: RuntimePermissionDescriptorParserSys,
 > {
   sys: TSys,
 }
 
-impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
+impl<TSys: RuntimePermissionDescriptorParserSys>
   RuntimePermissionDescriptorParser<TSys>
 {
   pub fn new(sys: TSys) -> Self {
     Self { sys }
   }
 
-  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, PathResolveError> {
-    if path.is_empty() {
-      return Err(PathResolveError::EmptyPath);
-    }
+  fn resolve_from_cwd(
+    &self,
+    path: &str,
+  ) -> Result<NormalizedPermissionPath, PathResolveError> {
     let path = Path::new(path);
-    if path.is_absolute() {
-      Ok(normalize_path(path))
-    } else {
-      let cwd = self.resolve_cwd()?;
-      Ok(normalize_path(cwd.join(path)))
-    }
+    NormalizedPermissionPath::new(&self.sys, Cow::Borrowed(path))
   }
 
   fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
@@ -55,7 +58,7 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
   }
 }
 
-impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
+impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
   deno_permissions::PermissionDescriptorParser
   for RuntimePermissionDescriptorParser<TSys>
 {
@@ -142,7 +145,7 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
   ) -> Result<PathQueryDescriptor, PathResolveError> {
     Ok(PathQueryDescriptor {
       resolved: self.resolve_from_cwd(path)?,
-      requested: path.to_string(),
+      requested: Some(path.to_string()),
     })
   }
 
@@ -162,6 +165,20 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
     }
     RunQueryDescriptor::parse(requested, &self.sys)
       .map_err(RunDescriptorParseError::PathResolve)
+  }
+
+  fn parse_normalized_permission_path(
+    &self,
+    path: Cow<'_, Path>,
+  ) -> Result<NormalizedPermissionPath, PathResolveError> {
+    NormalizedPermissionPath::new(&self.sys, path)
+  }
+
+  fn parse_special_file_descriptor(
+    &self,
+    path: NormalizedPermissionPath,
+  ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
+    SpecialFilePathDescriptor::parse(&self.sys, path)
   }
 }
 

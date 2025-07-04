@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::Extension;
-use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
@@ -46,17 +45,15 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _p: Cow<'a, Path>,
     _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
-  fn check_write<'a>(
+  fn check_open_read_write<'a>(
     &mut self,
-    _p: Cow<'a, Path>,
+    _path: Cow<'a, Path>,
     _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -186,8 +183,7 @@ impl deno_fs::FsPermissions for Permissions {
     _write: bool,
     _path: Cow<'a, Path>,
     _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -206,12 +202,12 @@ impl deno_fs::FsPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_read_blind(
+  fn check_read_blind<'a>(
     &mut self,
-    _path: &Path,
+    _path: Cow<'a, Path>,
     _display: &str,
     _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 

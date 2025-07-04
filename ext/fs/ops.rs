@@ -85,9 +85,6 @@ pub enum FsOpsErrorKind {
     err: &'static str,
     path: String,
   },
-  #[class("NotCapable")]
-  #[error("permission denied: {0}")]
-  NotCapable(&'static str),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -101,7 +98,7 @@ impl From<FsError> for FsOpsError {
       FsError::NotSupported => {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
-      FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
+      FsError::PermissionCheck(err) => FsOpsErrorKind::Permission(err),
     }
     .into_box()
   }
@@ -121,19 +118,17 @@ fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl AccessCheckFn + 'a {
-  move |path, options, resolve| {
-    permissions.check(options, path, api_name, resolve)
-  }
+  move |path, options| permissions.check(options, path, api_name)
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   api_name: &'static str,
 ) -> impl AccessCheckFn + 'static {
-  move |path, options, resolve| {
+  move |path, options| {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check(options, path, api_name, resolve)
+    permissions.check(options, path, api_name)
   }
 }
 
@@ -143,7 +138,7 @@ fn map_permission_error(
   path: &Path,
 ) -> FsOpsError {
   match error {
-    FsError::NotCapable(err) => {
+    FsError::PermissionCheck(PermissionCheckError::NotCapable(err)) => {
       let path = format!("{path:?}");
       let (path, truncated) = if path.len() > 1024 {
         (&path[0..1024], "...(truncated)")
@@ -624,7 +619,11 @@ where
   let permissions = state.borrow_mut::<P>();
   let path = permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
-    permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPathSync()")?;
+    _ = permissions.check_read_blind(
+      Cow::Owned(fs.cwd()?),
+      "CWD",
+      "Deno.realPathSync()",
+    )?;
   }
 
   let resolved_path =
@@ -649,7 +648,11 @@ where
     let permissions = state.borrow_mut::<P>();
     let path = permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
-      permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPath()")?;
+      _ = permissions.check_read_blind(
+        Cow::Owned(fs.cwd()?),
+        "CWD",
+        "Deno.realPath()",
+      )?;
     }
     (fs, path)
   };

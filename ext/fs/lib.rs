@@ -11,7 +11,6 @@ use std::path::PathBuf;
 
 pub use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
-pub use interface::CheckedPath;
 
 pub use crate::interface::AccessCheckCb;
 pub use crate::interface::AccessCheckFn;
@@ -36,8 +35,7 @@ pub trait FsPermissions {
     write: bool,
     path: Cow<'a, Path>,
     api_name: &str,
-    get_path: &'a dyn GetPath,
-  ) -> Result<CheckedPath<'a>, FsError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read(
     &mut self,
@@ -54,12 +52,13 @@ pub trait FsPermissions {
     &mut self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
-  fn check_read_blind(
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read_blind<'a>(
     &mut self,
-    p: &Path,
+    p: Cow<'a, Path>,
     display: &str,
     api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
@@ -94,14 +93,12 @@ pub trait FsPermissions {
     open_options: &OpenOptions,
     path: Cow<'a, Path>,
     api_name: &str,
-    get_path: &'a dyn GetPath,
-  ) -> Result<CheckedPath<'a>, FsError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     self.check_open(
       open_options.read,
       open_options.write || open_options.append,
       path,
       api_name,
-      get_path,
     )
   }
 
@@ -117,43 +114,8 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     write: bool,
     path: Cow<'a, Path>,
     api_name: &str,
-    get_path: &'a dyn GetPath,
-  ) -> Result<CheckedPath<'a>, FsError> {
-    if self.allows_all() {
-      return Ok(CheckedPath::Unresolved(path));
-    }
-
-    let (needs_canonicalize, path) = get_path.normalized(path)?;
-    // If somehow read or write aren't specified, use read
-    let read = read || !write;
-    let path = if read {
-      FsPermissions::check_read_path(self, path, api_name)
-        .map_err(|_| FsError::NotCapable("read"))?
-    } else {
-      path
-    };
-    let path = if write {
-      FsPermissions::check_write_path(self, path.clone(), api_name)
-        .map_err(|_| FsError::NotCapable("write"))?
-    } else {
-      path
-    };
-
-    let resolved_path = if needs_canonicalize {
-      Cow::Owned(get_path.resolved(&path)?)
-    } else {
-      path
-    };
-
-    self
-      .check_special_file(&resolved_path, api_name)
-      .map_err(FsError::NotCapable)?;
-
-    if needs_canonicalize {
-      Ok(CheckedPath::Resolved(resolved_path))
-    } else {
-      Ok(CheckedPath::Unresolved(resolved_path))
-    }
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+    self.check_open_path(path, read, write, Some(api_name))
   }
 
   fn check_read(
@@ -175,12 +137,13 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
       Some(api_name),
     )
   }
-  fn check_read_blind(
+
+  fn check_read_blind<'a>(
     &mut self,
-    path: &Path,
+    path: Cow<'a, Path>,
     display: &str,
     api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_blind(
       self, path, display, api_name,
     )
@@ -327,11 +290,3 @@ deno_core::extension!(deno_fs,
     state.put(options.fs);
   },
 );
-
-pub trait GetPath {
-  fn normalized<'a>(
-    &self,
-    path: Cow<'a, Path>,
-  ) -> Result<(bool, Cow<'a, Path>), FsError>;
-  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError>;
-}
