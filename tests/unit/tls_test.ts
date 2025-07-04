@@ -1256,7 +1256,7 @@ Deno.test(
       await assertRejects(
         () => tlsConn.handshake(),
         Deno.errors.InvalidData,
-        "NotValidForName",
+        "certificate not valid for name",
       );
       tlsConn.close();
     }

@@ -666,7 +666,7 @@ pub(crate) fn op_quic_connection_get_remote_addr(
 ) -> Result<Addr, QuicError> {
   let addr = connection.0.remote_address();
   Ok(Addr {
-    hostname: format!("{}", addr.ip()),
+    hostname: format!("{}", addr.ip().to_canonical()),
     port: addr.port(),
   })
 }
