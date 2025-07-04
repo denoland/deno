@@ -3,7 +3,6 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
-use std::env::current_dir;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -18,13 +17,11 @@ use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
-use deno_path_util::normalize_path;
+use deno_permissions::PermissionCheckError;
 
 use crate::FileSystem;
-use crate::GetPath;
 use crate::OpenOptions;
 use crate::interface::AccessCheckCb;
-use crate::interface::CheckedPath;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 
@@ -1113,17 +1110,12 @@ pub fn open_options_with_access_check(
   options: OpenOptions,
   path: &Path,
   access_check: Option<AccessCheckCb>,
-) -> FsResult<(PathBuf, fs::OpenOptions)> {
+) -> Result<(PathBuf, fs::OpenOptions), PermissionCheckError> {
   if let Some(access_check) = access_check {
     let path = Cow::Borrowed(path);
-    let maybe_resolved = (*access_check)(path, &options, &StdGetPath)?;
+    let maybe_resolved = (*access_check)(path, &options)?;
 
     let path = maybe_resolved;
-
-    let (_resolved, path) = match path {
-      CheckedPath::Resolved(path) => (true, path),
-      CheckedPath::Unresolved(path) => (false, path),
-    };
 
     let mut opts: fs::OpenOptions = open_options(options);
     #[cfg(windows)]
@@ -1156,50 +1148,5 @@ pub fn open_options_with_access_check(
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
     }
     Ok((path.to_path_buf(), opts))
-  }
-}
-
-struct StdGetPath;
-
-impl GetPath for StdGetPath {
-  fn normalized<'a>(
-    &self,
-    path: Cow<'a, Path>,
-  ) -> FsResult<(bool, Cow<'a, Path>)> {
-    let path_bytes = path.as_os_str().as_encoded_bytes();
-    let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
-      && !path_bytes.contains(&b':');
-    let path = if is_windows_device_path {
-      // On Windows, normalize_path doesn't work with device-prefix-style
-      // paths. We pass these through.
-      path
-    } else if path.is_absolute() {
-      Cow::Owned(normalize_path(path))
-    } else {
-      let cwd = current_dir()?;
-      Cow::Owned(normalize_path(cwd.join(path)))
-    };
-    // On Linux, /proc may contain magic links that we don't want to resolve
-    let is_linux_special_path = cfg!(target_os = "linux")
-      && (path.starts_with("/proc") || path.starts_with("/dev"));
-    let needs_canonicalization =
-      !is_windows_device_path && !is_linux_special_path;
-    Ok((needs_canonicalization, path))
-  }
-
-  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError> {
-    match path.canonicalize() {
-      Ok(path) => Ok(path),
-      Err(_) => {
-        if let (Some(parent), Some(filename)) =
-          (path.parent(), path.file_name())
-        {
-          Ok(parent.canonicalize()?.join(filename))
-        } else {
-          Err(std::io::ErrorKind::NotFound.into())
-        }
-      }
-    }
   }
 }
