@@ -740,6 +740,21 @@ impl NodeResolveErrorKind {
       | NodeResolveErrorKind::UrlToFilePath(_) => None,
     }
   }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      NodeResolveErrorKind::RelativeJoin(_) => None,
+      NodeResolveErrorKind::PathToUrl(_) => None,
+      NodeResolveErrorKind::UrlToFilePath(_) => None,
+      NodeResolveErrorKind::PackageImportsResolve(e) => Some(e.code()),
+      NodeResolveErrorKind::UnsupportedEsmUrlScheme(e) => Some(e.code()),
+      NodeResolveErrorKind::DataUrlReferrer(_) => None,
+      NodeResolveErrorKind::PackageResolve(e) => Some(e.code()),
+      NodeResolveErrorKind::TypesNotFound(e) => Some(e.code()),
+      NodeResolveErrorKind::UnknownBuiltInNodeModule(e) => Some(e.code()),
+      NodeResolveErrorKind::FinalizeResolution(e) => Some(e.code()),
+    }
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]

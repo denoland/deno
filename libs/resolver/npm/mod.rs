@@ -20,6 +20,8 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -185,6 +187,18 @@ impl ResolveReqWithSubPathErrorKind {
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
     }
   }
 }
