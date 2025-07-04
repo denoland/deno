@@ -1180,38 +1180,37 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn dispatch_cache_jsx_import_sources(&self) {
-    for config_file in self.config.tree.config_files() {
-      (|| {
-        let compiler_options = config_file.to_compiler_options().ok()??.options;
-        let jsx_import_source = compiler_options.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?.to_string();
-        let referrer = config_file.specifier.clone();
-        let specifier = format!("{jsx_import_source}/jsx-runtime");
-        self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-          spawn(async move {
-            let specifier = {
-              let inner = ls.inner.read().await;
-              let scoped_resolver =
-                inner.resolver.get_scoped_resolver(Some(&referrer));
-              let resolver = scoped_resolver.as_cli_resolver();
-              let Ok(specifier) = resolver.resolve(
-                &specifier,
-                &referrer,
-                deno_graph::Position::zeroed(),
-                ResolutionMode::Import,
-                NodeResolutionKind::Types,
-              ) else {
-                return;
-              };
-              specifier
+    for specifier_config in self
+      .compiler_options_resolver
+      .all()
+      .filter_map(|(d, _)| d.jsx_import_source_config())
+      .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
+    {
+      let referrer = specifier_config.base.clone();
+      let specifier = format!("{}/jsx-runtime", &specifier_config.specifier);
+      self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+        spawn(async move {
+          let specifier = {
+            let inner = ls.inner.read().await;
+            let scoped_resolver =
+              inner.resolver.get_scoped_resolver(Some(&referrer));
+            let resolver = scoped_resolver.as_cli_resolver();
+            let Ok(specifier) = resolver.resolve(
+              &specifier,
+              &referrer,
+              deno_graph::Position::zeroed(),
+              ResolutionMode::Import,
+              NodeResolutionKind::Types,
+            ) else {
+              return;
             };
-            if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
-              lsp_warn!("{:#}", err);
-            }
-          });
-        }));
-        Some(())
-      })();
+            specifier
+          };
+          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+            lsp_warn!("{:#}", err);
+          }
+        });
+      }));
     }
   }
 
