@@ -107,6 +107,42 @@ function toRustPluginInfo(plugins: PluginInfo[]): RustPluginInfo[] {
   }));
 }
 
+const enum HookType {
+  first = 0,
+  sequential = 1,
+}
+
+const enum Hook {
+  onStart = 0,
+  onResolve = 1,
+  onLoad = 2,
+  onEnd = 3,
+  onDispose = 4,
+}
+
+function exhaustive(_x: never): never {
+  throw new Error("Unreachable, but got: " + _x);
+}
+
+function getHookName(
+  hook: Hook,
+): "onStart" | "onResolve" | "onLoad" | "onEnd" | "onDispose" {
+  switch (hook) {
+    case Hook.onStart:
+      return "onStart";
+    case Hook.onResolve:
+      return "onResolve";
+    case Hook.onLoad:
+      return "onLoad";
+    case Hook.onEnd:
+      return "onEnd";
+    case Hook.onDispose:
+      return "onDispose";
+    default:
+      exhaustive(hook);
+  }
+}
+
 function makePluginExecutor(
   options: Deno.bundle.Options,
   plugins: PluginInfo[],
@@ -114,9 +150,29 @@ function makePluginExecutor(
   if (!plugins.length) {
     return (..._args: any) => null;
   }
-  
-  return (hookName: "onResolve" | "onLoad" | "onStart" | "onEnd" | "onDispose", ...args: any[]) => {
-  }
+
+  return async (
+    hook: Hook,
+    type: HookType,
+    ids: number[],
+    ...args: any[]
+  ) => {
+    let result = null;
+    const hookName = getHookName(hook);
+    for (const id of ids) {
+      const plugin = plugins[id];
+      if (plugin[hookName]) {
+        // @ts-ignore aaa
+        result = await plugin[hookName].callback(...args);
+        if (type === HookType.first && result) {
+          return { pluginId: id, result };
+        } else if (type === HookType.sequential) {
+          continue;
+        }
+      }
+    }
+    return result;
+  };
 }
 
 export async function bundle(
