@@ -154,14 +154,15 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler).await;
+    return bundle_watch(flags, bundler, bundle_flags.minify).await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
     let metafile = metafile_from_response(&response)?;
-    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
+    let output_infos =
+      process_result(&response, &init_cwd, *DISABLE_HACK, bundle_flags.minify)?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -188,6 +189,7 @@ fn metafile_from_response(
 async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
+  minified: bool,
 ) -> Result<(), AnyError> {
   let initial_roots = bundler
     .roots
@@ -226,7 +228,7 @@ async fn bundle_watch(
         if response.errors.is_empty() {
           let metafile = metafile_from_response(&response)?;
           let output_infos =
-            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+            process_result(&response, &bundler.cwd, *DISABLE_HACK, minified)?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
@@ -362,8 +364,17 @@ impl EsbuildBundler {
 // TODO(nathanwhit): MASSIVE HACK
 // See tests::specs::bundle::requires_node_builtin for why this is needed.
 // Without this hack, that test would fail with "Dynamic require of "util" is not supported"
-fn replace_require_shim(contents: &str) -> String {
-  contents.replace(
+fn replace_require_shim(contents: &str, minified: bool) -> String {
+  if minified {
+    let re = lazy_regex::regex!(
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+    );
+    re.replace(contents, |c: &regex::Captures<'_>| {
+      let var_name = c.get(1).unwrap().as_str();
+      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+    }).into_owned()
+  } else {
+    contents.replace(
     r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
@@ -374,6 +385,7 @@ fn replace_require_shim(contents: &str) -> String {
 var __require = createRequire(import.meta.url);
 "#,
   )
+  }
 }
 
 fn format_message(
@@ -1171,6 +1183,7 @@ fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
+  minified: bool,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
   let mut exists_cache = std::collections::HashSet::new();
   let output_files = response
@@ -1187,7 +1200,7 @@ fn process_result(
     let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
-        replace_require_shim(&string)
+        replace_require_shim(&string, minified)
       } else {
         string
       };
