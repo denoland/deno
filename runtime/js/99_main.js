@@ -9,6 +9,7 @@ const ops = core.ops;
 import {
   op_bootstrap_args,
   op_bootstrap_is_from_unconfigured_runtime,
+  op_bootstrap_is_serve,
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_bootstrap_stderr_no_color,
@@ -759,6 +760,7 @@ ObjectDefineProperties(finalDenoNs, {
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
+  isServe: core.propGetterOnly(() => op_bootstrap_is_serve()),
   exitCode: {
     __proto__: null,
     get() {
