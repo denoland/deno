@@ -1501,9 +1501,10 @@ impl DocumentModules {
         scope.and_then(|s| self.config.tree.data_by_scope().get(s));
       if let Some(config_data) = config_data {
         (|| {
-          let member_dir = &config_data.member_dir;
-          let jsx_config =
-            member_dir.to_maybe_jsx_import_source_config().ok()??;
+          let compiler_options_data = self
+            .compiler_options_resolver
+            .for_specifier(&config_data.scope);
+          let jsx_config = compiler_options_data.jsx_import_source_config()?;
           let import_source_types = jsx_config.import_source_types.as_ref()?;
           let import_source = jsx_config.import_source.as_ref()?;
           let scoped_resolver =
