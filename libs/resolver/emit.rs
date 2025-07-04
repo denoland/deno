@@ -144,6 +144,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     parsed_source: deno_ast::ParsedSource,
     module_kind: ModuleKind,
   ) -> Result<ArcStr, EmitParsedSourceHelperError> {
+    // note: this method is used in deno-js-loader
     self
       .maybe_emit_parsed_source_provider(parsed_source, module_kind)
       .await
