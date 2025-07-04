@@ -21,6 +21,7 @@ mod diagnostics;
 mod documents;
 mod jsr;
 pub mod language_server;
+mod lint;
 mod logging;
 mod lsp_custom;
 mod npm;

@@ -106,6 +106,7 @@ use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
+use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::sys::CliSys;
@@ -185,6 +186,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
   pub compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
+  pub linter_resolver: Arc<LspLinterResolver>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
 }
@@ -249,6 +251,7 @@ pub struct Inner {
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
+  linter_resolver: Arc<LspLinterResolver>,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
   /// A lazily create "server" for handling test run requests.
@@ -569,6 +572,7 @@ impl Inner {
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
+      linter_resolver: Default::default(),
       project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
@@ -692,6 +696,7 @@ impl Inner {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       compiler_options_resolver: self.compiler_options_resolver.clone(),
+      linter_resolver: self.linter_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
     })
@@ -1166,6 +1171,14 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn refresh_linter_resolver(&mut self) {
+    self.linter_resolver = Arc::new(LspLinterResolver::new(
+      &self.config,
+      &self.compiler_options_resolver,
+    ));
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn dispatch_cache_jsx_import_sources(&self) {
     for config_file in self.config.tree.config_files() {
       (|| {
@@ -1596,6 +1609,7 @@ impl Inner {
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
+    self.refresh_linter_resolver();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1655,6 +1669,7 @@ impl Inner {
       if changed_deno_json {
         self.dispatch_cache_jsx_import_sources();
       }
+      self.refresh_linter_resolver();
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.project_changed(
@@ -4359,6 +4374,7 @@ impl Inner {
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
+    self.refresh_linter_resolver();
     self.refresh_documents_config().await;
 
     if self.config.did_change_watched_files_capable() {
@@ -4577,6 +4593,7 @@ impl Inner {
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
+    self.refresh_linter_resolver();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();

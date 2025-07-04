@@ -6004,6 +6004,7 @@ mod tests {
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::lint::LspLinterResolver;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
@@ -6028,6 +6029,8 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let linter_resolver =
+      Arc::new(LspLinterResolver::new(&config, &compiler_options_resolver));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -6051,6 +6054,7 @@ mod tests {
       document_modules,
       config: Arc::new(config),
       compiler_options_resolver,
+      linter_resolver,
       resolver,
     });
     let performance = Arc::new(Performance::default());

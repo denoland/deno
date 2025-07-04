@@ -3,15 +3,12 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::thread;
 
 use deno_ast::MediaType;
-use deno_config::glob::FilePatterns;
-use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -29,7 +26,6 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::source::ResolveError;
-use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
@@ -61,12 +57,10 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
+use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::sys::CliSys;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
@@ -941,7 +935,6 @@ fn generate_lint_diagnostics(
   config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
-  let config_data_by_scope = config.tree.data_by_scope();
   let mut records = Vec::new();
   for document in snapshot.document_modules.documents.open_docs() {
     // TODO(nayeemrmn): Support linting notebooks cells. Will require stitching
@@ -974,40 +967,13 @@ fn generate_lint_diagnostics(
     if snapshot.resolver.in_node_modules(&module.specifier) {
       continue;
     }
-    let (lint_config, linter) = module
-      .scope
-      .as_ref()
-      .and_then(|s| config_data_by_scope.get(s))
-      .map(|d| (d.lint_config.clone(), d.linter.clone()))
-      .unwrap_or_else(|| {
-        (
-          Arc::new(WorkspaceDirLintConfig {
-            rules: Default::default(),
-            plugins: Default::default(),
-            files: FilePatterns::new_with_base(PathBuf::from("/")),
-          }),
-          Arc::new(CliLinter::new(CliLinterOptions {
-            configured_rules: {
-              let lint_rule_provider = LintRuleProvider::new(None);
-              lint_rule_provider.resolve_lint_rules(Default::default(), None)
-            },
-            fix: false,
-            deno_lint_config: DenoLintConfig {
-              default_jsx_factory: None,
-              default_jsx_fragment_factory: None,
-            },
-            // TODO(bartlomieju): handle linter plugins here before landing
-            maybe_plugin_runner: None,
-          })),
-        )
-      });
+    let linter = snapshot.linter_resolver.for_module(&module);
     records.push(DiagnosticRecord {
       uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
         version: document.version,
         diagnostics: generate_document_lint_diagnostics(
           &module,
-          &lint_config,
           &linter,
           token.clone(),
         ),
@@ -1019,12 +985,14 @@ fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   module: &DocumentModule,
-  lint_config: &WorkspaceDirLintConfig,
-  linter: &CliLinter,
+  linter: &LspLinter,
   token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
   if !module.is_diagnosable()
-    || !lint_config.files.matches_specifier(&module.specifier)
+    || !linter
+      .lint_config
+      .files
+      .matches_specifier(&module.specifier)
   {
     return Vec::new();
   }
@@ -1034,7 +1002,7 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      match analysis::get_lint_references(parsed_source, linter, token) {
+      match analysis::get_lint_references(parsed_source, &linter.inner, token) {
         Ok(references) => references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -1951,6 +1919,7 @@ mod tests {
   use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use crate::lsp::lint::LspLinterResolver;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::urls::uri_to_url;
   use crate::lsp::urls::url_to_uri;
@@ -1995,6 +1964,8 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let linter_resolver =
+      Arc::new(LspLinterResolver::new(&config, &compiler_options_resolver));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -2020,6 +1991,7 @@ mod tests {
         document_modules,
         config: Arc::new(config),
         compiler_options_resolver,
+        linter_resolver,
         resolver,
       },
     )
