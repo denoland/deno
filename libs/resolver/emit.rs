@@ -252,9 +252,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     ) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
-        let parsed_source = self
-          .parsed_source_cache
-          .get_matching_parsed_source(specifier, media_type, source.clone())?;
+        let parsed_source = self.parsed_source_cache.remove_or_parse_module(
+          specifier,
+          media_type,
+          source.clone(),
+        )?;
         let transpiled_source = transpile(
           parsed_source,
           module_kind,
@@ -289,7 +291,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     // strip off the path to have more deterministic builds as we don't care
     // about the source name because we manually provide the source map to v8
     emit_options.source_map_base = Some(deno_path_util::url_parent(specifier));
-    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
       specifier,
       media_type,
       source.clone(),
@@ -418,7 +420,7 @@ impl ParsedSourceProvider for ParsedSourceCacheParsedSourceProvider {
     self.source
   }
   fn parsed_source(self) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
-    self.parsed_source_cache.get_matching_parsed_source(
+    self.parsed_source_cache.remove_or_parse_module(
       &self.specifier,
       self.media_type,
       self.source.clone(),
