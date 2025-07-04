@@ -20,6 +20,8 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -185,6 +187,18 @@ impl ResolveReqWithSubPathErrorKind {
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
     }
   }
 }
@@ -467,7 +481,7 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if let Some(err) = err.as_types_not_found() {
+        if err.as_types_not_found().is_some() {
           let maybe_definitely_typed_req =
             if let Some(npm_resolver) = self.npm_resolver.as_managed() {
               let snapshot = npm_resolver.resolution().snapshot();
@@ -501,7 +515,6 @@ impl<
               return Ok(resolved);
             }
           }
-          return Ok(err.0.code_specifier.clone());
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
@@ -537,11 +550,6 @@ impl<
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();
-        if let Some(err) = err.as_types_not_found() {
-          return Ok(Some(NodeResolution::Module(
-            err.0.code_specifier.clone(),
-          )));
-        }
         match err {
           NodeResolveErrorKind::RelativeJoin(_)
           | NodeResolveErrorKind::PackageImportsResolve(_)
