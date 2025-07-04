@@ -29,6 +29,8 @@ use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 #[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
 type ArcStr = std::sync::Arc<str>;
@@ -386,7 +388,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   }
 }
 
-trait ParsedSourceProvider: Send + Sync + Clone + 'static {
+trait ParsedSourceProvider: MaybeSend + MaybeSync + Clone + 'static {
   fn specifier(&self) -> &Url;
   fn media_type(&self) -> MediaType;
   fn source(&self) -> &ArcStr;
