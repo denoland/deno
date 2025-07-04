@@ -125,11 +125,22 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     media_type: MediaType,
     module_kind: ModuleKind,
     source: &ArcStr,
-  ) -> Result<String, EmitParsedSourceHelperError> {
+  ) -> Result<ArcStr, EmitParsedSourceHelperError> {
+    if !media_type.is_emittable() {
+      return Ok(source.clone());
+    }
     let transpile_and_emit_options = self
       .compiler_options_resolver
       .for_specifier(specifier)
       .transpile_options()?;
+    let transpile_options = &transpile_and_emit_options.transpile;
+    if matches!(media_type, MediaType::Jsx)
+      && !transpile_options.transform_jsx
+      && !transpile_options.precompile_jsx
+    {
+      // jsx disabled, so skip
+      return Ok(source.clone());
+    }
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(
@@ -138,12 +149,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       transpile_and_emit_options,
       source,
     ) {
-      PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
+      PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
-        let parsed_source_cache = self.parsed_source_cache.clone();
-        let transpile_and_emit_options = transpile_and_emit_options.clone();
-        #[cfg(feature = "sync")]
-        let transpiled_source = crate::rt::spawn_blocking({
+        let emit = {
+          let parsed_source_cache = self.parsed_source_cache.clone();
+          let transpile_and_emit_options = transpile_and_emit_options.clone();
           let specifier = specifier.clone();
           let source = source.clone();
           move || {
@@ -158,26 +168,18 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
             )
             .map(|r| r.text)
           }
-        })
-        .await
-        .unwrap()?;
+        };
+        #[cfg(feature = "sync")]
+        let transpiled_source =
+          crate::rt::spawn_blocking(emit).await.unwrap()?;
         #[cfg(not(feature = "sync"))]
-        let transpiled_source = transpile(
-          &parsed_source_cache,
-          &specifier,
-          media_type,
-          module_kind,
-          source.clone(),
-          &transpile_and_emit_options.transpile,
-          &transpile_and_emit_options.emit,
-        )?
-        .text;
+        let transpiled_source = emit()?;
         helper.post_emit_parsed_source(
           specifier,
           &transpiled_source,
           source_hash,
         );
-        Ok(transpiled_source)
+        Ok(transpiled_source.into())
       }
     }
   }
