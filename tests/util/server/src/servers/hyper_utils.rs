@@ -17,6 +17,7 @@ use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ServerKind {
@@ -75,7 +76,8 @@ pub async fn run_server_with_acceptor<A, F, S>(
   error_msg: &'static str,
   kind: ServerKind,
 ) where
-  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
+  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream<TcpStream>>>
+    + ?Sized,
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
