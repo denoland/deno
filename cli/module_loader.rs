@@ -473,7 +473,6 @@ impl CliModuleLoaderFactory {
         .shared
         .npm_registry_permission_checker
         .clone(),
-      parsed_soure_cache: self.shared.parsed_source_cache.clone(),
     });
     CreateModuleLoaderResult {
       module_loader,
@@ -1415,7 +1414,6 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
-  parsed_soure_cache: Arc<ParsedSourceCache>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
