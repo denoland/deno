@@ -1468,7 +1468,6 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           &text.into(),
         )
         .map_err(JsErrorBox::from_err)?;
-      self.parsed_soure_cache.free(&specifier);
       Ok(text.into())
     } else {
       Ok(match text {
