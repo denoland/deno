@@ -57,6 +57,7 @@ use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
 use crate::collections::FolderScopedMap;
+use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
@@ -196,6 +197,7 @@ pub struct NpmProcessStateOptions {
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
+  pub compiler_options_overrides: CompilerOptionsOverrides,
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
@@ -712,6 +714,10 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "deno_ast")]
   parsed_source_cache: crate::cache::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
+  #[cfg(all(feature = "graph", feature = "deno_ast"))]
+  prepared_module_loader: Deferred<
+    crate::loader::PreparedModuleLoaderRc<DenoInNpmPackageChecker, TSys>,
+  >,
   raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
   workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
@@ -746,6 +752,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       #[cfg(feature = "deno_ast")]
       parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
+      #[cfg(all(feature = "graph", feature = "deno_ast"))]
+      prepared_module_loader: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
       options,
@@ -839,6 +847,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.workspace_factory.workspace_directory_provider()?,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
+        &self.workspace_factory.options.compiler_options_overrides,
       )))
     })
   }
@@ -1000,6 +1009,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
+  #[cfg(feature = "deno_ast")]
+  pub fn parsed_source_cache(&self) -> &crate::cache::ParsedSourceCacheRc {
+    &self.parsed_source_cache
+  }
+
   pub fn pkg_json_resolver(&self) -> &PackageJsonResolverRc<TSys> {
     self.pkg_json_resolver.get_or_init(|| {
       new_rc(PackageJsonResolver::new(
@@ -1009,9 +1023,23 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
-  #[cfg(feature = "deno_ast")]
-  pub fn parsed_source_cache(&self) -> &crate::cache::ParsedSourceCacheRc {
-    &self.parsed_source_cache
+  #[cfg(all(feature = "graph", feature = "deno_ast"))]
+  pub fn prepared_module_loader(
+    &self,
+  ) -> Result<
+    &crate::loader::PreparedModuleLoaderRc<DenoInNpmPackageChecker, TSys>,
+    anyhow::Error,
+  > {
+    self.prepared_module_loader.get_or_try_init(|| {
+      let cjs_tracker = self.cjs_tracker()?;
+      Ok(new_rc(crate::loader::PreparedModuleLoader::new(
+        cjs_tracker.clone(),
+        self.emitter()?.clone(),
+        self.node_code_translator()?.clone(),
+        self.parsed_source_cache.clone(),
+        self.workspace_factory.sys.clone(),
+      )))
+    })
   }
 
   pub fn workspace_factory(&self) -> &WorkspaceFactoryRc<TSys> {

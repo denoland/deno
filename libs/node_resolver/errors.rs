@@ -310,7 +310,7 @@ impl PackageSubpathResolveErrorKind {
     )
   ).unwrap_or_default(),
   match resolution_kind {
-    NodeResolutionKind::Execution => "",
+    NodeResolutionKind::Execution | NodeResolutionKind::Bundling => "",
     NodeResolutionKind::Types => " for types",
   }
 )]
@@ -922,7 +922,9 @@ impl std::fmt::Display for PackagePathNotExportedError {
     f.write_char(']')?;
 
     let types_msg = match self.resolution_kind {
-      NodeResolutionKind::Execution => String::new(),
+      NodeResolutionKind::Execution | NodeResolutionKind::Bundling => {
+        String::new()
+      }
       NodeResolutionKind::Types => " for types".to_string(),
     };
     if self.subpath == "." {

@@ -92,6 +92,14 @@ struct MemoizedValues {
   check_js: OnceCell<bool>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct CompilerOptionsOverrides {
+  /// Preserve JSX instead of transforming it.
+  ///
+  /// This may be useful when bundling.
+  pub preserve_jsx: bool,
+}
+
 #[derive(Debug)]
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
@@ -99,6 +107,8 @@ pub struct CompilerOptionsData {
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
+  #[cfg_attr(not(feature = "deno_ast"), allow(unused))]
+  overrides: CompilerOptionsOverrides,
 }
 
 impl CompilerOptionsData {
@@ -107,6 +117,7 @@ impl CompilerOptionsData {
     source_kind: CompilerOptionsSourceKind,
     workspace_dir_url: Option<UrlRc>,
     logged_warnings: LoggedWarningsRc,
+    overrides: CompilerOptionsOverrides,
   ) -> Self {
     Self {
       sources,
@@ -114,6 +125,7 @@ impl CompilerOptionsData {
       workspace_dir_url,
       memoized: Default::default(),
       logged_warnings,
+      overrides,
     }
   }
 
@@ -183,6 +195,7 @@ impl CompilerOptionsData {
       let compiler_options = self.compiler_options_for_emit()?;
       compiler_options_to_transpile_and_emit_options(
         compiler_options.as_ref().clone(),
+        &self.overrides,
       )
       .map(new_rc)
       .map_err(|source| CompilerOptionsParseError {
@@ -431,6 +444,7 @@ struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
   sys: &'a TSys,
   get_node_resolver: GetNodeResolverFn<'b, NSys>,
   logged_warnings: &'a LoggedWarningsRc,
+  overrides: CompilerOptionsOverrides,
 }
 
 impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
@@ -455,6 +469,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
     sys: &'a TSys,
     get_node_resolver: GetNodeResolverFn<'b, NSys>,
     logged_warnings: &'a LoggedWarningsRc,
+    overrides: CompilerOptionsOverrides,
   ) -> Self {
     Self {
       roots: Default::default(),
@@ -464,6 +479,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       sys,
       get_node_resolver,
       logged_warnings,
+      overrides,
     }
   }
 
@@ -670,6 +686,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
         CompilerOptionsSourceKind::TsConfig,
         None,
         self.logged_warnings.clone(),
+        self.overrides.clone(),
       ),
       filter: new_rc(TsConfigFileFilter {
         files,
@@ -696,6 +713,7 @@ impl Default for CompilerOptionsResolver {
         CompilerOptionsSourceKind::DenoJson,
         None,
         Default::default(),
+        Default::default(),
       )),
       ts_configs: Vec::new(),
     }
@@ -708,9 +726,19 @@ impl CompilerOptionsResolver {
     workspace_directory_provider: &WorkspaceDirectoryProvider,
     node_resolver: &TsConfigNodeResolver<NSys>,
     config_discover: &ConfigDiscoveryOption,
+    overrides: &CompilerOptionsOverrides,
   ) -> Self {
     if matches!(config_discover, ConfigDiscoveryOption::Disabled) {
-      return Self::default();
+      return Self {
+        workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
+          Vec::new(),
+          CompilerOptionsSourceKind::DenoJson,
+          None,
+          Default::default(),
+          overrides.clone(),
+        )),
+        ts_configs: Vec::new(),
+      };
     }
     let logged_warnings = new_rc(LoggedWarnings::default());
     let root_dir = workspace_directory_provider.root();
@@ -719,11 +747,13 @@ impl CompilerOptionsResolver {
       CompilerOptionsSourceKind::DenoJson,
       Some(root_dir.dir_url().clone()),
       logged_warnings.clone(),
+      overrides.clone(),
     ));
     let mut ts_config_collector = TsConfigCollector::new(
       sys,
       Box::new(|_| Some(node_resolver)),
       &logged_warnings,
+      overrides.clone(),
     );
     for (dir_url, dir) in workspace_directory_provider.entries() {
       if dir.has_deno_or_pkg_json() {
@@ -737,6 +767,7 @@ impl CompilerOptionsResolver {
             CompilerOptionsSourceKind::DenoJson,
             Some(dir_url.clone()),
             logged_warnings.clone(),
+            overrides.clone(),
           ),
         );
       }
@@ -790,9 +821,14 @@ impl CompilerOptionsResolver {
       CompilerOptionsSourceKind::DenoJson,
       None,
       logged_warnings.clone(),
+      Default::default(),
     ));
-    let mut ts_config_collector =
-      TsConfigCollector::new(sys, get_node_resolver, &logged_warnings);
+    let mut ts_config_collector = TsConfigCollector::new(
+      sys,
+      get_node_resolver,
+      &logged_warnings,
+      Default::default(),
+    );
     for (scope, dir) in dirs_by_scope {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
@@ -804,6 +840,7 @@ impl CompilerOptionsResolver {
           CompilerOptionsSourceKind::DenoJson,
           Some(scope.clone()),
           logged_warnings.clone(),
+          Default::default(),
         ),
       );
     }
@@ -875,6 +912,7 @@ pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 #[cfg(feature = "deno_ast")]
 fn compiler_options_to_transpile_and_emit_options(
   config: deno_config::deno_json::CompilerOptions,
+  overrides: &CompilerOptionsOverrides,
 ) -> Result<TranspileAndEmitOptions, serde_json::Error> {
   let options: deno_config::deno_json::EmitConfigOptions =
     serde_json::from_value(config.0)?;
@@ -885,12 +923,15 @@ fn compiler_options_to_transpile_and_emit_options(
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
   let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match options.jsx.as_str() {
-      "react" => (true, false, false, false),
-      "react-jsx" => (true, true, false, false),
-      "react-jsxdev" => (true, true, true, false),
-      "precompile" => (false, false, false, true),
-      _ => (false, false, false, false),
+    match overrides.preserve_jsx {
+      true => (false, false, false, false),
+      false => match options.jsx.as_str() {
+        "react" => (true, false, false, false),
+        "react-jsx" => (true, true, false, false),
+        "react-jsxdev" => (true, true, true, false),
+        "precompile" => (false, false, false, true),
+        _ => (false, false, false, false),
+      },
     };
   let source_map = if options.inline_source_map {
     deno_ast::SourceMapOption::Inline
