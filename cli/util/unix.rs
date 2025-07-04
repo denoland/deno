@@ -1,5 +1,25 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+/// Restore the default SIGPIPE handler.
+pub fn restore_sigpipe() {
+  #[cfg(unix)]
+  // SAFETY: setting SIG_DFL is generally safe as it will restore the default
+  // behavior. We don't worry about race conditions as this function is called
+  // on startup.
+  unsafe {
+    libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+  }
+}
+
+/// Ignore SIGPIPE.
+pub fn ignore_sigpipe() {
+  #[cfg(unix)]
+  // SAFETY: sets the same signal handler expected by Rust.
+  unsafe {
+    libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+  }
+}
+
 /// Raise soft file descriptor limit to hard file descriptor limit.
 /// This is the difference between `ulimit -n` and `ulimit -n -H`.
 pub fn raise_fd_limit() {

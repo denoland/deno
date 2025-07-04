@@ -89,6 +89,7 @@ use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
+use crate::util::unix::ignore_sigpipe;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
 use crate::worker::CreateCustomWorkerError;
@@ -1610,6 +1611,8 @@ pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
+  ignore_sigpipe();
+
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace_test_options =

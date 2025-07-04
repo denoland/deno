@@ -526,6 +526,7 @@ pub fn main() {
 
   setup_panic_hook();
 
+  util::unix::restore_sigpipe();
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
