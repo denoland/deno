@@ -11,7 +11,6 @@ use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
 use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
-use deno_permissions::NormalizedPermissionPath;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PathResolveError;
 use deno_permissions::ReadDescriptor;
@@ -45,9 +44,9 @@ impl<TSys: RuntimePermissionDescriptorParserSys>
   fn resolve_from_cwd(
     &self,
     path: &str,
-  ) -> Result<NormalizedPermissionPath, PathResolveError> {
+  ) -> Result<PathQueryDescriptor, PathResolveError> {
     let path = Path::new(path);
-    NormalizedPermissionPath::new(&self.sys, Cow::Borrowed(path))
+    PathQueryDescriptor::new(&self.sys, Cow::Borrowed(path))
   }
 
   fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
@@ -139,14 +138,18 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
 
   // queries
 
-  fn parse_path_query(
+  fn parse_path_query_from_path(
     &self,
-    path: &str,
+    path: Cow<'_, Path>,
   ) -> Result<PathQueryDescriptor, PathResolveError> {
-    Ok(PathQueryDescriptor {
-      resolved: self.resolve_from_cwd(path)?,
-      requested: Some(path.to_string()),
-    })
+    PathQueryDescriptor::new(&self.sys, path)
+  }
+
+  fn parse_special_file_descriptor(
+    &self,
+    path: PathQueryDescriptor,
+  ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
+    SpecialFilePathDescriptor::parse(&self.sys, path)
   }
 
   fn parse_net_query(
@@ -165,20 +168,6 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     }
     RunQueryDescriptor::parse(requested, &self.sys)
       .map_err(RunDescriptorParseError::PathResolve)
-  }
-
-  fn parse_normalized_permission_path(
-    &self,
-    path: Cow<'_, Path>,
-  ) -> Result<NormalizedPermissionPath, PathResolveError> {
-    NormalizedPermissionPath::new(&self.sys, path)
-  }
-
-  fn parse_special_file_descriptor(
-    &self,
-    path: NormalizedPermissionPath,
-  ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
-    SpecialFilePathDescriptor::parse(&self.sys, path)
   }
 }
 

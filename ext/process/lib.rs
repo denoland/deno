@@ -35,7 +35,6 @@ use deno_io::ChildStdoutResource;
 use deno_io::IntoRawIoHandle;
 use deno_io::fs::FileResource;
 use deno_os::SignalError;
-use deno_permissions::NormalizedPermissionPath;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
@@ -755,12 +754,10 @@ fn compute_run_cmd_and_check_permissions(
     })?;
   check_run_permission(
     state,
-    &RunQueryDescriptor::Path(PathQueryDescriptor {
-      requested: Some(arg_cmd.to_string()),
-      resolved: NormalizedPermissionPath::new_known_absolute(Cow::Borrowed(
-        &cmd,
-      )),
-    }),
+    &RunQueryDescriptor::Path(
+      PathQueryDescriptor::new_known_absolute(Cow::Borrowed(&cmd))
+        .with_requested(arg_cmd.to_string()),
+    ),
     &run_env,
     api_name,
   )?;
