@@ -32,7 +32,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_init_tsconfig() {
+fn lsp_config_setting() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -66,7 +66,7 @@ fn lsp_init_tsconfig() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types() {
+fn lsp_config_setting_compiler_options_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -110,7 +110,7 @@ fn lsp_tsconfig_types() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types_config_sub_dir() {
+fn lsp_config_setting_compiler_options_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
