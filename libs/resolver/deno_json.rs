@@ -241,11 +241,17 @@ pub enum CompilerOptionsSourceKind {
   TsConfig,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CompilerOptionsDefaults {
+  Deno,
+  TscCompatible,
+}
+
 /// For a given configuration type get the starting point CompilerOptions
 /// used that can then be merged with user specified options.
 pub fn get_base_compiler_options_for_emit(
   config_type: CompilerOptionsType,
-  source_kind: CompilerOptionsSourceKind,
+  defaults: CompilerOptionsDefaults,
 ) -> CompilerOptions {
   match config_type {
     CompilerOptionsType::Bundle => CompilerOptions::new(json!({
@@ -276,11 +282,11 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSourceMap": true,
       "inlineSources": true,
       "isolatedModules": true,
-      "lib": match (lib, source_kind) {
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
+      "lib": match (lib, defaults) {
+        (TsTypeLib::DenoWindow, CompilerOptionsDefaults::Deno) => vec!["deno.window", "deno.unstable"],
+        (TsTypeLib::DenoWindow, CompilerOptionsDefaults::TscCompatible) => vec!["deno.window", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWorker, CompilerOptionsDefaults::Deno) => vec!["deno.worker", "deno.unstable"],
+        (TsTypeLib::DenoWorker, CompilerOptionsDefaults::TscCompatible) => vec!["deno.worker", "deno.unstable", "dom"],
       },
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
@@ -365,7 +371,8 @@ pub struct CompilerOptionsOverrides {
 #[derive(Debug)]
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
-  pub source_kind: CompilerOptionsSourceKind,
+  source_kind: CompilerOptionsSourceKind,
+  pub defaults: CompilerOptionsDefaults,
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
@@ -377,6 +384,7 @@ impl CompilerOptionsData {
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
+    defaults: CompilerOptionsDefaults,
     workspace_dir_url: Option<UrlRc>,
     logged_warnings: LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
@@ -384,6 +392,7 @@ impl CompilerOptionsData {
     Self {
       sources,
       source_kind,
+      defaults,
       workspace_dir_url,
       memoized: Default::default(),
       logged_warnings,
@@ -422,7 +431,7 @@ impl CompilerOptionsData {
       let mut result = CompilerOptionsWithIgnoredOptions {
         compiler_options: get_base_compiler_options_for_emit(
           typ,
-          self.source_kind,
+          self.defaults,
         ),
         ignored_options: Vec::new(),
       };
@@ -946,6 +955,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       compiler_options: CompilerOptionsData::new(
         sources,
         CompilerOptionsSourceKind::TsConfig,
+        CompilerOptionsDefaults::TscCompatible,
         None,
         self.logged_warnings.clone(),
         self.overrides.clone(),
@@ -973,6 +983,7 @@ impl Default for CompilerOptionsResolver {
       workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
         Vec::new(),
         CompilerOptionsSourceKind::DenoJson,
+        CompilerOptionsDefaults::Deno,
         None,
         Default::default(),
         Default::default(),
@@ -995,6 +1006,7 @@ impl CompilerOptionsResolver {
         workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
           Vec::new(),
           CompilerOptionsSourceKind::DenoJson,
+          CompilerOptionsDefaults::Deno,
           None,
           Default::default(),
           overrides.clone(),
@@ -1003,30 +1015,42 @@ impl CompilerOptionsResolver {
       };
     }
     let logged_warnings = new_rc(LoggedWarnings::default());
-    let root_dir = workspace_directory_provider.root();
-    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
-      root_dir.to_configured_compiler_options_sources(),
-      CompilerOptionsSourceKind::DenoJson,
-      Some(root_dir.dir_url().clone()),
-      logged_warnings.clone(),
-      overrides.clone(),
-    ));
     let mut ts_config_collector = TsConfigCollector::new(
       sys,
       Box::new(|_| Some(node_resolver)),
       &logged_warnings,
       overrides.clone(),
     );
-    for (dir_url, dir) in workspace_directory_provider.entries() {
+    let dir_entries =
+      workspace_directory_provider.entries().collect::<Vec<_>>();
+    for (_, dir) in &dir_entries {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
+    }
+    let ts_configs = ts_config_collector.collect();
+    let defaults = if ts_configs.is_empty() {
+      CompilerOptionsDefaults::Deno
+    } else {
+      CompilerOptionsDefaults::TscCompatible
+    };
+    let root_dir = workspace_directory_provider.root();
+    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
+      root_dir.to_configured_compiler_options_sources(),
+      CompilerOptionsSourceKind::DenoJson,
+      defaults,
+      Some(root_dir.dir_url().clone()),
+      logged_warnings.clone(),
+      overrides.clone(),
+    ));
+    for (dir_url, dir) in dir_entries {
       if let Some(dir_url) = dir_url {
         workspace_configs.insert(
           dir_url.clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
+            defaults,
             Some(dir_url.clone()),
             logged_warnings.clone(),
             overrides.clone(),
@@ -1036,7 +1060,7 @@ impl CompilerOptionsResolver {
     }
     Self {
       workspace_configs,
-      ts_configs: ts_config_collector.collect(),
+      ts_configs,
     }
   }
 
@@ -1078,28 +1102,38 @@ impl CompilerOptionsResolver {
     get_node_resolver: GetNodeResolverFn<'_, NSys>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
-    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
-      Vec::new(),
-      CompilerOptionsSourceKind::DenoJson,
-      None,
-      logged_warnings.clone(),
-      Default::default(),
-    ));
     let mut ts_config_collector = TsConfigCollector::new(
       sys,
       get_node_resolver,
       &logged_warnings,
       Default::default(),
     );
-    for (scope, dir) in dirs_by_scope {
+    for dir in dirs_by_scope.values() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
+    }
+    let ts_configs = ts_config_collector.collect();
+    let defaults = if ts_configs.is_empty() {
+      CompilerOptionsDefaults::Deno
+    } else {
+      CompilerOptionsDefaults::TscCompatible
+    };
+    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
+      Vec::new(),
+      CompilerOptionsSourceKind::DenoJson,
+      defaults,
+      None,
+      logged_warnings.clone(),
+      Default::default(),
+    ));
+    for (scope, dir) in dirs_by_scope {
       workspace_configs.insert(
         scope.clone(),
         CompilerOptionsData::new(
           dir.to_configured_compiler_options_sources(),
           CompilerOptionsSourceKind::DenoJson,
+          defaults,
           Some(scope.clone()),
           logged_warnings.clone(),
           Default::default(),
@@ -1108,7 +1142,7 @@ impl CompilerOptionsResolver {
     }
     Self {
       workspace_configs,
-      ts_configs: ts_config_collector.collect(),
+      ts_configs,
     }
   }
 }

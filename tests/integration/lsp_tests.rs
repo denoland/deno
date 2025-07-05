@@ -17226,6 +17226,7 @@ fn lsp_tsconfig_references_extends_include() {
   temp_dir.write(
     "tsconfig.json",
     json!({
+      "exclude": ["file3.ts"],
       "compilerOptions": {
         "lib": ["deno.window"],
       },
@@ -17253,12 +17254,19 @@ fn lsp_tsconfig_references_extends_include() {
     })
     .to_string(),
   );
+  // This file is scoped for `tsconfig.json`.
   let file1 = temp_dir.source_file("file1.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `tsconfig.dom.json`.
   let file2 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `deno.json`. Since no compiler options are
+  // specified, it will use the default. Since there are tsconfigs in the
+  // workspace, the defaults will be tsc-compatible (`[ "deno.window", "dom"]`).
+  let file3 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open_file(&file1);
-  let diagnostics = client.did_open_file(&file2);
+  client.did_open_file(&file2);
+  let diagnostics = client.did_open_file(&file3);
   let mut messages = diagnostics.all_messages();
   messages.sort_by_key(|d| d.uri.to_string());
   assert_eq!(

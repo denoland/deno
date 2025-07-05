@@ -48,7 +48,7 @@ impl<'a> LspCompilerOptionsData<'a> {
           CompilerOptionsType::Check {
             lib: TsTypeLib::DenoWindow,
           },
-          self.inner.source_kind,
+          self.inner.defaults,
         ))
       })
   }
